@@ -44,13 +44,27 @@ export const metadata: Metadata = {
     url: "/",
     siteName: "OpenZaps",
     type: "website",
+    images: [
+      {
+        url: "/og.svg",
+        width: 1200,
+        height: 630,
+        alt: "OpenZaps logo and immutable intent locker positioning",
+      },
+    ],
   },
   twitter: {
     card: "summary_large_image",
     title: "OpenZaps — Immutable intent lockers for agent-triggered DeFi",
     description:
       "Pre-committed, tightly bounded authority for fixed DeFi action graphs triggered by Hermes.",
+    images: ["/og.svg"],
   },
+  icons: {
+    icon: [{ url: "/openzap-mark.svg", type: "image/svg+xml" }],
+    shortcut: ["/openzap-mark.svg"],
+  },
+  manifest: "/manifest.webmanifest",
   robots: {
     index: true,
     follow: true,
