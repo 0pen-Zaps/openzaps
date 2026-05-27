@@ -16,7 +16,7 @@
   align-items: center;
   justify-content: space-between;
   gap: 1rem;
-  width: min(1180px, calc(100% - 2rem));
+  width: min(1420px, calc(100% - 3rem));
   margin: 0 auto;
   padding: 1rem 0;
   backdrop-filter: blur(18px);
@@ -102,7 +102,7 @@
   display: grid;
   grid-template-columns: minmax(0, 1.02fr) minmax(360px, 0.78fr);
   gap: 3rem;
-  width: min(1180px, calc(100% - 2rem));
+  width: min(1420px, calc(100% - 3rem));
   margin: 0 auto;
   padding: 6rem 0 4rem;
 }
@@ -298,7 +298,7 @@
 }
 
 .statement {
-  width: min(1180px, calc(100% - 2rem));
+  width: min(1420px, calc(100% - 3rem));
   margin: 0 auto;
   padding: 2rem;
   border-radius: 1.1rem;
@@ -320,7 +320,7 @@
 
 .section,
 .agentSection {
-  width: min(1180px, calc(100% - 2rem));
+  width: min(1420px, calc(100% - 3rem));
   margin: 0 auto;
   padding: 7rem 0 0;
 }
@@ -521,7 +521,7 @@
 .footer {
   justify-content: space-between;
   gap: 2rem;
-  width: min(1180px, calc(100% - 2rem));
+  width: min(1420px, calc(100% - 3rem));
   margin: 0 auto;
   padding: 5rem 0 2rem;
   color: #62666d;
