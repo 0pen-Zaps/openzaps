@@ -340,21 +340,40 @@ Hermes is a bounded execution and safety agent, not an optimization engine with 
 
 The fastest path to a credible prototype is to reduce scope hard enough that the security story becomes legible. The recommended first slice is **ERC-20 only, immutable clone instances, fixed adapters, EIP-712 + ERC-1271 support, private submission by default, and no arbitrary external calls**. That aligns with the strongest parts of the standards ecosystem and avoids the least mature surfaces such as ERC-721/1155 permit fragmentation, general delegatecall tooling, and broad router passthrough. citeturn13view3turn18view3turn6view2turn3view12turn16view0turn16view1
 
+> **v1 update (2026-06-06):** This checklist was revised against the design evaluation and the four ADRs in [`adr/`](adr/README.md). Testable invariants for every row live in [`invariant-spec.md`](invariant-spec.md).
+
 | Priority | Task | Deliverable | Why first |
 |---|---|---|---|
-| P0 | Freeze the authority model | Decision memo: deposit-based, signed-intent, or smart-account-native | Everything else depends on where authority lives |
-| P0 | Cut scope to ERC-20 | Token support matrix and exclusions | Removes NFT approval and callback complexity |
+| P0 | Freeze the authority model | **ADR-0001**: deposit-based fully-immutable per-zap as v1 canonical; signed-intent as a mode on the same instance (`policyHash` becomes an immutable) | Everything else depends on where authority lives |
+| P0 | Cut scope to a curated ERC-20 allowlist | Vetted token list — non-FoT, non-rebasing, standard-return — plus exclusions | Balance-delta postconditions are the safety core; FoT/rebasing break them |
 | P0 | Eliminate arbitrary calls | Adapter registry and immutable step compiler | Preserves immutability’s real security benefit |
-| P0 | Define typed-intent schema | EIP-712 struct, domain, nonce, fee cap, recipient, policy hash | Prevents replay and scope drift |
+| P0 | Classify every zap optimization vs protective | **ADR-0004**: ship optimization-only; defer protective (or permissionless on-chain trigger) | A single-submitter Hermes is a silent liveness SPOF for principal |
+| P0 | Define typed-intent schema | EIP-712 struct binding chainId, nonce, deadline, recipient, **gas/fee caps**, **net-of-fee min-out**, policy hash | Prevents replay, scope drift, and gas-griefing |
 | P0 | Implement exact-approval discipline | Approval-reset library + invariant tests | Closes one of the highest-impact latent bugs |
-| P0 | Build postcondition engine | Balance-delta checks, min-out, allowed recipient assertions | Converts “route intent” into enforceable safety |
+| P0 | Build postcondition engine | Balance-delta checks (net-of-fee), min-out, allowed-recipient assertions | Converts “route intent” into enforceable safety |
+| P0 | Guarantee an unconditional emergency exit | Owner-only withdraw independent of adapters, Hermes, and postconditions (promoted from P1) | Immutable zaps call mutable protocols; this is the only recovery path |
 | P1 | Add ERC-1271 | Smart-wallet compatibility test suite | Required for Safe / contract-wallet users |
-| P1 | Add private submission | Flashbots / builder adapter and fallback logic | Structural mitigation for MEV |
-| P1 | Add revocation paths | Nonce invalidation, withdraw, emergency halt per policy | Containment matters as much as execution |
-| P1 | Build late-block simulation | Re-sim near submission with multi-node quorum | Reduces simulation-to-chain divergence |
-| P2 | Formalize invariants | SMTChecker + invariant fuzzing + rule set | Makes external audit higher leverage |
-| P2 | External audit after feature freeze | Audit of factory, adapters, intent verification, postconditions | Auditing moving targets is low leverage |
-| P2 | Operational compliance design | Decide software vs wallet tooling vs managed service posture | Product structure changes legal perimeter |
+| P1 | Resolve submission privacy vs censorship | **ADR-0003**: per-step sensitivity — private-only multi-builder for price-sensitive, public-after-T only for non-sensitive | The two goals are mutually exclusive on one route |
+| P1 | Add revocation paths | Nonce invalidation, halt per policy | Containment matters as much as execution |
+| P1 | Build late-block simulation | Re-sim near submission with multi-node quorum; L2 reorg/finality policy | Reduces simulation-to-chain divergence |
+| P2 | Formalize invariants | Foundry/Echidna invariant fuzzing + Certora/Halmos rules (SMTChecker for arithmetic/nonce only) | SMTChecker is blind across the adapter call-loop; see `invariant-spec.md` |
+| P2 | External audit after feature freeze | Audit of factory, **shared implementation**, adapters, intent verification, postconditions | Auditing moving targets is low leverage |
+| P2 | Operational compliance design | Per-zap isolated balances (never pooled); decide software vs managed-service posture | Pooled balances are both a blast-radius and a CASP/money-transmitter flag |
+
+### Cross-cutting v1 invariants
+
+These must hold for **every** zap, independent of which task above is in flight. Each maps to an ID in [`invariant-spec.md`](invariant-spec.md).
+
+1. No asset exit except an allowlisted adapter call, the bounded fee sink, or the signed recipient. *(I-FLOW-1)*
+2. No residual approval to any spender after success **or any revert path**. *(I-APPR-1)*
+3. Authorization consumed before any external call — covers replay and reentrancy. *(I-AUTH-1)*
+4. Only allowlisted `(adapter, selector)` pairs reachable; no arbitrary `target`/`calldata`; no `delegatecall`. *(I-SURF-1/2)*
+5. Per-zap isolated balances; never a shared or pooled vault — security **and** legal. *(I-ISO-4)*
+6. An unconditional, owner-only emergency exit always succeeds, independent of adapter/Hermes/postcondition state. *(I-REC-1)*
+7. Recipient receives ≥ the signed **net-of-fee** min-out; relayer fee ≤ the signed cap. *(I-FLOW-2/3)*
+8. If clones are used, the shared implementation has no `selfdestruct`/`delegatecall` and is initialised atomically by the factory only. *(I-ISO-1/2/3)*
+9. Only curated-allowlist tokens enter the tracked set; no fee-on-transfer or rebasing tokens. *(I-TOK-1/2)*
+10. Every field that grants the submitter optionality — gas, fee, recipient, deadline, route — is signed over; no unbound discretion. *(I-AUTH-4)*
 
 A production-readiness gate should require affirmative answers to a short set of adversarial questions: Can any deployed zap call an unapproved target or selector? Can any authorization be replayed across chains, versions, or factories? Can any approval remain after success or failure? Can Hermes ever improve its own authority relative to the signed policy? Can a malicious triggerer materially worsen timing or price without violating a postcondition? Can the user always revoke, invalidate, or withdraw without depending on the normal fast path? If any answer is “yes,” the design is not ready. citeturn5view1turn18view3turn3view12turn1view7
 
