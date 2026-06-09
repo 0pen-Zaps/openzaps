@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { OpenZapMark } from "@/components/OpenZapMark";
 import { BuyButton } from "@/components/BuyButton";
-import { TOKEN, LINKS, isLive } from "@/lib/config";
+import { TOKEN, LINKS, CHAIN, CONTRACTS, contractsLive, explorer } from "@/lib/config";
 import styles from "./page.module.css";
 
 const stats = [
@@ -91,7 +91,7 @@ export default function Home(): React.JSX.Element {
             <div className={styles.execTop}>
               <OpenZapMark className={styles.execMark} />
               <strong>0xzap.execute()</strong>
-              <span className={styles.live}>{isLive() ? "live" : "preview"}</span>
+              <span className={styles.live}>{contractsLive() ? "live" : "preview"}</span>
             </div>
             <pre>{`verify(policyHash)        ✓
 consume(nonce)            ✓
@@ -183,6 +183,14 @@ monitor(receipt)`}</pre>
           <a className={styles.repoLink} href={LINKS.github} target="_blank" rel="noreferrer">
             Read the contracts + audit on GitHub ↗
           </a>
+          {contractsLive() && (
+            <p className={styles.deployed}>
+              <span className={styles.liveDot} aria-hidden /> v1 contracts live on {CHAIN.name} mainnet ·{" "}
+              <a href={explorer(CONTRACTS.factory)} target="_blank" rel="noreferrer">
+                factory {CONTRACTS.factory.slice(0, 6)}…{CONTRACTS.factory.slice(-4)} ↗
+              </a>
+            </p>
+          )}
         </div>
         <aside className={styles.agentCard}>
           <div className={styles.agentHead}>Hermes execution loop</div>

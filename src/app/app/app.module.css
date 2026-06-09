@@ -21,6 +21,11 @@
   line-height: 1.5;
 }
 
+.banner a {
+  color: var(--mint-2);
+  text-decoration: underline;
+}
+
 /* header */
 .appHead {
   display: flex;

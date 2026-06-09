@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { OpenZapMark } from "@/components/OpenZapMark";
-import { CHAIN, TOKEN, isLive } from "@/lib/config";
+import { CHAIN, TOKEN, CONTRACTS, contractsLive, explorer } from "@/lib/config";
 import styles from "./app.module.css";
 
 const TOKENS = ["USDC", "WETH", "cbBTC", "DAI"] as const;
@@ -25,7 +25,7 @@ function policyHash(input: string): string {
 }
 
 export default function AppPage(): React.JSX.Element {
-  const live = isLive();
+  const live = contractsLive();
   const [model, setModel] = useState<string>("deposit");
   const [tokenIn, setTokenIn] = useState<string>("USDC");
   const [tokenOut, setTokenOut] = useState<string>("WETH");
@@ -65,15 +65,23 @@ export default function AppPage(): React.JSX.Element {
 
   return (
     <main className={styles.page} id="main">
-      {!live && (
-        <div className={`container ${styles.banner}`}>
-          <span className="badge">Preview</span>
-          <p>
-            The builder is fully explorable now. Wallet connect and on-chain deploys go live with the launch
-            deployment on {CHAIN.name}.
-          </p>
-        </div>
-      )}
+      <div className={`container ${styles.banner}`}>
+        <span className="badge">{live ? `Live on ${CHAIN.name}` : "Preview"}</span>
+        <p>
+          {live ? (
+            <>
+              The v1 contracts are{" "}
+              <a href={explorer(CONTRACTS.factory)} target="_blank" rel="noreferrer">
+                live on {CHAIN.name} mainnet ↗
+              </a>
+              . This builder previews the exact policy you&apos;ll sign — wallet-driven creation opens as governance
+              allowlists adapters and tokens.
+            </>
+          ) : (
+            <>The builder is fully explorable now. Wallet connect and on-chain deploys go live with the launch.</>
+          )}
+        </p>
+      </div>
 
       {/* app header */}
       <section className={`container ${styles.appHead}`}>
@@ -94,7 +102,7 @@ export default function AppPage(): React.JSX.Element {
             </>
           ) : (
             <button className="btn btnPrimary" onClick={() => setDemo(true)}>
-              {live ? "Connect wallet" : "Preview with demo wallet"}
+              Preview with demo wallet
             </button>
           )}
         </div>
@@ -185,9 +193,8 @@ export default function AppPage(): React.JSX.Element {
             <span aria-hidden>→</span>
           </button>
           <p className={styles.fineprint}>
-            {live
-              ? "Deploys an immutable, single-policy clone. You keep an unconditional withdraw."
-              : "Preview only — no transaction is broadcast. Deploys an immutable clone at launch."}
+            Preview only — no transaction is broadcast. The factory is live on {CHAIN.name}; on-chain creation opens
+            as governance allowlists adapters and tokens.
           </p>
         </div>
 
@@ -250,8 +257,8 @@ export default function AppPage(): React.JSX.Element {
           </div>
         )}
         <p className={styles.dashNote}>
-          Live zaps, balances, and Hermes execution receipts appear here once {TOKEN.symbol} launches and the
-          contracts are deployed on {CHAIN.name}.
+          Live zaps, balances, and Hermes execution receipts appear here once governance allowlists adapters and{" "}
+          {TOKEN.symbol} launches on pool.fans.
         </p>
       </section>
     </main>

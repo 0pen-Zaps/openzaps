@@ -452,6 +452,33 @@
   border-color: var(--mint-2);
 }
 
+.deployed {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 1.1rem;
+  color: var(--text);
+  font-family: var(--font-jetbrains-mono), ui-monospace, monospace;
+  font-size: 0.8rem;
+}
+
+.deployed a {
+  color: var(--mint-2);
+}
+
+.deployed a:hover {
+  text-decoration: underline;
+}
+
+.liveDot {
+  width: 0.5rem;
+  height: 0.5rem;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background: var(--mint-2);
+  box-shadow: 0 0 14px rgba(55, 240, 154, 0.9);
+}
+
 .agentCard {
   padding: 1.1rem;
   border: 1px solid var(--line);

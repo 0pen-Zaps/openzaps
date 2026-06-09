@@ -25,17 +25,28 @@ export const CHAIN = {
   explorer: process.env.NEXT_PUBLIC_EXPLORER ?? "https://basescan.org",
 } as const;
 
-/** Deployed protocol + token addresses. Empty until the deploy step wires them in. */
+/** Deployed protocol + token addresses. Protocol is live on Base mainnet (8453). */
 export const CONTRACTS = {
-  token: process.env.NEXT_PUBLIC_TOKEN_ADDRESS ?? "",
-  factory: process.env.NEXT_PUBLIC_FACTORY_ADDRESS ?? "",
-  adapterRegistry: process.env.NEXT_PUBLIC_ADAPTER_REGISTRY ?? "",
-  tokenAllowlist: process.env.NEXT_PUBLIC_TOKEN_ALLOWLIST ?? "",
+  token: process.env.NEXT_PUBLIC_TOKEN_ADDRESS ?? "", // 0xZAPS — set once launched on pool.fans
+  factory: process.env.NEXT_PUBLIC_FACTORY_ADDRESS ?? "0xc7C5897e4738a157731c2F93b1d73Db9926E926C",
+  implementation: "0x7c89A57A74a102d8a2A2E9e9FCF77f097216b78e",
+  adapterRegistry: process.env.NEXT_PUBLIC_ADAPTER_REGISTRY ?? "0x8d62b619daD575704Ba2560CF828aCab7642347F",
+  tokenAllowlist: process.env.NEXT_PUBLIC_TOKEN_ALLOWLIST ?? "0x0E6608d6b9e485550289755176173c4B6008CF12",
 } as const;
 
-/** Whether the protocol contracts are live on `CHAIN`. Drives "live" vs "preview" UI. */
-export function isLive(): boolean {
+/** Whether the protocol contracts are deployed on `CHAIN`. */
+export function contractsLive(): boolean {
   return CONTRACTS.factory.length > 0;
+}
+
+/** Whether the 0xZAPS token has launched on pool.fans (drives buy/trade UI). */
+export function tokenLive(): boolean {
+  return POOLFANS.tokenId.length > 0 || CONTRACTS.token.length > 0;
+}
+
+/** Block-explorer link for an address. */
+export function explorer(addr: string): string {
+  return `${CHAIN.explorer}/address/${addr}`;
 }
 
 export const LINKS = {

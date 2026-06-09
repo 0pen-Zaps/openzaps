@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { OpenZapMark } from "@/components/OpenZapMark";
 import { BuyButton } from "@/components/BuyButton";
-import { TOKEN, CHAIN, CONTRACTS, isLive, LINKS } from "@/lib/config";
+import { TOKEN, CHAIN, CONTRACTS, LINKS } from "@/lib/config";
 import styles from "./token.module.css";
 
 export const metadata: Metadata = {
@@ -107,7 +107,7 @@ export default function TokenPage(): React.JSX.Element {
       <section className={`container ${styles.addressWrap}`}>
         <div className={styles.address}>
           <span className={styles.addressLabel}>{TOKEN.symbol} contract</span>
-          {isLive() && CONTRACTS.token ? (
+          {CONTRACTS.token ? (
             <a
               className={styles.addressValue}
               href={`${CHAIN.explorer}/token/${CONTRACTS.token}`}
