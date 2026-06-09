@@ -1,51 +1,44 @@
+import Link from "next/link";
+import { OpenZapMark } from "@/components/OpenZapMark";
+import { BuyButton } from "@/components/BuyButton";
+import { TOKEN, LINKS, CHAIN, CONTRACTS, contractsLive, explorer } from "@/lib/config";
 import styles from "./page.module.css";
+
+const stats = [
+  { v: TOKEN.symbol, k: "Launching on pool.fans" },
+  { v: "0", k: "Discretionary approvals" },
+  { v: "47 / 0", k: "Tests passing / failing" },
+  { v: "9 / 9", k: "Audit findings fixed" },
+] as const;
 
 const authorityModels = [
   {
     label: "01 / Deposit",
     title: "Pre-funded immutable zap",
-    body: "Assets sit inside a narrow policy capsule. Hermes can trigger only the frozen action graph; the user keeps withdraw and revocation paths defined by policy.",
+    body: "Assets sit inside a narrow policy capsule. Hermes triggers only the frozen action graph; you keep an unconditional withdraw and revocation path.",
     grade: "Recurring automation",
   },
   {
     label: "02 / Signature",
     title: "EIP-712 typed intent",
-    body: "One-shot authority binds chain, zap, nonce, deadline, recipient, fee cap, policy hash, inputs, and outputs before any relayer touches it.",
+    body: "One-shot authority binds chain, zap, nonce, deadline, recipient, fee cap, gas, and policy hash before any relayer touches it.",
     grade: "Infrequent execution",
   },
   {
     label: "03 / Wallet-native",
-    title: "Safe / ERC-4337 policy",
-    body: "Smart-account validation enforces the policy while Hermes acts as submitter, simulator, monitor, and escalation layer — not an operator with discretion.",
+    title: "Safe / ERC-1271 signer",
+    body: "Contract wallets sign the same typed policy. Hermes stays a submitter, simulator, and monitor — never an operator with discretion.",
     grade: "Power users",
   },
 ] as const;
 
-const safetyChecks = [
-  "No arbitrary target + calldata",
-  "Fixed adapters and selectors",
-  "Exact approvals with zero reset",
-  "Nonce consumed before external calls",
-  "Private submission for AMM routes",
-  "Balance-delta postconditions",
+const security = [
+  "No arbitrary target + calldata — fixed adapters only",
+  "Exact approvals, reset to zero on every path",
+  "Authorization consumed before any external call",
+  "Measured balance-delta postconditions",
+  "Unconditional owner emergency exit",
   "ERC-1271 contract-wallet signatures",
-  "Revocation and withdrawal paths",
-] as const;
-
-const roadmap = [
-  ["P0", "Freeze authority model", "Pick deposit, signed-intent, or wallet-native as the first execution surface."],
-  ["P0", "ERC-20 only", "Avoid NFT operator approvals, safe-transfer callbacks, and multi-asset accounting in v1."],
-  ["P0", "Compile fixed adapters", "Preserve immutability by making every call target and selector knowable before deploy."],
-  ["P1", "Private submission", "Route price-sensitive execution through private orderflow after late-block simulation."],
-  ["P2", "Invariant proof pack", "SMTChecker, fuzz invariants, bytecode hash manifests, and audit-ready postconditions."],
-] as const;
-
-const threatRows = [
-  ["MEV / sandwiching", "Private submission, strict min-out, short deadlines"],
-  ["Replay / scope drift", "EIP-712 domains, consumed digests, chain-aware nonces"],
-  ["Approval leakage", "Exact approvals, immediate zero reset, residual allowance checks"],
-  ["Oracle manipulation", "TWAP / external sanity bounds, liquidity floors, circuit breakers"],
-  ["Relayer optionality", "Fee caps, allowed relayers, self-submit fallback, escalation rules"],
 ] as const;
 
 const agentLoop = [
@@ -57,108 +50,57 @@ const agentLoop = [
   "Revoke or escalate anomalies",
 ] as const;
 
-function OpenZapMark({ className }: { className?: string }): React.JSX.Element {
-  return (
-    <svg className={className} viewBox="0 0 512 512" aria-hidden="true">
-      <defs>
-        <linearGradient id="openzap-ring" x1="96" y1="64" x2="416" y2="448" gradientUnits="userSpaceOnUse">
-          <stop stopColor="#8EA0FF" />
-          <stop offset="0.5" stopColor="#6B5CFF" />
-          <stop offset="1" stopColor="#21D07A" />
-        </linearGradient>
-        <linearGradient id="openzap-bolt" x1="305" y1="108" x2="188" y2="410" gradientUnits="userSpaceOnUse">
-          <stop stopColor="#F7F8F8" />
-          <stop offset="0.48" stopColor="#C8D0FF" />
-          <stop offset="1" stopColor="#37F09A" />
-        </linearGradient>
-      </defs>
-      <rect width="512" height="512" rx="112" fill="#08090A" />
-      <path
-        d="M257 74C357.516 74 439 155.484 439 256C439 356.516 357.516 438 257 438C156.484 438 75 356.516 75 256C75 175.835 126.851 107.779 198.866 83.521"
-        stroke="url(#openzap-ring)"
-        strokeWidth="38"
-        strokeLinecap="round"
-      />
-      <path d="M342 68L407 111" stroke="#08090A" strokeWidth="54" strokeLinecap="round" />
-      <path
-        d="M302 104L169 277H244L207 410L346 223H265L302 104Z"
-        fill="url(#openzap-bolt)"
-        stroke="#08090A"
-        strokeWidth="18"
-        strokeLinejoin="round"
-      />
-      <path
-        d="M302 104L169 277H244L207 410L346 223H265L302 104Z"
-        stroke="rgba(255,255,255,0.72)"
-        strokeWidth="4"
-        strokeLinejoin="round"
-      />
-      <circle cx="141" cy="142" r="10" fill="#37F09A" />
-      <circle cx="374" cy="365" r="7" fill="#8EA0FF" />
-    </svg>
-  );
-}
-
 export default function Home(): React.JSX.Element {
   return (
-    <main className={styles.page}>
-      <nav className={styles.nav} aria-label="Primary navigation">
-        <a className={styles.brand} href="#top" aria-label="OpenZaps home">
-          <OpenZapMark className={styles.brandMark} />
-          <span>OpenZaps</span>
-        </a>
-        <div className={styles.navLinks}>
-          <a href="#model">Model</a>
-          <a href="#safety">Safety</a>
-          <a href="#hermes">Hermes</a>
-          <a href="#roadmap">Roadmap</a>
-        </div>
-        <a className={styles.navCta} href="#roadmap">Prototype scope</a>
-      </nav>
-
-      <section id="top" className={`${styles.container} ${styles.hero}`}>
+    <main className={styles.page} id="main">
+      {/* ---------------- hero ---------------- */}
+      <section className={`container ${styles.hero}`} id="top">
         <div className={styles.heroCopy}>
-          <div className={styles.eyebrow}>Hermes-triggered DeFi execution</div>
-          <h1 aria-label="Immutable intent lockers for agent-triggered DeFi.">
-            <span>Immutable intent</span>{" "}
-            <span>lockers for</span>{" "}
-            <span>agent-triggered DeFi.</span>
+          <span className="badge">⚡ Launching {TOKEN.symbol} on pool.fans</span>
+          <h1 className={styles.title}>
+            <span>Bounded onchain</span>
+            <span>automation, with a</span>
+            <span className="gradientText">token to match.</span>
           </h1>
-          <p className={styles.heroLead}>
-            OpenZaps convert user-approved workflows into sealed policy capsules. Hermes can simulate, submit,
-            monitor, and revoke — without gaining discretionary wallet authority.
+          <p className={styles.lead}>
+            OpenZaps turn approved DeFi workflows into sealed, immutable policy capsules a Hermes agent can
+            simulate, submit, monitor, and revoke — without ever holding discretionary wallet authority.{" "}
+            <strong>{TOKEN.symbol}</strong> is the token for it.
           </p>
-          <div className={styles.heroActions}>
-            <a className={styles.primaryButton} href="#model">Study the model</a>
-            <a className={styles.secondaryButton} href="#safety">Threat matrix</a>
+          <div className={styles.actions}>
+            <BuyButton size="lg" />
+            <Link href="/app" className="btn btnGhost btnLg">
+              Open the app
+            </Link>
           </div>
-          <div className={styles.proofStrip} aria-label="OpenZaps design constraints">
+          <div className={styles.proof}>
             <span>ERC-20 first</span>
             <span>EIP-712 intents</span>
             <span>ERC-1271 ready</span>
-            <span>Private orderflow by default</span>
+            <span>Private orderflow</span>
           </div>
         </div>
 
-        <div className={styles.heroVisual} aria-label="OpenZap execution preview">
-          <div className={styles.logoOrbit}>
-            <OpenZapMark className={styles.heroMark} />
-            <span className={styles.orbitNodeOne}>policy hash</span>
-            <span className={styles.orbitNodeTwo}>zero residual approvals</span>
+        <div className={styles.heroVisual} aria-hidden="true">
+          <div className={styles.orbit}>
+            <OpenZapMark className={styles.orbitMark} />
+            <span className={styles.node1}>policy hash</span>
+            <span className={styles.node2}>zero residual approvals</span>
           </div>
-          <div className={styles.terminalCard}>
-            <div className={styles.terminalTop}>
-              <OpenZapMark className={styles.terminalMark} />
-              <strong>execution-gate.ts</strong>
+          <div className={styles.execCard}>
+            <div className={styles.execTop}>
+              <OpenZapMark className={styles.execMark} />
+              <strong>0xzap.execute()</strong>
+              <span className={styles.live}>{contractsLive() ? "live" : "preview"}</span>
             </div>
-            <pre>{`verify(policyHash)
-simulate(latestBlock)
-assert(minOut && recipient)
-submit(privateChannel)
-monitor(receipt)
-revoke(ifAnomaly)`}</pre>
-            <div className={styles.routeGraph}>
-              <span>User</span>
+            <pre>{`verify(policyHash)        ✓
+consume(nonce)            ✓
+approveExact → swap → 0   ✓
+assert(minOut, recipient) ✓
+submit(privateChannel)    ⧗
+monitor(receipt)`}</pre>
+            <div className={styles.route}>
+              <span>You</span>
               <i />
               <span>Zap</span>
               <i />
@@ -168,114 +110,119 @@ revoke(ifAnomaly)`}</pre>
         </div>
       </section>
 
-      <section className={`${styles.container} ${styles.principleBand}`}>
-        <div className={styles.principleMark}>
-          <OpenZapMark />
-        </div>
-        <p>
-          Not “approval-free.” <strong>Pre-committed, tightly bounded authority</strong> for a fixed action graph. That is
-          the product and the security boundary.
-        </p>
+      {/* ---------------- stat strip ---------------- */}
+      <section className={`container ${styles.statStrip}`}>
+        {stats.map((s) => (
+          <div className={styles.stat} key={s.k}>
+            <strong>{s.v}</strong>
+            <span>{s.k}</span>
+          </div>
+        ))}
       </section>
 
-      <section id="model" className={`${styles.container} ${styles.section}`}>
-        <div className={styles.sectionHeader}>
-          <div className={styles.eyebrow}>Authority model</div>
+      {/* ---------------- token band ---------------- */}
+      <section className={`container ${styles.tokenBand}`}>
+        <div className={styles.tokenMark}>
+          <OpenZapMark />
+          <span className={styles.tokenTicker}>{TOKEN.symbol}</span>
+        </div>
+        <div>
+          <p className={styles.tokenLead}>
+            One token aligns the people who run, secure, and build zaps. Launching fair on the{" "}
+            <strong>pool.fans</strong> tokenizer — no private allocation games.
+          </p>
+          <div className={styles.tokenActions}>
+            <BuyButton />
+            <Link href="/token" className="btn btnGhost">
+              Tokenomics →
+            </Link>
+          </div>
+        </div>
+      </section>
+
+      {/* ---------------- protocol ---------------- */}
+      <section className={`container ${styles.section}`} id="protocol">
+        <header className={styles.head}>
+          <span className="eyebrow">Authority model</span>
           <h2>Execution authority must live somewhere explicit.</h2>
           <p>
-            OpenZaps split creation authority, execution authority, and submission authority so users can walk away
-            without handing Hermes broad approvals or custody.
+            OpenZaps split creation, execution, and submission authority so you can walk away without handing an
+            agent broad approvals or custody. Pick the surface that fits the workflow.
           </p>
-        </div>
+        </header>
         <div className={styles.modelGrid}>
-          {authorityModels.map((model) => (
-            <article className={styles.modelCard} key={model.title}>
-              <span>{model.label}</span>
-              <h3>{model.title}</h3>
-              <p>{model.body}</p>
-              <strong>{model.grade}</strong>
+          {authorityModels.map((m) => (
+            <article className={styles.modelCard} key={m.title}>
+              <span className={styles.modelLabel}>{m.label}</span>
+              <h3>{m.title}</h3>
+              <p>{m.body}</p>
+              <strong>{m.grade}</strong>
             </article>
           ))}
         </div>
       </section>
 
-      <section id="safety" className={`${styles.container} ${styles.section} ${styles.splitSection}`}>
+      {/* ---------------- security ---------------- */}
+      <section className={`container ${styles.section} ${styles.security}`} id="security">
         <div>
-          <div className={styles.eyebrow}>Safety posture</div>
+          <span className="eyebrow">Security posture</span>
           <h2>Narrow policy beats universal routing.</h2>
           <p>
-            The strongest v1 is not a generic execution engine. It is an ERC-20-first policy capsule with frozen adapters,
-            selectors, recipients, tracked assets, nonce rules, and postconditions.
+            The v1 contracts are a complete, internally-reviewed reference implementation: 47 passing tests, an
+            adversarial multi-agent review, and 9 internal findings fixed — including a critical clone-hijack
+            (all documented in the linked repo). Not externally audited; we say so plainly.
           </p>
           <div className={styles.checkGrid}>
-            {safetyChecks.map((check) => (
-              <div className={styles.check} key={check}>
+            {security.map((c) => (
+              <div className={styles.check} key={c}>
                 <span>✓</span>
-                {check}
+                {c}
               </div>
             ))}
           </div>
+          <a className={styles.repoLink} href={LINKS.github} target="_blank" rel="noreferrer">
+            Read the contracts + audit on GitHub ↗
+          </a>
+          {contractsLive() && (
+            <p className={styles.deployed}>
+              <span className={styles.liveDot} aria-hidden /> v1 contracts live on {CHAIN.name} mainnet ·{" "}
+              <a href={explorer(CONTRACTS.factory)} target="_blank" rel="noreferrer">
+                factory {CONTRACTS.factory.slice(0, 6)}…{CONTRACTS.factory.slice(-4)} ↗
+              </a>
+            </p>
+          )}
         </div>
-        <div className={styles.matrixCard}>
-          <div className={styles.cardHeader}>Threat model</div>
-          {threatRows.map(([threat, mitigation]) => (
-            <div className={styles.threatRow} key={threat}>
-              <span>{threat}</span>
-              <p>{mitigation}</p>
-            </div>
-          ))}
-        </div>
-      </section>
-
-      <section id="hermes" className={`${styles.container} ${styles.agentSection}`}>
-        <div className={styles.sectionHeader}>
-          <div className={styles.eyebrow}>Hermes role</div>
-          <h2>A bounded execution and safety agent, not an autonomous trader.</h2>
-          <p>
-            Hermes discovers eligible zaps, validates policy, simulates exact calldata, submits through the safest channel,
-            monitors settlement, and escalates when policy or market state diverges.
-          </p>
-        </div>
-        <div className={styles.agentLoop}>
-          {agentLoop.map((item, index) => (
-            <div className={styles.loopNode} key={item}>
-              <span>{String(index + 1).padStart(2, "0")}</span>
+        <aside className={styles.agentCard}>
+          <div className={styles.agentHead}>Hermes execution loop</div>
+          {agentLoop.map((item, i) => (
+            <div className={styles.loopRow} key={item}>
+              <span>{String(i + 1).padStart(2, "0")}</span>
               <strong>{item}</strong>
             </div>
           ))}
-        </div>
+        </aside>
       </section>
 
-      <section id="roadmap" className={`${styles.container} ${styles.section}`}>
-        <div className={styles.sectionHeader}>
-          <div className={styles.eyebrow}>Prototype checklist</div>
-          <h2>Reduce scope until the security story is legible.</h2>
-          <p>
-            A credible first slice: immutable clone instances, fixed adapters, EIP-712 + ERC-1271 support, no arbitrary
-            calls, private submission by default, and invariant-driven tests.
+      {/* ---------------- final CTA ---------------- */}
+      <section className={`container ${styles.cta}`}>
+        <div className={styles.ctaInner}>
+          <OpenZapMark className={styles.ctaMark} />
+          <h2>
+            Get <span className="gradientText">{TOKEN.symbol}</span>. Run the zaps.
+          </h2>
+          <p>Buy on pool.fans, then open the app to build your first immutable intent locker.</p>
+          <div className={styles.actions}>
+            <BuyButton size="lg" />
+            <Link href="/app" className="btn btnGhost btnLg">
+              Open the app
+            </Link>
+          </div>
+          <p className={styles.ctaNote}>
+            Not financial advice. {TOKEN.symbol} is a community token with no claim on revenue, yield, or
+            assets; onchain actions are irreversible and the protocol is pre-external-audit.
           </p>
         </div>
-        <div className={styles.roadmap}>
-          {roadmap.map(([priority, title, detail]) => (
-            <div className={styles.roadmapRow} key={title}>
-              <span>{priority}</span>
-              <strong>{title}</strong>
-              <p>{detail}</p>
-            </div>
-          ))}
-        </div>
       </section>
-
-      <footer className={`${styles.container} ${styles.footer}`}>
-        <div className={styles.footerBrand}>
-          <OpenZapMark className={styles.footerMark} />
-          <div>
-            <strong>OpenZaps</strong>
-            <p>Immutable intent capsules for Hermes-triggered DeFi.</p>
-          </div>
-        </div>
-        <p>Built from the OpenZaps research report. No live protocol, token, TVL, or audit claims are implied.</p>
-      </footer>
     </main>
   );
 }

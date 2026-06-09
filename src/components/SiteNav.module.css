@@ -1,0 +1,116 @@
+.wrap {
+  position: sticky;
+  top: 0;
+  z-index: 50;
+  backdrop-filter: blur(18px);
+  background: linear-gradient(180deg, rgba(8, 9, 10, 0.82), rgba(8, 9, 10, 0.32));
+  border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+}
+
+.nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  width: var(--container);
+  margin: 0 auto;
+  padding: 0.85rem 0;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  min-height: 44px;
+  font-size: 0.96rem;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+
+.mark {
+  width: 2.2rem;
+  height: 2.2rem;
+  flex: 0 0 auto;
+  border-radius: 0.6rem;
+  filter: drop-shadow(0 0 20px rgba(107, 92, 255, 0.45));
+}
+
+.ticker {
+  padding: 0.2rem 0.5rem;
+  border: 1px solid rgba(55, 240, 154, 0.32);
+  border-radius: 999px;
+  color: #37f09a;
+  background: rgba(33, 208, 122, 0.08);
+  font-family: var(--font-jetbrains-mono), ui-monospace, monospace;
+  font-size: 0.66rem;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+}
+
+.links {
+  display: flex;
+  align-items: center;
+  gap: 0.2rem;
+  padding: 0.3rem;
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.035);
+  font-size: 0.82rem;
+  font-weight: 510;
+}
+
+.links a {
+  display: grid;
+  place-items: center;
+  min-height: 38px;
+  padding: 0 0.85rem;
+  border-radius: 999px;
+  color: #d0d6e0;
+  transition: color 160ms ease, background 160ms ease;
+}
+
+.links a:hover {
+  color: #f7f8f8;
+  background: rgba(255, 255, 255, 0.055);
+}
+
+.active {
+  color: #f7f8f8 !important;
+  background: rgba(142, 160, 255, 0.14) !important;
+}
+
+@media (max-width: 920px) {
+  .nav {
+    flex-wrap: wrap;
+    gap: 0.6rem;
+  }
+
+  .word {
+    display: none;
+  }
+
+  .brand {
+    order: 1;
+  }
+
+  .cta {
+    order: 2;
+  }
+
+  .links {
+    order: 3;
+    width: 100%;
+    justify-content: space-between;
+    overflow-x: auto;
+    border-radius: 0.85rem;
+    scrollbar-width: none;
+  }
+
+  .links::-webkit-scrollbar {
+    display: none;
+  }
+
+  .links a {
+    min-width: max-content;
+  }
+}

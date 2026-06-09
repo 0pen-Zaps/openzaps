@@ -3,3 +3,6 @@ cache/
 broadcast/
 lib/
 .env
+
+# local deployer keystore — never commit
+.deployer/

@@ -1,6 +1,9 @@
 import type { Metadata } from "next";
 import { Inter, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
+import { SiteNav } from "@/components/SiteNav";
+import { SiteFooter } from "@/components/SiteFooter";
+import { TOKEN } from "@/lib/config";
 
 const inter = Inter({
   variable: "--font-inter",
@@ -14,71 +17,72 @@ const jetBrainsMono = JetBrains_Mono({
   display: "swap",
 });
 
-const siteUrl = process.env.NEXT_PUBLIC_SITE_URL
-  ?? (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "https://openzaps.vercel.app");
+const siteUrl =
+  process.env.NEXT_PUBLIC_SITE_URL ??
+  (process.env.VERCEL_PROJECT_PRODUCTION_URL
+    ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`
+    : process.env.VERCEL_URL
+      ? `https://${process.env.VERCEL_URL}`
+      : "https://openzaps.vercel.app");
+
+const title = `OpenZaps — ${TOKEN.symbol} launching on pool.fans`;
+const description = `OpenZaps are immutable, ERC-20-first intent lockers for agent-triggered DeFi. ${TOKEN.symbol} is launching on pool.fans — bounded onchain automation with no discretionary wallet authority.`;
 
 export const metadata: Metadata = {
   metadataBase: new URL(siteUrl),
   title: {
-    default: "OpenZaps — Immutable intent lockers for agent-triggered DeFi",
+    default: title,
     template: "%s | OpenZaps",
   },
-  description:
-    "OpenZaps are immutable, ERC-20-first policy capsules for bounded Hermes-triggered DeFi execution without discretionary wallet authority.",
+  description,
   keywords: [
     "OpenZaps",
+    TOKEN.symbol,
+    "0xZAPS",
+    "pool.fans",
+    "token launch",
     "DeFi automation",
     "Hermes agent",
     "EIP-712 intents",
-    "ERC-1271",
     "immutable zaps",
-    "agent-triggered DeFi",
+    "Base",
   ],
-  alternates: {
-    canonical: "/",
-  },
+  alternates: { canonical: "/" },
   openGraph: {
-    title: "OpenZaps — Immutable intent lockers for agent-triggered DeFi",
-    description:
-      "Narrow policy capsules that let Hermes simulate, submit, monitor, and revoke pre-authorized DeFi workflows.",
+    title,
+    description,
     url: "/",
     siteName: "OpenZaps",
     type: "website",
-    images: [
-      {
-        url: "/og.svg",
-        width: 1200,
-        height: 630,
-        alt: "OpenZaps logo and immutable intent locker positioning",
-      },
-    ],
+    images: [{ url: "/og.png", width: 1200, height: 630, alt: `OpenZaps — ${TOKEN.symbol} launch` }],
   },
   twitter: {
     card: "summary_large_image",
-    title: "OpenZaps — Immutable intent lockers for agent-triggered DeFi",
-    description:
-      "Pre-committed, tightly bounded authority for fixed DeFi action graphs triggered by Hermes.",
-    images: ["/og.svg"],
+    title,
+    description,
+    images: ["/og.png"],
   },
   icons: {
     icon: [{ url: "/openzap-mark.svg", type: "image/svg+xml" }],
     shortcut: ["/openzap-mark.svg"],
   },
   manifest: "/manifest.webmanifest",
-  robots: {
-    index: true,
-    follow: true,
-  },
+  robots: { index: true, follow: true },
 };
 
 export default function RootLayout({
   children,
-}: Readonly<{
-  children: React.ReactNode;
-}>): React.JSX.Element {
+}: Readonly<{ children: React.ReactNode }>): React.JSX.Element {
   return (
     <html lang="en" className={`${inter.variable} ${jetBrainsMono.variable}`}>
-      <body>{children}</body>
+      <body>
+        <a href="#main" className="skipLink">
+          Skip to content
+        </a>
+        <SiteNav />
+        {children}
+        <SiteFooter />
+      </body>
     </html>
   );
 }
