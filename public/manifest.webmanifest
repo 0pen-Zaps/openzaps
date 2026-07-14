@@ -1,7 +1,7 @@
 {
   "name": "OpenZaps",
   "short_name": "OpenZaps",
-  "description": "Immutable intent lockers for Hermes-triggered DeFi execution.",
+  "description": "Bounded policy capsules for agent-triggered DeFi execution.",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",

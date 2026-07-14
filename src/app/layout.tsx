@@ -25,8 +25,25 @@ const siteUrl =
       ? `https://${process.env.VERCEL_URL}`
       : "https://openzaps.vercel.app");
 
-const title = `OpenZaps — ${TOKEN.symbol} launching on pool.fans`;
-const description = `OpenZaps are immutable, ERC-20-first intent lockers for agent-triggered DeFi. ${TOKEN.symbol} is launching on pool.fans — bounded onchain automation with no discretionary wallet authority.`;
+const title = "OpenZaps — bounded onchain execution for agents";
+const description =
+  "OpenZaps are tightly bounded policy capsules for agent-triggered DeFi: simulate, submit, monitor, and revoke without broad wallet authority.";
+
+const structuredData = {
+  "@context": "https://schema.org",
+  "@type": "SoftwareApplication",
+  name: "OpenZaps",
+  applicationCategory: "FinanceApplication",
+  operatingSystem: "Web",
+  url: siteUrl,
+  description,
+  offers: {
+    "@type": "Offer",
+    price: "0",
+    priceCurrency: "USD",
+    availability: "https://schema.org/PreOrder",
+  },
+};
 
 export const metadata: Metadata = {
   metadataBase: new URL(siteUrl),
@@ -40,7 +57,6 @@ export const metadata: Metadata = {
     TOKEN.symbol,
     "0xZAPS",
     "pool.fans",
-    "token launch",
     "DeFi automation",
     "Hermes agent",
     "EIP-712 intents",
@@ -76,6 +92,10 @@ export default function RootLayout({
   return (
     <html lang="en" className={`${inter.variable} ${jetBrainsMono.variable}`}>
       <body>
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData) }}
+        />
         <a href="#main" className="skipLink">
           Skip to content
         </a>

@@ -13,7 +13,7 @@ export function SiteFooter(): React.JSX.Element {
             <div>
               <strong>OpenZaps</strong>
               <p>
-                Immutable intent lockers for agent-triggered DeFi. {TOKEN.symbol} launching on pool.fans.
+                Bounded policy capsules for agent-triggered DeFi. {TOKEN.symbol} launching on pool.fans.
               </p>
             </div>
           </div>
@@ -26,25 +26,28 @@ export function SiteFooter(): React.JSX.Element {
         <nav className={styles.cols} aria-label="Footer">
           <div className={styles.col}>
             <h3>Product</h3>
-            <Link href="/token">{TOKEN.symbol} token</Link>
             <Link href="/app">Open the app</Link>
-            <Link href="/#protocol">How it works</Link>
+            <Link href="/docs">Developer docs</Link>
+            <Link href="/roadmap">Roadmap</Link>
           </div>
           <div className={styles.col}>
             <h3>Build</h3>
             <a href={LINKS.github} target="_blank" rel="noreferrer">
               GitHub
             </a>
-            <Link href="/#security">Security</Link>
+            <Link href="/security">Security</Link>
+            <Link href="/pricing">Pricing</Link>
           </div>
           <div className={styles.col}>
             <h3>Token</h3>
+            <Link href="/token">{TOKEN.symbol} token</Link>
             <a href={LINKS.buy} target="_blank" rel="noreferrer">
               Buy on pool.fans
             </a>
             <a href={LINKS.poolfans} target="_blank" rel="noreferrer">
               pool.fans/openzaps
             </a>
+            <Link href="/legal">Risk disclosures</Link>
           </div>
         </nav>
       </div>

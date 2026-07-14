@@ -2,13 +2,14 @@ import Link from "next/link";
 import { OpenZapMark } from "@/components/OpenZapMark";
 import { BuyButton } from "@/components/BuyButton";
 import { TOKEN, LINKS, CHAIN, CONTRACTS, contractsLive, explorer } from "@/lib/config";
+import { POLICY_TEMPLATES } from "@/lib/policy";
 import styles from "./page.module.css";
 
 const stats = [
-  { v: TOKEN.symbol, k: "Launching on pool.fans" },
-  { v: "0", k: "Discretionary approvals" },
-  { v: "47 / 0", k: "Tests passing / failing" },
-  { v: "9 / 9", k: "Audit findings fixed" },
+  { v: "0", k: "Broad wallet approvals" },
+  { v: "4", k: "Policy templates" },
+  { v: "47 / 0", k: "Contract tests passing / failing" },
+  { v: "9 / 9", k: "Internal findings fixed" },
 ] as const;
 
 const authorityModels = [
@@ -41,6 +42,27 @@ const security = [
   "ERC-1271 contract-wallet signatures",
 ] as const;
 
+const flow = [
+  {
+    label: "01 / Draft",
+    title: "Choose a reusable policy template",
+    body: "Start from DCA, pool deposit, claim-and-compound, or a gated guarded-exit design. Every template has explicit production status.",
+    grade: "Policy versioning",
+  },
+  {
+    label: "02 / Simulate",
+    title: "Review checks before signing",
+    body: "See slippage, spend ceilings, postconditions, submitter scope, human approval gates, and simulation diffs before any wallet prompt.",
+    grade: "No broadcast",
+  },
+  {
+    label: "03 / Operate",
+    title: "Monitor, pause, revoke, and export",
+    body: "Each capsule carries audit history, dry-run receipts, local revoke controls, and JSON manifests for SDK or backend integration.",
+    grade: "Audit trail",
+  },
+] as const;
+
 const agentLoop = [
   "Discover registry events",
   "Verify signatures + bytecode",
@@ -56,27 +78,30 @@ export default function Home(): React.JSX.Element {
       {/* ---------------- hero ---------------- */}
       <section className={`container ${styles.hero}`} id="top">
         <div className={styles.heroCopy}>
-          <span className="badge">⚡ Launching {TOKEN.symbol} on pool.fans</span>
+          <span className="badge">Bounded execution for agent-native DeFi</span>
           <h1 className={styles.title}>
-            <span>Bounded onchain</span>
-            <span>automation, with a</span>
-            <span className="gradientText">token to match.</span>
+            <span>Policy capsules</span>
+            <span>for agents that</span>
+            <span className="gradientText">cannot freelance.</span>
           </h1>
           <p className={styles.lead}>
-            OpenZaps turn approved DeFi workflows into sealed, immutable policy capsules a Hermes agent can
-            simulate, submit, monitor, and revoke — without ever holding discretionary wallet authority.{" "}
-            <strong>{TOKEN.symbol}</strong> is the token for it.
+            OpenZaps turn approved DeFi workflows into sealed policy capsules. Hermes can simulate, submit,
+            monitor, alert, and revoke, but it cannot choose arbitrary targets, recipients, assets, or calldata.
           </p>
           <div className={styles.actions}>
-            <BuyButton size="lg" />
             <Link href="/app" className="btn btnGhost btnLg">
-              Open the app
+              Open policy console
             </Link>
+            <Link href="/docs" className="btn btnPrimary btnLg">
+              Read docs
+            </Link>
+            <BuyButton size="lg" variant="ghost" />
           </div>
           <div className={styles.proof}>
             <span>ERC-20 first</span>
             <span>EIP-712 intents</span>
             <span>ERC-1271 ready</span>
+            <span>Revocable policies</span>
             <span>Private orderflow</span>
           </div>
         </div>
@@ -90,15 +115,15 @@ export default function Home(): React.JSX.Element {
           <div className={styles.execCard}>
             <div className={styles.execTop}>
               <OpenZapMark className={styles.execMark} />
-              <strong>0xzap.execute()</strong>
-              <span className={styles.live}>{contractsLive() ? "live" : "preview"}</span>
+              <strong>policy.review()</strong>
+              <span className={styles.live}>{contractsLive() ? "gated" : "preview"}</span>
             </div>
-            <pre>{`verify(policyHash)        ✓
-consume(nonce)            ✓
-approveExact → swap → 0   ✓
-assert(minOut, recipient) ✓
-submit(privateChannel)    ⧗
-monitor(receipt)`}</pre>
+            <pre>{`draft(template)           pass
+simulate(latestBlock)     pass
+diff(policyVersion)       pass
+bind(spend, recipient)    pass
+submit(privateChannel)    gated
+revoke(ownerPath)         ready`}</pre>
             <div className={styles.route}>
               <span>You</span>
               <i />
@@ -128,8 +153,8 @@ monitor(receipt)`}</pre>
         </div>
         <div>
           <p className={styles.tokenLead}>
-            One token aligns the people who run, secure, and build zaps. Launching fair on the{" "}
-            <strong>pool.fans</strong> tokenizer — no private allocation games.
+            {TOKEN.symbol} is the community and operator coordination token for the network. The protocol itself stays
+            usable without pretending the token is yield, equity, or a fee claim.
           </p>
           <div className={styles.tokenActions}>
             <BuyButton />
@@ -137,6 +162,27 @@ monitor(receipt)`}</pre>
               Tokenomics →
             </Link>
           </div>
+        </div>
+      </section>
+
+      <section className={`container ${styles.section}`} id="workflow">
+        <header className={styles.head}>
+          <span className="eyebrow">Product flow</span>
+          <h2>Every useful automation starts as a reviewable policy.</h2>
+          <p>
+            The app is a production review console first: template selection, bounded policy design, simulation checks,
+            audit history, and revoke controls before the wallet integration is allowed to touch mainnet funds.
+          </p>
+        </header>
+        <div className={styles.modelGrid}>
+          {flow.map((step) => (
+            <article className={styles.modelCard} key={step.title}>
+              <span className={styles.modelLabel}>{step.label}</span>
+              <h3>{step.title}</h3>
+              <p>{step.body}</p>
+              <strong>{step.grade}</strong>
+            </article>
+          ))}
         </div>
       </section>
 
@@ -157,6 +203,27 @@ monitor(receipt)`}</pre>
               <h3>{m.title}</h3>
               <p>{m.body}</p>
               <strong>{m.grade}</strong>
+            </article>
+          ))}
+        </div>
+      </section>
+
+      <section className={`container ${styles.section}`} id="templates">
+        <header className={styles.head}>
+          <span className="eyebrow">Reusable templates</span>
+          <h2>Start narrow. Expand only after the controls hold.</h2>
+          <p>
+            Templates turn successful workflows into reviewable policy manifests. Some are ready for preview, some
+            require governance review, and protective zaps stay deferred until external risk review clears.
+          </p>
+        </header>
+        <div className={styles.modelGrid}>
+          {POLICY_TEMPLATES.map((template) => (
+            <article className={styles.modelCard} key={template.id}>
+              <span className={styles.modelLabel}>{template.production.replace("-", " ")}</span>
+              <h3>{template.name}</h3>
+              <p>{template.description}</p>
+              <strong>{template.category}</strong>
             </article>
           ))}
         </div>
@@ -183,9 +250,13 @@ monitor(receipt)`}</pre>
           <a className={styles.repoLink} href={LINKS.github} target="_blank" rel="noreferrer">
             Read the contracts + audit on GitHub ↗
           </a>
+          <br />
+          <Link className={styles.repoLink} href="/security">
+            Security architecture →
+          </Link>
           {contractsLive() && (
             <p className={styles.deployed}>
-              <span className={styles.liveDot} aria-hidden /> v1 contracts live on {CHAIN.name} mainnet ·{" "}
+              <span className={styles.liveDot} aria-hidden /> v1 reference contracts deployed on {CHAIN.name} ·{" "}
               <a href={explorer(CONTRACTS.factory)} target="_blank" rel="noreferrer">
                 factory {CONTRACTS.factory.slice(0, 6)}…{CONTRACTS.factory.slice(-4)} ↗
               </a>
@@ -208,13 +279,15 @@ monitor(receipt)`}</pre>
         <div className={styles.ctaInner}>
           <OpenZapMark className={styles.ctaMark} />
           <h2>
-            Get <span className="gradientText">{TOKEN.symbol}</span>. Run the zaps.
+            Build the policy first. Let agents act second.
           </h2>
-          <p>Buy on pool.fans, then open the app to build your first immutable intent locker.</p>
+          <p>Use the console to design, simulate, save, dry-run, and revoke bounded policy capsules.</p>
           <div className={styles.actions}>
-            <BuyButton size="lg" />
             <Link href="/app" className="btn btnGhost btnLg">
-              Open the app
+              Open policy console
+            </Link>
+            <Link href="/roadmap" className="btn btnPrimary btnLg">
+              Roadmap
             </Link>
           </div>
           <p className={styles.ctaNote}>

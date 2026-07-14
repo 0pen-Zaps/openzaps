@@ -26,7 +26,7 @@
 .title {
   font-size: clamp(3.6rem, 12vw, 8rem);
   font-weight: 600;
-  letter-spacing: -0.06em;
+  letter-spacing: 0;
   line-height: 1;
 }
 
@@ -60,7 +60,7 @@
   margin-top: 2.6rem;
   overflow: hidden;
   border: 1px solid var(--line);
-  border-radius: 1.1rem;
+  border-radius: 0.5rem;
   background: var(--line);
 }
 
@@ -83,7 +83,7 @@
 .fact strong {
   font-size: 1.15rem;
   font-weight: 600;
-  letter-spacing: -0.02em;
+  letter-spacing: 0;
 }
 
 /* contract address */
@@ -99,7 +99,7 @@
   gap: 0.75rem;
   padding: 1rem 1.25rem;
   border: 1px solid var(--line);
-  border-radius: 0.9rem;
+  border-radius: 0.5rem;
   background: var(--card);
 }
 
@@ -142,7 +142,7 @@
   font-size: clamp(2.1rem, 4.6vw, 3.8rem);
   font-weight: 540;
   line-height: 1;
-  letter-spacing: -0.05em;
+  letter-spacing: 0;
   text-wrap: balance;
 }
 
@@ -181,7 +181,7 @@
   margin-top: 1rem;
   font-size: 1.2rem;
   font-weight: 600;
-  letter-spacing: -0.03em;
+  letter-spacing: 0;
 }
 
 .step p {
@@ -213,23 +213,12 @@
   box-shadow: var(--card-shadow);
 }
 
-.utilCard::after {
-  position: absolute;
-  right: -3rem;
-  top: -3rem;
-  width: 9rem;
-  height: 9rem;
-  border-radius: 50%;
-  content: "";
-  background: radial-gradient(circle, rgba(33, 208, 122, 0.16), transparent 70%);
-}
-
 .utilCard h3 {
   position: relative;
   z-index: 1;
   font-size: 1.2rem;
   font-weight: 600;
-  letter-spacing: -0.03em;
+  letter-spacing: 0;
 }
 
 .utilCard p {
@@ -248,7 +237,7 @@
   align-items: center;
   padding: clamp(1.8rem, 4vw, 2.8rem);
   border: 1px solid var(--line);
-  border-radius: 1.5rem;
+  border-radius: 0.5rem;
   background: var(--card);
   box-shadow: var(--card-shadow);
 }
@@ -257,7 +246,7 @@
   margin-top: 0.85rem;
   font-size: clamp(2rem, 4vw, 3.2rem);
   font-weight: 540;
-  letter-spacing: -0.05em;
+  letter-spacing: 0;
   line-height: 1;
 }
 
@@ -278,7 +267,7 @@
   height: 3.2rem;
   overflow: hidden;
   border: 1px solid var(--line);
-  border-radius: 0.7rem;
+  border-radius: 0.5rem;
   background: rgba(255, 255, 255, 0.025);
 }
 
@@ -319,7 +308,7 @@
 .faq {
   padding: 1.1rem 1.3rem;
   border: 1px solid var(--line);
-  border-radius: 0.9rem;
+  border-radius: 0.5rem;
   background: var(--card);
 }
 
@@ -327,7 +316,7 @@
   cursor: pointer;
   font-size: 1.02rem;
   font-weight: 580;
-  letter-spacing: -0.02em;
+  letter-spacing: 0;
   list-style: none;
 }
 
@@ -364,9 +353,9 @@
   text-align: center;
   padding: clamp(2.5rem, 6vw, 4rem) 1.5rem;
   border: 1px solid var(--line);
-  border-radius: 2rem;
+  border-radius: 0.5rem;
   background:
-    radial-gradient(circle at 50% 0%, rgba(107, 92, 255, 0.2), transparent 60%),
+    linear-gradient(135deg, rgba(107, 92, 255, 0.12), transparent 54%),
     var(--card);
   box-shadow: var(--card-shadow);
 }
