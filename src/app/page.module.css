@@ -7,9 +7,9 @@
 /* ---------------- hero ---------------- */
 .hero {
   display: grid;
-  grid-template-columns: minmax(0, 1.05fr) minmax(380px, 0.74fr);
+  grid-template-columns: minmax(0, 1.05fr) minmax(380px, 0.78fr);
   gap: clamp(2rem, 5vw, 5rem);
-  padding: clamp(3.5rem, 7vw, 7rem) 0 clamp(2.5rem, 5vw, 4.5rem);
+  padding: clamp(3.5rem, 7vw, 6.5rem) 0 clamp(2.5rem, 5vw, 4.5rem);
   align-items: center;
 }
 
@@ -17,12 +17,14 @@
   align-self: center;
 }
 
+/* SF Pro Display recipe: heavy-ish weight, very tight line-height, only mild
+   negative tracking (San Francisco is drawn to run near-normal). */
 .title {
-  margin-top: 1.25rem;
-  font-size: clamp(3.2rem, 7.4vw, 6.6rem);
-  font-weight: 530;
-  line-height: 0.98;
-  letter-spacing: -0.05em;
+  margin-top: 1.35rem;
+  font-size: clamp(3rem, 7vw, 5.6rem);
+  font-weight: 600;
+  line-height: 1.05;
+  letter-spacing: -0.022em;
   text-wrap: balance;
 }
 
@@ -31,24 +33,24 @@
 }
 
 .lead {
-  max-width: 40rem;
-  margin-top: 1.6rem;
+  max-width: 38rem;
+  margin-top: 1.5rem;
   color: var(--text);
-  font-size: clamp(1.05rem, 1.4vw, 1.28rem);
-  line-height: 1.62;
-  letter-spacing: -0.015em;
+  font-size: clamp(1.06rem, 1.35vw, 1.24rem);
+  line-height: 1.5;
+  letter-spacing: -0.01em;
   text-wrap: pretty;
 }
 
 .lead strong {
-  color: var(--mint-2);
+  color: var(--fg);
   font-weight: 600;
 }
 
 .actions {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.85rem;
+  gap: 0.75rem;
   margin-top: 2rem;
 }
 
@@ -60,19 +62,20 @@
 }
 
 .proof span {
-  padding: 0.46rem 0.7rem;
+  padding: 0.44rem 0.75rem;
   border: 1px solid var(--line);
-  border-radius: 999px;
+  border-radius: var(--pill);
   background: rgba(255, 255, 255, 0.03);
-  color: var(--text);
+  color: var(--muted);
   font-family: var(--font-jetbrains-mono), ui-monospace, monospace;
   font-size: 0.72rem;
+  letter-spacing: 0.01em;
 }
 
-/* hero visual */
+/* hero visual — the product-on-a-field module. One soft shadow, no stacked glows. */
 .heroVisual {
   position: relative;
-  min-height: 560px;
+  min-height: 540px;
   align-self: center;
 }
 
@@ -82,11 +85,10 @@
   width: min(100%, 33rem);
   height: 33rem;
   border: 1px solid var(--line-soft);
-  border-radius: 2rem;
+  border-radius: 1.5rem;
   background:
-    radial-gradient(circle at 50% 44%, rgba(107, 92, 255, 0.26), transparent 13rem),
-    radial-gradient(circle at 70% 20%, rgba(33, 208, 122, 0.18), transparent 10rem),
-    rgba(255, 255, 255, 0.022);
+    radial-gradient(circle at 50% 44%, rgba(107, 92, 255, 0.18), transparent 13rem),
+    rgba(255, 255, 255, 0.015);
   box-shadow: var(--card-shadow);
 }
 
@@ -94,14 +96,14 @@
 .orbit::after {
   position: absolute;
   inset: 4.8rem;
-  border: 1px solid rgba(142, 160, 255, 0.18);
+  border: 1px solid rgba(142, 160, 255, 0.14);
   border-radius: 50%;
   content: "";
 }
 
 .orbit::after {
   inset: 7.8rem;
-  border-color: rgba(33, 208, 122, 0.16);
+  border-color: rgba(55, 240, 154, 0.12);
 }
 
 .orbitMark {
@@ -111,7 +113,7 @@
   width: clamp(10rem, 22vw, 14rem);
   height: clamp(10rem, 22vw, 14rem);
   transform: translate(-50%, -50%);
-  filter: drop-shadow(0 0 60px rgba(107, 92, 255, 0.55));
+  filter: drop-shadow(0 12px 40px rgba(107, 92, 255, 0.4));
 }
 
 .node1,
@@ -119,9 +121,10 @@
   position: absolute;
   padding: 0.42rem 0.66rem;
   border: 1px solid var(--line);
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.04);
-  color: var(--fg);
+  border-radius: var(--pill);
+  background: rgba(10, 11, 13, 0.7);
+  backdrop-filter: blur(8px);
+  color: var(--text);
   font-family: var(--font-jetbrains-mono), ui-monospace, monospace;
   font-size: 0.7rem;
   white-space: nowrap;
@@ -137,10 +140,10 @@
   width: min(28rem, 94%);
   overflow: hidden;
   border: 1px solid var(--line);
-  border-radius: 1.1rem;
-  background: var(--card);
+  border-radius: 1rem;
+  background: var(--surface);
   box-shadow: var(--card-shadow);
-  transform: perspective(1100px) rotateY(-6deg) rotateX(2deg);
+  transform: perspective(1200px) rotateY(-4deg) rotateX(1.5deg);
 }
 
 .execTop {
@@ -149,13 +152,13 @@
   gap: 0.55rem;
   padding: 0.75rem 0.9rem;
   border-bottom: 1px solid var(--line-soft);
-  background: rgba(13, 14, 15, 0.92);
+  background: rgba(0, 0, 0, 0.5);
 }
 
-.execMark { width: 1.55rem; height: 1.55rem; flex: 0 0 auto; }
+.execMark { width: 1.5rem; height: 1.5rem; flex: 0 0 auto; }
 
 .execTop strong {
-  color: #8a8f98;
+  color: var(--muted);
   font-family: var(--font-jetbrains-mono), ui-monospace, monospace;
   font-size: 0.76rem;
   font-weight: 400;
@@ -163,10 +166,10 @@
 
 .live {
   margin-left: auto;
-  padding: 0.16rem 0.5rem;
+  padding: 0.16rem 0.55rem;
   border: 1px solid rgba(55, 240, 154, 0.32);
-  border-radius: 999px;
-  color: var(--mint-2);
+  border-radius: var(--pill);
+  color: var(--accent);
   font-family: var(--font-jetbrains-mono), ui-monospace, monospace;
   font-size: 0.62rem;
   text-transform: uppercase;
@@ -179,7 +182,7 @@
   overflow: auto;
   color: var(--text);
   font-family: var(--font-jetbrains-mono), ui-monospace, monospace;
-  font-size: clamp(0.72rem, 1vw, 0.83rem);
+  font-size: clamp(0.72rem, 1vw, 0.82rem);
   line-height: 1.7;
 }
 
@@ -192,18 +195,18 @@
 }
 
 .route span {
-  padding: 0.45rem 0.65rem;
+  padding: 0.42rem 0.66rem;
   border: 1px solid var(--line);
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.04);
-  font-size: 0.74rem;
-  font-weight: 510;
+  border-radius: var(--pill);
+  background: rgba(255, 255, 255, 0.03);
+  font-size: 0.73rem;
+  font-weight: 500;
 }
 
 .route i {
   width: 1rem;
   height: 1px;
-  background: linear-gradient(90deg, rgba(113, 112, 255, 0), rgba(33, 208, 122, 0.9));
+  background: linear-gradient(90deg, rgba(107, 92, 255, 0), var(--accent));
 }
 
 /* ---------------- stat strip ---------------- */
@@ -214,7 +217,7 @@
   margin-top: 1.5rem;
   overflow: hidden;
   border: 1px solid var(--line);
-  border-radius: 1.1rem;
+  border-radius: 1rem;
   background: var(--line);
 }
 
@@ -223,18 +226,19 @@
   flex-direction: column;
   gap: 0.35rem;
   padding: 1.4rem 1.5rem;
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.035), rgba(8, 9, 10, 0.6));
+  background: var(--surface);
 }
 
 .stat strong {
-  font-size: clamp(1.5rem, 2.6vw, 2.1rem);
+  font-size: clamp(1.5rem, 2.6vw, 2.05rem);
   font-weight: 600;
-  letter-spacing: -0.03em;
+  letter-spacing: -0.02em;
 }
 
 .stat span {
   color: var(--muted);
   font-size: 0.82rem;
+  letter-spacing: -0.005em;
 }
 
 /* ---------------- token band ---------------- */
@@ -244,12 +248,10 @@
   gap: clamp(1.5rem, 4vw, 3rem);
   align-items: center;
   margin-top: clamp(3rem, 6vw, 5rem);
-  padding: clamp(1.6rem, 3vw, 2.4rem);
+  padding: clamp(1.8rem, 3vw, 2.6rem);
   border: 1px solid var(--line);
-  border-radius: 1.5rem;
-  background:
-    radial-gradient(circle at 12% 30%, rgba(107, 92, 255, 0.16), transparent 60%),
-    var(--card);
+  border-radius: 1.25rem;
+  background: var(--card);
   box-shadow: var(--card-shadow);
 }
 
@@ -261,42 +263,42 @@
 }
 
 .tokenMark svg {
-  width: clamp(5rem, 11vw, 7.5rem);
-  height: clamp(5rem, 11vw, 7.5rem);
-  filter: drop-shadow(0 0 32px rgba(33, 208, 122, 0.28));
+  width: clamp(5rem, 11vw, 7rem);
+  height: clamp(5rem, 11vw, 7rem);
+  filter: drop-shadow(0 10px 30px rgba(33, 208, 122, 0.22));
 }
 
 .tokenTicker {
-  padding: 0.3rem 0.7rem;
-  border: 1px solid rgba(55, 240, 154, 0.32);
-  border-radius: 999px;
-  color: var(--mint-2);
-  background: rgba(33, 208, 122, 0.08);
+  padding: 0.28rem 0.7rem;
+  border: 1px solid rgba(55, 240, 154, 0.3);
+  border-radius: var(--pill);
+  color: var(--accent);
+  background: rgba(33, 208, 122, 0.07);
   font-family: var(--font-jetbrains-mono), ui-monospace, monospace;
-  font-size: 0.82rem;
+  font-size: 0.8rem;
   font-weight: 500;
 }
 
 .tokenLead {
   max-width: 44rem;
-  color: var(--text);
-  font-size: clamp(1.25rem, 2.1vw, 1.85rem);
-  font-weight: 400;
+  color: var(--fg);
+  font-size: clamp(1.2rem, 2vw, 1.7rem);
+  font-weight: 500;
   line-height: 1.28;
-  letter-spacing: -0.03em;
+  letter-spacing: -0.02em;
   text-wrap: balance;
 }
 
 .tokenLead strong {
-  color: var(--fg);
+  color: var(--accent);
   font-weight: 600;
 }
 
 .tokenActions {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.75rem;
-  margin-top: 1.4rem;
+  gap: 0.7rem;
+  margin-top: 1.5rem;
 }
 
 /* ---------------- sections ---------------- */
@@ -306,26 +308,27 @@
 
 .head {
   max-width: 50rem;
-  margin-bottom: 2.2rem;
+  margin-bottom: 2.4rem;
 }
 
 .head h2,
 .security h2,
 .cta h2 {
-  margin-top: 0.9rem;
-  font-size: clamp(2.3rem, 5.2vw, 4.6rem);
-  font-weight: 520;
-  line-height: 0.98;
-  letter-spacing: -0.055em;
+  margin-top: 1rem;
+  font-size: clamp(2.2rem, 4.6vw, 3.6rem);
+  font-weight: 600;
+  line-height: 1.06;
+  letter-spacing: -0.022em;
   text-wrap: balance;
 }
 
 .head p {
   max-width: 44rem;
-  margin-top: 1rem;
+  margin-top: 1.1rem;
   color: var(--muted);
-  font-size: clamp(1rem, 1.25vw, 1.12rem);
-  line-height: 1.62;
+  font-size: clamp(1.02rem, 1.2vw, 1.14rem);
+  line-height: 1.55;
+  letter-spacing: -0.01em;
   text-wrap: pretty;
 }
 
@@ -337,73 +340,86 @@
 
 .modelCard {
   position: relative;
-  min-height: 22rem;
-  padding: 1.4rem;
-  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  min-height: 21rem;
+  padding: 1.6rem;
   border: 1px solid var(--line);
   border-radius: var(--radius);
   background: var(--card);
   box-shadow: var(--card-shadow);
 }
 
-.modelCard::after {
-  position: absolute;
-  right: -3rem;
-  bottom: -3rem;
-  width: 10rem;
-  height: 10rem;
-  border-radius: 50%;
-  content: "";
-  background: radial-gradient(circle, rgba(107, 92, 255, 0.2), transparent 70%);
-}
-
 .modelLabel {
-  position: relative;
-  z-index: 1;
   display: inline-flex;
-  padding: 0.4rem 0.64rem;
+  align-self: flex-start;
+  padding: 0.38rem 0.66rem;
   margin-bottom: 3.5rem;
   border: 1px solid var(--line);
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.035);
-  color: var(--text);
+  border-radius: var(--pill);
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--muted);
   font-family: var(--font-jetbrains-mono), ui-monospace, monospace;
   font-size: 0.72rem;
 }
 
 .modelCard h3 {
-  position: relative;
-  z-index: 1;
   max-width: 17rem;
-  font-size: 1.45rem;
+  font-size: 1.4rem;
   font-weight: 600;
-  letter-spacing: -0.035em;
+  letter-spacing: -0.022em;
 }
 
 .modelCard p {
-  position: relative;
-  z-index: 1;
-  margin-top: 0.85rem;
+  margin-top: 0.8rem;
   color: var(--muted);
-  line-height: 1.6;
+  line-height: 1.55;
+  letter-spacing: -0.005em;
 }
 
 .modelCard strong {
-  position: relative;
-  z-index: 1;
   display: block;
-  margin-top: 1.3rem;
-  color: var(--indigo);
+  margin-top: auto;
+  padding-top: 1.3rem;
+  color: var(--accent);
   font-size: 0.9rem;
   font-weight: 600;
+  letter-spacing: -0.01em;
 }
 
-/* ---------------- security ---------------- */
+/* ---------------- security (elevated scene) ---------------- */
+/* Full-bleed elevated band: the color change is the "scene cut" in Apple's
+   cinematic section rhythm. The ::before paints edge-to-edge behind a centered
+   container. */
+.securityScene {
+  position: relative;
+  margin-top: clamp(4.5rem, 8vw, 7.5rem);
+  padding: clamp(4rem, 7vw, 6.5rem) 0;
+}
+
+.securityScene::before {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  content: "";
+  background: var(--bg-2);
+  border-block: 1px solid var(--line-soft);
+}
+
 .security {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(340px, 0.62fr);
   gap: clamp(1.5rem, 4vw, 3rem);
   align-items: start;
+}
+
+.security p {
+  max-width: 42rem;
+  margin-top: 1.1rem;
+  color: var(--muted);
+  font-size: 1.05rem;
+  line-height: 1.55;
+  letter-spacing: -0.01em;
 }
 
 .checkGrid {
@@ -418,38 +434,39 @@
   align-items: center;
   gap: 0.65rem;
   min-height: 4rem;
-  padding: 0.85rem;
+  padding: 0.9rem;
   border: 1px solid var(--line-soft);
-  border-radius: 0.8rem;
-  background: rgba(255, 255, 255, 0.026);
+  border-radius: 0.7rem;
+  background: rgba(255, 255, 255, 0.02);
   color: var(--text);
   font-size: 0.9rem;
+  letter-spacing: -0.005em;
 }
 
 .check span {
   display: grid;
   flex: 0 0 auto;
-  width: 1.35rem;
-  height: 1.35rem;
+  width: 1.3rem;
+  height: 1.3rem;
   place-items: center;
   border-radius: 50%;
-  color: #04130c;
-  background: var(--mint-2);
+  color: var(--accent-ink);
+  background: var(--accent);
   font-size: 0.72rem;
   font-weight: 700;
 }
 
 .repoLink {
   display: inline-block;
-  margin-top: 1.6rem;
-  color: var(--mint-2);
-  font-weight: 590;
+  margin-top: 1.7rem;
+  color: var(--accent);
+  font-weight: 550;
   border-bottom: 1px solid transparent;
   transition: border-color 160ms ease;
 }
 
 .repoLink:hover {
-  border-color: var(--mint-2);
+  border-color: var(--accent);
 }
 
 .deployed {
@@ -463,7 +480,7 @@
 }
 
 .deployed a {
-  color: var(--mint-2);
+  color: var(--accent);
 }
 
 .deployed a:hover {
@@ -475,12 +492,12 @@
   height: 0.5rem;
   flex: 0 0 auto;
   border-radius: 50%;
-  background: var(--mint-2);
-  box-shadow: 0 0 14px rgba(55, 240, 154, 0.9);
+  background: var(--accent);
+  box-shadow: 0 0 0 3px rgba(55, 240, 154, 0.16);
 }
 
 .agentCard {
-  padding: 1.1rem;
+  padding: 1.3rem;
   border: 1px solid var(--line);
   border-radius: var(--radius);
   background: var(--card);
@@ -489,11 +506,11 @@
 
 .agentHead {
   display: inline-flex;
-  padding: 0.42rem 0.68rem;
+  padding: 0.4rem 0.68rem;
   margin-bottom: 0.4rem;
   border: 1px solid var(--line);
-  border-radius: 999px;
-  color: var(--indigo);
+  border-radius: var(--pill);
+  color: var(--muted);
   font-family: var(--font-jetbrains-mono), ui-monospace, monospace;
   font-size: 0.72rem;
 }
@@ -517,9 +534,9 @@
 }
 
 .loopRow strong {
-  font-size: 0.98rem;
-  font-weight: 560;
-  letter-spacing: -0.02em;
+  font-size: 0.96rem;
+  font-weight: 550;
+  letter-spacing: -0.015em;
 }
 
 /* ---------------- cta ---------------- */
@@ -532,34 +549,34 @@
   flex-direction: column;
   align-items: center;
   text-align: center;
-  padding: clamp(2.5rem, 6vw, 4.5rem) 1.5rem;
+  padding: clamp(2.8rem, 6vw, 4.5rem) 1.5rem;
   border: 1px solid var(--line);
-  border-radius: 2rem;
+  border-radius: 1.5rem;
   background:
-    radial-gradient(circle at 50% 0%, rgba(107, 92, 255, 0.2), transparent 60%),
-    radial-gradient(circle at 50% 120%, rgba(33, 208, 122, 0.12), transparent 60%),
+    radial-gradient(38rem 20rem at 50% -10%, rgba(107, 92, 255, 0.16), transparent 65%),
     var(--card);
   box-shadow: var(--card-shadow);
 }
 
 .ctaMark {
-  width: 4rem;
-  height: 4rem;
+  width: 3.6rem;
+  height: 3.6rem;
   margin-bottom: 1.2rem;
-  filter: drop-shadow(0 0 40px rgba(107, 92, 255, 0.5));
+  filter: drop-shadow(0 10px 30px rgba(107, 92, 255, 0.4));
 }
 
 .cta p {
   max-width: 34rem;
-  margin-top: 0.9rem;
+  margin-top: 1rem;
   color: var(--muted);
   font-size: 1.08rem;
-  line-height: 1.55;
+  line-height: 1.5;
+  letter-spacing: -0.01em;
 }
 
 .ctaNote {
   max-width: 36rem;
-  margin-top: 1.5rem;
+  margin-top: 1.6rem;
   color: var(--muted-2);
   font-size: 0.8rem;
   line-height: 1.5;
@@ -576,7 +593,6 @@
     grid-template-columns: 1fr;
   }
 
-  /* Stack the hero visual in document flow so the orbit and exec card never overlap */
   .heroVisual {
     min-height: 0;
     display: flex;
@@ -598,7 +614,7 @@
     bottom: auto;
     width: min(28rem, 100%);
     margin-top: -2.5rem;
-    transform: perspective(1100px) rotateY(-4deg);
+    transform: perspective(1200px) rotateY(-3deg);
   }
 
   .statStrip {
@@ -608,8 +624,7 @@
 
 @media (max-width: 780px) {
   .title {
-    font-size: clamp(2.8rem, 13vw, 4.2rem);
-    letter-spacing: -0.055em;
+    font-size: clamp(2.7rem, 12vw, 4rem);
   }
 
   .tokenBand {

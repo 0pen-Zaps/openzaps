@@ -162,8 +162,9 @@ monitor(receipt)`}</pre>
         </div>
       </section>
 
-      {/* ---------------- security ---------------- */}
-      <section className={`container ${styles.section} ${styles.security}`} id="security">
+      {/* ---------------- security (elevated scene) ---------------- */}
+      <div className={styles.securityScene}>
+      <section className={`container ${styles.security}`} id="security">
         <div>
           <span className="eyebrow">Security posture</span>
           <h2>Narrow policy beats universal routing.</h2>
@@ -202,6 +203,7 @@ monitor(receipt)`}</pre>
           ))}
         </aside>
       </section>
+      </div>
 
       {/* ---------------- final CTA ---------------- */}
       <section className={`container ${styles.cta}`}>

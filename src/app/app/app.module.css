@@ -10,20 +10,22 @@
   gap: 0.9rem;
   margin-bottom: 1.5rem;
   padding: 0.85rem 1.1rem;
-  border: 1px solid rgba(142, 160, 255, 0.22);
-  border-radius: 0.9rem;
-  background: linear-gradient(180deg, rgba(142, 160, 255, 0.1), rgba(255, 255, 255, 0.02));
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: rgba(255, 255, 255, 0.025);
 }
 
 .banner p {
   color: var(--text);
   font-size: 0.9rem;
   line-height: 1.5;
+  letter-spacing: -0.005em;
 }
 
 .banner a {
-  color: var(--mint-2);
+  color: var(--accent);
   text-decoration: underline;
+  text-underline-offset: 2px;
 }
 
 /* header */
@@ -46,13 +48,13 @@
   width: 3rem;
   height: 3rem;
   flex: 0 0 auto;
-  filter: drop-shadow(0 0 26px rgba(107, 92, 255, 0.45));
+  filter: drop-shadow(0 10px 26px rgba(107, 92, 255, 0.35));
 }
 
 .titleRow h1 {
   font-size: clamp(1.7rem, 3vw, 2.3rem);
   font-weight: 600;
-  letter-spacing: -0.04em;
+  letter-spacing: -0.025em;
 }
 
 .titleRow p {
@@ -70,9 +72,9 @@
 .addr {
   padding: 0.5rem 0.8rem;
   border: 1px solid rgba(55, 240, 154, 0.3);
-  border-radius: 999px;
-  background: rgba(33, 208, 122, 0.08);
-  color: var(--mint-2);
+  border-radius: var(--pill);
+  background: rgba(33, 208, 122, 0.07);
+  color: var(--accent);
   font-family: var(--font-jetbrains-mono), ui-monospace, monospace;
   font-size: 0.82rem;
 }
@@ -88,7 +90,7 @@
 .builder,
 .intent {
   border: 1px solid var(--line);
-  border-radius: 1.2rem;
+  border-radius: 1rem;
   background: var(--card);
   box-shadow: var(--card-shadow);
 }
@@ -102,8 +104,8 @@
   padding: 0.42rem 0.7rem;
   margin-bottom: 1.2rem;
   border: 1px solid var(--line);
-  border-radius: 999px;
-  color: var(--indigo);
+  border-radius: var(--pill);
+  color: var(--muted);
   font-family: var(--font-jetbrains-mono), ui-monospace, monospace;
   font-size: 0.72rem;
 }
@@ -137,7 +139,8 @@
   background: rgba(255, 255, 255, 0.025);
   color: var(--text);
   font-size: 0.92rem;
-  font-weight: 590;
+  font-weight: 560;
+  letter-spacing: -0.01em;
   text-align: left;
   cursor: pointer;
   transition: border-color 150ms ease, background 150ms ease;
@@ -149,11 +152,12 @@
   font-size: 0.72rem;
   font-style: normal;
   font-weight: 400;
+  letter-spacing: 0;
 }
 
 .segOn {
-  border-color: rgba(142, 160, 255, 0.45);
-  background: rgba(142, 160, 255, 0.12);
+  border-color: rgba(55, 240, 154, 0.4);
+  background: rgba(33, 208, 122, 0.1);
   color: var(--fg);
 }
 
@@ -179,14 +183,14 @@
 
 .select:focus,
 .input:focus {
-  border-color: rgba(142, 160, 255, 0.6);
+  border-color: rgba(55, 240, 154, 0.55);
 }
 
 .select {
   appearance: none;
   cursor: pointer;
   padding-right: 2.4rem;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8' fill='none'%3E%3Cpath d='M1 1.5L6 6.5L11 1.5' stroke='%238ea0ff' stroke-width='1.6' stroke-linecap='round'/%3E%3C/svg%3E");
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8' fill='none'%3E%3Cpath d='M1 1.5L6 6.5L11 1.5' stroke='%238a8f98' stroke-width='1.6' stroke-linecap='round'/%3E%3C/svg%3E");
   background-repeat: no-repeat;
   background-position: right 0.9rem center;
 }
@@ -226,7 +230,7 @@
   overflow-x: auto;
   border: 1px solid var(--line-soft);
   border-radius: 0.8rem;
-  background: rgba(8, 9, 10, 0.6);
+  background: rgba(0, 0, 0, 0.5);
   color: var(--text);
   font-family: var(--font-jetbrains-mono), ui-monospace, monospace;
   font-size: 0.8rem;
@@ -270,7 +274,7 @@
 .dashHead h2 {
   font-size: clamp(1.6rem, 3vw, 2.2rem);
   font-weight: 600;
-  letter-spacing: -0.04em;
+  letter-spacing: -0.025em;
 }
 
 .dashCount {
@@ -358,9 +362,9 @@
 .statusTag {
   justify-self: start;
   padding: 0.2rem 0.55rem;
-  border: 1px solid rgba(142, 160, 255, 0.3);
-  border-radius: 999px;
-  color: var(--indigo);
+  border: 1px solid var(--line);
+  border-radius: var(--pill);
+  color: var(--muted);
   font-family: var(--font-jetbrains-mono), ui-monospace, monospace;
   font-size: 0.68rem;
 }
