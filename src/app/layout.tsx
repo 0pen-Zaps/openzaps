@@ -1,9 +1,19 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Inter, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 import { SiteNav } from "@/components/SiteNav";
 import { SiteFooter } from "@/components/SiteFooter";
-import { TOKEN } from "@/lib/config";
+import { JsonLd } from "@/components/JsonLd";
+import { LINKS } from "@/lib/config";
+import {
+  SITE_URL,
+  SITE_NAME,
+  DEFAULT_TITLE,
+  DEFAULT_DESCRIPTION,
+  SEO_KEYWORDS,
+  OG_IMAGE,
+  absoluteUrl,
+} from "@/lib/seo";
 
 const inter = Inter({
   variable: "--font-inter",
@@ -17,57 +27,81 @@ const jetBrainsMono = JetBrains_Mono({
   display: "swap",
 });
 
-const siteUrl =
-  process.env.NEXT_PUBLIC_SITE_URL ??
-  (process.env.VERCEL_PROJECT_PRODUCTION_URL
-    ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`
-    : process.env.VERCEL_URL
-      ? `https://${process.env.VERCEL_URL}`
-      : "https://openzaps.vercel.app");
-
-const title = `OpenZaps — ${TOKEN.symbol} launching on pool.fans`;
-const description = `OpenZaps are immutable, ERC-20-first intent lockers for agent-triggered DeFi. ${TOKEN.symbol} is launching on pool.fans — bounded onchain automation with no discretionary wallet authority.`;
-
 export const metadata: Metadata = {
-  metadataBase: new URL(siteUrl),
+  metadataBase: new URL(SITE_URL),
   title: {
-    default: title,
-    template: "%s | OpenZaps",
+    default: DEFAULT_TITLE,
+    template: `%s | ${SITE_NAME}`,
   },
-  description,
-  keywords: [
-    "OpenZaps",
-    TOKEN.symbol,
-    "0xZAPS",
-    "pool.fans",
-    "token launch",
-    "DeFi automation",
-    "Hermes agent",
-    "EIP-712 intents",
-    "immutable zaps",
-    "Base",
-  ],
+  description: DEFAULT_DESCRIPTION,
+  applicationName: SITE_NAME,
+  category: "finance",
+  creator: SITE_NAME,
+  publisher: SITE_NAME,
+  keywords: SEO_KEYWORDS,
   alternates: { canonical: "/" },
   openGraph: {
-    title,
-    description,
+    title: DEFAULT_TITLE,
+    description: DEFAULT_DESCRIPTION,
     url: "/",
-    siteName: "OpenZaps",
+    siteName: SITE_NAME,
     type: "website",
-    images: [{ url: "/og.png", width: 1200, height: 630, alt: `OpenZaps — ${TOKEN.symbol} launch` }],
+    locale: "en_US",
+    images: [{ url: OG_IMAGE, width: 1200, height: 630, alt: DEFAULT_TITLE }],
   },
   twitter: {
     card: "summary_large_image",
-    title,
-    description,
-    images: ["/og.png"],
+    title: DEFAULT_TITLE,
+    description: DEFAULT_DESCRIPTION,
+    images: [OG_IMAGE],
   },
   icons: {
     icon: [{ url: "/openzap-mark.svg", type: "image/svg+xml" }],
     shortcut: ["/openzap-mark.svg"],
   },
   manifest: "/manifest.webmanifest",
-  robots: { index: true, follow: true },
+  robots: {
+    index: true,
+    follow: true,
+    googleBot: {
+      index: true,
+      follow: true,
+      "max-image-preview": "large",
+      "max-snippet": -1,
+      "max-video-preview": -1,
+    },
+  },
+};
+
+export const viewport: Viewport = {
+  themeColor: "#08090A",
+  colorScheme: "dark",
+};
+
+const siteGraph = {
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "Organization",
+      "@id": `${SITE_URL}/#organization`,
+      name: SITE_NAME,
+      url: SITE_URL,
+      logo: {
+        "@type": "ImageObject",
+        url: absoluteUrl("/openzap-mark.svg"),
+      },
+      sameAs: [LINKS.github],
+    },
+    {
+      "@type": "WebSite",
+      "@id": `${SITE_URL}/#website`,
+      url: SITE_URL,
+      name: SITE_NAME,
+      description: DEFAULT_DESCRIPTION,
+      publisher: { "@id": `${SITE_URL}/#organization` },
+      inLanguage: "en",
+    },
+  ],
 };
 
 export default function RootLayout({
@@ -76,6 +110,7 @@ export default function RootLayout({
   return (
     <html lang="en" className={`${inter.variable} ${jetBrainsMono.variable}`}>
       <body>
+        <JsonLd data={siteGraph} />
         <a href="#main" className="skipLink">
           Skip to content
         </a>

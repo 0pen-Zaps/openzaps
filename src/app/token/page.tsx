@@ -1,15 +1,24 @@
-import type { Metadata } from "next";
 import Link from "next/link";
 import { OpenZapMark } from "@/components/OpenZapMark";
 import { BuyButton } from "@/components/BuyButton";
+import { JsonLd } from "@/components/JsonLd";
 import { TOKEN, CHAIN, CONTRACTS, LINKS } from "@/lib/config";
+import { pageMetadata, absoluteUrl, SITE_URL } from "@/lib/seo";
 import styles from "./token.module.css";
 
-export const metadata: Metadata = {
-  title: `${TOKEN.symbol} token`,
-  description: `${TOKEN.symbol} — the token for OpenZaps, launching fair on the pool.fans tokenizer on ${CHAIN.name}. Bounded onchain automation, aligned by one token.`,
-  alternates: { canonical: "/token" },
-};
+export const metadata = pageMetadata({
+  title: `${TOKEN.symbol} token — fair launch on pool.fans`,
+  description: `${TOKEN.symbol} is the token for OpenZaps, launching fair on the pool.fans tokenizer on ${CHAIN.name}. No presale, no team allocation — 100% of supply enters through the bonding curve.`,
+  path: "/token",
+  keywords: [
+    `buy ${TOKEN.symbol}`,
+    `${TOKEN.symbol} fair launch`,
+    `${TOKEN.symbol} pool.fans`,
+    `${TOKEN.symbol} ${CHAIN.name}`,
+    "how to buy 0xZAPS",
+    "0xZAPS contract address",
+  ],
+});
 
 const facts = [
   { k: "Ticker", v: TOKEN.symbol },
@@ -70,9 +79,35 @@ const faqs = [
   },
 ] as const;
 
+// Derived from the same `faqs` array that renders the visible FAQ, so the structured data
+// can never drift from on-page copy (a Google FAQPage requirement).
+const tokenPageJsonLd = {
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "FAQPage",
+      "@id": absoluteUrl("/token#faq"),
+      mainEntity: faqs.map((f) => ({
+        "@type": "Question",
+        name: f.q,
+        acceptedAnswer: { "@type": "Answer", text: f.a },
+      })),
+    },
+    {
+      "@type": "BreadcrumbList",
+      "@id": absoluteUrl("/token#breadcrumbs"),
+      itemListElement: [
+        { "@type": "ListItem", position: 1, name: "OpenZaps", item: SITE_URL },
+        { "@type": "ListItem", position: 2, name: `${TOKEN.symbol} token`, item: absoluteUrl("/token") },
+      ],
+    },
+  ],
+};
+
 export default function TokenPage(): React.JSX.Element {
   return (
     <main className={styles.page} id="main">
+      <JsonLd data={tokenPageJsonLd} />
       {/* hero */}
       <section className={`container ${styles.hero}`}>
         <span className="badge">⚡ Launching on pool.fans</span>

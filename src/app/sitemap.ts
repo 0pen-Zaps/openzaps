@@ -1,13 +1,18 @@
 import type { MetadataRoute } from "next";
+import { SITE_URL } from "@/lib/seo";
 
-const siteUrl = process.env.NEXT_PUBLIC_SITE_URL
-  ?? (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "https://openzaps.vercel.app");
+const ROUTES = [
+  { path: "", priority: 1, changeFrequency: "weekly" },
+  { path: "/token", priority: 0.9, changeFrequency: "weekly" },
+  { path: "/app", priority: 0.8, changeFrequency: "weekly" },
+] as const;
 
 export default function sitemap(): MetadataRoute.Sitemap {
   const lastModified = new Date();
-  return [
-    { url: siteUrl, lastModified, changeFrequency: "weekly", priority: 1 },
-    { url: `${siteUrl}/token`, lastModified, changeFrequency: "weekly", priority: 0.9 },
-    { url: `${siteUrl}/app`, lastModified, changeFrequency: "weekly", priority: 0.8 },
-  ];
+  return ROUTES.map(({ path, priority, changeFrequency }) => ({
+    url: `${SITE_URL}${path}`,
+    lastModified,
+    changeFrequency,
+    priority,
+  }));
 }
