@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { CHAIN, CONTRACTS, LINKS, TOKEN } from "@/lib/config";
 import { POLICY_TEMPLATES } from "@/lib/policy";
-import { pageMetadata } from "@/lib/seo";
+import { pageMetadata, SITE_URL } from "@/lib/seo";
 import styles from "./docs.module.css";
 
 export const metadata = pageMetadata({
@@ -74,7 +74,7 @@ export default function DocsPage(): React.JSX.Element {
               Farcaster Mini App. Simulation never broadcasts a transaction and never asks for wallet authority.
             </p>
             <div className={styles.codeBlock}>
-              <pre>{`curl -X POST https://openzaps.vercel.app/api/policies/simulate \\
+              <pre>{`curl -X POST ${SITE_URL}/api/policies/simulate \\
   -H "content-type: application/json" \\
   -d '{
     "templateId": "recurring-dca",

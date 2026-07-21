@@ -21,7 +21,7 @@ const appJsonLd = {
       operatingSystem: "Web",
       offers: { "@type": "Offer", price: "0", priceCurrency: "USD" },
       publisher: { "@id": `${SITE_URL}/#organization` },
-      description: `Build immutable OpenZap intent lockers for agent-triggered DeFi on ${CHAIN.name}.`,
+      description: `Design and simulate bounded OpenZap policy capsules for agent-triggered DeFi on ${CHAIN.name}.`,
     },
     {
       "@type": "BreadcrumbList",

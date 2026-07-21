@@ -74,7 +74,7 @@ const faqs = [
   },
   {
     q: "Are the contracts audited?",
-    a: "The OpenZap protocol contracts are a complete, internally-audited reference implementation (47 passing tests, 9 findings fixed) but are pre-external-audit. Treat anything onchain accordingly.",
+    a: "The OpenZap protocol contracts are a complete, internally reviewed reference implementation (47 passing tests, 9 findings fixed) but are pre-external-audit. Treat anything onchain accordingly.",
   },
 ] as const;
 

@@ -261,7 +261,7 @@ revoke(ownerPath)         ready`}</pre>
             ))}
           </div>
           <a className={styles.repoLink} href={LINKS.github} target="_blank" rel="noreferrer">
-            Read the contracts + audit on GitHub ↗
+            Read the contracts + internal review on GitHub ↗
           </a>
           <br />
           <Link className={styles.repoLink} href="/security">
