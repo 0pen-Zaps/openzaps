@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { OpenZapMark } from "./OpenZapMark";
-import { LINKS, TOKEN, CHAIN } from "@/lib/config";
+import { LINKS, TOKEN, TOKEN_LAUNCH, CHAIN } from "@/lib/config";
 import styles from "./SiteFooter.module.css";
 
 export function SiteFooter(): React.JSX.Element {
@@ -13,7 +13,7 @@ export function SiteFooter(): React.JSX.Element {
             <div>
               <strong>OpenZaps</strong>
               <p>
-                Bounded policy capsules for agent-triggered DeFi. {TOKEN.symbol} launching on pool.fans.
+                Bounded policy capsules for agent-triggered DeFi. ${TOKEN.symbol} is live on Clanker.
               </p>
             </div>
           </div>
@@ -42,10 +42,10 @@ export function SiteFooter(): React.JSX.Element {
             <h3>Token</h3>
             <Link href="/token">{TOKEN.symbol} token</Link>
             <a href={LINKS.buy} target="_blank" rel="noreferrer">
-              Buy on pool.fans
+              Buy on Clanker
             </a>
-            <a href={LINKS.poolfans} target="_blank" rel="noreferrer">
-              pool.fans/openzaps
+            <a href={LINKS.tokenExplorer} target="_blank" rel="noreferrer">
+              View token contract
             </a>
             <Link href="/legal">Risk disclosures</Link>
           </div>
@@ -55,7 +55,7 @@ export function SiteFooter(): React.JSX.Element {
       <div className={styles.legal}>
         <span>© 2026 OpenZaps</span>
         <span>
-          {TOKEN.symbol} · {CHAIN.name}
+          {TOKEN.symbol} · {TOKEN_LAUNCH.network}
         </span>
       </div>
     </footer>

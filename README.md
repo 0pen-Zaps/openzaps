@@ -19,7 +19,7 @@ OpenZaps are narrow, ERC-20-first policy capsules for pre-authorized DeFi workfl
 - `/security` — threat model, contract controls, audit status, and production-readiness gates.
 - `/pricing` — protocol fee and relayer fee model.
 - `/roadmap` — staged path from review console to audited relayer network.
-- `/token` — 0xZAPS tokenomics and pool.fans launch disclosures.
+- `/token` — live 0xZAPS contract, Clanker market, and Robinhood Chain verification links.
 - `/legal` — risk disclosures.
 
 ## API routes

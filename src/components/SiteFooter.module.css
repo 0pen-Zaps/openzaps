@@ -73,8 +73,10 @@
 
 .col a {
   width: max-content;
+  max-width: 100%;
   color: #d0d6e0;
   font-size: 0.92rem;
+  overflow-wrap: anywhere;
   transition: color 160ms ease;
 }
 

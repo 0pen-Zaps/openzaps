@@ -3,7 +3,7 @@ import { Inter, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 import { SiteNav } from "@/components/SiteNav";
 import { SiteFooter } from "@/components/SiteFooter";
-import { TOKEN } from "@/lib/config";
+import { TOKEN, TOKEN_LAUNCH } from "@/lib/config";
 
 const inter = Inter({
   variable: "--font-inter",
@@ -29,21 +29,36 @@ const title = "OpenZaps — bounded onchain execution for agents";
 const description =
   "OpenZaps are tightly bounded policy capsules for agent-triggered DeFi: simulate, submit, monitor, and revoke without broad wallet authority.";
 
-const structuredData = {
-  "@context": "https://schema.org",
-  "@type": "SoftwareApplication",
-  name: "OpenZaps",
-  applicationCategory: "FinanceApplication",
-  operatingSystem: "Web",
-  url: siteUrl,
-  description,
-  offers: {
-    "@type": "Offer",
-    price: "0",
-    priceCurrency: "USD",
-    availability: "https://schema.org/PreOrder",
+const structuredData = [
+  {
+    "@context": "https://schema.org",
+    "@type": "SoftwareApplication",
+    name: "OpenZaps",
+    applicationCategory: "FinanceApplication",
+    operatingSystem: "Web",
+    url: siteUrl,
+    description,
+    offers: {
+      "@type": "Offer",
+      price: "0",
+      priceCurrency: "USD",
+      availability: "https://schema.org/PreOrder",
+    },
   },
-};
+  {
+    "@context": "https://schema.org",
+    "@type": "Product",
+    name: `${TOKEN.name} (${TOKEN.symbol})`,
+    alternateName: `$${TOKEN.symbol}`,
+    description: `${TOKEN.symbol} is the OpenZaps community and operator coordination token, live on Clanker on ${TOKEN_LAUNCH.network}.`,
+    url: TOKEN_LAUNCH.tradeUrl,
+    additionalProperty: [
+      { "@type": "PropertyValue", name: "Contract address", value: TOKEN_LAUNCH.contract },
+      { "@type": "PropertyValue", name: "Network", value: TOKEN_LAUNCH.network },
+      { "@type": "PropertyValue", name: "Launch venue", value: TOKEN_LAUNCH.venue },
+    ],
+  },
+];
 
 export const metadata: Metadata = {
   metadataBase: new URL(siteUrl),
@@ -56,7 +71,9 @@ export const metadata: Metadata = {
     "OpenZaps",
     TOKEN.symbol,
     "0xZAPS",
-    "pool.fans",
+    "Clanker",
+    "Robinhood Chain",
+    TOKEN_LAUNCH.contract,
     "DeFi automation",
     "Hermes agent",
     "EIP-712 intents",
@@ -70,7 +87,7 @@ export const metadata: Metadata = {
     url: "/",
     siteName: "OpenZaps",
     type: "website",
-    images: [{ url: "/og.png", width: 1200, height: 630, alt: `OpenZaps — ${TOKEN.symbol} launch` }],
+    images: [{ url: "/og.png", width: 1200, height: 630, alt: `OpenZaps — $${TOKEN.symbol} live on Clanker` }],
   },
   twitter: {
     card: "summary_large_image",
@@ -94,7 +111,7 @@ export default function RootLayout({
       <body>
         <script
           type="application/ld+json"
-          dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData) }}
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData).replace(/</g, "\\u003c") }}
         />
         <a href="#main" className="skipLink">
           Skip to content

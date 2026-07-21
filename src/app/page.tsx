@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { OpenZapMark } from "@/components/OpenZapMark";
 import { BuyButton } from "@/components/BuyButton";
-import { TOKEN, LINKS, CHAIN, CONTRACTS, contractsLive, explorer } from "@/lib/config";
+import { TOKEN, TOKEN_LAUNCH, LINKS, CHAIN, CONTRACTS, contractsLive, explorer } from "@/lib/config";
 import { POLICY_TEMPLATES } from "@/lib/policy";
 import styles from "./page.module.css";
 
@@ -97,6 +97,15 @@ export default function Home(): React.JSX.Element {
             </Link>
             <BuyButton size="lg" variant="ghost" />
           </div>
+          <div className={styles.launchNotice} aria-label={`${TOKEN.symbol} live token details`}>
+            <strong>${TOKEN.symbol} live</strong>
+            <span>
+              {TOKEN_LAUNCH.venue} {TOKEN_LAUNCH.version} · {TOKEN_LAUNCH.network}
+            </span>
+            <a href={LINKS.tokenExplorer} target="_blank" rel="noreferrer">
+              CA {TOKEN_LAUNCH.contract} ↗
+            </a>
+          </div>
           <div className={styles.proof}>
             <span>ERC-20 first</span>
             <span>EIP-712 intents</span>
@@ -153,11 +162,15 @@ revoke(ownerPath)         ready`}</pre>
         </div>
         <div>
           <p className={styles.tokenLead}>
-            {TOKEN.symbol} is the community and operator coordination token for the network. The protocol itself stays
-            usable without pretending the token is yield, equity, or a fee claim.
+            ${TOKEN.symbol} is live through a creator-verified Clanker V4 market on {TOKEN_LAUNCH.network}. It is the
+            community and operator coordination token for OpenZaps; the protocol remains usable without treating the
+            token as yield, equity, or a fee claim.
           </p>
           <div className={styles.tokenActions}>
             <BuyButton />
+            <a href={LINKS.tokenExplorer} className="btn btnGhost" target="_blank" rel="noreferrer">
+              View contract ↗
+            </a>
             <Link href="/token" className="btn btnGhost">
               Tokenomics →
             </Link>
