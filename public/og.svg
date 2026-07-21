@@ -34,9 +34,9 @@
   <g transform="translate(512 108)">
     <rect width="392" height="48" rx="24" fill="rgba(33,208,122,0.1)" stroke="rgba(55,240,154,0.42)"/>
     <circle cx="29" cy="24" r="6" fill="#37F09A"/>
-    <text x="50" y="32" fill="#37F09A" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="20" font-weight="500" letter-spacing="0.6">Launching 0xZAPS on pool.fans</text>
+    <text x="50" y="32" fill="#37F09A" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="20" font-weight="500" letter-spacing="0.6">0xZAPS live on Clanker</text>
   </g>
   <text x="510" y="288" fill="#F7F8F8" font-family="Inter, Arial, sans-serif" font-size="92" font-weight="600" letter-spacing="-5">OpenZaps</text>
   <text x="516" y="352" fill="#D0D6E0" font-family="Inter, Arial, sans-serif" font-size="31" font-weight="400" letter-spacing="-0.6">Immutable intent lockers for agent-triggered DeFi.</text>
-  <text x="516" y="414" fill="#8EA0FF" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="21" font-weight="500" letter-spacing="1.1">0xZAPS • POOL.FANS • EIP-712 • ERC-1271 • FIXED ADAPTERS</text>
+  <text x="516" y="414" fill="#8EA0FF" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="18" font-weight="500" letter-spacing="0.8">0xZAPS • CLANKER • ROBINHOOD CHAIN • BOUNDED DEFI</text>
 </svg>

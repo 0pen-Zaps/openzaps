@@ -27,7 +27,8 @@ The OpenZap v1 protocol contracts are **live on Base mainnet**. Deployed from
 1. **Allowlist adapters** — `AdapterRegistry.setAdapter(adapter, true)` for each vetted adapter.
 2. **Allowlist tokens** — `TokenAllowlist.setToken(token, true)` for each curated ERC-20.
 3. **Move governance to a Safe** (recommended) — two-step transfer on registry + allowlist.
-4. **Launch 0xZAPS** on `tokenizer.pool.fans`; set `NEXT_PUBLIC_POOLFANS_TOKEN_ID` +
-   `NEXT_PUBLIC_TOKEN_ADDRESS` so the buy CTAs and token card go live.
+4. **0xZAPS is live** through Clanker on Robinhood Chain at
+   `0xDd90bFa4adC7F4401E611AbaC692D939F9F4CB07`; the canonical market and explorer links are
+   centralized in `src/lib/config.ts`.
 5. **(Frontend)** real wallet-driven zap creation (wagmi/viem write path) — not yet wired; the `/app`
    builder currently previews the signed policy.

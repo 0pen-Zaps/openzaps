@@ -8,10 +8,11 @@ import { TOKEN } from "@/lib/config";
 import styles from "./SiteNav.module.css";
 
 const LINKS = [
-  { href: "/token", label: TOKEN.symbol },
   { href: "/app", label: "App" },
-  { href: "/#protocol", label: "Protocol" },
-  { href: "/#security", label: "Security" },
+  { href: "/docs", label: "Docs" },
+  { href: "/security", label: "Security" },
+  { href: "/pricing", label: "Pricing" },
+  { href: "/token", label: TOKEN.symbol },
 ] as const;
 
 export function SiteNav(): React.JSX.Element {

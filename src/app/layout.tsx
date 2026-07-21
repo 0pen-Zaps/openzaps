@@ -4,7 +4,7 @@ import "./globals.css";
 import { SiteNav } from "@/components/SiteNav";
 import { SiteFooter } from "@/components/SiteFooter";
 import { JsonLd } from "@/components/JsonLd";
-import { LINKS } from "@/lib/config";
+import { LINKS, TOKEN, TOKEN_LAUNCH } from "@/lib/config";
 import {
   SITE_URL,
   SITE_NAME,
@@ -47,7 +47,14 @@ export const metadata: Metadata = {
     siteName: SITE_NAME,
     type: "website",
     locale: "en_US",
-    images: [{ url: OG_IMAGE, width: 1200, height: 630, alt: DEFAULT_TITLE }],
+    images: [
+      {
+        url: OG_IMAGE,
+        width: 1200,
+        height: 630,
+        alt: `${SITE_NAME} — $${TOKEN.symbol} live on ${TOKEN_LAUNCH.venue}`,
+      },
+    ],
   },
   twitter: {
     card: "summary_large_image",
@@ -74,7 +81,6 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  themeColor: "#08090A",
   colorScheme: "dark",
 };
 
@@ -100,6 +106,20 @@ const siteGraph = {
       description: DEFAULT_DESCRIPTION,
       publisher: { "@id": `${SITE_URL}/#organization` },
       inLanguage: "en",
+    },
+    {
+      "@type": "Product",
+      "@id": `${SITE_URL}/#token`,
+      name: `${TOKEN.name} (${TOKEN.symbol})`,
+      alternateName: `$${TOKEN.symbol}`,
+      description: `${TOKEN.symbol} is the OpenZaps community and operator coordination token, live on ${TOKEN_LAUNCH.venue} on ${TOKEN_LAUNCH.network}.`,
+      url: TOKEN_LAUNCH.tradeUrl,
+      brand: { "@id": `${SITE_URL}/#organization` },
+      additionalProperty: [
+        { "@type": "PropertyValue", name: "Contract address", value: TOKEN_LAUNCH.contract },
+        { "@type": "PropertyValue", name: "Network", value: TOKEN_LAUNCH.network },
+        { "@type": "PropertyValue", name: "Launch venue", value: TOKEN_LAUNCH.venue },
+      ],
     },
   ],
 };

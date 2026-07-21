@@ -1,0 +1,284 @@
+.page {
+  position: relative;
+  z-index: 1;
+  padding: clamp(2rem, 5vw, 4rem) 0 5rem;
+}
+
+.hero {
+  display: grid;
+  grid-template-columns: minmax(0, 0.85fr) minmax(18rem, 0.45fr);
+  gap: clamp(1.5rem, 4vw, 3rem);
+  align-items: end;
+  padding-bottom: clamp(2rem, 5vw, 4rem);
+}
+
+.hero h1 {
+  margin-top: 0.8rem;
+  font-size: clamp(2.5rem, 6vw, 5.3rem);
+  font-weight: 560;
+  line-height: 1;
+  letter-spacing: 0;
+  text-wrap: balance;
+}
+
+.hero p {
+  max-width: 48rem;
+  margin-top: 1rem;
+  color: var(--text);
+  font-size: clamp(1rem, 1.6vw, 1.2rem);
+  line-height: 1.6;
+}
+
+.heroCard {
+  border: 1px solid var(--line);
+  border-radius: 0.5rem;
+  background: rgba(255, 255, 255, 0.035);
+  box-shadow: var(--card-shadow);
+  padding: 1rem;
+}
+
+.heroCard span,
+.metric span,
+.row span,
+.callout span {
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.heroCard strong {
+  display: block;
+  margin-top: 0.35rem;
+  font-family: var(--font-jetbrains-mono), ui-monospace, monospace;
+  font-size: 1rem;
+}
+
+.heroActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin-top: 1.4rem;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: minmax(0, 0.72fr) minmax(0, 1.28fr);
+  gap: 1rem;
+  align-items: start;
+}
+
+.toc {
+  position: sticky;
+  top: 6rem;
+  display: grid;
+  gap: 0.35rem;
+  padding: 1rem;
+  border: 1px solid var(--line);
+  border-radius: 0.5rem;
+  background: rgba(255, 255, 255, 0.035);
+}
+
+.toc a {
+  min-height: 2.35rem;
+  display: flex;
+  align-items: center;
+  padding: 0 0.65rem;
+  border-radius: 0.4rem;
+  color: var(--text);
+  font-size: 0.86rem;
+}
+
+.toc a:hover {
+  background: rgba(255, 255, 255, 0.055);
+}
+
+.content {
+  display: grid;
+  gap: 1rem;
+}
+
+.section,
+.callout,
+.metric,
+.codeBlock,
+.table,
+.timeline,
+.twoCol > article {
+  border: 1px solid var(--line);
+  border-radius: 0.5rem;
+  background: rgba(255, 255, 255, 0.035);
+}
+
+.section {
+  padding: clamp(1.1rem, 2.5vw, 1.6rem);
+}
+
+.section h2 {
+  font-size: clamp(1.55rem, 3vw, 2.45rem);
+  font-weight: 560;
+  letter-spacing: 0;
+}
+
+.section h3 {
+  margin-top: 1.2rem;
+  font-size: 1.08rem;
+  font-weight: 620;
+}
+
+.section p,
+.section li {
+  color: var(--text);
+  line-height: 1.65;
+}
+
+.section p {
+  margin-top: 0.7rem;
+}
+
+.section ul,
+.section ol {
+  display: grid;
+  gap: 0.5rem;
+  margin-top: 0.85rem;
+  padding-left: 1.15rem;
+}
+
+.twoCol {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+  margin-top: 1rem;
+}
+
+.twoCol > article {
+  padding: 1rem;
+}
+
+.twoCol h3 {
+  margin-top: 0;
+}
+
+.callout {
+  display: grid;
+  gap: 0.35rem;
+  padding: 1rem;
+  border-color: rgba(255, 194, 107, 0.28);
+  background: rgba(255, 194, 107, 0.06);
+}
+
+.callout strong {
+  color: #ffe0a8;
+}
+
+.metrics {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.metric {
+  min-height: 7rem;
+  display: grid;
+  align-content: center;
+  gap: 0.35rem;
+  padding: 1rem;
+}
+
+.metric strong {
+  color: var(--fg);
+  font-size: clamp(1.4rem, 3vw, 2rem);
+  font-weight: 600;
+}
+
+.codeBlock {
+  margin-top: 1rem;
+  overflow: hidden;
+}
+
+.codeBlock pre {
+  margin: 0;
+  padding: 1rem;
+  overflow: auto;
+  color: var(--text);
+  background: rgba(0, 0, 0, 0.24);
+  font-family: var(--font-jetbrains-mono), ui-monospace, monospace;
+  font-size: 0.78rem;
+  line-height: 1.65;
+}
+
+.table {
+  display: grid;
+  overflow: hidden;
+  margin-top: 1rem;
+}
+
+.row {
+  display: grid;
+  grid-template-columns: minmax(10rem, 0.5fr) minmax(0, 1fr);
+  gap: 1rem;
+  padding: 0.9rem 1rem;
+  border-top: 1px solid var(--line-soft);
+}
+
+.row:first-child {
+  border-top: 0;
+}
+
+.row strong {
+  color: var(--fg);
+}
+
+.row p {
+  margin: 0;
+  color: var(--text);
+}
+
+.timeline {
+  display: grid;
+  margin-top: 1rem;
+}
+
+.phase {
+  display: grid;
+  grid-template-columns: 5.5rem minmax(0, 1fr);
+  gap: 1rem;
+  padding: 1rem;
+  border-top: 1px solid var(--line-soft);
+}
+
+.phase:first-child {
+  border-top: 0;
+}
+
+.phase span {
+  color: var(--mint-2);
+  font-family: var(--font-jetbrains-mono), ui-monospace, monospace;
+  font-size: 0.8rem;
+}
+
+.phase h3 {
+  margin: 0;
+}
+
+.phase p {
+  margin-top: 0.35rem;
+}
+
+@media (max-width: 920px) {
+  .hero,
+  .grid,
+  .twoCol,
+  .metrics {
+    grid-template-columns: 1fr;
+  }
+
+  .toc {
+    position: static;
+  }
+}
+
+@media (max-width: 560px) {
+  .row,
+  .phase {
+    grid-template-columns: 1fr;
+  }
+}

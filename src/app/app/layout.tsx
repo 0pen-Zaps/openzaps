@@ -3,10 +3,10 @@ import { TOKEN, CHAIN } from "@/lib/config";
 import { pageMetadata, absoluteUrl, SITE_URL, SITE_NAME } from "@/lib/seo";
 
 export const metadata = pageMetadata({
-  title: "App — build immutable intent lockers",
-  description: `Build an immutable OpenZap intent locker on ${CHAIN.name} — fund it, sign an EIP-712 policy, let Hermes run it. ${TOKEN.symbol} powers the network.`,
+  title: "App — build bounded execution policies",
+  description: `Design an OpenZap policy capsule on ${CHAIN.name}: simulate the diff, save the review artifact, and keep revoke and pause controls in one place. ${TOKEN.symbol} powers the network.`,
   path: "/app",
-  keywords: ["OpenZaps app", "create zap", "intent locker app", "DeFi automation app", "EIP-712 policy signer"],
+  keywords: ["OpenZaps app", "policy capsule builder", "simulate DeFi policy", "DeFi automation app", "EIP-712 policy review"],
 });
 
 const appJsonLd = {
@@ -21,7 +21,7 @@ const appJsonLd = {
       operatingSystem: "Web",
       offers: { "@type": "Offer", price: "0", priceCurrency: "USD" },
       publisher: { "@id": `${SITE_URL}/#organization` },
-      description: `Build immutable OpenZap intent lockers for agent-triggered DeFi on ${CHAIN.name}.`,
+      description: `Design and simulate bounded OpenZap policy capsules for agent-triggered DeFi on ${CHAIN.name}.`,
     },
     {
       "@type": "BreadcrumbList",
