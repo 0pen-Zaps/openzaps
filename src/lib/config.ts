@@ -8,15 +8,13 @@ export const TOKEN = {
 } as const;
 
 export const POOLFANS = {
-  // The token's home on the pool.fans tokenizer. `tokenId` is assigned at launch.
-  tokenizerBase: "https://tokenizer.pool.fans/token",
   tokenId: process.env.NEXT_PUBLIC_POOLFANS_TOKEN_ID ?? "",
-  launchpad: "https://pool.fans/openzaps",
+  launchpad: "https://www.clanker.world/clanker/0xDd90bFa4adC7F4401E611AbaC692D939F9F4CB07",
 } as const;
 
-/** The buy/trade URL. Falls back to the tokenizer root until a token id is configured. */
+/** The canonical 0xZAPS buy/trade page. */
 export function buyUrl(): string {
-  return POOLFANS.tokenId ? `${POOLFANS.tokenizerBase}/${POOLFANS.tokenId}` : "https://tokenizer.pool.fans";
+  return POOLFANS.launchpad;
 }
 
 export const CHAIN = {
