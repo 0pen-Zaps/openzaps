@@ -1,5 +1,5 @@
-// Central launch configuration. Values that only exist after deployment (token id, contract
-// addresses) are env-driven so the deploy step can fill them in without code changes.
+// Central protocol and token configuration. Keep the Base protocol deployment separate from
+// the 0xZAPS market, which launched through Clanker on Robinhood Chain.
 
 export const TOKEN = {
   name: "OpenZaps",
@@ -7,16 +7,22 @@ export const TOKEN = {
   decimals: 18,
 } as const;
 
-export const POOLFANS = {
-  // The token's home on the pool.fans tokenizer. `tokenId` is assigned at launch.
-  tokenizerBase: "https://tokenizer.pool.fans/token",
-  tokenId: process.env.NEXT_PUBLIC_POOLFANS_TOKEN_ID ?? "",
-  launchpad: "https://pool.fans/openzaps",
+const tokenContract = "0xDd90bFa4adC7F4401E611AbaC692D939F9F4CB07";
+
+export const TOKEN_LAUNCH = {
+  status: "Live",
+  venue: "Clanker",
+  version: "V4",
+  network: "Robinhood Chain",
+  contract: tokenContract,
+  tradeUrl: `https://www.clanker.world/clanker/${tokenContract}`,
+  explorer: "https://robinhoodchain.blockscout.com",
+  contractUrl: `https://robinhoodchain.blockscout.com/token/${tokenContract}`,
 } as const;
 
-/** The buy/trade URL. Falls back to the tokenizer root until a token id is configured. */
+/** The canonical 0xZAPS buy/trade page. */
 export function buyUrl(): string {
-  return POOLFANS.tokenId ? `${POOLFANS.tokenizerBase}/${POOLFANS.tokenId}` : "https://tokenizer.pool.fans";
+  return TOKEN_LAUNCH.tradeUrl;
 }
 
 export const CHAIN = {
@@ -25,9 +31,8 @@ export const CHAIN = {
   explorer: process.env.NEXT_PUBLIC_EXPLORER ?? "https://basescan.org",
 } as const;
 
-/** Deployed protocol + token addresses. Protocol is live on Base mainnet (8453). */
+/** Deployed protocol addresses on Base mainnet (8453). */
 export const CONTRACTS = {
-  token: process.env.NEXT_PUBLIC_TOKEN_ADDRESS ?? "", // 0xZAPS — set once launched on pool.fans
   factory: process.env.NEXT_PUBLIC_FACTORY_ADDRESS ?? "0xc7C5897e4738a157731c2F93b1d73Db9926E926C",
   implementation: "0x7c89A57A74a102d8a2A2E9e9FCF77f097216b78e",
   adapterRegistry: process.env.NEXT_PUBLIC_ADAPTER_REGISTRY ?? "0x8d62b619daD575704Ba2560CF828aCab7642347F",
@@ -39,9 +44,9 @@ export function contractsLive(): boolean {
   return CONTRACTS.factory.length > 0;
 }
 
-/** Whether the 0xZAPS token has launched on pool.fans (drives buy/trade UI). */
+/** Whether the canonical 0xZAPS contract is configured (drives buy/trade UI). */
 export function tokenLive(): boolean {
-  return POOLFANS.tokenId.length > 0 || CONTRACTS.token.length > 0;
+  return TOKEN_LAUNCH.contract.length > 0;
 }
 
 /** Block-explorer link for an address. */
@@ -51,7 +56,8 @@ export function explorer(addr: string): string {
 
 export const LINKS = {
   github: "https://github.com/nodar/openzaps",
-  poolfans: POOLFANS.launchpad,
+  clanker: TOKEN_LAUNCH.tradeUrl,
+  tokenExplorer: TOKEN_LAUNCH.contractUrl,
   buy: buyUrl(),
 } as const;
 

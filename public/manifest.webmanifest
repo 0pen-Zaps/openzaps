@@ -1,8 +1,8 @@
 {
   "id": "/",
-  "name": "OpenZaps — 0xZAPS on pool.fans",
+  "name": "OpenZaps — bounded onchain execution for agents",
   "short_name": "OpenZaps",
-  "description": "Immutable, ERC-20-first intent lockers for agent-triggered DeFi on Base. 0xZAPS launches fair on the pool.fans tokenizer.",
+  "description": "Bounded policy capsules for agent-triggered DeFi execution. 0xZAPS is live on Clanker on Robinhood Chain.",
   "start_url": "/",
   "scope": "/",
   "lang": "en",

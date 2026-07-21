@@ -2,46 +2,45 @@ import Link from "next/link";
 import { OpenZapMark } from "@/components/OpenZapMark";
 import { BuyButton } from "@/components/BuyButton";
 import { JsonLd } from "@/components/JsonLd";
-import { TOKEN, CHAIN, CONTRACTS, LINKS } from "@/lib/config";
+import { TOKEN, TOKEN_LAUNCH, LINKS } from "@/lib/config";
 import { pageMetadata, absoluteUrl, SITE_URL } from "@/lib/seo";
 import styles from "./token.module.css";
 
 export const metadata = pageMetadata({
-  title: `${TOKEN.symbol} token — fair launch on pool.fans`,
-  description: `${TOKEN.symbol} is the token for OpenZaps, launching fair on the pool.fans tokenizer on ${CHAIN.name}. No presale, no team allocation — 100% of supply enters through the bonding curve.`,
+  title: `${TOKEN.symbol} token — live on ${TOKEN_LAUNCH.venue}`,
+  description: `${TOKEN.symbol} is live on ${TOKEN_LAUNCH.venue} on ${TOKEN_LAUNCH.network}. Verify the official contract and trade link for the OpenZaps community token.`,
   path: "/token",
   keywords: [
     `buy ${TOKEN.symbol}`,
-    `${TOKEN.symbol} fair launch`,
-    `${TOKEN.symbol} pool.fans`,
-    `${TOKEN.symbol} ${CHAIN.name}`,
+    `${TOKEN.symbol} ${TOKEN_LAUNCH.venue}`,
+    `${TOKEN.symbol} ${TOKEN_LAUNCH.network}`,
+    `${TOKEN.symbol} contract address`,
     "how to buy 0xZAPS",
-    "0xZAPS contract address",
   ],
 });
 
 const facts = [
   { k: "Ticker", v: TOKEN.symbol },
-  { k: "Network", v: CHAIN.name },
-  { k: "Venue", v: "pool.fans tokenizer" },
-  { k: "Model", v: "Fair launch" },
+  { k: "Token network", v: TOKEN_LAUNCH.network },
+  { k: "Venue", v: TOKEN_LAUNCH.venue },
+  { k: "Status", v: TOKEN_LAUNCH.status },
 ] as const;
 
 const steps = [
   {
     n: "01",
-    title: "Get a wallet on " + CHAIN.name,
-    body: "Any EOA or Safe works. Fund it with a little ETH for gas — the same wallet can later sign OpenZap intents.",
+    title: "Open the official Clanker market",
+    body: `Use the market linked from this site and confirm it shows ${TOKEN.name} (${TOKEN.symbol}).`,
   },
   {
     n: "02",
-    title: "Open the pool.fans page",
-    body: `Head to the ${TOKEN.symbol} page on the pool.fans tokenizer. The curve is open and permissionless — no allowlist, no presale.`,
+    title: "Verify the contract",
+    body: `Match the token contract exactly: ${TOKEN_LAUNCH.contract}. Do not trade a lookalike ticker.`,
   },
   {
     n: "03",
-    title: `Swap into ${TOKEN.symbol}`,
-    body: "Buy on the bonding curve. Your balance settles onchain instantly; come back and open the app to run zaps.",
+    title: `Trade ${TOKEN.symbol}`,
+    body: `Connect through Clanker's supported wallet flow, review the ${TOKEN_LAUNCH.network} transaction, and confirm it in your wallet.`,
   },
 ] as const;
 
@@ -51,8 +50,8 @@ const utility = [
     body: "Hermes runs, simulates, and monitors zaps. The token aligns the people who keep that execution layer honest and live.",
   },
   {
-    title: "Curve + fee participation",
-    body: "Launched on the pool.fans tokenizer, so value accrues through the bonding curve and fee mechanics of the launchpad itself.",
+    title: "Public market identity",
+    body: `The creator-verified ${TOKEN_LAUNCH.venue} ${TOKEN_LAUNCH.version} page and the onchain contract are the canonical token references.`,
   },
   {
     title: "A signal, not a promise",
@@ -63,11 +62,11 @@ const utility = [
 const faqs = [
   {
     q: `Where does ${TOKEN.symbol} live?`,
-    a: `On the pool.fans tokenizer on ${CHAIN.name}. Trading happens against its bonding curve; the contract address appears here once the launch transaction confirms.`,
+    a: `${TOKEN.symbol} is live on ${TOKEN_LAUNCH.network} through Clanker. Its contract is ${TOKEN_LAUNCH.contract}.`,
   },
   {
-    q: "Is there a presale or team allocation?",
-    a: "No presale and no private allocation. It launches fair on the curve — everyone buys from the same place at the same time.",
+    q: `Where can I buy ${TOKEN.symbol}?`,
+    a: `Use the official Clanker market linked on this page and verify ${TOKEN_LAUNCH.contract} before signing.`,
   },
   {
     q: "Do I need the token to use OpenZaps?",
@@ -110,7 +109,7 @@ export default function TokenPage(): React.JSX.Element {
       <JsonLd data={tokenPageJsonLd} />
       {/* hero */}
       <section className={`container ${styles.hero}`}>
-        <span className="badge">⚡ Launching on pool.fans</span>
+        <span className="badge">Live on {TOKEN_LAUNCH.network}</span>
         <div className={styles.heroMark}>
           <OpenZapMark />
         </div>
@@ -118,13 +117,13 @@ export default function TokenPage(): React.JSX.Element {
           <span className="gradientText">{TOKEN.symbol}</span>
         </h1>
         <p className={styles.lead}>
-          The token for OpenZaps — immutable intent lockers for agent-triggered DeFi. Fair launch on the{" "}
-          <strong>pool.fans</strong> tokenizer, {CHAIN.name}.
+          The community token for OpenZaps — immutable policy capsules for agent-triggered DeFi. Now live on{" "}
+          <strong>{TOKEN_LAUNCH.network}</strong> through Clanker.
         </p>
         <div className={styles.heroActions}>
           <BuyButton size="lg" />
-          <a className="btn btnGhost btnLg" href={LINKS.poolfans} target="_blank" rel="noreferrer">
-            pool.fans/openzaps ↗
+          <a className="btn btnGhost btnLg" href={LINKS.tokenExplorer} target="_blank" rel="noreferrer">
+            View contract ↗
           </a>
         </div>
 
@@ -142,18 +141,9 @@ export default function TokenPage(): React.JSX.Element {
       <section className={`container ${styles.addressWrap}`}>
         <div className={styles.address}>
           <span className={styles.addressLabel}>{TOKEN.symbol} contract</span>
-          {CONTRACTS.token ? (
-            <a
-              className={styles.addressValue}
-              href={`${CHAIN.explorer}/token/${CONTRACTS.token}`}
-              target="_blank"
-              rel="noreferrer"
-            >
-              {CONTRACTS.token} ↗
-            </a>
-          ) : (
-            <span className={styles.addressPending}>Available the moment the launch tx confirms</span>
-          )}
+          <a className={styles.addressValue} href={LINKS.tokenExplorer} target="_blank" rel="noreferrer">
+            {TOKEN_LAUNCH.contract} ↗
+          </a>
         </div>
       </section>
 
@@ -194,30 +184,33 @@ export default function TokenPage(): React.JSX.Element {
         </div>
       </section>
 
-      {/* distribution */}
+      {/* official launch references */}
       <section className={`container ${styles.section}`}>
         <div className={styles.dist}>
           <div className={styles.distCopy}>
-            <span className="eyebrow">Distribution</span>
-            <h2>Fair launch. No games.</h2>
+            <span className="eyebrow">Verify before trading</span>
+            <h2>One contract. One official market.</h2>
             <p>
-              100% of supply enters through the pool.fans bonding curve. No presale, no team unlock schedule, no
-              private rounds — the curve is the only door in.
+              Tickers and screenshots can be copied. The Clanker market and {TOKEN_LAUNCH.network} contract below are
+              the canonical references; live market data can change at any time.
             </p>
           </div>
-          <div className={styles.distBars}>
-            <div className={styles.distBar}>
-              <div className={styles.distFill} style={{ width: "100%" }} />
-              <span className={styles.distLabel}>Bonding curve · 100%</span>
-            </div>
-            <div className={styles.distBar}>
-              <div className={`${styles.distFill} ${styles.distMuted}`} style={{ width: "0%" }} />
-              <span className={styles.distLabel}>Presale · 0%</span>
-            </div>
-            <div className={styles.distBar}>
-              <div className={`${styles.distFill} ${styles.distMuted}`} style={{ width: "0%" }} />
-              <span className={styles.distLabel}>Team unlock · 0%</span>
-            </div>
+          <div className={styles.verifyList}>
+            <a className={styles.verifyRow} href={LINKS.tokenExplorer} target="_blank" rel="noreferrer">
+              <span>Contract</span>
+              <strong>{TOKEN_LAUNCH.contract}</strong>
+              <i aria-hidden>↗</i>
+            </a>
+            <a className={styles.verifyRow} href={LINKS.clanker} target="_blank" rel="noreferrer">
+              <span>Official market</span>
+              <strong>{TOKEN_LAUNCH.venue} {TOKEN_LAUNCH.version}</strong>
+              <i aria-hidden>↗</i>
+            </a>
+            <a className={styles.verifyRow} href={TOKEN_LAUNCH.explorer} target="_blank" rel="noreferrer">
+              <span>Network</span>
+              <strong>{TOKEN_LAUNCH.network}</strong>
+              <i aria-hidden>↗</i>
+            </a>
           </div>
         </div>
       </section>

@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { OpenZapMark } from "./OpenZapMark";
-import { LINKS, TOKEN, CHAIN } from "@/lib/config";
+import { LINKS, TOKEN, TOKEN_LAUNCH, CHAIN } from "@/lib/config";
 import styles from "./SiteFooter.module.css";
 
 export function SiteFooter(): React.JSX.Element {
@@ -13,38 +13,42 @@ export function SiteFooter(): React.JSX.Element {
             <div>
               <strong>OpenZaps</strong>
               <p>
-                Immutable intent lockers for agent-triggered DeFi. {TOKEN.symbol} launching on pool.fans.
+                Bounded policy capsules for agent-triggered DeFi. ${TOKEN.symbol} is live on Clanker.
               </p>
             </div>
           </div>
           <p className={styles.note}>
-            Pre-audit reference implementation on {CHAIN.name}. Not financial advice; no live TVL,
-            yield, or returns are implied.
+            {TOKEN.symbol} lives on {TOKEN_LAUNCH.network}. OpenZaps reference protocol contracts are separately
+            deployed on {CHAIN.name} and remain pre-audit. Not financial advice; no live TVL, yield, or returns are
+            implied.
           </p>
         </div>
 
         <nav className={styles.cols} aria-label="Footer">
           <div className={styles.col}>
             <h3>Product</h3>
-            <Link href="/token">{TOKEN.symbol} token</Link>
             <Link href="/app">Open the app</Link>
-            <Link href="/#protocol">How it works</Link>
+            <Link href="/docs">Developer docs</Link>
+            <Link href="/roadmap">Roadmap</Link>
           </div>
           <div className={styles.col}>
             <h3>Build</h3>
             <a href={LINKS.github} target="_blank" rel="noreferrer">
               GitHub
             </a>
-            <Link href="/#security">Security</Link>
+            <Link href="/security">Security</Link>
+            <Link href="/pricing">Pricing</Link>
           </div>
           <div className={styles.col}>
             <h3>Token</h3>
+            <Link href="/token">{TOKEN.symbol} token</Link>
             <a href={LINKS.buy} target="_blank" rel="noreferrer">
-              Buy on pool.fans
+              Buy on Clanker
             </a>
-            <a href={LINKS.poolfans} target="_blank" rel="noreferrer">
-              pool.fans/openzaps
+            <a href={LINKS.tokenExplorer} target="_blank" rel="noreferrer">
+              View token contract
             </a>
+            <Link href="/legal">Risk disclosures</Link>
           </div>
         </nav>
       </div>
@@ -52,7 +56,7 @@ export function SiteFooter(): React.JSX.Element {
       <div className={styles.legal}>
         <span>© 2026 OpenZaps</span>
         <span>
-          {TOKEN.symbol} · {CHAIN.name}
+          {TOKEN.symbol} · {TOKEN_LAUNCH.network}
         </span>
       </div>
     </footer>

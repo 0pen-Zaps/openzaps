@@ -2,8 +2,8 @@
   position: relative;
   z-index: 1;
   margin-top: clamp(4rem, 10vw, 9rem);
-  border-top: 1px solid var(--line-soft);
-  background: var(--bg-2);
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.018), transparent);
 }
 
 .inner {
@@ -28,19 +28,17 @@
 }
 
 .brand strong {
-  color: var(--fg);
+  color: #f7f8f8;
   font-size: 1.05rem;
   font-weight: 600;
-  letter-spacing: -0.02em;
 }
 
 .brand p {
   max-width: 24rem;
   margin-top: 0.35rem;
-  color: var(--muted);
+  color: #8a8f98;
   font-size: 0.92rem;
   line-height: 1.55;
-  letter-spacing: -0.005em;
 }
 
 .note {
@@ -75,14 +73,15 @@
 
 .col a {
   width: max-content;
-  color: var(--text);
+  max-width: 100%;
+  color: #d0d6e0;
   font-size: 0.92rem;
-  letter-spacing: -0.005em;
+  overflow-wrap: anywhere;
   transition: color 160ms ease;
 }
 
 .col a:hover {
-  color: var(--accent);
+  color: #37f09a;
 }
 
 .legal {
