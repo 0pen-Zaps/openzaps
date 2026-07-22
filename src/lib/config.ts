@@ -23,6 +23,8 @@ export const TOKEN_LAUNCH = {
   pair: `${TOKEN.symbol}/WETH`,
   primaryPair,
   onchainImageUri:
+    "ipfs://bafkreidndqit6ydpkivgmm4qdukh7sgv6uexjp3rc76iyvx22zd425ae7i",
+  onchainImageGateway:
     "https://turquoise-blank-swallow-685.mypinata.cloud/ipfs/bafkreidndqit6ydpkivgmm4qdukh7sgv6uexjp3rc76iyvx22zd425ae7i",
   tradeUrl: `https://www.clanker.world/clanker/${tokenContract}`,
   explorer: "https://robinhoodchain.blockscout.com",

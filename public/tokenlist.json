@@ -1,6 +1,6 @@
 {
   "name": "OpenZaps Token List",
-  "timestamp": "2026-07-22T03:09:14Z",
+  "timestamp": "2026-07-22T03:58:20Z",
   "version": {
     "major": 1,
     "minor": 0,
@@ -26,7 +26,8 @@
         "clanker": "https://www.clanker.world/clanker/0xDd90bFa4adC7F4401E611AbaC692D939F9F4CB07",
         "dexScreener": "https://dexscreener.com/robinhood/0xb040f18affd851c6ea02b896b2f846cb77edbb33cc5361f7f8c6d14b87c01573",
         "explorer": "https://robinhoodchain.blockscout.com/token/0xDd90bFa4adC7F4401E611AbaC692D939F9F4CB07",
-        "onchainImageURI": "https://turquoise-blank-swallow-685.mypinata.cloud/ipfs/bafkreidndqit6ydpkivgmm4qdukh7sgv6uexjp3rc76iyvx22zd425ae7i"
+        "onchainImageURI": "ipfs://bafkreidndqit6ydpkivgmm4qdukh7sgv6uexjp3rc76iyvx22zd425ae7i",
+        "onchainImageGateway": "https://turquoise-blank-swallow-685.mypinata.cloud/ipfs/bafkreidndqit6ydpkivgmm4qdukh7sgv6uexjp3rc76iyvx22zd425ae7i"
       }
     }
   ]

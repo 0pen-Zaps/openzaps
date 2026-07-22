@@ -29,6 +29,7 @@ OpenZaps are narrow, ERC-20-first policy capsules for pre-authorized DeFi workfl
 - Network: Robinhood Chain mainnet (`4663`)
 - Contract: [`0xDd90bFa4adC7F4401E611AbaC692D939F9F4CB07`](https://robinhoodchain.blockscout.com/token/0xDd90bFa4adC7F4401E611AbaC692D939F9F4CB07)
 - Official market: [Clanker V4](https://www.clanker.world/clanker/0xDd90bFa4adC7F4401E611AbaC692D939F9F4CB07)
+- Onchain image: [`ipfs://bafkreidndqit6ydpkivgmm4qdukh7sgv6uexjp3rc76iyvx22zd425ae7i`](https://turquoise-blank-swallow-685.mypinata.cloud/ipfs/bafkreidndqit6ydpkivgmm4qdukh7sgv6uexjp3rc76iyvx22zd425ae7i)
 - Token list: [`/tokenlist.json`](https://www.0xzaps.com/tokenlist.json)
 - Canonical metadata: [`/token-metadata.json`](https://www.0xzaps.com/token-metadata.json)
 - Well-known identity: [`/.well-known/openzaps-token.json`](https://www.0xzaps.com/.well-known/openzaps-token.json)
