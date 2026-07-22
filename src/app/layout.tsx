@@ -5,7 +5,7 @@ import "./globals.css";
 import { SiteNav } from "@/components/SiteNav";
 import { SiteFooter } from "@/components/SiteFooter";
 import { JsonLd } from "@/components/JsonLd";
-import { LINKS, TOKEN, TOKEN_LAUNCH } from "@/lib/config";
+import { LINKS, TOKEN, TOKEN_LAUNCH, X_HANDLE } from "@/lib/config";
 import {
   SITE_URL,
   SITE_NAME,
@@ -59,6 +59,8 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: "summary_large_image",
+    site: X_HANDLE,
+    creator: X_HANDLE,
     title: DEFAULT_TITLE,
     description: DEFAULT_DESCRIPTION,
     images: [OG_IMAGE],
@@ -98,7 +100,7 @@ const siteGraph = {
         "@type": "ImageObject",
         url: absoluteUrl("/openzap-mark.svg"),
       },
-      sameAs: [LINKS.github],
+      sameAs: [LINKS.github, LINKS.x],
     },
     {
       "@type": "WebSite",

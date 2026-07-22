@@ -18,6 +18,13 @@ Key facts:
 - [0xZAPS token](https://www.0xzaps.com/token): verified contract, official Clanker market, FAQ
 - [Risk disclosures](https://www.0xzaps.com/legal): pre-audit software, onchain irreversibility, token risk
 
+## Official links
+
+- X (Twitter): https://x.com/0xzaps
+- GitHub: https://github.com/nodar/openzaps
+- Token market (Clanker): https://www.clanker.world/clanker/0xDd90bFa4adC7F4401E611AbaC692D939F9F4CB07
+- Explorer: https://robinhoodchain.blockscout.com/token/0xDd90bFa4adC7F4401E611AbaC692D939F9F4CB07
+
 ## API
 
 - POST https://www.0xzaps.com/api/policies/simulate — deterministic policy simulation; never broadcasts and never requests wallet authority

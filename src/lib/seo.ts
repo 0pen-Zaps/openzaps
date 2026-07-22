@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { TOKEN, TOKEN_LAUNCH, CHAIN } from "@/lib/config";
+import { TOKEN, TOKEN_LAUNCH, CHAIN, X_HANDLE } from "@/lib/config";
 
 // Canonical production origin. www is canonical: 0xzaps.com 308-redirects to www.0xzaps.com.
 // Hardcoded default so canonicals never regress to a *.vercel.app alias when the env var is
@@ -78,6 +78,8 @@ export function pageMetadata({
     },
     twitter: {
       card: "summary_large_image",
+      site: X_HANDLE,
+      creator: X_HANDLE,
       title: socialTitle,
       description,
       images: [absoluteUrl(ogImage)],
