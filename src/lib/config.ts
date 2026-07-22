@@ -1,5 +1,4 @@
-// Central protocol and token configuration. Keep the Base protocol deployment separate from
-// the 0xZAPS market, which launched through Clanker on Robinhood Chain.
+// Canonical production protocol and token configuration.
 
 export const TOKEN = {
   name: "OpenZaps",
@@ -26,22 +25,32 @@ export function buyUrl(): string {
 }
 
 export const CHAIN = {
-  name: process.env.NEXT_PUBLIC_CHAIN_NAME ?? "Base",
-  id: Number(process.env.NEXT_PUBLIC_CHAIN_ID ?? 8453),
-  explorer: process.env.NEXT_PUBLIC_EXPLORER ?? "https://basescan.org",
+  name: process.env.NEXT_PUBLIC_CHAIN_NAME ?? "Robinhood Chain",
+  id: Number(process.env.NEXT_PUBLIC_CHAIN_ID ?? 4663),
+  explorer: process.env.NEXT_PUBLIC_EXPLORER ?? "https://robinhoodchain.blockscout.com",
 } as const;
 
-/** Deployed protocol addresses on Base mainnet (8453). */
+/** Live protocol addresses on Robinhood Chain mainnet (4663). */
 export const CONTRACTS = {
-  factory: process.env.NEXT_PUBLIC_FACTORY_ADDRESS ?? "0xc7C5897e4738a157731c2F93b1d73Db9926E926C",
+  factory: process.env.NEXT_PUBLIC_FACTORY_ADDRESS ?? "0xFC775017b25d2458623E2f3E735A4B750dD8b4E4",
+  implementation: "0x2a5EB455952d25b8060Ee933d2bADB022c7aE11A",
+  adapterRegistry: process.env.NEXT_PUBLIC_ADAPTER_REGISTRY ?? "0x9E56e444f490C00A6277326A47Cb462E12dF1f17",
+  tokenAllowlist: process.env.NEXT_PUBLIC_TOKEN_ALLOWLIST ?? "0x87fBb77a4328B068CADbA2eBE5dBCE0ffbd7141B",
+  swapAdapter: process.env.NEXT_PUBLIC_SWAP_ADAPTER ?? "0x04f62dA4b51a010eFa32aa81569169C47AEd602C",
+} as const;
+
+/** Historical Base v1 deployment; not used by the production app. */
+export const HISTORICAL_BASE_CONTRACTS = {
+  chainId: 8453,
+  factory: "0xc7C5897e4738a157731c2F93b1d73Db9926E926C",
   implementation: "0x7c89A57A74a102d8a2A2E9e9FCF77f097216b78e",
-  adapterRegistry: process.env.NEXT_PUBLIC_ADAPTER_REGISTRY ?? "0x8d62b619daD575704Ba2560CF828aCab7642347F",
-  tokenAllowlist: process.env.NEXT_PUBLIC_TOKEN_ALLOWLIST ?? "0x0E6608d6b9e485550289755176173c4B6008CF12",
+  adapterRegistry: "0x8d62b619daD575704Ba2560CF828aCab7642347F",
+  tokenAllowlist: "0x0E6608d6b9e485550289755176173c4B6008CF12",
 } as const;
 
 /** Whether the protocol contracts are deployed on `CHAIN`. */
 export function contractsLive(): boolean {
-  return CONTRACTS.factory.length > 0;
+  return Object.values(CONTRACTS).every((address) => address.startsWith("0x") && address.length === 42);
 }
 
 /** Whether the canonical 0xZAPS contract is configured (drives buy/trade UI). */

@@ -13,7 +13,7 @@ export const metadata: Metadata = {
 
 const facts = [
   { k: "Ticker", v: TOKEN.symbol },
-  { k: "Network", v: TOKEN_LAUNCH.network },
+  { k: "Token network", v: TOKEN_LAUNCH.network },
   { k: "Venue", v: TOKEN_LAUNCH.venue },
   { k: "Status", v: TOKEN_LAUNCH.status },
 ] as const;
@@ -75,7 +75,7 @@ export default function TokenPage(): React.JSX.Element {
     <main className={styles.page} id="main">
       {/* hero */}
       <section className={`container ${styles.hero}`}>
-        <span className="badge">Live on Clanker</span>
+        <span className="badge">Live on {TOKEN_LAUNCH.network}</span>
         <div className={styles.heroMark}>
           <OpenZapMark />
         </div>
@@ -83,8 +83,8 @@ export default function TokenPage(): React.JSX.Element {
           <span className="gradientText">{TOKEN.symbol}</span>
         </h1>
         <p className={styles.lead}>
-          The community token for OpenZaps — immutable policy capsules for agent-triggered DeFi. Now live through{" "}
-          <strong>Clanker</strong> on {TOKEN_LAUNCH.network}.
+          The community token for OpenZaps — immutable policy capsules for agent-triggered DeFi. Now live on{" "}
+          <strong>{TOKEN_LAUNCH.network}</strong> through Clanker.
         </p>
         <div className={styles.heroActions}>
           <BuyButton size="lg" />
@@ -157,8 +157,8 @@ export default function TokenPage(): React.JSX.Element {
             <span className="eyebrow">Verify before trading</span>
             <h2>One contract. One official market.</h2>
             <p>
-              Tickers and screenshots can be copied. The Clanker market and Robinhood Chain contract below are the
-              canonical references; live market data can change at any time.
+              Tickers and screenshots can be copied. The Clanker market and {TOKEN_LAUNCH.network} contract below are
+              the canonical references; live market data can change at any time.
             </p>
           </div>
           <div className={styles.verifyList}>

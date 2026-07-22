@@ -32,7 +32,7 @@ export default function LegalPage(): React.JSX.Element {
         </div>
         <aside className={styles.heroCard}>
           <span>Transaction posture</span>
-          <strong>No broadcast from preview UI</strong>
+          <strong>Wallet-confirmed broadcasts only</strong>
         </aside>
       </section>
 

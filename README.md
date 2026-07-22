@@ -14,7 +14,7 @@ OpenZaps are narrow, ERC-20-first policy capsules for pre-authorized DeFi workfl
 ## Product surfaces
 
 - `/` — production landing page for the OpenZaps thesis and launch status.
-- `/app` — policy console with templates, deterministic simulation, review diffs, local audit history, dry-run receipts, pause/resume, revoke, and JSON export.
+- `/app` — live Robinhood Chain console for wallet connection, chain switching, v4 quotes, deterministic zap creation, funding, EIP-712 execution, receipts, and owner recovery.
 - `/docs` — developer docs for policy schema, simulation API, SDK surface, and lifecycle.
 - `/security` — threat model, contract controls, audit status, and production-readiness gates.
 - `/pricing` — protocol fee and relayer fee model.
@@ -30,8 +30,9 @@ OpenZaps are narrow, ERC-20-first policy capsules for pre-authorized DeFi workfl
 ## Repository layout
 
 - [`src/app/`](src/app) — the Next.js app, public pages, policy console, and API routes.
-- [`src/lib/policy.ts`](src/lib/policy.ts) — shared policy template, hashing, diff, and simulation logic used by the UI and API.
-- [`contracts/`](contracts/README.md) — the v1 Solidity protocol (immutable intent lockers), with a Foundry unit + invariant suite. **Pre-audit** — see the security notice in the contracts README.
+- [`src/lib/robinhood.ts`](src/lib/robinhood.ts) — live Robinhood chain definition, protocol addresses, pool route, and production ABIs.
+- [`src/lib/policy.ts`](src/lib/policy.ts) — legacy/general policy template and deterministic simulation helpers used by the API.
+- [`contracts/`](contracts/README.md) — the live v1.1 Solidity protocol, bounded Robinhood v4 adapter, deployment/smoke scripts, and Foundry unit/fuzz/invariant/fork suite. **Pre-external-audit** — see its security notice.
 - [`docs/adr/`](docs/adr/README.md) — accepted Architecture Decision Records (authority model, deployment isolation, submission privacy, protective-vs-optimization scope).
 - [`docs/invariant-spec.md`](docs/invariant-spec.md) — the testable invariant catalog + production-readiness gate.
 - [`docs/research-report.md`](docs/research-report.md) — product/security research the design derives from.

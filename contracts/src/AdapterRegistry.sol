@@ -21,6 +21,7 @@ contract AdapterRegistry {
     error NotOwner();
     error NotPendingOwner();
     error ZeroAddress();
+    error NoCode(address target);
 
     modifier onlyOwner() {
         if (msg.sender != owner) revert NotOwner();
@@ -35,12 +36,14 @@ contract AdapterRegistry {
 
     function setAdapter(address adapter, bool allowed) external onlyOwner {
         if (adapter == address(0)) revert ZeroAddress();
+        if (allowed && adapter.code.length == 0) revert NoCode(adapter);
         isAllowed[adapter] = allowed;
         emit AdapterSet(adapter, allowed);
     }
 
-    /// @notice Begin a two-step ownership transfer. Pass address(0) to cancel a pending transfer.
+    /// @notice Begin a two-step ownership transfer to a nonzero owner.
     function transferOwnership(address newOwner) external onlyOwner {
+        if (newOwner == address(0)) revert ZeroAddress();
         pendingOwner = newOwner;
         emit OwnershipTransferStarted(owner, newOwner);
     }

@@ -18,8 +18,9 @@ export function SiteFooter(): React.JSX.Element {
             </div>
           </div>
           <p className={styles.note}>
-            Pre-audit reference implementation on {CHAIN.name}. Not financial advice; no live TVL,
-            yield, or returns are implied.
+            {TOKEN.symbol} lives on {TOKEN_LAUNCH.network}. OpenZaps reference protocol contracts are separately
+            deployed on {CHAIN.name} and remain pre-audit. Not financial advice; no live TVL, yield, or returns are
+            implied.
           </p>
         </div>
 

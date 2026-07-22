@@ -53,12 +53,12 @@ const flow = [
     label: "02 / Simulate",
     title: "Review checks before signing",
     body: "See slippage, spend ceilings, postconditions, submitter scope, human approval gates, and simulation diffs before any wallet prompt.",
-    grade: "No broadcast",
+    grade: "Wallet checkpoint",
   },
   {
     label: "03 / Operate",
     title: "Monitor, pause, revoke, and export",
-    body: "Each capsule carries audit history, dry-run receipts, local revoke controls, and JSON manifests for SDK or backend integration.",
+    body: "Each capsule exposes onchain receipts, consumed nonces, scoped balances, and an owner-only recovery path.",
     grade: "Audit trail",
   },
 ] as const;
@@ -226,8 +226,8 @@ revoke(ownerPath)         ready`}</pre>
           <span className="eyebrow">Reusable templates</span>
           <h2>Start narrow. Expand only after the controls hold.</h2>
           <p>
-            Templates turn successful workflows into reviewable policy manifests. Some are ready for preview, some
-            require governance review, and protective zaps stay deferred until external risk review clears.
+            The live route starts with one exact Robinhood pool and a fixed adapter. Broader templates remain gated
+            until their adapters and tokens receive the same review and fork coverage.
           </p>
         </header>
         <div className={styles.modelGrid}>
@@ -294,7 +294,7 @@ revoke(ownerPath)         ready`}</pre>
           <h2>
             Build the policy first. Let agents act second.
           </h2>
-          <p>Use the console to design, simulate, save, dry-run, and revoke bounded policy capsules.</p>
+          <p>Connect a wallet to quote, deploy, fund, sign, execute, verify, and recover a bounded zap.</p>
           <div className={styles.actions}>
             <Link href="/app" className="btn btnGhost btnLg">
               Open policy console
