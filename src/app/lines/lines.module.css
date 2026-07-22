@@ -1,0 +1,615 @@
+/* LINES — an alternative identity for OpenZaps.
+   One accent, no gradients, no cards. Hierarchy is carried by rules and space
+   instead of by boxes and glows, and the horizontal rule is the motif at every
+   scale: the page is ruled, the sections are ruled, and the logo itself is
+   nothing but ruling.
+
+   Scoped to .root so none of it leaks into the production theme in globals.css.
+   Keyframes are declared in this file because Turbopack scopes animation names
+   per CSS Module. */
+
+.root {
+  --lines-ink: #060807;
+  --lines-ink-2: #0a0d0b;
+  --lines-paper: #eef2ef;
+
+  /* 8.0:1 on ink. The labels this colours are 0.6–0.68rem, uppercase, and
+     tracked out to 0.26em — the hardest text on the page to read — so it is
+     held well above the 4.5:1 floor rather than at it. */
+  --lines-dim: #9aa79f;
+
+  /* Sodium, not mint. Near-black plus spring-green (#00FF88 and its
+     neighbours) is the single most over-used palette in this category right
+     now, and reads as generic on sight. Pushing the hue toward the yellow end
+     lands on high-voltage / hazard-tape / oscilloscope-phosphor instead: still
+     unmistakably electric, still green, but specific to a product about
+     bounded electrical authority. 16.3:1 on ink, and ink on it is the same,
+     so it works as both ink and ground. */
+  --lines-accent: #ccf83f;
+  --lines-accent-deep: #93c11a;
+  --lines-rule: rgb(238 242 239 / 13%);
+  --lines-rule-soft: rgb(238 242 239 / 6%);
+  --lines-gutter: clamp(1.25rem, 5vw, 5rem);
+
+  position: relative;
+  /* Forces a stacking context so the ruled texture below can sit at z-index -1
+     and stay trapped here — behind this element's own content, but still in
+     front of its background. Deliberately NOT `transform` or `filter`, which
+     would also make this element the containing block for `position: fixed`
+     and re-break the intro overlay in a subtler way. `isolation` does not. */
+  isolation: isolate;
+  min-height: 100dvh;
+  color: var(--lines-paper);
+  background: var(--lines-ink);
+  font-family: var(--font-inter), system-ui, sans-serif;
+}
+
+/* Ruled ground. Faint enough to register as texture rather than as content,
+   but it is the reason the page reads as drawn on lines.
+
+   At z-index -1 it paints after this element's background and before any of
+   its content, so nothing else needs raising above it. The previous version
+   left it at 0 and lifted every child with `.root > * { position: relative }`
+   — which collided with the intro overlay's own `position: fixed` at exactly
+   equal specificity (0-1-0) and, being later in the bundle, won. The overlay
+   silently became an in-flow block: no longer covering the page, no longer
+   pinned to the viewport. Painting order solves this without touching the
+   children at all. */
+.root::before {
+  position: absolute;
+  z-index: -1;
+  inset: 0;
+  pointer-events: none;
+  content: "";
+  background-image: repeating-linear-gradient(
+    to bottom,
+    var(--lines-rule-soft) 0 1px,
+    transparent 1px 9px
+  );
+  opacity: 0.5;
+  mask-image: linear-gradient(to bottom, #000 0%, transparent 42%);
+}
+
+.shell {
+  width: 100%;
+  max-width: 1320px;
+  padding-right: var(--lines-gutter);
+  padding-left: var(--lines-gutter);
+  margin-inline: auto;
+}
+
+/* --- shared type ---------------------------------------------------------- */
+
+.mono {
+  font-family: var(--font-jetbrains-mono), ui-monospace, monospace;
+  font-size: 0.68rem;
+  color: var(--lines-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.26em;
+}
+
+.h2 {
+  max-width: 22ch;
+  margin-top: 1.1rem;
+  font-size: clamp(2rem, 5vw, 3.4rem);
+  font-weight: 800;
+  line-height: 0.98;
+  letter-spacing: -0.045em;
+}
+
+/* --- preview ribbon ------------------------------------------------------- */
+
+.ribbon {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1rem;
+  align-items: center;
+  justify-content: center;
+  padding: 0.6rem var(--lines-gutter);
+  background: var(--lines-accent);
+}
+
+.ribbon,
+.ribbon a {
+  font-family: var(--font-jetbrains-mono), ui-monospace, monospace;
+  font-size: 0.64rem;
+  color: var(--lines-ink);
+  text-transform: uppercase;
+  letter-spacing: 0.22em;
+}
+
+.ribbon a {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+/* --- nav ------------------------------------------------------------------ */
+
+.nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem 2rem;
+  align-items: center;
+  justify-content: space-between;
+  padding-block: 1.4rem;
+  border-bottom: 1px solid var(--lines-rule);
+}
+
+.navLinks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1.6rem;
+}
+
+.navLinks a {
+  font-family: var(--font-jetbrains-mono), ui-monospace, monospace;
+  font-size: 0.68rem;
+  color: var(--lines-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.18em;
+  transition: color 160ms ease;
+}
+
+.navLinks a:hover,
+.navActive {
+  color: var(--lines-paper);
+}
+
+.navActive {
+  /* The current page is marked with a rule, not a pill or a fill — the same
+     device the whole identity is built from. */
+  border-bottom: 1px solid var(--lines-accent);
+}
+
+.brand {
+  font-size: 1.15rem;
+}
+
+.brandLink:focus-visible,
+.navLinks a:focus-visible,
+.footerLinks a:focus-visible,
+.ribbon a:focus-visible,
+.btn:focus-visible,
+.btnGhost:focus-visible {
+  outline: 2px solid var(--lines-accent);
+  outline-offset: 3px;
+}
+
+.footerLinks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1.4rem;
+}
+
+.footerLinks a {
+  font-family: var(--font-jetbrains-mono), ui-monospace, monospace;
+  font-size: 0.68rem;
+  color: var(--lines-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.18em;
+  transition: color 160ms ease;
+}
+
+.footerLinks a:hover {
+  color: var(--lines-accent);
+}
+
+/* --- buttons -------------------------------------------------------------- */
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin-top: 2.4rem;
+}
+
+.btn,
+.btnGhost {
+  display: inline-flex;
+  gap: 0.7rem;
+  align-items: center;
+  padding: 0.95rem 1.5rem;
+  font-family: var(--font-jetbrains-mono), ui-monospace, monospace;
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.2em;
+  border: 1px solid var(--lines-accent);
+  transition:
+    background 180ms ease,
+    color 180ms ease,
+    border-color 180ms ease;
+}
+
+.btn {
+  color: var(--lines-ink);
+  background: var(--lines-accent);
+}
+
+.btn:hover {
+  background: var(--lines-paper);
+  border-color: var(--lines-paper);
+}
+
+.btnGhost {
+  color: var(--lines-paper);
+  border-color: var(--lines-rule);
+}
+
+.btnGhost:hover {
+  color: var(--lines-accent);
+  border-color: var(--lines-accent);
+}
+
+/* --- hero ----------------------------------------------------------------- */
+
+.hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(0, 0.85fr);
+  gap: clamp(2rem, 6vw, 5rem);
+  align-items: center;
+  padding-block: clamp(3.5rem, 9vw, 7rem);
+}
+
+.display {
+  margin-top: 1.4rem;
+  font-size: clamp(2.6rem, 8.2vw, 6.2rem);
+  font-weight: 800;
+  line-height: 0.92;
+  letter-spacing: -0.05em;
+  text-wrap: balance;
+}
+
+.display span {
+  display: block;
+}
+
+.display span:last-child {
+  color: var(--lines-accent);
+}
+
+.lede {
+  max-width: 52ch;
+  margin-top: 1.8rem;
+  font-size: clamp(1rem, 1.6vw, 1.15rem);
+  line-height: 1.62;
+  color: #b9c4bd;
+}
+
+.heroBolt {
+  display: grid;
+  place-items: center;
+}
+
+.bolt {
+  width: auto;
+  height: clamp(15rem, 40vw, 30rem);
+  filter: drop-shadow(0 0 40px rgb(204 248 63 / 18%));
+}
+
+/* --- interior page hero --------------------------------------------------- */
+
+/* Deliberately quieter than the home hero: the display size there is a thesis
+   statement, and repeating it on every interior page would flatten the whole
+   site to one note. */
+.pageHero {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: clamp(2rem, 6vw, 4rem);
+  align-items: center;
+  padding-block: clamp(2.5rem, 6vw, 4.5rem);
+}
+
+.pageTitle {
+  max-width: 18ch;
+  margin-top: 1.2rem;
+  font-size: clamp(2.2rem, 6vw, 4.2rem);
+  font-weight: 800;
+  line-height: 0.94;
+  letter-spacing: -0.05em;
+  text-wrap: balance;
+}
+
+.pageBolt {
+  width: auto;
+  height: clamp(7rem, 16vw, 12rem);
+  opacity: 0.9;
+}
+
+/* --- ruled band ----------------------------------------------------------- */
+
+.band {
+  padding-block: clamp(3rem, 7vw, 5.5rem);
+  border-top: 1px solid var(--lines-rule);
+}
+
+.sectionHead {
+  margin-bottom: clamp(2rem, 4vw, 3.2rem);
+}
+
+/* --- stats ledger --------------------------------------------------------- */
+
+.stats {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  border-top: 1px solid var(--lines-rule);
+}
+
+.stat {
+  padding: clamp(1.4rem, 3vw, 2.2rem) 0 clamp(1.4rem, 3vw, 2.2rem) clamp(1rem, 2vw, 1.6rem);
+  border-left: 1px solid var(--lines-rule);
+}
+
+.stat:first-child {
+  padding-left: 0;
+  border-left: 0;
+}
+
+.statN {
+  font-family: var(--font-jetbrains-mono), ui-monospace, monospace;
+  font-size: clamp(2rem, 4.4vw, 3.2rem);
+  font-weight: 500;
+  line-height: 1;
+  color: var(--lines-accent);
+  letter-spacing: -0.03em;
+}
+
+.statLabel {
+  margin-top: 0.9rem;
+  font-size: 0.92rem;
+  font-weight: 600;
+}
+
+.statNote {
+  margin-top: 0.3rem;
+  font-size: 0.82rem;
+  color: var(--lines-dim);
+}
+
+/* --- steps ---------------------------------------------------------------- */
+
+.step {
+  display: grid;
+  grid-template-columns: 5rem minmax(0, 1fr) minmax(0, 1.25fr) auto;
+  gap: clamp(1rem, 3vw, 2.5rem);
+  align-items: baseline;
+  padding-block: 1.7rem;
+  border-top: 1px solid var(--lines-rule);
+  transition: border-color 200ms ease;
+}
+
+.step:last-child {
+  border-bottom: 1px solid var(--lines-rule);
+}
+
+.step:hover {
+  border-top-color: var(--lines-accent);
+}
+
+.stepN {
+  font-family: var(--font-jetbrains-mono), ui-monospace, monospace;
+  font-size: 0.9rem;
+  color: var(--lines-dim);
+  transition: color 200ms ease;
+}
+
+.step:hover .stepN {
+  color: var(--lines-accent);
+}
+
+.stepTitle {
+  font-size: clamp(1.15rem, 2.2vw, 1.55rem);
+  font-weight: 700;
+  letter-spacing: -0.03em;
+}
+
+.stepBody {
+  font-size: 0.95rem;
+  line-height: 1.6;
+  color: #a9b4ad;
+}
+
+.stepTag {
+  font-family: var(--font-jetbrains-mono), ui-monospace, monospace;
+  font-size: 0.62rem;
+  color: var(--lines-dim);
+  text-transform: uppercase;
+  white-space: nowrap;
+  letter-spacing: 0.2em;
+}
+
+/* --- bounds --------------------------------------------------------------- */
+
+.boundsGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(19rem, 1fr));
+  gap: 0;
+}
+
+.bound {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 1rem;
+  align-items: start;
+  padding: 1.35rem 1.5rem 1.35rem 0;
+  font-size: 0.98rem;
+  line-height: 1.5;
+  border-top: 1px solid var(--lines-rule);
+}
+
+/* The tick is drawn as two rules, because everything here is.
+
+   Two borders of an otherwise empty box, rotated 45°, so the short arm and the
+   long arm meet at a true corner. The earlier version stacked two background
+   gradients at the same anchor (`left 55%` for both), which simply painted one
+   line on top of a shorter one — a dash, not a check. */
+.tick {
+  box-sizing: border-box;
+  width: 0.5rem;
+  height: 0.85rem;
+  margin-top: 0.18rem;
+  border-right: 1px solid var(--lines-accent);
+  border-bottom: 1px solid var(--lines-accent);
+  transform: rotate(45deg);
+  transform-origin: center;
+}
+
+/* --- authority ------------------------------------------------------------ */
+
+.authority {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(17rem, 1fr));
+  border-top: 1px solid var(--lines-rule);
+}
+
+.auth {
+  padding: clamp(1.6rem, 3vw, 2.4rem) clamp(1.2rem, 2.5vw, 2rem) clamp(1.6rem, 3vw, 2.4rem) 0;
+  border-left: 1px solid var(--lines-rule);
+}
+
+.auth:first-child {
+  padding-left: 0;
+  border-left: 0;
+}
+
+.auth:not(:first-child) {
+  padding-left: clamp(1.2rem, 2.5vw, 2rem);
+}
+
+.authTitle {
+  margin-top: 0.8rem;
+  font-size: 1.2rem;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+}
+
+.authBody {
+  margin-top: 0.8rem;
+  font-size: 0.93rem;
+  line-height: 1.6;
+  color: #a9b4ad;
+}
+
+.authWho {
+  display: inline-block;
+  margin-top: 1.3rem;
+  font-family: var(--font-jetbrains-mono), ui-monospace, monospace;
+  font-size: 0.6rem;
+  color: var(--lines-accent);
+  text-transform: uppercase;
+  letter-spacing: 0.2em;
+}
+
+/* --- token strip ---------------------------------------------------------- */
+
+.token {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: clamp(2rem, 5vw, 4rem);
+  align-items: center;
+  padding-block: clamp(3rem, 7vw, 5rem);
+  border-top: 1px solid var(--lines-rule);
+}
+
+.facts {
+  display: grid;
+  gap: 0;
+}
+
+.fact {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1rem;
+  align-items: baseline;
+  justify-content: space-between;
+  padding-block: 0.85rem;
+  border-top: 1px solid var(--lines-rule);
+}
+
+.fact:last-child {
+  border-bottom: 1px solid var(--lines-rule);
+}
+
+.factV {
+  font-family: var(--font-jetbrains-mono), ui-monospace, monospace;
+  font-size: 0.82rem;
+  color: var(--lines-paper);
+  overflow-wrap: anywhere;
+}
+
+.factV a:hover {
+  color: var(--lines-accent);
+}
+
+/* --- footer --------------------------------------------------------------- */
+
+.footer {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem 2rem;
+  align-items: center;
+  justify-content: space-between;
+  padding-block: 2.2rem 3rem;
+  border-top: 1px solid var(--lines-rule);
+}
+
+.disclaimer {
+  max-width: 60ch;
+  padding-block: 1.6rem;
+  font-size: 0.78rem;
+  line-height: 1.6;
+  color: var(--lines-dim);
+  border-top: 1px solid var(--lines-rule);
+}
+
+/* --- narrow --------------------------------------------------------------- */
+
+@media (width <= 900px) {
+  .hero {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .heroBolt {
+    order: -1;
+    justify-items: start;
+  }
+
+  .stats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .stat:nth-child(3) {
+    padding-left: 0;
+    border-left: 0;
+  }
+
+  .pageHero {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .pageBolt {
+    display: none;
+  }
+
+  .step {
+    grid-template-columns: 3.5rem minmax(0, 1fr);
+  }
+
+  .stepBody,
+  .stepTag {
+    grid-column: 2;
+  }
+
+  .auth,
+  .auth:not(:first-child) {
+    padding-left: 0;
+    border-left: 0;
+  }
+
+  .auth:not(:first-child) {
+    border-top: 1px solid var(--lines-rule);
+  }
+
+  .token {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

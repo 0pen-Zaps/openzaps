@@ -1,0 +1,102 @@
+/* Keyframes live in this file on purpose.
+   Turbopack scopes `animation-name` per CSS Module, so a @keyframes declared in
+   globals.css is a different name than the one referenced here and the rule
+   silently does nothing — no error, no warning, just a mark that never moves.
+   Every animation the mark uses is therefore declared alongside its consumer. */
+
+.svg {
+  display: block;
+  overflow: visible;
+  color: var(--lines-accent, #ccf83f);
+}
+
+.bar {
+  fill: currentcolor;
+  /* Scale each bar about its own centre rather than the SVG origin, so the
+     stack blooms outwards from the bolt's spine instead of sliding in from the
+     left edge of the viewBox. */
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+/* --- draw: the bolt assembles itself, one line at a time, top to bottom ----- */
+
+@keyframes draw {
+  from {
+    opacity: 0;
+    transform: scaleX(0.06);
+  }
+
+  to {
+    opacity: 1;
+    transform: scaleX(1);
+  }
+}
+
+/* --- charge: a bright pulse runs down the stack, forever ------------------- */
+
+/* Rides `fill-opacity` while `draw` rides `opacity`. They are separate
+   properties that multiply, so the two animations can be listed together on one
+   element and compose instead of the later one clobbering the earlier. */
+@keyframes charge {
+  0%,
+  62%,
+  100% {
+    fill-opacity: 0.5;
+  }
+
+  16% {
+    fill-opacity: 1;
+  }
+}
+
+.svg[data-motion="draw"] .bar {
+  animation: draw 560ms cubic-bezier(0.22, 1, 0.36, 1) both calc(var(--i) * 26ms);
+}
+
+.svg[data-motion="charge"] .bar {
+  /* Negative, index-scaled delay starts each row further through the same loop,
+     which is what turns 26 independent pulses into one wave travelling down. */
+  animation: charge 2400ms linear infinite calc(var(--i) * -55ms);
+}
+
+.svg[data-motion="both"] .bar {
+  animation:
+    draw 560ms cubic-bezier(0.22, 1, 0.36, 1) both calc(var(--i) * 26ms),
+    charge 2400ms linear infinite calc(760ms - var(--i) * 55ms);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .svg .bar {
+    animation: none;
+    opacity: 1;
+    fill-opacity: 1;
+  }
+}
+
+/* --- lockup --------------------------------------------------------------- */
+
+.lockup {
+  display: inline-flex;
+  gap: 0.62em;
+  align-items: center;
+}
+
+.lockupMark {
+  width: auto;
+  height: 1.5em;
+}
+
+.word {
+  font-family: var(--font-inter), system-ui, sans-serif;
+  font-size: 1em;
+  font-weight: 800;
+  color: var(--lines-paper, #eef2ef);
+  letter-spacing: -0.03em;
+  white-space: nowrap;
+}
+
+.word b {
+  font-weight: 800;
+  color: var(--lines-accent, #ccf83f);
+}

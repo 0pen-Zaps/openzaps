@@ -1,9 +1,11 @@
 import type { Metadata, Viewport } from "next";
 import { Inter, JetBrains_Mono } from "next/font/google";
+import Script from "next/script";
 import { Analytics } from "@vercel/analytics/next";
 import "./globals.css";
 import { SiteNav } from "@/components/SiteNav";
 import { SiteFooter } from "@/components/SiteFooter";
+import { ChromeGate } from "@/components/ChromeGate";
 import { Spotlight } from "@/components/Spotlight";
 import { JsonLd } from "@/components/JsonLd";
 import { LINKS, TOKEN, TOKEN_LAUNCH, X_HANDLE } from "@/lib/config";
@@ -137,19 +139,58 @@ const siteGraph = {
   ],
 };
 
+/**
+ * Decides, before the LINES overlay is painted, whether its intro plays.
+ *
+ * This has to run ahead of first paint rather than from an effect. The overlay
+ * is an opaque full-viewport panel, so hiding it after the first paint would
+ * flash black on every repeat visit — a strobe worse than the intro it is
+ * suppressing. A `beforeInteractive` script is the only placement Next
+ * supports for that, and Next only honours it in the root layout, which is why
+ * a rule about one preview route lives here and gates itself on the pathname.
+ *
+ * `?intro` forces a replay: a once-per-session intro is otherwise nearly
+ * impossible to demo to anyone.
+ *
+ * Storage access throws outright in some embedded and hardened-privacy
+ * contexts. The right failure there is a replayed intro, not a page that dies
+ * before rendering, hence the blanket catch.
+ */
+const INTRO_GUARD = `(function(){try{
+if(location.pathname!=="/lines")return;
+var k="oz-lines-intro";
+if(new URLSearchParams(location.search).has("intro")){sessionStorage.setItem(k,"1");return}
+if(sessionStorage.getItem(k)){document.documentElement.dataset.linesIntro="seen";return}
+sessionStorage.setItem(k,"1")}catch(e){}})()`;
+
 export default function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>): React.JSX.Element {
   return (
-    <html lang="en" className={`${inter.variable} ${jetBrainsMono.variable}`}>
+    // The guard script above stamps `data-lines-intro` onto this element before
+    // React hydrates, so the live DOM legitimately carries an attribute the
+    // server never rendered. Without this, React reports that difference as a
+    // hydration mismatch on every repeat visit to the preview.
+    <html
+      lang="en"
+      className={`${inter.variable} ${jetBrainsMono.variable}`}
+      suppressHydrationWarning
+    >
       <body>
+        <Script id="lines-intro-guard" strategy="beforeInteractive">
+          {INTRO_GUARD}
+        </Script>
         <JsonLd data={siteGraph} />
         <a href="#main" className="skipLink">
           Skip to content
         </a>
-        <SiteNav />
+        <ChromeGate>
+          <SiteNav />
+        </ChromeGate>
         {children}
-        <SiteFooter />
+        <ChromeGate>
+          <SiteFooter />
+        </ChromeGate>
         <Spotlight />
         <Analytics />
       </body>

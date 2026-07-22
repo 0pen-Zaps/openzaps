@@ -1,0 +1,227 @@
+/* All @keyframes used here are declared here. Turbopack scopes animation names
+   per module, so one declared elsewhere resolves to nothing at all. */
+
+.overlay {
+  position: fixed;
+  z-index: 90;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  /* The whole dismissal is CSS, deliberately. If the script never runs — JS
+     off, a hydration error, a crawler — the overlay still finishes its run and
+     gets out of the way, because a full-viewport black panel that needs
+     JavaScript to leave is a blank site for anyone whose JavaScript failed.
+     The component only removes the finished node and handles skipping.
+
+     2960ms is not a round number by taste. The shutter's last band starts at
+     1780 + 13*34 = 2222ms and runs 700ms, so the exit is not finished until
+     2922ms. Retiring at 2600ms — as this did — hid the overlay 321ms early and
+     guillotined the tear-apart on every first visit. Any change to BANDS or to
+     the band timing has to move this with it. */
+  animation: retire 1ms linear forwards 2960ms;
+}
+
+@keyframes retire {
+  to {
+    visibility: hidden;
+    pointer-events: none;
+  }
+}
+
+/* --- the black field, cut into bands that leave sideways ------------------ */
+
+.shutter {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  inset: 0;
+}
+
+.band {
+  /* Positioned so the accent hairline below anchors to THIS band. Without it
+     the pseudo-element resolves its left/right against the shutter instead,
+     which happens to look right only because the bands are full-width — it
+     would break the moment they were not. */
+  position: relative;
+  flex: 1;
+  background: var(--lines-ink);
+  animation: bandOut 700ms cubic-bezier(0.76, 0, 0.24, 1) both calc(1780ms + var(--i) * 34ms);
+}
+
+.band:nth-child(odd) {
+  animation-name: bandOutLeft;
+}
+
+@keyframes bandOut {
+  to {
+    transform: translateX(104%);
+  }
+}
+
+@keyframes bandOutLeft {
+  to {
+    transform: translateX(-104%);
+  }
+}
+
+/* A hairline of accent riding the leading edge of each band, so the field
+   looks like it is being pulled apart along lines rather than just wiped. */
+.band::after {
+  position: absolute;
+  right: 0;
+  left: 0;
+  height: 1px;
+  content: "";
+  background: var(--lines-accent);
+  opacity: 0;
+  animation: edge 700ms linear both calc(1780ms + var(--i) * 34ms);
+}
+
+@keyframes edge {
+  20% {
+    opacity: 0.55;
+  }
+
+  to {
+    opacity: 0;
+  }
+}
+
+/* --- the bolt being traced ------------------------------------------------ */
+
+.stage {
+  position: relative;
+  display: grid;
+  gap: 1.6rem;
+  place-items: center;
+  animation: stageOut 420ms cubic-bezier(0.4, 0, 1, 1) both 1620ms;
+}
+
+@keyframes stageOut {
+  to {
+    opacity: 0;
+    transform: scale(1.06);
+  }
+}
+
+.bolt {
+  width: auto;
+  height: min(46vh, 20rem);
+  filter: drop-shadow(0 0 28px rgb(204 248 63 / 26%));
+}
+
+/* The rule the bolt is built out of, drawn first: one line across the screen
+   that the bolt then grows from. */
+.seed {
+  position: absolute;
+  top: 50%;
+  width: min(76vw, 34rem);
+  height: 1px;
+  background: var(--lines-accent);
+  animation: seed 1500ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes seed {
+  0% {
+    opacity: 0;
+    transform: scaleX(0);
+  }
+
+  18% {
+    opacity: 1;
+    transform: scaleX(1);
+  }
+
+  60%,
+  100% {
+    opacity: 0;
+    transform: scaleX(1);
+  }
+}
+
+.caption {
+  display: flex;
+  gap: 0.75rem;
+  align-items: baseline;
+  font-family: var(--font-jetbrains-mono), ui-monospace, monospace;
+  font-size: 0.7rem;
+  color: var(--lines-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.28em;
+  animation: fadeUp 520ms cubic-bezier(0.22, 1, 0.36, 1) both 900ms;
+}
+
+.caption b {
+  font-weight: 500;
+  color: var(--lines-accent);
+}
+
+@keyframes fadeUp {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* --- skip ----------------------------------------------------------------- */
+
+.skip {
+  position: absolute;
+  right: 1.5rem;
+  bottom: 1.5rem;
+  padding: 0.5rem 0.9rem;
+  font-family: var(--font-jetbrains-mono), ui-monospace, monospace;
+  font-size: 0.62rem;
+  color: var(--lines-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.24em;
+  cursor: pointer;
+  background: none;
+  border: 1px solid var(--lines-rule);
+  animation: fadeUp 400ms ease both 1200ms;
+}
+
+.skip:hover {
+  color: var(--lines-accent);
+  border-color: var(--lines-accent);
+}
+
+/* Skipping collapses the whole sequence to a single short fade rather than
+   fast-forwarding it, so an impatient click never leaves a half-parted shutter
+   frozen on screen. */
+.overlay[data-skip="true"],
+.overlay[data-skip="true"] * {
+  animation: none;
+}
+
+.overlay[data-skip="true"] {
+  animation: bail 240ms ease forwards;
+}
+
+@keyframes bail {
+  to {
+    opacity: 0;
+    visibility: hidden;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .overlay {
+    display: none;
+  }
+}
+
+/* Second visit in the same session: never paint the overlay at all.
+   The attribute is stamped by a blocking script in the page body that runs
+   before this element is parsed, so there is no frame in which a full-screen
+   black panel is visible. Doing this from an effect instead would hide it only
+   after the first paint, which on an opaque full-viewport overlay is a black
+   strobe on every visit — worse than simply replaying the intro. */
+:global(html[data-lines-intro="seen"]) .overlay {
+  display: none;
+}
