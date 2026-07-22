@@ -260,6 +260,7 @@ export function ZapBuilder(): React.JSX.Element {
   const [dropValid, setDropValid] = useState(false);
   const [runIndex, setRunIndex] = useState(-1);
   const [hint, setHint] = useState("");
+  const [narration, setNarration] = useState("");
   // Whole drafts, oldest first. Storing the design rather than a diff is what
   // keeps undo trivially correct: every entry is a state the canvas already
   // rendered once, so restoring one cannot produce a chain that never existed.
@@ -305,6 +306,21 @@ export function ZapBuilder(): React.JSX.Element {
     hintTimer.current = window.setTimeout(() => setHint(""), 2600);
   }, []);
 
+  /**
+   * Say what just happened to the chain, for anyone not watching it.
+   *
+   * Every structural edit — add, remove, move, duplicate, load, import, undo —
+   * is visible as a card appearing or sliding, and audible as nothing at all.
+   * The arrow buttons were the worst of it: pressing "Move Swap up" left a
+   * screen reader with no way to know whether it had moved, or how far it could
+   * still go. Each message carries the resulting count or position, which is
+   * also what keeps two consecutive edits from producing identical text that a
+   * live region would decline to read out twice.
+   */
+  const announce = useCallback((message: string): void => {
+    setNarration(message);
+  }, []);
+
   const stopRun = useCallback((): void => {
     window.clearInterval(runTimer.current);
     runTimer.current = undefined;
@@ -343,7 +359,8 @@ export function ZapBuilder(): React.JSX.Element {
     // Never merge an edit into a step that was just travelled through.
     coalesceRef.current = undefined;
     setEdited(past[past.length - 1]);
-  }, [draft, past, stopRun]);
+    announce(`Undone. ${past[past.length - 1].chain.length} blocks. ${past.length - 1} steps left to undo.`);
+  }, [announce, draft, past, stopRun]);
 
   const redo = useCallback((): void => {
     if (future.length === 0) return;
@@ -352,7 +369,8 @@ export function ZapBuilder(): React.JSX.Element {
     setPast((entries) => [...entries, draft].slice(-HISTORY_LIMIT));
     coalesceRef.current = undefined;
     setEdited(future[0]);
-  }, [draft, future, stopRun]);
+    announce(`Redone. ${future[0].chain.length} blocks. ${future.length - 1} steps left to redo.`);
+  }, [announce, draft, future, stopRun]);
 
   /**
    * ⌘Z / ⌘⇧Z, and their Windows spellings.
@@ -400,9 +418,10 @@ export function ZapBuilder(): React.JSX.Element {
       next.splice(index, 0, makeNode(blockId, uid));
       commit(next);
       setOpenUid(uid);
+      announce(`${getBlock(blockId)?.name ?? blockId} added at position ${index + 1} of ${next.length}.`);
       trackEvent("builder_block_added", { block: blockId });
     },
-    [chain, commit],
+    [announce, chain, commit],
   );
 
   const addBlock = useCallback(
@@ -423,10 +442,13 @@ export function ZapBuilder(): React.JSX.Element {
 
   const removeNode = useCallback(
     (uid: string): void => {
-      commit(chain.filter((node) => node.uid !== uid));
+      const next = chain.filter((node) => node.uid !== uid);
+      const name = getBlock(chain.find((node) => node.uid === uid)?.blockId ?? "")?.name ?? "Block";
+      commit(next);
       setOpenUid((current) => (current === uid ? null : current));
+      announce(next.length ? `${name} removed. ${next.length} blocks left.` : `${name} removed. The canvas is empty.`);
     },
-    [chain, commit],
+    [announce, chain, commit],
   );
 
   /**
@@ -460,8 +482,13 @@ export function ZapBuilder(): React.JSX.Element {
       const [node] = next.splice(from, 1);
       next.splice(from + delta, 0, node);
       commit(next);
+      announce(
+        `${getBlock(node.blockId)?.name ?? "Block"} moved ${delta < 0 ? "up" : "down"} to position ${
+          from + delta + 1
+        } of ${next.length}.`,
+      );
     },
-    [canMove, chain, commit],
+    [announce, canMove, chain, commit],
   );
 
   const setParam = useCallback(
@@ -498,9 +525,10 @@ export function ZapBuilder(): React.JSX.Element {
       next.splice(index + 1, 0, copy);
       commit(next);
       setOpenUid(copy.uid);
+      announce(`${block.name} duplicated at position ${index + 2} of ${next.length}.`);
       trackEvent("builder_block_duplicated", { block: block.id });
     },
-    [chain, commit, flash],
+    [announce, chain, commit, flash],
   );
 
   /** Scroll a block into view, open it, and flag it briefly. */
@@ -519,9 +547,10 @@ export function ZapBuilder(): React.JSX.Element {
     (recipe: ZapRecipe): void => {
       commit(nodesFromRecipe(recipe), recipe.id);
       setOpenUid(null);
+      announce(`Loaded the ${recipe.name} blueprint: ${recipe.blocks.length} blocks.`);
       trackEvent("builder_recipe_loaded", { recipe: recipe.id });
     },
-    [commit],
+    [announce, commit],
   );
 
   // ---- drag and drop -------------------------------------------------------
@@ -783,9 +812,11 @@ export function ZapBuilder(): React.JSX.Element {
     setOpenUid(null);
     setImportText("");
     setImporting(false);
-    flash(`Loaded ${nodes.length} block${nodes.length === 1 ? "" : "s"}. ⌘Z puts your previous chain back.`);
+    const loaded = `Loaded ${nodes.length} block${nodes.length === 1 ? "" : "s"}. ⌘Z puts your previous chain back.`;
+    flash(loaded);
+    announce(loaded);
     trackEvent("builder_design_imported", { blocks: nodes.length });
-  }, [commit, flash, importText]);
+  }, [announce, commit, flash, importText]);
 
   const saveDesign = useCallback((): void => {
     // The draft already persists on every edit; this is the explicit route for
@@ -952,6 +983,7 @@ export function ZapBuilder(): React.JSX.Element {
                 onClick={() => {
                   commit([]);
                   setOpenUid(null);
+                  announce("Canvas cleared. Undo puts it back.");
                 }}
                 disabled={!chain.length}
                 title="Clear the canvas — ⌘Z brings it back"
@@ -1182,6 +1214,13 @@ export function ZapBuilder(): React.JSX.Element {
               {hint}
             </p>
           ) : null}
+
+          {/* Structural edits are visible as a card moving and audible as
+              nothing. Polite, so it waits its turn rather than cutting across
+              whatever the reader is already saying. */}
+          <p className={styles.srStatus} role="status" aria-live="polite">
+            {narration}
+          </p>
         </section>
 
         {/* ---- readout ---- */}

@@ -797,6 +797,18 @@
   font-size: 0.82rem;
 }
 
+/* The chain's running commentary, for anyone who cannot see it rearrange.
+   Kept off-screen rather than shown: sighted users already watch the card move,
+   and a visible toast for every drag would be noise on top of the answer. */
+.srStatus {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
 .hint {
   padding: 0.55rem 0.8rem;
   border: 1px solid rgba(255, 194, 107, 0.34);
