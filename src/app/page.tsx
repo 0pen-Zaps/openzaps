@@ -127,12 +127,21 @@ export default function Home(): React.JSX.Element {
               <strong>policy.review()</strong>
               <span className={styles.live}>{contractsLive() ? "gated" : "preview"}</span>
             </div>
-            <pre>{`draft(template)           pass
-simulate(latestBlock)     pass
-diff(policyVersion)       pass
-bind(spend, recipient)    pass
-submit(privateChannel)    gated
-revoke(ownerPath)         ready`}</pre>
+            <pre>
+              {[
+                "draft(template)           pass",
+                "simulate(latestBlock)     pass",
+                "diff(policyVersion)       pass",
+                "bind(spend, recipient)    pass",
+                "submit(privateChannel)    gated",
+                "revoke(ownerPath)         ready",
+              ].map((line) => (
+                <span className={styles.execLine} key={line}>
+                  {line}
+                </span>
+              ))}
+              <span className={styles.caret} aria-hidden />
+            </pre>
             <div className={styles.route}>
               <span>You</span>
               <i />
@@ -143,6 +152,30 @@ revoke(ownerPath)         ready`}</pre>
           </div>
         </div>
       </section>
+
+      {/* ---------------- live fact ticker ---------------- */}
+      <div className={styles.ticker} aria-hidden="true">
+        <div className={styles.tickerTrack}>
+          {[0, 1].map((n) => (
+            <div className={styles.tickerGroup} key={n}>
+              <span>${TOKEN.symbol} live</span>
+              <i>⚡</i>
+              <span>
+                {TOKEN_LAUNCH.venue} {TOKEN_LAUNCH.version}
+              </span>
+              <i>⚡</i>
+              <span>{TOKEN_LAUNCH.network}</span>
+              <i>⚡</i>
+              <span className={styles.tickerCa}>CA {TOKEN_LAUNCH.contract}</span>
+              <i>⚡</i>
+              <span>Zero discretionary approvals</span>
+              <i>⚡</i>
+              <span>Simulate → submit → monitor → revoke</span>
+              <i>⚡</i>
+            </div>
+          ))}
+        </div>
+      </div>
 
       {/* ---------------- stat strip ---------------- */}
       <section className={`container ${styles.statStrip}`}>
