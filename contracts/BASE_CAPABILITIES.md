@@ -6,29 +6,56 @@ exists in `src/adapters/`, or a fork test in `test/`. Nothing here is aspiration
 
 ---
 
-## 0. Why Base, and only Base
+## 0. CORRECTION — Robinhood Chain is not empty
 
-These chains cannot run on Robinhood Chain. Not "not yet" — there is nothing there to call.
+**An earlier version of this document said Robinhood Chain had "no LP venue beyond one pool" and that
+multi-protocol zaps were "Base or nothing". That was wrong, and the error is worth naming so nobody
+repeats it.**
 
-Probed directly against `https://rpc.mainnet.chain.robinhood.com` (chain id **4663**), by asking the
-node for the runtime bytecode at each address:
+The mistake was the test, not the arithmetic: I probed chain 4663 for *Base's* contract addresses.
+Finding no code at Base's Aave Pool proves Base's Aave is not there. It proves nothing about whether
+the chain has a DeFi ecosystem of its own.
 
-| Contract (canonical address) | Robinhood Chain 4663 | Base 8453 |
+Measured directly from the Uniswap v4 PoolManager on Robinhood Chain
+(`0x8366a39CC670B4001A1121B8F6A443A643e40951`, resolved from the live quoter and the 0xZAPS hook):
+
+| | Robinhood Chain 4663 |
+| --- | --- |
+| v4 pools ever initialized | **23,064** |
+| Unique hooks in use | **532** |
+| Most recent pool | block 16,727,172 — actively used |
+
+Most-paired currencies:
+
+| Pools | Symbol | Address |
 | --- | --- | --- |
-| Aave v3 Pool `0xA238Dd80C259a72e81d7e4664a9801593F98d1c5` | **no code** | code (POOL_REVISION 11) |
-| Morpho Blue `0xBBBBBbbBBb9cC5e90e3b3Af64bdAF62C37EEFFCb` | **no code** | code (31 KB) |
-| Compound v3 USDC `0xb125E6687d4313864e53df431d5425969c15Eb2F` | **no code** | code (3.7 KB) |
-| Uniswap v3 Factory `0x33128a8fC17869897dcE68Ed026d694621f6FDfD` | **no code** | code |
-| Uniswap SwapRouter02 `0x2626664c2603336E57B271c5C0b26F421741e481` | **no code** | code |
-| Uniswap v4 PoolManager `0x498581fF718922c3f8e6A244956aF099B2652b2b` | not probed | code (48 KB) |
-| Aerodrome Router `0xcF77a3Ba9A5CA399B7c97c74d54e5b1Beb874E43` | **no code** | code (47 KB) |
-| Permit2 `0x000000000022D473030F116dDEE9F6B43aC78BA3` | code | code |
-| Multicall3 `0xcA11bde05977b3631167028862bE2a173976CA11` | code | code |
+| 13,122 | native ETH | `0x0000000000000000000000000000000000000000` |
+| 4,681 | **USDG** | `0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168` |
+| 3,894 | aeWETH | `0x0Bd7D308f8E1639FAb988df18A8011f41EAcAD73` |
+| 218 | **NVDA** | `0xd0601CE157Db5bdC3162BbaC2a2C8aF5320D9EEC` |
+| 150 | SPCX | `0x4a0E65A3EcceC6dBe60AE065F2e7bb85Fae35eEa` |
+| 134 | **TSLA** | `0x322F0929c4625eD5bAd873c95208D54E1c003b2d` |
+| 119 | flETH | `0x00000000043C1117DAFA3A3D0C7148Eb48B30130` |
+| 109 | **AAPL** | `0xaF3D76f1834A1d425780943C99Ea8A608f8a93f9` |
 
-Robinhood Chain has Permit2, Multicall3, CreateX and one Uniswap-v4 pool (aeWETH/0xZAPS, which
-`RobinhoodV4SwapAdapter` is welded to). It has **no lending market, no LP venue beyond that one pool,
-and no bridge**. A "supply", "borrow", "add liquidity" or "stake" block has no counterparty there at
-any price. Every multi-protocol chain in the builder is a Base chain or it is nothing.
+So the chain has a stablecoin with deep coverage and a tokenised-equity market. What it does **not**
+have is a lending market, a staking venue, or an ERC-20 LP token — none of Aave, Morpho, Compound or
+an Aerodrome-style AMM is deployed at any address we could find.
+
+Two consequences, and they point in opposite directions from the earlier conclusion:
+
+1. **`swap` is immediately viable on Robinhood Chain across thousands of pairs**, not just aeWETH/0xZAPS.
+   The existing adapter is welded to one pool by construction; the same contract parameterised by a
+   different `PoolKey` serves any of them. A bounded capsule that DCAs into tokenised NVDA or TSLA is
+   expressible today with an adapter deployment and nothing else.
+2. **The absent categories are open ground rather than a reason to leave.** `supply`/`stake` need a
+   venue that mints an ERC-20 receipt. Nothing on this chain provides one, which means the settlement
+   model's requirement could be met by a primitive deployed *here* — a minimal ERC-4626 vault mints an
+   ERC-20 share and settles cleanly. That is a first-mover position, and it is small enough to be
+   auditable, unlike wrapping someone else's lending market.
+
+Base remains the only chain with an existing lending market to adapt to. It is no longer the only
+chain where multi-step zaps can run.
 
 ---
 
