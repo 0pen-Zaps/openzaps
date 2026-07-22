@@ -49,6 +49,9 @@ export function SiteFooter(): React.JSX.Element {
             <a href={LINKS.buy} target="_blank" rel="noreferrer">
               Buy on Clanker
             </a>
+            <a href={LINKS.dexscreener} target="_blank" rel="noreferrer">
+              View on Dexscreener
+            </a>
             <a href={LINKS.tokenExplorer} target="_blank" rel="noreferrer">
               View token contract
             </a>

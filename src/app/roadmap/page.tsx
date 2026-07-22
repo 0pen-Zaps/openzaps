@@ -15,8 +15,8 @@ export const metadata = pageMetadata({
 const phases = [
   [
     "Now",
-    "Review console",
-    "Template builder, deterministic policy hashes, simulation checks, local audit log, dry-run receipts, and revoke controls.",
+    "Live Robinhood v1.1",
+    "Wallet connection, live v4 quotes, deterministic clones, EIP-712 execution, receipts, and owner recovery.",
   ],
   [
     "Next",

@@ -24,6 +24,7 @@ export const SEO_KEYWORDS = [
   `${TOKEN_LAUNCH.venue} ${TOKEN_LAUNCH.version}`,
   TOKEN_LAUNCH.network,
   TOKEN_LAUNCH.contract,
+  "Dexscreener Robinhood Chain",
   "DeFi automation",
   "onchain automation",
   "policy capsules",

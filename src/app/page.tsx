@@ -10,7 +10,7 @@ import styles from "./page.module.css";
 const stats = [
   { v: "0", k: "Broad wallet approvals" },
   { v: "4", k: "Policy templates" },
-  { v: "47 / 0", k: "Contract tests passing / failing" },
+  { v: "63 / 0", k: "Contract tests passing / failing" },
   { v: "9 / 9", k: "Internal findings fixed" },
 ] as const;
 
@@ -55,12 +55,12 @@ const flow = [
     label: "02 / Simulate",
     title: "Review checks before signing",
     body: "See slippage, spend ceilings, postconditions, submitter scope, human approval gates, and simulation diffs before any wallet prompt.",
-    grade: "No broadcast",
+    grade: "Wallet checkpoint",
   },
   {
     label: "03 / Operate",
     title: "Monitor, pause, revoke, and export",
-    body: "Each capsule carries audit history, dry-run receipts, local revoke controls, and JSON manifests for SDK or backend integration.",
+    body: "Each capsule exposes onchain receipts, consumed nonces, scoped balances, and an owner-only recovery path.",
     grade: "Audit trail",
   },
 ] as const;
@@ -80,11 +80,11 @@ const faqs = [
   },
   {
     q: `Do I need ${TOKEN.symbol} to use the protocol?`,
-    a: "No — nothing is token-gated. The token aligns the community and the operators around the execution layer. Separately, mainnet real-fund creation stays gated until the external audit process clears.",
+    a: "No — nothing is token-gated. The token aligns the community and operators around the execution layer. Robinhood mainnet actions remain wallet-confirmed and the v1.1 contracts are pre-external-audit.",
   },
   {
     q: "Are the contracts audited?",
-    a: "The v1 contracts are a complete, internally reviewed reference implementation — 47 passing tests, 9 internal findings fixed — but are pre-external-audit. Treat anything onchain accordingly.",
+    a: "The v1.1 contracts are a complete, internally reviewed reference implementation — 63 passing tests, 9 internal findings fixed — but are pre-external-audit. Treat anything onchain accordingly.",
   },
 ] as const;
 
@@ -239,6 +239,9 @@ export default function Home(): React.JSX.Element {
           </p>
           <div className={styles.tokenActions}>
             <BuyButton />
+            <a href={LINKS.dexscreener} className="btn btnGhost" target="_blank" rel="noreferrer">
+              Dexscreener ↗
+            </a>
             <a href={LINKS.tokenExplorer} className="btn btnGhost" target="_blank" rel="noreferrer">
               View contract ↗
             </a>
@@ -297,8 +300,8 @@ export default function Home(): React.JSX.Element {
           <span className="eyebrow">Reusable templates</span>
           <h2>Start narrow. Expand only after the controls hold.</h2>
           <p>
-            Templates turn successful workflows into reviewable policy manifests. Some are ready for preview, some
-            require governance review, and protective zaps stay deferred until external risk review clears.
+            The live route starts with one exact Robinhood pool and a fixed adapter. Broader templates remain gated
+            until their adapters and tokens receive the same review and fork coverage.
           </p>
         </header>
         <div className={styles.modelGrid}>
@@ -319,7 +322,7 @@ export default function Home(): React.JSX.Element {
           <span className="eyebrow">Security posture</span>
           <h2>Narrow policy beats universal routing.</h2>
           <p>
-            The v1 contracts are a complete, internally-reviewed reference implementation: 47 passing tests, an
+            The v1.1 contracts are a complete, internally-reviewed reference implementation: 63 passing tests, an
             adversarial multi-agent review, and 9 internal findings fixed — including a critical clone-hijack
             (all documented in the linked repo). Not externally audited; we say so plainly.
           </p>
@@ -340,7 +343,7 @@ export default function Home(): React.JSX.Element {
           </Link>
           {contractsLive() && (
             <p className={styles.deployed}>
-              <span className={styles.liveDot} aria-hidden /> v1 reference contracts deployed on {CHAIN.name} ·{" "}
+              <span className={styles.liveDot} aria-hidden /> v1.1 production contracts deployed on {CHAIN.name} ·{" "}
               <a href={explorer(CONTRACTS.factory)} target="_blank" rel="noreferrer">
                 factory {CONTRACTS.factory.slice(0, 6)}…{CONTRACTS.factory.slice(-4)} ↗
               </a>
@@ -382,7 +385,7 @@ export default function Home(): React.JSX.Element {
           <h2>
             Build the policy first. Let agents act second.
           </h2>
-          <p>Use the console to design, simulate, save, dry-run, and revoke bounded policy capsules.</p>
+          <p>Connect a wallet to quote, deploy, fund, sign, execute, verify, and recover a bounded zap.</p>
           <div className={styles.actions}>
             <Link href="/app" className="btn btnGhost btnLg">
               Open policy console

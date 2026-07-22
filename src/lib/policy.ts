@@ -176,7 +176,7 @@ export function buildPolicyDraft(input: Partial<PolicyDraft> = {}): PolicyDraft 
     templateId: template.id,
     templateName: template.name,
     authorityModel: input.authorityModel ?? template.recommendedModel,
-    chainId: input.chainId ?? 8453,
+    chainId: input.chainId ?? 4663,
     owner: input.owner ?? "0x0000000000000000000000000000000000000000",
     recipient: input.recipient ?? input.owner ?? "0x0000000000000000000000000000000000000000",
     tokenIn: input.tokenIn ?? template.defaults.tokenIn,

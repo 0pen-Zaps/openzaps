@@ -9,6 +9,7 @@ pragma solidity 0.8.34;
 library SafeApprove {
     error ApproveFailed();
     error TransferFailed();
+    error TransferFromFailed();
 
     function approveExact(address token, address spender, uint256 amount) internal {
         // approve(address,uint256)
@@ -20,5 +21,11 @@ library SafeApprove {
         // transfer(address,uint256)
         (bool ok, bytes memory ret) = token.call(abi.encodeWithSelector(0xa9059cbb, to, amount));
         if (!(ok && (ret.length == 0 || abi.decode(ret, (bool))))) revert TransferFailed();
+    }
+
+    function safeTransferFrom(address token, address from, address to, uint256 amount) internal {
+        // transferFrom(address,address,uint256)
+        (bool ok, bytes memory ret) = token.call(abi.encodeWithSelector(0x23b872dd, from, to, amount));
+        if (!(ok && (ret.length == 0 || abi.decode(ret, (bool))))) revert TransferFromFailed();
     }
 }

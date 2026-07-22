@@ -71,11 +71,11 @@ const faqs = [
   },
   {
     q: "Do I need the token to use OpenZaps?",
-    a: "No — nothing is token-gated. The token aligns the community and the execution layer around it. Separately, mainnet real-fund creation stays gated until the external audit process clears.",
+    a: "No — nothing is token-gated. The token aligns the community and execution layer around it. Robinhood mainnet actions remain wallet-confirmed and the v1.1 contracts are pre-external-audit.",
   },
   {
     q: "Are the contracts audited?",
-    a: "The OpenZap protocol contracts are a complete, internally reviewed reference implementation (47 passing tests, 9 findings fixed) but are pre-external-audit. Treat anything onchain accordingly.",
+    a: "The OpenZap protocol contracts are a complete, internally reviewed v1.1 reference implementation (63 passing tests, 9 findings fixed) but are pre-external-audit. Treat anything onchain accordingly.",
   },
 ] as const;
 
@@ -123,6 +123,9 @@ export default function TokenPage(): React.JSX.Element {
         </p>
         <div className={styles.heroActions}>
           <BuyButton size="lg" />
+          <a className="btn btnGhost btnLg" href={LINKS.dexscreener} target="_blank" rel="noreferrer">
+            Dexscreener ↗
+          </a>
           <a className="btn btnGhost btnLg" href={LINKS.tokenExplorer} target="_blank" rel="noreferrer">
             View contract ↗
           </a>
@@ -205,6 +208,11 @@ export default function TokenPage(): React.JSX.Element {
             <a className={styles.verifyRow} href={LINKS.clanker} target="_blank" rel="noreferrer">
               <span>Official market</span>
               <strong>{TOKEN_LAUNCH.venue} {TOKEN_LAUNCH.version}</strong>
+              <i aria-hidden>↗</i>
+            </a>
+            <a className={styles.verifyRow} href={LINKS.dexscreener} target="_blank" rel="noreferrer">
+              <span>Live chart</span>
+              <strong>Dexscreener</strong>
               <i aria-hidden>↗</i>
             </a>
             <a className={styles.verifyRow} href={TOKEN_LAUNCH.explorer} target="_blank" rel="noreferrer">

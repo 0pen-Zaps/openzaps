@@ -49,8 +49,7 @@ contract OpenZap {
     bytes32 private constant DOMAIN_TYPEHASH =
         keccak256("EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)");
     bytes4 private constant ERC1271_MAGIC = 0x1626ba7e;
-    uint256 private constant SECP256K1_HALF_N =
-        0x7FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF5D576E7357A4501DDFE92F46681B20A0;
+    uint256 private constant SECP256K1_HALF_N = 0x7FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF5D576E7357A4501DDFE92F46681B20A0;
     uint256 private constant MAX_STEPS = 16;
     uint256 private constant MAX_TRACKED = 16;
 
@@ -65,7 +64,13 @@ contract OpenZap {
     error NotOptimization();
     error ZeroRecipient();
     error ZeroOwner();
+    error ZeroAddress();
     error PolicyTooLarge();
+    error EmptyPolicy();
+    error InvalidStep(uint256 index);
+    error DuplicateTrackedAsset(address asset);
+    error NativeTokenUnsupported();
+    error InvalidAdapterResult(uint256 index, address tokenOut, uint256 amountOut);
     error GasLimitTooHigh();
     error AdapterNotAllowed(address adapter);
     error TokenNotAllowed(address token);
@@ -98,6 +103,9 @@ contract OpenZap {
     /// @dev Deployed once by the factory. Locks the implementation against initialization so the
     ///      shared logic contract can never own funds or a policy (invariant I-ISO-1).
     constructor(address factory_, AdapterRegistry adapters_, TokenAllowlist tokens_) {
+        if (factory_ == address(0) || address(adapters_) == address(0) || address(tokens_) == address(0)) {
+            revert ZeroAddress();
+        }
         FACTORY = factory_;
         ADAPTERS = adapters_;
         TOKENS = tokens_;
@@ -118,6 +126,7 @@ contract OpenZap {
         if (!p.optimization) revert NotOptimization(); // ADR-0004: v1 is optimization-only
         if (p.owner == address(0)) revert ZeroOwner(); // a zero owner would brick recovery (I-REC-1)
         if (p.recipient == address(0)) revert ZeroRecipient();
+        if (p.steps.length == 0) revert EmptyPolicy();
         if (p.steps.length > MAX_STEPS || p.trackedAssets.length > MAX_TRACKED) revert PolicyTooLarge();
 
         owner = p.owner;
@@ -128,12 +137,18 @@ contract OpenZap {
         for (uint256 i; i < p.trackedAssets.length; ++i) {
             address a = p.trackedAssets[i];
             if (!TOKENS.isAllowed(a)) revert TokenNotAllowed(a);
+            for (uint256 j; j < i; ++j) {
+                if (p.trackedAssets[j] == a) revert DuplicateTrackedAsset(a);
+            }
             _trackedAssets.push(a);
         }
         for (uint256 i; i < p.steps.length; ++i) {
             Step calldata s = p.steps[i];
+            if (s.tokenIn == address(0)) revert NativeTokenUnsupported();
+            if (s.amountIn == 0) revert InvalidStep(i);
             if (!ADAPTERS.isAllowed(s.adapter)) revert AdapterNotAllowed(s.adapter);
-            if (s.tokenIn != address(0) && !TOKENS.isAllowed(s.tokenIn)) revert TokenNotAllowed(s.tokenIn);
+            if (s.spender != s.adapter) revert InvalidStep(i);
+            if (!TOKENS.isAllowed(s.tokenIn)) revert TokenNotAllowed(s.tokenIn);
             _steps.push();
             Step storage d = _steps[i];
             d.adapter = s.adapter;
@@ -154,7 +169,7 @@ contract OpenZap {
     /// @notice Execute the frozen action graph under an owner-signed intent. Submitted by Hermes/a
     ///         relayer, which has zero discretion: every authority-bearing field is checked against
     ///         the frozen policy and the signature before any external call.
-    function execute(OpenZapIntent calldata intent, bytes calldata sig) external payable nonReentrant {
+    function execute(OpenZapIntent calldata intent, bytes calldata sig) external nonReentrant {
         // ---- verify & consume authorization BEFORE any external call (I-AUTH-1) ----
         if (intent.zap != address(this)) revert WrongZap();
         if (intent.chainId != block.chainid) revert WrongChain();
@@ -182,13 +197,16 @@ contract OpenZap {
             // zap, leaving only the unconditional emergencyExit — the governance kill-switch.
             if (!ADAPTERS.isAllowed(s.adapter)) revert AdapterNotAllowed(s.adapter);
             if (s.tokenIn != address(0)) s.tokenIn.approveExact(s.spender, s.amountIn);
-            IAdapter(s.adapter).execute(s.tokenIn, s.amountIn, s.data);
-            if (s.tokenIn != address(0)) s.tokenIn.approveExact(s.spender, 0);
+            (address adapterOut, uint256 adapterAmountOut) = IAdapter(s.adapter).execute(s.tokenIn, s.amountIn, s.data);
+            s.tokenIn.approveExact(s.spender, 0);
+            if (adapterOut == address(0) || adapterAmountOut == 0 || !TOKENS.isAllowed(adapterOut)) {
+                revert InvalidAdapterResult(i, adapterOut, adapterAmountOut);
+            }
         }
 
         // ---- postconditions & settlement: measured delta only, never the absolute balance (I-FLOW-1/2/4) ----
         uint256 out = IERC20(intent.outAsset).balanceOf(address(this)) - preOut; // underflow-reverts if no gain
-        uint256 fee;
+        uint256 fee = 0;
         if (intent.maxRelayerFee != 0 && intent.relayer != address(0)) {
             fee = intent.maxRelayerFee;
             if (fee > out) fee = out;
@@ -240,9 +258,8 @@ contract OpenZap {
     /// @dev Domain separator is recomputed from `block.chainid` every call — never cached — so a
     ///      post-fork chain cannot reuse a stale separator (invariant I-AUTH-5).
     function domainSeparator() public view returns (bytes32) {
-        return keccak256(
-            abi.encode(DOMAIN_TYPEHASH, keccak256("OpenZap"), keccak256("1"), block.chainid, address(this))
-        );
+        return
+            keccak256(abi.encode(DOMAIN_TYPEHASH, keccak256("OpenZap"), keccak256("1"), block.chainid, address(this)));
     }
 
     function hashIntent(OpenZapIntent calldata intent) public view returns (bytes32) {
@@ -272,8 +289,7 @@ contract OpenZap {
         address o = owner;
         if (o.code.length != 0) {
             // ERC-1271 contract wallet (e.g. Safe)
-            (bool ok, bytes memory ret) =
-                o.staticcall(abi.encodeWithSelector(ERC1271_MAGIC, digest, sig));
+            (bool ok, bytes memory ret) = o.staticcall(abi.encodeWithSelector(ERC1271_MAGIC, digest, sig));
             if (!(ok && ret.length >= 32 && abi.decode(ret, (bytes4)) == ERC1271_MAGIC)) revert BadSignature();
         } else {
             address rec = _recover(digest, sig);

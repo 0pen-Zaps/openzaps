@@ -122,7 +122,7 @@ const siteGraph = {
       category: "Cryptocurrency",
       sku: TOKEN_LAUNCH.contract,
       brand: { "@id": `${SITE_URL}/#organization` },
-      sameAs: [LINKS.clanker, LINKS.tokenExplorer],
+      sameAs: [LINKS.clanker, LINKS.dexscreener, LINKS.tokenExplorer],
       additionalProperty: [
         { "@type": "PropertyValue", name: "Contract address", value: TOKEN_LAUNCH.contract },
         { "@type": "PropertyValue", name: "Network", value: TOKEN_LAUNCH.network },
@@ -130,6 +130,7 @@ const siteGraph = {
         { "@type": "PropertyValue", name: "Launch venue", value: TOKEN_LAUNCH.venue },
         { "@type": "PropertyValue", name: "Decimals", value: TOKEN.decimals },
         { "@type": "PropertyValue", name: "Total supply", value: TOKEN.totalSupply },
+        { "@type": "PropertyValue", name: "Dexscreener market", value: LINKS.dexscreener },
       ],
     },
   ],

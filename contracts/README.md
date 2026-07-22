@@ -7,15 +7,13 @@ contract that holds the user's funds and a frozen action graph; a relayer (Herme
 This implementation encodes the four accepted ADRs in [`../docs/adr/`](../docs/adr/README.md) and is
 verified against the invariants in [`../docs/invariant-spec.md`](../docs/invariant-spec.md).
 
-> ## ⚠️ Security status: PRE-AUDIT — NOT production-ready for mainnet funds
+> ## ⚠️ Security status: LIVE, INTERNALLY TESTED, PRE-EXTERNAL-AUDIT
 >
-> This is a complete, compiling, internally-tested **reference implementation**. It passes a local
-> Foundry unit + invariant suite (47 tests, 0 failures) and an internal multi-agent adversarial audit
-> whose 9 confirmed findings — including a critical clone-hijack — have been fixed and regression-tested
-> ([`audit/internal-audit-2026-06-06.md`](audit/internal-audit-2026-06-06.md)). It has **NOT** had a
-> professional third-party audit, formal-verification runs against a prover, testnet soak, or economic
-> review. Per the production-readiness gate in `../docs/invariant-spec.md`, **do not deploy to mainnet
-> with real funds** until those external gates (ADR/checklist P2 items) are complete.
+> v1.1 is deployed on Robinhood Chain with 63 passing unit/fuzz/invariant tests, Slither review,
+> live-pool fork tests in both directions, a full Factory/clone/EIP-712 fork test, exact Sourcify
+> matches, and a successful bounded mainnet smoke zap. It has **not** had a professional third-party
+> audit or formal prover run. Keep deposits scoped, use narrow allowlisted adapters, and preserve the
+> owner-only `emergencyExit` path until those external gates are complete.
 
 ## Architecture
 
@@ -34,8 +32,9 @@ Hermes / relayer ──simulate / private submit / monitor───────�
 |---|---|
 | [`OpenZap.sol`](src/OpenZap.sol) | The immutable per-zap instance (clone target). `initialize`, `execute(intent,sig)`, `emergencyExit`, `invalidateNonce`; EIP-712 + ERC-1271 verification. |
 | [`OpenZapFactory.sol`](src/OpenZapFactory.sol) | Versioned factory; deploys the hardened implementation in its constructor, then atomically deploys + initializes EIP-1167 clones; publishes `implCodeHash` for Hermes manifest checks. |
-| [`AdapterRegistry.sol`](src/AdapterRegistry.sol) | Global allowlist of adapter contracts (the `(adapter, selector)` surface). Governed by a Safe + timelock. |
+| [`AdapterRegistry.sol`](src/AdapterRegistry.sol) | Two-step-owned allowlist of adapter contracts; production is narrowed to the pinned Robinhood adapter. |
 | [`TokenAllowlist.sol`](src/TokenAllowlist.sol) | Curated ERC-20 allowlist (excludes fee-on-transfer / rebasing). |
+| [`RobinhoodV4SwapAdapter.sol`](src/adapters/RobinhoodV4SwapAdapter.sol) | Chain-4663-only, one-pool adapter for pool WETH ↔ 0xZAPS through the pinned Bags Universal Router and Permit2 path. |
 | [`libraries/SafeApprove.sol`](src/libraries/SafeApprove.sol) | Exact-approval + transfer helpers tolerant of non-standard ERC-20s. |
 | [`interfaces/IAdapter.sol`](src/interfaces/IAdapter.sol) | The single fixed interface every step routes through — **no arbitrary `target`/`calldata`**. |
 
@@ -66,14 +65,33 @@ forge test -vvv
 Foundry config pins `solc 0.8.34`, `via_ir = true`, EVM `cancun`. The suite covers AUTH, APPR/FLOW,
 SURF, REC, ISO/TOK dimensions plus stateful invariants (`test/OpenZap.invariants.t.sol`).
 
+Opt-in live Robinhood fork gates:
+
+```bash
+RUN_ROBINHOOD_FORK=true ROBINHOOD_RPC_URL=https://rpc.mainnet.chain.robinhood.com \
+  forge test --match-contract RobinhoodV4ForkTest -vv
+RUN_ROBINHOOD_FORK=true ROBINHOOD_RPC_URL=https://rpc.mainnet.chain.robinhood.com \
+  forge test --match-contract RobinhoodOpenZapForkTest -vv
+```
+
 Formal-verification rule sketches (Certora) live in [`certora/`](certora/README.md) — these require a
 Certora license/CI to run and are the next hardening step, not part of `forge test`.
 
 ## Deploy
 
+Robinhood deployment and bounded smoke scripts:
+
 ```bash
-GOVERNANCE=<safe-address> forge script script/Deploy.s.sol --rpc-url <url> --broadcast
+DEPLOYER_PRIVATE_KEY=<key> GOVERNANCE=<owner> forge script \
+  script/DeployRobinhood.s.sol:DeployRobinhood \
+  --rpc-url https://rpc.mainnet.chain.robinhood.com --broadcast --slow
+
+DEPLOYER_PRIVATE_KEY=<key> forge script script/SmokeRobinhood.s.sol:SmokeRobinhood \
+  --rpc-url https://rpc.mainnet.chain.robinhood.com --broadcast --slow
 ```
 
-After deploy: transfer registry + allowlist ownership to a Safe behind a `TimelockController`, then
-allowlist the vetted adapters and tokens before creating any zaps.
+Addresses, transaction hashes, ownership state, verification, and smoke evidence are recorded in
+[`../docs/deployments.md`](../docs/deployments.md).
+
+Production ownership and pending-owner state are recorded in `../docs/deployments.md`. A Safe behind a
+timelock remains the recommended destination before adding any new adapter or token.

@@ -14,7 +14,7 @@ import {Policy} from "./libraries/OpenZapTypes.sol";
 /// @dev `implCodeHash` is published so Hermes can verify a discovered zap's implementation against
 ///      the approved release manifest before ever submitting to it.
 contract OpenZapFactory {
-    string public constant VERSION = "1.0.0";
+    string public constant VERSION = "1.1.0";
 
     address public immutable implementation;
     AdapterRegistry public immutable adapters;

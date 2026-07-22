@@ -20,6 +20,7 @@ contract TokenAllowlist {
     error NotOwner();
     error NotPendingOwner();
     error ZeroAddress();
+    error NoCode(address target);
 
     modifier onlyOwner() {
         if (msg.sender != owner) revert NotOwner();
@@ -34,12 +35,14 @@ contract TokenAllowlist {
 
     function setToken(address token, bool allowed) external onlyOwner {
         if (token == address(0)) revert ZeroAddress();
+        if (allowed && token.code.length == 0) revert NoCode(token);
         isAllowed[token] = allowed;
         emit TokenSet(token, allowed);
     }
 
-    /// @notice Begin a two-step ownership transfer. Pass address(0) to cancel a pending transfer.
+    /// @notice Begin a two-step ownership transfer to a nonzero owner.
     function transferOwnership(address newOwner) external onlyOwner {
+        if (newOwner == address(0)) revert ZeroAddress();
         pendingOwner = newOwner;
         emit OwnershipTransferStarted(owner, newOwner);
     }
