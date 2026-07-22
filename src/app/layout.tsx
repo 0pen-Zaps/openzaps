@@ -100,7 +100,7 @@ const siteGraph = {
         "@type": "ImageObject",
         url: absoluteUrl("/openzap-mark.svg"),
       },
-      sameAs: [LINKS.github, LINKS.x, LINKS.farcaster],
+      sameAs: [LINKS.x, LINKS.farcaster],
     },
     {
       "@type": "WebSite",

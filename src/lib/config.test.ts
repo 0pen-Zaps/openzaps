@@ -48,6 +48,27 @@ describe("site config stays consistent with onchain constants", () => {
     expect(zaps?.decimals).toBe(TOKEN.decimals);
   });
 
+  it("public tokenlist.json satisfies the Uniswap token-list schema constraints", () => {
+    const list = readPublicJson("tokenlist.json") as {
+      keywords?: string[];
+      tokens: Array<{ extensions?: Record<string, unknown> }>;
+    };
+
+    // The schema caps extension string values at 42 chars, so long URLs belong
+    // in token-metadata.json rather than here.
+    for (const token of list.tokens) {
+      for (const [key, value] of Object.entries(token.extensions ?? {})) {
+        if (typeof value === "string") {
+          expect(`${key}=${value.length}`).toBe(`${key}=${Math.min(value.length, 42)}`);
+        }
+      }
+    }
+
+    for (const keyword of list.keywords ?? []) {
+      expect(keyword).toMatch(/^[\w ]+$/);
+    }
+  });
+
   it("pool id is pinned to the documented Robinhood v4 pool", () => {
     expect(ROBINHOOD_LIQUIDITY.poolId).toBe("0xb040f18affd851c6ea02b896b2f846cb77edbb33cc5361f7f8c6d14b87c01573");
   });

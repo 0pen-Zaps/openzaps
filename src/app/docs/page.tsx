@@ -39,8 +39,8 @@ export default function DocsPage(): React.JSX.Element {
             <Link className="btn btnPrimary btnLg" href="/app">
               Open policy console
             </Link>
-            <a className="btn btnGhost btnLg" href={LINKS.github} target="_blank" rel="noreferrer">
-              GitHub
+            <a className="btn btnGhost btnLg" href={LINKS.contractSource} target="_blank" rel="noreferrer">
+              Contract source
             </a>
           </div>
         </div>
@@ -196,8 +196,8 @@ const review = simulatePolicy(policy)
 if (review.status === "block") throw new Error("policy blocked")`}</pre>
             </div>
             <p>
-              Until the package is published, see <a href={LINKS.github}>the source repo</a> and the live console for the
-              reference behavior. {TOKEN.symbol} is not required to simulate or inspect policies.
+              Until the package is published, see <a href={LINKS.contractSource}>the verified contract source</a> and the
+              live console for the reference behavior. {TOKEN.symbol} is not required to simulate or inspect policies.
             </p>
           </section>
         </div>

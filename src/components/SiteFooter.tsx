@@ -35,8 +35,8 @@ export function SiteFooter(): React.JSX.Element {
           </div>
           <div className={styles.col}>
             <h3>Build</h3>
-            <a href={LINKS.github} target="_blank" rel="noreferrer">
-              GitHub
+            <a href={LINKS.contractSource} target="_blank" rel="noreferrer">
+              Contract source
             </a>
             <a href={LINKS.x} target="_blank" rel="noreferrer">
               X @0xzaps

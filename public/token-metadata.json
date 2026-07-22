@@ -6,7 +6,6 @@
     "website": "https://www.0xzaps.com",
     "tokenPage": "https://www.0xzaps.com/token",
     "description": "OpenZaps turn approved DeFi workflows into sealed policy capsules. Hermes can simulate, submit, monitor, alert, and revoke, but it cannot choose arbitrary targets, recipients, assets, or calldata.",
-    "github": "https://github.com/nodar/openzaps",
     "x": "https://x.com/0xzaps",
     "farcaster": "https://farcaster.xyz/nodes"
   },

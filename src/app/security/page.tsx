@@ -54,7 +54,7 @@ export default function SecurityPage(): React.JSX.Element {
             <Link className="btn btnPrimary btnLg" href="/app">
               Test policy flow
             </Link>
-            <a className="btn btnGhost btnLg" href={LINKS.github} target="_blank" rel="noreferrer">
+            <a className="btn btnGhost btnLg" href={LINKS.contractSource} target="_blank" rel="noreferrer">
               Read contracts
             </a>
           </div>
@@ -168,11 +168,8 @@ Hermes:
               <a className="btn btnGhost" href={explorer(CONTRACTS.factory)} target="_blank" rel="noreferrer">
                 View factory
               </a>
-              <a className="btn btnGhost" href={`${LINKS.github}/tree/main/contracts`} target="_blank" rel="noreferrer">
+              <a className="btn btnGhost" href={LINKS.contractSource} target="_blank" rel="noreferrer">
                 Contract source
-              </a>
-              <a className="btn btnGhost" href={`${LINKS.github}/blob/main/docs/invariant-spec.md`} target="_blank" rel="noreferrer">
-                Invariant spec
               </a>
             </div>
           </section>
