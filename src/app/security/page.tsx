@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { CHAIN, CONTRACTS, LINKS, STATUS, explorer } from "@/lib/config";
-import { pageMetadata } from "@/lib/seo";
+import { JsonLd } from "@/components/JsonLd";
+import { pageMetadata, breadcrumbJsonLd } from "@/lib/seo";
 import styles from "../docs/docs.module.css";
 
 export const metadata = pageMetadata({
@@ -8,6 +9,7 @@ export const metadata = pageMetadata({
   description:
     "OpenZaps security architecture, threat model, production-readiness gates, revocation controls, adapter governance, and audit status.",
   path: "/security",
+  ogImage: "/og/security.png",
   keywords: ["OpenZaps security", "DeFi threat model", "smart contract security architecture"],
 });
 
@@ -39,6 +41,7 @@ const threats = [
 export default function SecurityPage(): React.JSX.Element {
   return (
     <main className={styles.page} id="main">
+      <JsonLd data={{ "@context": "https://schema.org", ...breadcrumbJsonLd("/security", "Security architecture") }} />
       <section className={`container ${styles.hero}`}>
         <div>
           <span className="eyebrow">Security architecture</span>

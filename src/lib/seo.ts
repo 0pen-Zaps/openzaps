@@ -51,11 +51,14 @@ export function pageMetadata({
   description,
   path,
   keywords = [],
+  ogImage = OG_IMAGE,
 }: {
   title: string;
   description: string;
   path: string;
   keywords?: string[];
+  /** Route-specific 1200x630 poster under public/; defaults to the site-wide og.png. */
+  ogImage?: string;
 }): Metadata {
   const url = absoluteUrl(path);
   const socialTitle = `${title} | ${SITE_NAME}`;
@@ -71,14 +74,26 @@ export function pageMetadata({
       siteName: SITE_NAME,
       type: "website",
       locale: "en_US",
-      images: [{ url: absoluteUrl(OG_IMAGE), width: 1200, height: 630, alt: socialTitle }],
+      images: [{ url: absoluteUrl(ogImage), width: 1200, height: 630, alt: socialTitle }],
     },
     twitter: {
       card: "summary_large_image",
       title: socialTitle,
       description,
-      images: [absoluteUrl(OG_IMAGE)],
+      images: [absoluteUrl(ogImage)],
     },
+  };
+}
+
+/** BreadcrumbList JSON-LD for a subpage; pair with a JsonLd component in the route. */
+export function breadcrumbJsonLd(path: string, name: string): object {
+  return {
+    "@type": "BreadcrumbList",
+    "@id": absoluteUrl(`${path}#breadcrumbs`),
+    itemListElement: [
+      { "@type": "ListItem", position: 1, name: SITE_NAME, item: SITE_URL },
+      { "@type": "ListItem", position: 2, name, item: absoluteUrl(path) },
+    ],
   };
 }
 

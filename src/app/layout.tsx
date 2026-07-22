@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { Inter, JetBrains_Mono } from "next/font/google";
+import { Analytics } from "@vercel/analytics/next";
 import "./globals.css";
 import { SiteNav } from "@/components/SiteNav";
 import { SiteFooter } from "@/components/SiteFooter";
@@ -65,6 +66,7 @@ export const metadata: Metadata = {
   icons: {
     icon: [{ url: "/openzap-mark.svg", type: "image/svg+xml" }],
     shortcut: ["/openzap-mark.svg"],
+    apple: [{ url: "/apple-icon.png", sizes: "180x180", type: "image/png" }],
   },
   manifest: "/manifest.webmanifest",
   robots: {
@@ -137,6 +139,7 @@ export default function RootLayout({
         <SiteNav />
         {children}
         <SiteFooter />
+        <Analytics />
       </body>
     </html>
   );

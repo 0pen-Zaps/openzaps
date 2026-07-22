@@ -1,0 +1,5 @@
+Contact: https://github.com/nodar/openzaps/security/advisories/new
+Expires: 2027-05-01T00:00:00.000Z
+Preferred-Languages: en
+Canonical: https://www.0xzaps.com/.well-known/security.txt
+Policy: https://www.0xzaps.com/security

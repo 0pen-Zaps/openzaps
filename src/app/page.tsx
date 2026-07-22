@@ -1,8 +1,10 @@
 import Link from "next/link";
 import { OpenZapMark } from "@/components/OpenZapMark";
 import { BuyButton } from "@/components/BuyButton";
+import { JsonLd } from "@/components/JsonLd";
 import { TOKEN, TOKEN_LAUNCH, LINKS, CHAIN, CONTRACTS, contractsLive, explorer } from "@/lib/config";
 import { POLICY_TEMPLATES } from "@/lib/policy";
+import { absoluteUrl } from "@/lib/seo";
 import styles from "./page.module.css";
 
 const stats = [
@@ -62,6 +64,42 @@ const flow = [
     grade: "Audit trail",
   },
 ] as const;
+
+const faqs = [
+  {
+    q: "What is OpenZaps?",
+    a: "OpenZaps turn approved DeFi workflows into sealed policy capsules. A Hermes agent can simulate, submit, monitor, and revoke them, but it cannot choose arbitrary targets, recipients, assets, or calldata.",
+  },
+  {
+    q: "How is this different from giving an agent my wallet?",
+    a: "The agent never holds broad approvals or custody. Authority is bound inside an EIP-712-signed policy — chain, spend ceiling, recipient, deadline, and postconditions — and the owner always keeps an unconditional revoke and exit path.",
+  },
+  {
+    q: `Is the ${TOKEN.symbol} token live?`,
+    a: `Yes. ${TOKEN.symbol} is live on ${TOKEN_LAUNCH.network} through a creator-verified ${TOKEN_LAUNCH.venue} ${TOKEN_LAUNCH.version} market. Verify the contract address published on this site before trading.`,
+  },
+  {
+    q: `Do I need ${TOKEN.symbol} to use the protocol?`,
+    a: "No — nothing is token-gated. The token aligns the community and the operators around the execution layer. Separately, mainnet real-fund creation stays gated until the external audit process clears.",
+  },
+  {
+    q: "Are the contracts audited?",
+    a: "The v1 contracts are a complete, internally reviewed reference implementation — 47 passing tests, 9 internal findings fixed — but are pre-external-audit. Treat anything onchain accordingly.",
+  },
+] as const;
+
+// Derived from the same `faqs` array that renders the visible FAQ, so the structured data
+// can never drift from on-page copy (a Google FAQPage requirement).
+const homeFaqJsonLd = {
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  "@id": absoluteUrl("/#faq"),
+  mainEntity: faqs.map((f) => ({
+    "@type": "Question",
+    name: f.q,
+    acceptedAnswer: { "@type": "Answer", text: f.a },
+  })),
+};
 
 const agentLoop = [
   "Discover registry events",
@@ -318,6 +356,23 @@ export default function Home(): React.JSX.Element {
             </div>
           ))}
         </aside>
+      </section>
+
+      {/* ---------------- faq ---------------- */}
+      <section className={`container ${styles.section}`} id="faq">
+        <JsonLd data={homeFaqJsonLd} />
+        <header className={styles.head}>
+          <span className="eyebrow">FAQ</span>
+          <h2>Straight answers.</h2>
+        </header>
+        <div className={styles.faqs}>
+          {faqs.map((f) => (
+            <details className={styles.faq} key={f.q}>
+              <summary>{f.q}</summary>
+              <p>{f.a}</p>
+            </details>
+          ))}
+        </div>
       </section>
 
       {/* ---------------- final CTA ---------------- */}
