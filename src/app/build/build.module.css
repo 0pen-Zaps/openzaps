@@ -1,0 +1,1229 @@
+/* Visual zap builder.
+   Layout is three columns on a desktop and one column on a phone, with the
+   palette turning from a vertical rail into a horizontal tray so a thumb can
+   reach every block. Keyframes are declared locally: CSS Modules scope
+   animation-name, so a copy in globals.css would silently never apply. */
+
+.page {
+  position: relative;
+  z-index: 1;
+  padding: clamp(1.25rem, 3vw, 2.25rem) 0 5rem;
+}
+
+.hero {
+  padding: clamp(1.8rem, 4vw, 3.4rem) 0 1.6rem;
+}
+
+.hero h1 {
+  max-width: 20ch;
+  font-size: clamp(2.1rem, 5vw, 4rem);
+  font-weight: 560;
+  line-height: 1.02;
+  text-wrap: balance;
+}
+
+.hero p {
+  max-width: 46rem;
+  margin-top: 0.85rem;
+  color: var(--text);
+  font-size: clamp(0.98rem, 1.4vw, 1.1rem);
+  line-height: 1.6;
+}
+
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 1.4rem;
+}
+
+.legendItem {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.3rem 0.65rem;
+  border: 1px solid var(--line);
+  border-radius: var(--pill);
+  color: var(--muted-2);
+  font-size: 0.76rem;
+}
+
+.legendItem i {
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 2px;
+}
+
+/* ---------------------------------------------------------------- builder */
+
+.builder {
+  display: grid;
+  gap: clamp(1.1rem, 2.4vw, 1.75rem);
+}
+
+/* While a block is in flight nothing else should react to the pointer. */
+.builder[data-dragging="true"] {
+  cursor: grabbing;
+  user-select: none;
+}
+
+/* ---- blueprints ---- */
+
+.recipes {
+  display: grid;
+  gap: 0.9rem;
+}
+
+.recipeHead h2 {
+  font-size: 1.15rem;
+  font-weight: 560;
+}
+
+.recipeHead p {
+  margin-top: 0.25rem;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.recipeRow {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(15rem, 1fr);
+  gap: 0.7rem;
+  padding-bottom: 0.4rem;
+  overflow-x: auto;
+  scroll-snap-type: x proximity;
+  scrollbar-width: thin;
+}
+
+.recipe {
+  display: grid;
+  gap: 0.3rem;
+  padding: 0.9rem 1rem;
+  border: 1px solid var(--line);
+  border-radius: 0.7rem;
+  background: var(--card);
+  color: inherit;
+  text-align: left;
+  scroll-snap-align: start;
+  cursor: pointer;
+  transition:
+    border-color var(--dur-2) var(--ease-standard),
+    transform var(--dur-2) var(--ease-emphasis),
+    background var(--dur-2) var(--ease-standard);
+}
+
+.recipe::before {
+  width: 1.8rem;
+  height: 0.22rem;
+  content: "";
+  border-radius: var(--pill);
+  background: var(--accent);
+}
+
+.recipe strong {
+  font-size: 0.98rem;
+  font-weight: 560;
+}
+
+.recipe span {
+  color: var(--muted);
+  font-size: 0.83rem;
+  line-height: 1.45;
+}
+
+.recipe em {
+  color: var(--muted-2);
+  font-family: var(--font-jetbrains-mono), ui-monospace, monospace;
+  font-size: 0.7rem;
+  font-style: normal;
+}
+
+.recipe:hover {
+  transform: translateY(-2px);
+  border-color: color-mix(in oklab, var(--accent) 45%, transparent);
+}
+
+.recipe[data-active="true"] {
+  border-color: color-mix(in oklab, var(--accent) 60%, transparent);
+  background: linear-gradient(180deg, color-mix(in oklab, var(--accent) 12%, transparent), rgba(255, 255, 255, 0.02));
+}
+
+/* ---- workspace grid ---- */
+
+.workspace {
+  display: grid;
+  grid-template-columns: minmax(15rem, 17rem) minmax(0, 1fr) minmax(17rem, 20rem);
+  gap: clamp(0.8rem, 1.6vw, 1.25rem);
+  align-items: start;
+}
+
+/* ---- palette ---- */
+
+.palette {
+  display: grid;
+  gap: 0.7rem;
+  padding: 0.95rem;
+  border: 1px solid var(--line);
+  border-radius: 0.85rem;
+  background: var(--card);
+  box-shadow: var(--card-shadow);
+}
+
+.paletteHead h2 {
+  font-size: 1rem;
+  font-weight: 560;
+}
+
+.paletteHint {
+  margin-top: 0.2rem;
+  color: var(--muted);
+  font-size: 0.79rem;
+  line-height: 1.45;
+}
+
+.tabs {
+  display: flex;
+  gap: 0.3rem;
+  padding-bottom: 0.25rem;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.tabs::-webkit-scrollbar {
+  display: none;
+}
+
+.tab {
+  padding: 0.3rem 0.6rem;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--pill);
+  background: transparent;
+  color: var(--muted);
+  font-size: 0.74rem;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: color var(--dur-1) var(--ease-standard), border-color var(--dur-1) var(--ease-standard);
+}
+
+.tab:hover {
+  color: var(--fg);
+}
+
+.tab[aria-selected="true"] {
+  border-color: rgba(142, 160, 255, 0.45);
+  color: var(--fg);
+  background: rgba(107, 92, 255, 0.14);
+}
+
+.paletteList {
+  display: grid;
+  gap: 0.4rem;
+  max-height: min(30rem, calc(100vh - 16rem));
+  padding-right: 0.2rem;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+}
+
+.chip {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.55rem 0.6rem;
+  border: 1px solid var(--line-soft);
+  border-radius: 0.6rem;
+  background: rgba(255, 255, 255, 0.022);
+  color: inherit;
+  text-align: left;
+  touch-action: none;
+  cursor: grab;
+  transition:
+    border-color var(--dur-2) var(--ease-standard),
+    background var(--dur-2) var(--ease-standard),
+    transform var(--dur-2) var(--ease-emphasis),
+    opacity var(--dur-2) var(--ease-standard);
+}
+
+.chip:hover {
+  transform: translateX(2px);
+  border-color: color-mix(in oklab, var(--accent) 40%, transparent);
+  background: rgba(255, 255, 255, 0.05);
+}
+
+/* A block that cannot seat anywhere in the current chain steps back rather
+   than disappearing: the palette doubles as a lesson in what fits what. */
+.chip[data-fits="false"] {
+  opacity: 0.44;
+}
+
+.chip[data-lifted="true"] {
+  opacity: 0.3;
+}
+
+.chipIcon {
+  display: grid;
+  place-items: center;
+  width: 1.85rem;
+  height: 1.85rem;
+  border-radius: 0.45rem;
+  color: var(--accent);
+  background: color-mix(in oklab, var(--accent) 14%, transparent);
+}
+
+.glyph {
+  width: 1.05rem;
+  height: 1.05rem;
+}
+
+.chipText {
+  display: grid;
+  gap: 0.1rem;
+  min-width: 0;
+}
+
+.chipText strong {
+  font-size: 0.84rem;
+  font-weight: 540;
+}
+
+.chipText span {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 0.73rem;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chipPorts {
+  display: grid;
+  gap: 0.18rem;
+}
+
+.chipPorts i {
+  display: block;
+  width: 0.42rem;
+  height: 0.42rem;
+  border-radius: 1px;
+}
+
+/* ---- canvas ---- */
+
+.canvasWrap {
+  display: grid;
+  gap: 0.75rem;
+  min-width: 0;
+}
+
+.canvasHead {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 0.8rem;
+  flex-wrap: wrap;
+}
+
+.canvasHead h2 {
+  font-size: 1.05rem;
+  font-weight: 560;
+}
+
+.canvasHead p {
+  margin-top: 0.15rem;
+  color: var(--muted);
+  font-family: var(--font-jetbrains-mono), ui-monospace, monospace;
+  font-size: 0.75rem;
+}
+
+.canvasActions {
+  display: flex;
+  gap: 0.4rem;
+}
+
+.ghostBtn {
+  padding: 0.42rem 0.8rem;
+  border: 1px solid var(--line);
+  border-radius: var(--pill);
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--text);
+  font-size: 0.8rem;
+  cursor: pointer;
+  transition: color var(--dur-1) var(--ease-standard), border-color var(--dur-1) var(--ease-standard);
+}
+
+.ghostBtn:hover:not(:disabled) {
+  border-color: rgba(55, 240, 154, 0.4);
+  color: var(--mint-2);
+}
+
+.ghostBtn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* The standing reminder that this surface designs rather than deploys. Calm on
+   purpose: it is always true, so it must never read as an alarm. */
+.scopeBanner {
+  padding: 0.6rem 0.8rem;
+  border: 1px solid var(--line-soft);
+  border-left: 2px solid rgba(142, 160, 255, 0.5);
+  border-radius: 0 0.55rem 0.55rem 0;
+  color: var(--muted);
+  background: rgba(142, 160, 255, 0.06);
+  font-size: 0.79rem;
+  line-height: 1.55;
+}
+
+.scopeBanner strong {
+  color: var(--text);
+  font-weight: 540;
+}
+
+.canvas {
+  display: grid;
+  padding: clamp(0.7rem, 1.6vw, 1.1rem);
+  border: 1px solid var(--line);
+  border-radius: 0.85rem;
+  background:
+    radial-gradient(120% 60% at 50% 0%, rgba(107, 92, 255, 0.08), transparent 70%),
+    var(--card);
+  box-shadow: var(--card-shadow);
+}
+
+.slotGroup {
+  display: grid;
+}
+
+.empty {
+  display: grid;
+  justify-items: center;
+  gap: 0.35rem;
+  padding: 2.6rem 1.2rem;
+  border: 1px dashed var(--line);
+  border-radius: 0.7rem;
+  text-align: center;
+  transition: border-color var(--dur-2) var(--ease-standard), background var(--dur-2) var(--ease-standard);
+}
+
+.empty[data-over="true"] {
+  border-color: rgba(55, 240, 154, 0.5);
+  background: rgba(33, 208, 122, 0.06);
+}
+
+.emptyGlyph {
+  width: 1.6rem;
+  height: 1.6rem;
+  color: var(--muted-2);
+}
+
+.empty strong {
+  font-size: 0.95rem;
+  font-weight: 540;
+}
+
+.empty span {
+  max-width: 28rem;
+  color: var(--muted);
+  font-size: 0.82rem;
+  line-height: 1.5;
+}
+
+/* Insertion slot: collapsed to nothing until a drag is looking for a home. */
+.slot {
+  display: grid;
+  height: 0;
+  overflow: hidden;
+  transition: height var(--dur-2) var(--ease-emphasis);
+}
+
+.slot[data-open="true"] {
+  height: 3.1rem;
+  padding: 0.35rem 0;
+}
+
+.slot > span {
+  display: block;
+  height: 100%;
+  border: 1px dashed rgba(255, 122, 144, 0.55);
+  border-radius: 0.55rem;
+  background: rgba(255, 122, 144, 0.08);
+}
+
+.slot[data-valid="true"] > span {
+  border-color: rgba(55, 240, 154, 0.6);
+  background: rgba(33, 208, 122, 0.1);
+  animation: slotPulse 1.1s var(--ease-standard) infinite;
+}
+
+/* ---- joints (the studs between blocks) ---- */
+
+.joint {
+  position: relative;
+  display: grid;
+  place-items: center;
+  height: 2.1rem;
+}
+
+.jointLine {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  border-radius: 2px;
+  background: color-mix(in oklab, var(--accent) 55%, transparent);
+}
+
+/* The travelling dot only exists while a preview run is passing through. */
+.joint[data-flowing="true"] .jointLine::after {
+  position: absolute;
+  left: 50%;
+  width: 0.42rem;
+  height: 0.42rem;
+  margin-left: -0.21rem;
+  content: "";
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 12px var(--accent);
+  animation: flowDown 0.38s var(--ease-standard) both;
+}
+
+.jointLabel {
+  position: relative;
+  padding: 0.12rem 0.5rem;
+  border: 1px solid color-mix(in oklab, var(--accent) 40%, transparent);
+  border-radius: var(--pill);
+  color: color-mix(in oklab, var(--accent) 80%, white);
+  background: var(--bg-2);
+  font-family: var(--font-jetbrains-mono), ui-monospace, monospace;
+  font-size: 0.63rem;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+
+.joint[data-status="mismatch"] .jointLine,
+.joint[data-status="orphan"] .jointLine {
+  background: repeating-linear-gradient(180deg, #ff7a90 0 4px, transparent 4px 8px);
+}
+
+/* ---- block cards ---- */
+
+.card {
+  position: relative;
+  border: 1px solid var(--line);
+  border-radius: 0.7rem;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.055), rgba(255, 255, 255, 0.014));
+  transition:
+    border-color var(--dur-2) var(--ease-standard),
+    transform var(--dur-2) var(--ease-emphasis),
+    box-shadow var(--dur-3) var(--ease-standard),
+    opacity var(--dur-2) var(--ease-standard);
+}
+
+/* The stud: the piece that makes a block read as something you click into
+   place. Sits on the bottom edge and is tinted by what the block emits. */
+.card::after {
+  position: absolute;
+  bottom: -0.3rem;
+  left: 50%;
+  z-index: 1;
+  width: 1.5rem;
+  height: 0.3rem;
+  margin-left: -0.75rem;
+  content: "";
+  border-radius: 0 0 0.3rem 0.3rem;
+  background: color-mix(in oklab, var(--accent) 70%, transparent);
+}
+
+.card[data-kind="sink"]::after {
+  display: none;
+}
+
+.card:hover {
+  border-color: color-mix(in oklab, var(--accent) 38%, transparent);
+}
+
+.card[data-open="true"] {
+  border-color: color-mix(in oklab, var(--accent) 45%, transparent);
+  box-shadow: 0 0 0 1px color-mix(in oklab, var(--accent) 22%, transparent), 0 18px 50px rgba(0, 0, 0, 0.35);
+}
+
+.card[data-broken="true"] {
+  border-color: rgba(255, 122, 144, 0.55);
+  background: linear-gradient(180deg, rgba(255, 122, 144, 0.09), rgba(255, 255, 255, 0.014));
+}
+
+.card[data-lifted="true"] {
+  opacity: 0.32;
+}
+
+.card[data-running="true"] {
+  border-color: color-mix(in oklab, var(--accent) 70%, transparent);
+  box-shadow: 0 0 0 1px color-mix(in oklab, var(--accent) 40%, transparent), 0 0 42px color-mix(in oklab, var(--accent) 26%, transparent);
+  animation: runPop var(--dur-3) var(--ease-spring);
+}
+
+.cardMain {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.65rem;
+  padding: 0.6rem 0.7rem;
+}
+
+.handle {
+  display: grid;
+  place-items: center;
+  width: 2.1rem;
+  height: 2.1rem;
+  border-radius: 0.5rem;
+  color: var(--accent);
+  background: color-mix(in oklab, var(--accent) 15%, transparent);
+  touch-action: none;
+  cursor: grab;
+  transition: transform var(--dur-2) var(--ease-spring), background var(--dur-2) var(--ease-standard);
+}
+
+.handle:hover {
+  transform: scale(1.06);
+  background: color-mix(in oklab, var(--accent) 24%, transparent);
+}
+
+.handle:active {
+  cursor: grabbing;
+}
+
+.cardTitle {
+  display: grid;
+  gap: 0.1rem;
+  min-width: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.cardTitle strong {
+  font-size: 0.92rem;
+  font-weight: 540;
+}
+
+.cardTitle span {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 0.76rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cardTools {
+  display: flex;
+  align-items: center;
+  gap: 0.22rem;
+}
+
+.cardTools button {
+  display: grid;
+  place-items: center;
+  width: 1.65rem;
+  height: 1.65rem;
+  border: 1px solid var(--line-soft);
+  border-radius: 0.4rem;
+  background: transparent;
+  color: var(--muted);
+  font-size: 0.75rem;
+  cursor: pointer;
+  transition: color var(--dur-1) var(--ease-standard), border-color var(--dur-1) var(--ease-standard);
+}
+
+.cardTools button:hover:not(:disabled) {
+  border-color: rgba(255, 255, 255, 0.2);
+  color: var(--fg);
+}
+
+.cardTools button:disabled {
+  opacity: 0.28;
+  cursor: not-allowed;
+}
+
+.maturity {
+  padding: 0.14rem 0.42rem;
+  border-radius: var(--pill);
+  font-family: var(--font-jetbrains-mono), ui-monospace, monospace;
+  font-size: 0.6rem;
+  letter-spacing: 0.03em;
+}
+
+.maturity[data-level="live"] {
+  color: var(--mint-2);
+  background: rgba(33, 208, 122, 0.12);
+}
+
+.maturity[data-level="preview"] {
+  color: var(--indigo);
+  background: rgba(107, 92, 255, 0.16);
+}
+
+.maturity[data-level="review"] {
+  color: #ffc26b;
+  background: rgba(255, 194, 107, 0.12);
+}
+
+.maturity[data-level="blocked"] {
+  color: #ff7a90;
+  background: rgba(255, 122, 144, 0.14);
+}
+
+.cardBody {
+  display: grid;
+  gap: 0.7rem;
+  padding: 0 0.7rem 0.8rem;
+  animation: bodyIn var(--dur-3) var(--ease-emphasis);
+}
+
+.cardBody p {
+  color: var(--text);
+  font-size: 0.82rem;
+  line-height: 1.55;
+}
+
+.params {
+  display: grid;
+  gap: 0.55rem;
+}
+
+.param {
+  display: grid;
+  gap: 0.28rem;
+  padding: 0.5rem 0.6rem;
+  border: 1px solid var(--line-soft);
+  border-radius: 0.5rem;
+  background: rgba(0, 0, 0, 0.2);
+}
+
+.paramLabel {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem;
+  color: var(--muted);
+  font-size: 0.74rem;
+}
+
+.paramLabel em {
+  color: var(--fg);
+  font-family: var(--font-jetbrains-mono), ui-monospace, monospace;
+  font-size: 0.76rem;
+  font-style: normal;
+  font-variant-numeric: tabular-nums;
+}
+
+.param input[type="range"] {
+  width: 100%;
+  height: 1.15rem;
+  accent-color: var(--mint);
+  cursor: pointer;
+}
+
+.param select,
+.param input[type="text"] {
+  width: 100%;
+  padding: 0.4rem 0.5rem;
+  border: 1px solid var(--line);
+  border-radius: 0.4rem;
+  background: var(--bg-2);
+  color: var(--fg);
+  font-family: inherit;
+  font-size: 0.82rem;
+}
+
+.hint {
+  padding: 0.55rem 0.8rem;
+  border: 1px solid rgba(255, 194, 107, 0.34);
+  border-radius: 0.55rem;
+  color: #ffc26b;
+  background: rgba(255, 194, 107, 0.07);
+  font-size: 0.82rem;
+  line-height: 1.45;
+  animation: bodyIn var(--dur-3) var(--ease-emphasis);
+}
+
+/* ---- readout ---- */
+
+.readout {
+  position: sticky;
+  top: 5.5rem;
+  display: grid;
+  gap: 0.8rem;
+  padding: 0.95rem;
+  border: 1px solid var(--line);
+  border-radius: 0.85rem;
+  background: var(--card);
+  box-shadow: var(--card-shadow);
+}
+
+.verdict {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.verdict strong {
+  display: block;
+  font-size: 0.95rem;
+  font-weight: 560;
+}
+
+.verdict span {
+  color: var(--muted);
+  font-family: var(--font-jetbrains-mono), ui-monospace, monospace;
+  font-size: 0.72rem;
+}
+
+.verdictDot {
+  width: 0.6rem;
+  height: 0.6rem;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background: var(--mint-2);
+  box-shadow: 0 0 0 4px rgba(33, 208, 122, 0.14);
+}
+
+.verdict[data-status="warn"] .verdictDot {
+  background: #ffc26b;
+  box-shadow: 0 0 0 4px rgba(255, 194, 107, 0.14);
+}
+
+.verdict[data-status="block"] .verdictDot {
+  background: #ff7a90;
+  box-shadow: 0 0 0 4px rgba(255, 122, 144, 0.14);
+}
+
+.meter {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.meterHead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.meterHead strong {
+  color: var(--fg);
+  font-family: var(--font-jetbrains-mono), ui-monospace, monospace;
+  font-variant-numeric: tabular-nums;
+}
+
+.meterTrack {
+  height: 0.4rem;
+  border-radius: var(--pill);
+  background: rgba(255, 255, 255, 0.07);
+  overflow: hidden;
+}
+
+.meterTrack span {
+  display: block;
+  height: 100%;
+  border-radius: var(--pill);
+  background: var(--grad-brand);
+  transition: width var(--dur-3) var(--ease-emphasis);
+}
+
+.meterTrack span[data-level="part"] {
+  background: linear-gradient(90deg, #ffc26b, #ffd79b);
+}
+
+.meterTrack span[data-level="low"] {
+  background: linear-gradient(90deg, #ff7a90, #ffa0b0);
+}
+
+.checks {
+  display: grid;
+  gap: 0.4rem;
+  list-style: none;
+}
+
+.checks li {
+  display: grid;
+  gap: 0.15rem;
+  padding: 0.5rem 0.6rem 0.5rem 0.75rem;
+  border-left: 2px solid var(--mint);
+  border-radius: 0 0.45rem 0.45rem 0;
+  background: rgba(255, 255, 255, 0.028);
+}
+
+.checks li[data-status="warn"] {
+  border-left-color: #ffc26b;
+}
+
+.checks li[data-status="block"] {
+  border-left-color: #ff7a90;
+}
+
+.checks strong {
+  font-size: 0.79rem;
+  font-weight: 540;
+}
+
+.checks span {
+  color: var(--muted);
+  font-size: 0.75rem;
+  line-height: 1.45;
+}
+
+.hashRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding-top: 0.2rem;
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.hashNote {
+  margin-top: -0.45rem;
+  color: var(--muted-2);
+  font-size: 0.71rem;
+  line-height: 1.5;
+}
+
+.hashNote strong {
+  color: var(--text);
+  font-weight: 560;
+}
+
+/* ---- deploy handoff ---- */
+
+.deploy {
+  display: grid;
+  gap: 0.5rem;
+  padding-top: 0.2rem;
+}
+
+.deployBtn {
+  display: block;
+  padding: 0.62rem 0.8rem;
+  border: 1px solid rgba(55, 240, 154, 0.42);
+  border-radius: 0.55rem;
+  color: var(--bg);
+  background: var(--grad-brand);
+  text-align: center;
+  font-size: 0.86rem;
+  font-weight: 600;
+  transition: transform var(--dur-2) var(--ease-emphasis), box-shadow var(--dur-3) var(--ease-standard);
+}
+
+.deployBtn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 12px 30px rgba(33, 208, 122, 0.22);
+}
+
+.saveBtn {
+  padding: 0.62rem 0.8rem;
+  border: 1px solid var(--line);
+  border-radius: 0.55rem;
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.03);
+  font-family: inherit;
+  font-size: 0.86rem;
+  font-weight: 540;
+  cursor: pointer;
+  transition: border-color var(--dur-2) var(--ease-standard), color var(--dur-2) var(--ease-standard);
+}
+
+.saveBtn:hover {
+  border-color: rgba(142, 160, 255, 0.45);
+  color: var(--fg);
+}
+
+.deployNote {
+  color: var(--muted);
+  font-size: 0.73rem;
+  line-height: 1.5;
+}
+
+/* Unenforced guards and rejection reasons are the two places this page tells a
+   user something they will not like. Both stay fully expanded — a collapsed
+   list is a dropped guarantee waiting to happen. */
+.unenforced,
+.reasons {
+  display: grid;
+  gap: 0.35rem;
+  padding: 0.6rem 0.7rem;
+  border: 1px solid rgba(255, 194, 107, 0.34);
+  border-radius: 0.55rem;
+  background: rgba(255, 194, 107, 0.07);
+}
+
+.reasons {
+  border-color: rgba(255, 122, 144, 0.32);
+  background: rgba(255, 122, 144, 0.06);
+}
+
+.unenforced strong,
+.reasons strong {
+  color: #ffc26b;
+  font-size: 0.78rem;
+  font-weight: 560;
+  line-height: 1.45;
+}
+
+.reasons strong {
+  color: #ff9fb0;
+}
+
+.unenforced p {
+  color: var(--muted);
+  font-size: 0.72rem;
+  line-height: 1.5;
+}
+
+.unenforced ul,
+.reasons ul {
+  display: grid;
+  gap: 0.3rem;
+  list-style: none;
+}
+
+.unenforced li,
+.reasons li {
+  padding-left: 0.7rem;
+  border-left: 2px solid rgba(255, 194, 107, 0.4);
+  color: var(--text);
+  font-size: 0.73rem;
+  line-height: 1.5;
+}
+
+.reasons li {
+  border-left-color: rgba(255, 122, 144, 0.4);
+}
+
+.readoutActions {
+  display: grid;
+  gap: 0.45rem;
+}
+
+.exportBtn {
+  justify-content: center;
+  width: 100%;
+}
+
+.openApp {
+  padding: 0.5rem 0.8rem;
+  border: 1px solid rgba(55, 240, 154, 0.32);
+  border-radius: 0.5rem;
+  color: var(--mint-2);
+  text-align: center;
+  font-size: 0.82rem;
+  transition: background var(--dur-2) var(--ease-standard);
+}
+
+.openApp:hover {
+  background: rgba(33, 208, 122, 0.09);
+}
+
+.disclaimer {
+  color: var(--muted);
+  font-size: 0.72rem;
+  line-height: 1.5;
+}
+
+/* ---- drag ghost ---- */
+
+.ghost {
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 80;
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  padding: 0.6rem 0.75rem;
+  border: 1px solid color-mix(in oklab, var(--accent) 55%, transparent);
+  border-radius: 0.6rem;
+  color: var(--fg);
+  background: rgba(11, 13, 15, 0.96);
+  box-shadow: 0 22px 60px rgba(0, 0, 0, 0.55);
+  pointer-events: none;
+  rotate: -1.4deg;
+  animation: liftIn var(--dur-2) var(--ease-spring);
+}
+
+.ghost strong {
+  font-size: 0.85rem;
+  font-weight: 540;
+}
+
+.ghost svg {
+  color: var(--accent);
+}
+
+.ghost[data-valid="false"] {
+  border-color: rgba(255, 122, 144, 0.6);
+}
+
+/* ------------------------------------------------------------ responsive */
+
+@media (max-width: 1180px) {
+  .workspace {
+    grid-template-columns: minmax(13rem, 15rem) minmax(0, 1fr);
+  }
+
+  .readout {
+    position: static;
+    grid-column: 1 / -1;
+    grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr));
+    align-items: start;
+  }
+
+  .checks {
+    grid-column: 1 / -1;
+    grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
+  }
+}
+
+@media (max-width: 860px) {
+  .workspace {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  /* The palette becomes a full-width tray above the chain. It asks to stick,
+     but `overflow-x: hidden` on html/body in globals.css turns them into scroll
+     containers, which disables position:sticky across the whole site (the nav
+     is affected too). Switching that rule to `overflow-x: clip` would light
+     this up; until then the tray simply scrolls with the page, which is why
+     tap-to-add exists alongside dragging. */
+  .palette {
+    position: sticky;
+    top: 4.2rem;
+    z-index: 5;
+    order: -1;
+    background: linear-gradient(180deg, rgba(12, 14, 17, 0.98), rgba(10, 12, 14, 0.94));
+    backdrop-filter: blur(14px);
+  }
+
+  .paletteHint {
+    display: none;
+  }
+
+  .paletteList {
+    display: flex;
+    max-height: none;
+    padding-bottom: 0.35rem;
+    overflow-x: auto;
+    overflow-y: hidden;
+    scroll-snap-type: x proximity;
+  }
+
+  .chip {
+    width: 13.5rem;
+    flex: 0 0 auto;
+    scroll-snap-align: start;
+    /* The browser keeps horizontal panning; anything vertical is a drag into
+       the chain, which is the only gesture this tray needs to own. */
+    touch-action: pan-x;
+  }
+
+  .chip:hover {
+    transform: none;
+  }
+
+  .recipeRow {
+    grid-auto-columns: minmax(13rem, 78%);
+  }
+
+  .readout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .checks {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 520px) {
+  .canvasHead {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .cardMain {
+    grid-template-columns: auto minmax(0, 1fr);
+    grid-template-areas:
+      "handle title"
+      "tools tools";
+    row-gap: 0.5rem;
+  }
+
+  .handle {
+    grid-area: handle;
+  }
+
+  .cardTitle {
+    grid-area: title;
+  }
+
+  .cardTools {
+    grid-area: tools;
+    justify-content: flex-end;
+  }
+
+  .maturity {
+    margin-right: auto;
+  }
+}
+
+/* --------------------------------------------------------------- motion */
+
+@keyframes slotPulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.55; }
+}
+
+@keyframes flowDown {
+  from { top: 0; opacity: 0; }
+  20% { opacity: 1; }
+  to { top: 100%; opacity: 0; }
+}
+
+@keyframes runPop {
+  0% { transform: none; }
+  45% { transform: scale(1.014); }
+  100% { transform: none; }
+}
+
+@keyframes bodyIn {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: none; }
+}
+
+@keyframes liftIn {
+  from { transform: scale(0.94); opacity: 0; }
+  to { opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .slot,
+  .card,
+  .chip,
+  .recipe,
+  .meterTrack span {
+    transition-duration: 1ms;
+  }
+
+  .cardBody,
+  .hint,
+  .ghost,
+  .card[data-running="true"],
+  .slot[data-valid="true"] > span,
+  .joint[data-flowing="true"] .jointLine::after {
+    animation: none;
+  }
+}
