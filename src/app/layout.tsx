@@ -1,10 +1,11 @@
 import type { Metadata, Viewport } from "next";
 import { Inter, JetBrains_Mono } from "next/font/google";
+import { Analytics } from "@vercel/analytics/next";
 import "./globals.css";
 import { SiteNav } from "@/components/SiteNav";
 import { SiteFooter } from "@/components/SiteFooter";
 import { JsonLd } from "@/components/JsonLd";
-import { LINKS, TOKEN, TOKEN_LAUNCH } from "@/lib/config";
+import { LINKS, TOKEN, TOKEN_LAUNCH, X_HANDLE } from "@/lib/config";
 import {
   SITE_URL,
   SITE_NAME,
@@ -58,6 +59,8 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: "summary_large_image",
+    site: X_HANDLE,
+    creator: X_HANDLE,
     title: DEFAULT_TITLE,
     description: DEFAULT_DESCRIPTION,
     images: [OG_IMAGE],
@@ -65,6 +68,7 @@ export const metadata: Metadata = {
   icons: {
     icon: [{ url: "/openzap-mark.svg", type: "image/svg+xml" }],
     shortcut: ["/openzap-mark.svg"],
+    apple: [{ url: "/apple-icon.png", sizes: "180x180", type: "image/png" }],
   },
   manifest: "/manifest.webmanifest",
   robots: {
@@ -94,9 +98,9 @@ const siteGraph = {
       url: SITE_URL,
       logo: {
         "@type": "ImageObject",
-        url: absoluteUrl(TOKEN.logoPath),
+        url: absoluteUrl("/openzap-mark.svg"),
       },
-      sameAs: [LINKS.github, LINKS.farcaster, LINKS.clanker, LINKS.tokenExplorer],
+      sameAs: [LINKS.github, LINKS.x, LINKS.farcaster],
     },
     {
       "@type": "WebSite",
@@ -144,6 +148,7 @@ export default function RootLayout({
         <SiteNav />
         {children}
         <SiteFooter />
+        <Analytics />
       </body>
     </html>
   );

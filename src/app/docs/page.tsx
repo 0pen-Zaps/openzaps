@@ -1,7 +1,8 @@
 import Link from "next/link";
 import { CHAIN, CONTRACTS, LINKS, TOKEN } from "@/lib/config";
 import { POLICY_TEMPLATES } from "@/lib/policy";
-import { pageMetadata, SITE_URL } from "@/lib/seo";
+import { JsonLd } from "@/components/JsonLd";
+import { pageMetadata, breadcrumbJsonLd, SITE_URL } from "@/lib/seo";
 import styles from "./docs.module.css";
 
 export const metadata = pageMetadata({
@@ -9,6 +10,7 @@ export const metadata = pageMetadata({
   description:
     "OpenZaps developer docs for bounded policy capsules, simulation review, EIP-712 intents, revocation, and the simulation API.",
   path: "/docs",
+  ogImage: "/og/docs.png",
   keywords: ["OpenZaps docs", "policy capsule docs", "simulation API", "EIP-712 intent docs"],
 });
 
@@ -23,6 +25,7 @@ const lifecycle = [
 export default function DocsPage(): React.JSX.Element {
   return (
     <main className={styles.page} id="main">
+      <JsonLd data={{ "@context": "https://schema.org", ...breadcrumbJsonLd("/docs", "Developer docs") }} />
       <section className={`container ${styles.hero}`}>
         <div>
           <span className="eyebrow">Developer docs</span>

@@ -10,6 +10,7 @@ export const metadata = pageMetadata({
   title: `${TOKEN.symbol} token — live on ${TOKEN_LAUNCH.network}`,
   description: `${TOKEN.symbol} is live on ${TOKEN_LAUNCH.network} through ${TOKEN_LAUNCH.venue}. Verify the official contract and trade link for the OpenZaps community token.`,
   path: "/token",
+  ogImage: "/og/token.png",
   keywords: [
     `buy ${TOKEN.symbol}`,
     `${TOKEN.symbol} ${TOKEN_LAUNCH.venue}`,
@@ -70,7 +71,7 @@ const faqs = [
   },
   {
     q: "Do I need the token to use OpenZaps?",
-    a: "No. The protocol is permissionless. The token aligns the community and the execution layer around it.",
+    a: "No — nothing is token-gated. The token aligns the community and the execution layer around it. Separately, mainnet real-fund creation stays gated until the external audit process clears.",
   },
   {
     q: "Are the contracts audited?",
@@ -172,7 +173,7 @@ export default function TokenPage(): React.JSX.Element {
         <header className={styles.head}>
           <span className="eyebrow">What it&apos;s for</span>
           <h2>One token, aligned with the protocol.</h2>
-          <p>No yield, no TVL, no returns are implied. {TOKEN.symbol} is coordination, not a security.</p>
+          <p>No yield, no TVL, no returns are implied. {TOKEN.symbol} is a coordination token, not a claim on revenue or assets.</p>
         </header>
         <div className={styles.utilGrid}>
           {utility.map((u) => (

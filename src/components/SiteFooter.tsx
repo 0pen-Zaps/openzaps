@@ -37,6 +37,9 @@ export function SiteFooter(): React.JSX.Element {
             <a href={LINKS.github} target="_blank" rel="noreferrer">
               GitHub
             </a>
+            <a href={LINKS.x} target="_blank" rel="noreferrer">
+              X @0xzaps
+            </a>
             <Link href="/security">Security</Link>
             <Link href="/pricing">Pricing</Link>
           </div>

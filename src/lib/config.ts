@@ -10,6 +10,7 @@ export const TOKEN = {
 } as const;
 
 const tokenContract = "0xDd90bFa4adC7F4401E611AbaC692D939F9F4CB07";
+const primaryPair = "0xb040f18affd851c6ea02b896b2f846cb77edbb33cc5361f7f8c6d14b87c01573";
 
 export const TOKEN_LAUNCH = {
   status: "Live",
@@ -20,6 +21,7 @@ export const TOKEN_LAUNCH = {
   nativeCurrency: "ETH",
   contract: tokenContract,
   pair: `${TOKEN.symbol}/WETH`,
+  primaryPair,
   onchainImageUri:
     "https://turquoise-blank-swallow-685.mypinata.cloud/ipfs/bafkreidndqit6ydpkivgmm4qdukh7sgv6uexjp3rc76iyvx22zd425ae7i",
   tradeUrl: `https://www.clanker.world/clanker/${tokenContract}`,
@@ -65,10 +67,15 @@ export function explorer(addr: string): string {
 export const LINKS = {
   github: "https://github.com/nodar/openzaps",
   farcaster: "https://farcaster.xyz/nodes",
+  x: "https://x.com/0xzaps",
   clanker: TOKEN_LAUNCH.tradeUrl,
+  dexScreener: `https://dexscreener.com/robinhood/${TOKEN_LAUNCH.primaryPair}`,
   tokenExplorer: TOKEN_LAUNCH.contractUrl,
   buy: buyUrl(),
 } as const;
+
+/** Official X (Twitter) handle, for twitter:site/creator card tags. */
+export const X_HANDLE = "@0xzaps";
 
 export const STATUS = {
   // Honest posture — see docs/invariant-spec.md production-readiness gate.
