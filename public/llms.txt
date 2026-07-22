@@ -11,6 +11,7 @@ Key facts:
 
 - [Home](https://www.0xzaps.com): what OpenZaps are, authority models, security posture, FAQ
 - [Live zap console](https://www.0xzaps.com/app): connect a wallet to quote, create, fund, execute, and recover a bounded aeWETH ↔ 0xZAPS policy capsule
+- [Dashboard](https://www.0xzaps.com/dashboard): live zap creations, executions, and recoveries read from Robinhood Chain logs, plus the verified contract set
 - [Developer docs](https://www.0xzaps.com/docs): policy schema, simulation API, templates, lifecycle
 - [Security architecture](https://www.0xzaps.com/security): threat model, controls, production gates
 - [Pricing](https://www.0xzaps.com/pricing): simulation is free; protocol fees are governance-gated
@@ -29,5 +30,6 @@ Key facts:
 
 - POST https://www.0xzaps.com/api/policies/simulate — deterministic policy simulation; never broadcasts and never requests wallet authority
 - GET https://www.0xzaps.com/api/health — public protocol status
+- GET https://www.0xzaps.com/api/protocol/activity — live zap creations, executions, and recoveries aggregated from Robinhood Chain logs (rows verified against the factory's ZapCreated set)
 
 Not financial advice. Always verify the token contract address on this site before trading.
