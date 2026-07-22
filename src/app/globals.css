@@ -58,7 +58,16 @@ html {
 html,
 body {
   max-width: 100vw;
-  overflow-x: hidden;
+  /* `clip`, never `hidden`. `overflow-x: hidden` makes these two elements
+     scroll containers, and a scroll container is the one thing that turns off
+     `position: sticky` for everything inside it — which was every sticky
+     element on this site: the nav, the docs sidebar, the builder's verdict
+     panel, and the builder's mobile block tray. All four declared it, none of
+     them got it. `clip` refuses the overflow without becoming a scroll
+     container, so the rule keeps doing its job and sticky starts doing its.
+     (`overflow-y` stays `visible`, which is a legal pairing with `clip` and
+     does not coerce to `auto` the way it would beside `hidden`.) */
+  overflow-x: clip;
 }
 
 body {

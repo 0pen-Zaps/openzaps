@@ -810,16 +810,27 @@
 
 /* ---- readout ---- */
 
+/* The verdict follows you down a long chain — the whole point of a panel that
+   answers "is this thing valid" while you edit. It has to hold its own scroll
+   to do that: a panel taller than the viewport fills its grid column, and a
+   sticky element with no room left in its containing block never pins.
+   Nothing is collapsed or summarised to make it fit; the unenforced-guard
+   disclosures stay whole and stay attached to the CTA they qualify. */
 .readout {
   position: sticky;
   top: 5.5rem;
   display: grid;
   gap: 0.8rem;
+  max-height: calc(100vh - 7rem);
   padding: 0.95rem;
   border: 1px solid var(--line);
   border-radius: 0.85rem;
   background: var(--card);
   box-shadow: var(--card-shadow);
+  /* Default overscroll on purpose: scrolling past the end of this panel should
+     carry on down the page rather than dead-ending under the pointer. */
+  overflow-y: auto;
+  scrollbar-width: thin;
 }
 
 .verdict {
@@ -1323,11 +1334,16 @@
     grid-template-columns: minmax(13rem, 15rem) minmax(0, 1fr);
   }
 
+  /* Below three columns the panel sits under the canvas at full width, where
+     it has the whole page to be as tall as it needs. Its own scroll would only
+     trap the reader in a box. */
   .readout {
     position: static;
     grid-column: 1 / -1;
     grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr));
     align-items: start;
+    max-height: none;
+    overflow-y: visible;
   }
 
   .checks,
