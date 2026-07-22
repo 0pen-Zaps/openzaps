@@ -135,11 +135,12 @@
   color: var(--fg) !important;
 }
 
+/* The current route is marked by its underline alone. This used to also
+   paint a tinted plate behind the label, but hovering any sibling paints
+   the same plate — so the one thing the marker existed to say, which page
+   you are on, was overwritten by the cursor. */
 .active::before {
-  opacity: 1;
-  transform: scale(1);
-  background: rgba(204, 248, 63, 0.14);
-  box-shadow: inset 0 0 0 1px rgba(204, 248, 63, 0.22);
+  opacity: 0;
 }
 
 /* Underline marker that grows out from the centre when a route becomes current. */

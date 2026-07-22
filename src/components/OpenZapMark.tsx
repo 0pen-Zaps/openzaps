@@ -33,8 +33,12 @@ export function OpenZapMark({ className }: { className?: string }): React.JSX.El
   const bar = pitch * 0.6;
 
   return (
-    <svg className={className} viewBox="0 0 512 512" aria-hidden="true">
-      <rect width="512" height="512" fill="#060807" />
+    // No background plate. An opaque full-bleed rect would give every caller's
+    // `filter: drop-shadow(...)` a square to trace instead of the bolt, which
+    // is how a soft glow became a hard green box behind the mark on the token
+    // and status pages. The favicon file keeps its tile — a favicon needs one,
+    // an inline mark on a dark page does not.
+    <svg className={className} viewBox="0 0 512 512" aria-hidden="true" fill="none">
       <g transform={`translate(${OFFSET_X} ${OFFSET_Y}) scale(${SCALE})`}>
         {spans.map((span) => (
           <rect

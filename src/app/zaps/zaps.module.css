@@ -208,6 +208,10 @@
 
 .panelHead a {
   color: var(--accent-dim);
+  /* 1.2:1 against the paragraph it sits in, so colour cannot be the cue. */
+  text-decoration: underline;
+  text-underline-offset: 0.18em;
+  text-decoration-thickness: 1px;
 }
 
 /* ------------------------------------------------------------ deviations */

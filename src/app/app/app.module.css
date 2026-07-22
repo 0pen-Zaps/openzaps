@@ -647,7 +647,7 @@
   border: 1px solid rgba(204, 248, 63, 0.42);
   border-radius: 0;
   background: rgba(204, 248, 63, 0.12);
-  color: var(--accent-dim);
+  color: var(--accent-bright);
   font-family: var(--font-jetbrains-mono), ui-monospace, monospace;
   font-size: 0.72rem;
 }

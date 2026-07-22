@@ -143,10 +143,11 @@
   height: 33rem;
   border: 1px solid var(--line-soft);
   border-radius: 0;
-  background:
-    transparent,
-    transparent,
-    rgba(255, 255, 255, 0.022);
+  /* A multi-layer `background` may only carry a colour in its LAST layer, so a
+     bare `transparent` layer ahead of one invalidates the whole declaration and
+     the browser drops it — background and all. The tinted gradient layers this
+     had are gone with the glass idiom; only the flat fill remains. */
+  background: rgba(255, 255, 255, 0.022);
   box-shadow: var(--card-shadow);
 }
 
@@ -263,7 +264,7 @@
 .route i {
   width: 1rem;
   height: 1px;
-  background: transparent;
+  background: linear-gradient(90deg, rgba(204, 248, 63, 0), var(--accent));
 }
 
 /* ---------------- stat strip ---------------- */
@@ -283,7 +284,11 @@
   flex-direction: column;
   gap: 0.35rem;
   padding: 1.4rem 1.5rem;
-  background: transparent;
+  /* Opaque on purpose. The container paints --line and sets gap: 1px, so the
+     dividers between cells ARE the container showing through. A transparent
+     cell lets that colour flood the whole strip and it reads as one grey slab
+     with no divisions at all. */
+  background: var(--bg);
 }
 
 .stat strong {
@@ -307,9 +312,11 @@
   padding: clamp(1.6rem, 3vw, 2.4rem);
   border: 1px solid var(--line);
   border-radius: 0;
-  background:
-    transparent,
-    var(--card);
+  /* A multi-layer `background` may only carry a colour in its LAST layer, so a
+     bare `transparent` layer ahead of one invalidates the whole declaration and
+     the browser drops it — background and all. The tinted gradient layers this
+     had are gone with the glass idiom; only the flat fill remains. */
+  background: var(--card);
   box-shadow: var(--card-shadow);
 }
 
@@ -985,10 +992,11 @@
   padding: clamp(2.5rem, 6vw, 4.5rem) 1.5rem;
   border: 1px solid var(--line);
   border-radius: 0;
-  background:
-    transparent,
-    transparent,
-    var(--card);
+  /* A multi-layer `background` may only carry a colour in its LAST layer, so a
+     bare `transparent` layer ahead of one invalidates the whole declaration and
+     the browser drops it — background and all. The tinted gradient layers this
+     had are gone with the glass idiom; only the flat fill remains. */
+  background: var(--card);
   box-shadow: var(--card-shadow);
 }
 
@@ -1409,11 +1417,21 @@
   border-color: rgba(204, 248, 63, 0.48);
 }
 
-/* The route connector reads as flowing rather than static. */
+/* The route connector reads as flowing rather than static.
+
+   This briefly said `background: repeating-transparent`, which is not a value —
+   a bulk edit flattening accent gradients matched the inner `linear-gradient(`
+   of `repeating-linear-gradient(` and ate the prefix along with it. Invalid
+   background declarations are dropped silently, so the connector simply stopped
+   drawing while its animation went on running. */
 .route i {
   width: 1.6rem;
   height: 1px;
-  background: repeating-transparent;
+  background: repeating-linear-gradient(
+    90deg,
+    var(--accent) 0 6px,
+    transparent 6px 12px
+  );
   background-size: 20px 1px;
   animation: routeFlow 900ms linear infinite;
 }

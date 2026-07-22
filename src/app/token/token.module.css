@@ -69,7 +69,11 @@
   flex-direction: column;
   gap: 0.4rem;
   padding: 1.3rem;
-  background: transparent;
+  /* Opaque on purpose. The container paints --line and sets gap: 1px, so the
+     dividers between cells ARE the container showing through. A transparent
+     cell lets that colour flood the whole strip and it reads as one grey slab
+     with no divisions at all. */
+  background: var(--bg);
 }
 
 .fact span {
@@ -356,9 +360,11 @@
   padding: clamp(2.5rem, 6vw, 4rem) 1.5rem;
   border: 1px solid var(--line);
   border-radius: 0;
-  background:
-    transparent,
-    var(--card);
+  /* A multi-layer `background` may only carry a colour in its LAST layer, so a
+     bare `transparent` layer ahead of one invalidates the whole declaration and
+     the browser drops it — background and all. The tinted gradient layers this
+     had are gone with the glass idiom; only the flat fill remains. */
+  background: var(--card);
   box-shadow: var(--card-shadow);
 }
 
