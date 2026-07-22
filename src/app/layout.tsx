@@ -4,6 +4,7 @@ import { Analytics } from "@vercel/analytics/next";
 import "./globals.css";
 import { SiteNav } from "@/components/SiteNav";
 import { SiteFooter } from "@/components/SiteFooter";
+import { Spotlight } from "@/components/Spotlight";
 import { JsonLd } from "@/components/JsonLd";
 import { LINKS, TOKEN, TOKEN_LAUNCH, X_HANDLE } from "@/lib/config";
 import {
@@ -149,6 +150,7 @@ export default function RootLayout({
         <SiteNav />
         {children}
         <SiteFooter />
+        <Spotlight />
         <Analytics />
       </body>
     </html>

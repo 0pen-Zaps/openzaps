@@ -1,0 +1,160 @@
+/* Shared chrome for the whole-route states: not-found, error, and loading.
+   One module so a 404 and a crash feel like the same product, not two. */
+
+.page {
+  display: grid;
+  place-items: center;
+  flex: 1;
+  padding: clamp(4rem, 12vw, 9rem) 0;
+}
+
+.inner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  max-width: 40rem;
+  text-align: center;
+}
+
+.mark {
+  width: 4.5rem;
+  height: 4.5rem;
+  margin-bottom: 1.5rem;
+  filter: drop-shadow(0 0 46px rgba(107, 92, 255, 0.5));
+  animation: statusMark 5.5s var(--ease-standard) infinite;
+}
+
+/* A slow tilt-and-settle so the mark reads as idle-but-alive rather than static. */
+@keyframes statusMark {
+  0%, 100% { transform: translateY(0) rotate(0deg); }
+  50% { transform: translateY(-8px) rotate(-4deg); }
+}
+
+.code {
+  font-family: var(--font-jetbrains-mono), ui-monospace, monospace;
+  font-size: clamp(3.4rem, 12vw, 5.6rem);
+  font-weight: 600;
+  line-height: 1;
+  letter-spacing: -0.02em;
+  background: var(--grad-brand);
+  background-size: 240% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: shift 7s ease infinite;
+}
+
+.title {
+  margin-top: 1rem;
+  font-size: clamp(1.7rem, 4vw, 2.6rem);
+  font-weight: 560;
+  line-height: 1.1;
+  text-wrap: balance;
+}
+
+.body {
+  max-width: 34rem;
+  margin-top: 1rem;
+  color: var(--muted);
+  font-size: 1.02rem;
+  line-height: 1.6;
+  text-wrap: pretty;
+}
+
+.detail {
+  max-width: 34rem;
+  margin-top: 1.1rem;
+  padding: 0.7rem 0.9rem;
+  overflow-wrap: anywhere;
+  border: 1px solid rgba(255, 138, 138, 0.28);
+  border-radius: 0.5rem;
+  background: rgba(255, 90, 90, 0.07);
+  color: #ffb4b4;
+  font-family: var(--font-jetbrains-mono), ui-monospace, monospace;
+  font-size: 0.76rem;
+  line-height: 1.5;
+  text-align: left;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.75rem;
+  margin-top: 2rem;
+}
+
+.suggest {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.5rem;
+  margin-top: 2.4rem;
+  padding-top: 1.6rem;
+  border-top: 1px solid var(--line-soft);
+}
+
+.suggest a {
+  padding: 0.44rem 0.75rem;
+  border: 1px solid var(--line);
+  border-radius: var(--pill);
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--muted);
+  font-family: var(--font-jetbrains-mono), ui-monospace, monospace;
+  font-size: 0.74rem;
+  transition:
+    color var(--dur-2) var(--ease-standard),
+    border-color var(--dur-2) var(--ease-standard),
+    background var(--dur-2) var(--ease-standard),
+    transform var(--dur-2) var(--ease-emphasis);
+}
+
+.suggest a:hover {
+  border-color: rgba(142, 160, 255, 0.42);
+  background: rgba(142, 160, 255, 0.1);
+  color: var(--fg);
+  transform: translateY(-2px);
+}
+
+/* Entrance cascade. `both` fill is safe here: these routes are never the
+   indexable content the site depends on, and every child ends fully opaque. */
+.inner > * {
+  animation: fadeUp var(--dur-4) var(--ease-emphasis) both;
+}
+
+.inner > *:nth-child(1) { animation-delay: 0.04s; }
+.inner > *:nth-child(2) { animation-delay: 0.12s; }
+.inner > *:nth-child(3) { animation-delay: 0.2s; }
+.inner > *:nth-child(4) { animation-delay: 0.28s; }
+.inner > *:nth-child(5) { animation-delay: 0.36s; }
+.inner > *:nth-child(6) { animation-delay: 0.44s; }
+
+/* ---------------- loading ---------------- */
+
+.loadBars {
+  display: flex;
+  gap: 0.4rem;
+  margin-top: 2rem;
+}
+
+.loadBars i {
+  width: 0.34rem;
+  height: 2.2rem;
+  border-radius: var(--pill);
+  background: var(--grad-brand);
+  transform-origin: 50% 100%;
+  animation: loadBar 1.05s var(--ease-standard) infinite;
+}
+
+/* Positive stagger here (not negative) because the bars should read as a
+   left-to-right wave starting from first paint. */
+.loadBars i:nth-child(1) { animation-delay: 0s; }
+.loadBars i:nth-child(2) { animation-delay: 0.09s; }
+.loadBars i:nth-child(3) { animation-delay: 0.18s; }
+.loadBars i:nth-child(4) { animation-delay: 0.27s; }
+.loadBars i:nth-child(5) { animation-delay: 0.36s; }
+
+@keyframes loadBar {
+  0%, 100% { transform: scaleY(0.35); opacity: 0.4; }
+  50% { transform: scaleY(1); opacity: 1; }
+}

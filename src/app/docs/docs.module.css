@@ -282,3 +282,150 @@
     grid-template-columns: 1fr;
   }
 }
+
+/* ---------------- motion layer ----------------
+   Shared by /docs, /pricing, /security, /roadmap, and /legal. Only hover and
+   state transitions live here; entrance opacity is driven by the JS-gated
+   Reveal component so content is never hidden by an unevaluated animation. */
+
+.heroCard {
+  transition:
+    transform var(--dur-3) var(--ease-emphasis),
+    border-color var(--dur-3) var(--ease-standard),
+    box-shadow var(--dur-3) var(--ease-standard);
+}
+
+.heroCard:hover {
+  transform: translateY(-4px);
+  border-color: rgba(142, 160, 255, 0.42);
+  box-shadow: 0 20px 46px rgba(0, 0, 0, 0.45);
+}
+
+/* Table-of-contents links get a marker that wipes in from the left. */
+.toc a {
+  position: relative;
+  transition: color var(--dur-2) var(--ease-standard), padding-left var(--dur-2) var(--ease-emphasis);
+}
+
+.toc a::before {
+  position: absolute;
+  top: 50%;
+  left: 0;
+  width: 3px;
+  height: 1.05em;
+  content: "";
+  border-radius: 2px;
+  background: var(--grad-brand);
+  transform: translateY(-50%) scaleY(0);
+  transform-origin: 50% 50%;
+  transition: transform var(--dur-3) var(--ease-spring);
+}
+
+.toc a:hover {
+  padding-left: 0.6rem;
+}
+
+.toc a:hover::before {
+  transform: translateY(-50%) scaleY(1);
+}
+
+.section,
+.callout,
+.metric,
+.codeBlock,
+.table,
+.timeline,
+.twoCol > article {
+  transition:
+    border-color var(--dur-3) var(--ease-standard),
+    background var(--dur-3) var(--ease-standard);
+}
+
+.twoCol > article {
+  transition:
+    transform var(--dur-3) var(--ease-emphasis),
+    border-color var(--dur-3) var(--ease-standard);
+}
+
+.twoCol > article:hover {
+  transform: translateY(-4px);
+  border-color: rgba(142, 160, 255, 0.38);
+}
+
+.callout:hover,
+.codeBlock:hover {
+  border-color: rgba(142, 160, 255, 0.32);
+}
+
+/* Rows nudge rather than lift — they sit in a bordered stack where a Y-shift
+   would break the shared edges. */
+.row {
+  transition: background var(--dur-2) var(--ease-standard), padding-left var(--dur-2) var(--ease-emphasis);
+}
+
+.row:hover {
+  padding-left: 1.15rem;
+  background: rgba(255, 255, 255, 0.028);
+}
+
+.metric {
+  transition: transform var(--dur-3) var(--ease-emphasis), border-color var(--dur-3) var(--ease-standard);
+}
+
+.metric strong {
+  font-variant-numeric: tabular-nums;
+}
+
+.metric:hover {
+  transform: translateY(-3px);
+  border-color: rgba(55, 240, 154, 0.4);
+}
+
+/* Timeline: the step number becomes the focal point on hover, and a connecting
+   rail fills downward so the sequence reads as progressing. */
+.timeline {
+  position: relative;
+}
+
+.phase {
+  position: relative;
+  transition: background var(--dur-3) var(--ease-standard);
+}
+
+.phase:hover {
+  background: rgba(255, 255, 255, 0.024);
+}
+
+.phase span {
+  display: inline-block;
+  transition: transform var(--dur-3) var(--ease-spring), color var(--dur-2) var(--ease-standard);
+}
+
+.phase:hover span {
+  color: var(--mint-2);
+  transform: scale(1.08);
+}
+
+.codeBlock {
+  position: relative;
+  overflow: hidden;
+}
+
+/* A slow scanline over code blocks, echoing the hero's exec card. */
+.codeBlock::after {
+  position: absolute;
+  top: -30%;
+  right: 0;
+  left: 0;
+  height: 24%;
+  content: "";
+  background: linear-gradient(180deg, transparent, rgba(107, 92, 255, 0.07), transparent);
+  animation: docScan 7.5s var(--ease-standard) infinite;
+  animation-delay: var(--scan-delay, 0s);
+  pointer-events: none;
+}
+
+@keyframes docScan {
+  0%, 55% { top: -30%; }
+  100% { top: 130%; }
+}

@@ -8,6 +8,18 @@
   -webkit-backdrop-filter: saturate(180%) blur(20px);
   background: rgba(0, 0, 0, 0.62);
   border-bottom: 1px solid var(--line-soft);
+  transition:
+    background var(--dur-3) var(--ease-standard),
+    border-color var(--dur-3) var(--ease-standard),
+    box-shadow var(--dur-3) var(--ease-standard);
+}
+
+/* Past the first scroll the bar tightens and gains a shadow so it separates
+   from whatever is sliding underneath it. */
+.wrap[data-condensed="true"] {
+  background: rgba(0, 0, 0, 0.82);
+  border-bottom-color: var(--line);
+  box-shadow: 0 12px 34px rgba(0, 0, 0, 0.45);
 }
 
 .nav {
@@ -18,6 +30,11 @@
   width: var(--container);
   margin: 0 auto;
   padding: 0.6rem 0;
+  transition: padding var(--dur-3) var(--ease-emphasis);
+}
+
+.wrap[data-condensed="true"] .nav {
+  padding: 0.38rem 0;
 }
 
 .brand {
@@ -35,6 +52,16 @@
   height: 2rem;
   flex: 0 0 auto;
   border-radius: 0.55rem;
+  transition: transform var(--dur-3) var(--ease-spring), filter var(--dur-3) var(--ease-standard);
+}
+
+.brand:hover .mark {
+  transform: rotate(-8deg) scale(1.08);
+  filter: drop-shadow(0 0 14px rgba(107, 92, 255, 0.6));
+}
+
+.brand:active .mark {
+  transform: rotate(-8deg) scale(0.96);
 }
 
 .ticker {
@@ -47,6 +74,12 @@
   font-size: 0.66rem;
   font-weight: 500;
   letter-spacing: 0.02em;
+  transition: color var(--dur-2) var(--ease-standard), border-color var(--dur-2) var(--ease-standard);
+}
+
+.brand:hover .ticker {
+  border-color: rgba(55, 240, 154, 0.4);
+  color: var(--mint-2);
 }
 
 .links {
@@ -59,21 +92,73 @@
 }
 
 .links a {
+  position: relative;
   display: grid;
   place-items: center;
   min-height: 36px;
   padding: 0 0.9rem;
   border-radius: var(--pill);
   color: var(--muted);
-  transition: color 160ms ease;
+  transition: color var(--dur-2) var(--ease-standard);
+}
+
+/* The pill lives on a pseudo-element so it can scale in from the centre
+   instead of the background snapping on. */
+.links a::before {
+  position: absolute;
+  inset: 0;
+  content: "";
+  border-radius: var(--pill);
+  background: rgba(255, 255, 255, 0.07);
+  opacity: 0;
+  transform: scale(0.82);
+  transition:
+    opacity var(--dur-2) var(--ease-standard),
+    transform var(--dur-3) var(--ease-spring);
+}
+
+.links a > span {
+  position: relative;
+  z-index: 1;
 }
 
 .links a:hover {
   color: var(--fg);
 }
 
+.links a:hover::before {
+  opacity: 1;
+  transform: scale(1);
+}
+
 .active {
   color: var(--fg) !important;
+}
+
+.active::before {
+  opacity: 1;
+  transform: scale(1);
+  background: rgba(142, 160, 255, 0.14);
+  box-shadow: inset 0 0 0 1px rgba(142, 160, 255, 0.22);
+}
+
+/* Underline marker that grows out from the centre when a route becomes current. */
+.active::after {
+  position: absolute;
+  bottom: 2px;
+  left: 50%;
+  width: 1.1rem;
+  height: 2px;
+  content: "";
+  border-radius: 2px;
+  background: var(--grad-brand);
+  transform: translateX(-50%) scaleX(0);
+  transform-origin: 50% 50%;
+  animation: navMarker var(--dur-4) var(--ease-emphasis) forwards;
+}
+
+@keyframes navMarker {
+  to { transform: translateX(-50%) scaleX(1); }
 }
 
 @media (max-width: 920px) {
@@ -96,13 +181,19 @@
 
   .links {
     order: 3;
+    position: relative;
     width: 100%;
-    justify-content: space-between;
+    justify-content: flex-start;
     gap: 0.2rem;
     padding-top: 0.35rem;
     border-top: 1px solid var(--line-soft);
     overflow-x: auto;
+    scroll-behavior: smooth;
     scrollbar-width: none;
+    /* Fade the row's edges so a horizontally scrollable strip reads as
+       scrollable instead of looking like a clipped list. */
+    mask-image: linear-gradient(90deg, transparent, #000 1.25rem, #000 calc(100% - 1.25rem), transparent);
+    -webkit-overflow-scrolling: touch;
   }
 
   .links::-webkit-scrollbar {

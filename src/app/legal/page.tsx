@@ -1,6 +1,7 @@
 import { TOKEN } from "@/lib/config";
 import { JsonLd } from "@/components/JsonLd";
 import { pageMetadata, breadcrumbJsonLd } from "@/lib/seo";
+import { Reveal } from "@/components/Reveal";
 import styles from "../docs/docs.module.css";
 
 export const metadata = pageMetadata({
@@ -44,11 +45,11 @@ export default function LegalPage(): React.JSX.Element {
         <section className={styles.section}>
           <h2>Primary risks</h2>
           <div className={styles.table}>
-            {risks.map(([name, body]) => (
-              <div className={styles.row} key={name}>
+            {risks.map(([name, body], i) => (
+              <Reveal className={styles.row} delay={i * 45} key={name}>
                 <strong>{name}</strong>
                 <p>{body}</p>
-              </div>
+              </Reveal>
             ))}
           </div>
         </section>

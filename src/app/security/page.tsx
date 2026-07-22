@@ -2,6 +2,7 @@ import Link from "next/link";
 import { CHAIN, CONTRACTS, LINKS, STATUS, explorer } from "@/lib/config";
 import { JsonLd } from "@/components/JsonLd";
 import { pageMetadata, breadcrumbJsonLd } from "@/lib/seo";
+import { Reveal } from "@/components/Reveal";
 import styles from "../docs/docs.module.css";
 
 export const metadata = pageMetadata({
@@ -108,11 +109,11 @@ Hermes:
           <section className={styles.section} id="controls">
             <h2>Controls</h2>
             <div className={styles.table}>
-              {controls.map(([name, detail]) => (
-                <div className={styles.row} key={name}>
+              {controls.map(([name, detail], i) => (
+                <Reveal className={styles.row} delay={i * 45} key={name}>
                   <strong>{name}</strong>
                   <p>{detail}</p>
-                </div>
+                </Reveal>
               ))}
             </div>
           </section>
@@ -120,11 +121,11 @@ Hermes:
           <section className={styles.section} id="threats">
             <h2>Threat model</h2>
             <div className={styles.table}>
-              {threats.map(([name, detail]) => (
-                <div className={styles.row} key={name}>
+              {threats.map(([name, detail], i) => (
+                <Reveal className={styles.row} delay={i * 45} key={name}>
                   <strong>{name}</strong>
                   <p>{detail}</p>
-                </div>
+                </Reveal>
               ))}
             </div>
           </section>
@@ -137,13 +138,13 @@ Hermes:
             </p>
             <div className={styles.timeline}>
               {gates.map(([name, body], index) => (
-                <article className={styles.phase} key={name}>
+                <Reveal className={styles.phase} delay={index * 45} key={name}>
                   <span>P{index}</span>
                   <div>
                     <h3>{name}</h3>
                     <p>{body}</p>
                   </div>
-                </article>
+                </Reveal>
               ))}
             </div>
           </section>

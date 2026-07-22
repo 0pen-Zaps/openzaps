@@ -3,6 +3,7 @@ import { CHAIN, CONTRACTS, LINKS, TOKEN } from "@/lib/config";
 import { POLICY_TEMPLATES } from "@/lib/policy";
 import { JsonLd } from "@/components/JsonLd";
 import { pageMetadata, breadcrumbJsonLd, SITE_URL } from "@/lib/seo";
+import { Reveal } from "@/components/Reveal";
 import styles from "./docs.module.css";
 
 export const metadata = pageMetadata({
@@ -109,11 +110,11 @@ export default function DocsPage(): React.JSX.Element {
                 ["adapter", "A governed, allowlisted adapter. No arbitrary target plus calldata."],
                 ["allowedSubmitters", "Hermes, owner self-submit, or explicitly named relayers."],
                 ["postconditions", "Balance deltas, allowance reset, recipient, and tracked-asset assertions."],
-              ].map(([field, detail]) => (
-                <div className={styles.row} key={field}>
+              ].map(([field, detail], i) => (
+                <Reveal className={styles.row} delay={i * 45} key={field}>
                   <strong>{field}</strong>
                   <p>{detail}</p>
-                </div>
+                </Reveal>
               ))}
             </div>
           </section>
@@ -162,14 +163,14 @@ export default function DocsPage(): React.JSX.Element {
           <section className={styles.section} id="lifecycle">
             <h2>Execution lifecycle</h2>
             <div className={styles.timeline}>
-              {lifecycle.map(([n, title, body]) => (
-                <article className={styles.phase} key={n}>
+              {lifecycle.map(([n, title, body], i) => (
+                <Reveal className={styles.phase} delay={i * 45} key={n}>
                   <span>{n}</span>
                   <div>
                     <h3>{title}</h3>
                     <p>{body}</p>
                   </div>
-                </article>
+                </Reveal>
               ))}
             </div>
           </section>

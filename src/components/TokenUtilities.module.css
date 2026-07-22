@@ -45,3 +45,17 @@
     width: 100%;
   }
 }
+
+/* ---------------- motion layer ---------------- */
+
+/* Same treatment as the app console's notice: the success region stays mounted
+   for screen readers, so only the non-empty state animates. */
+.success:not(:empty),
+.error {
+  animation: noticeIn var(--dur-3) var(--ease-emphasis) both;
+}
+
+@keyframes noticeIn {
+  from { opacity: 0; transform: translateY(-5px); }
+  to { opacity: 1; transform: none; }
+}

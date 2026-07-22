@@ -1028,14 +1028,14 @@ export default function AppPage(): React.JSX.Element {
               </a>
               {holderTier !== "none" && <span className={styles.holderChip}>{tierLabel(holderTier)}</span>}
               {wrongNetwork && (
-                <button className="btn btnPrimary" disabled={busy !== null} onClick={() => void connectWallet()} type="button">
+                <button data-busy={busy === "connect"} className="btn btnPrimary" disabled={busy !== null} onClick={() => void connectWallet()} type="button">
                   {busy === "connect" ? "Switching…" : "Switch network"}
                 </button>
               )}
               <button className="btn btnGhost" onClick={() => void disconnect()} type="button">Disconnect</button>
             </>
           ) : (
-            <button className="btn btnPrimary" disabled={busy !== null} onClick={() => void connectWallet()} type="button">
+            <button data-busy={busy === "connect"} className="btn btnPrimary" disabled={busy !== null} onClick={() => void connectWallet()} type="button">
               {busy === "connect" ? "Connecting…" : "Connect wallet"}
             </button>
           )}
@@ -1069,7 +1069,7 @@ export default function AppPage(): React.JSX.Element {
         </div>
         <div className={styles.tokenActions}>
           <button className="btn btnGhost" onClick={() => void copyTokenAddress()} type="button">Copy address</button>
-          <button className="btn btnGhost" disabled={busy !== null} onClick={() => void watchToken()} type="button">
+          <button data-busy={busy === "watch"} className="btn btnGhost" disabled={busy !== null} onClick={() => void watchToken()} type="button">
             {busy === "watch" ? "Opening wallet…" : "Add to wallet"}
           </button>
           <a className="btn btnGhost" href={explorerAddress(ROBINHOOD_ASSETS.zaps)} target="_blank" rel="noreferrer">View token ↗</a>
@@ -1115,30 +1115,30 @@ export default function AppPage(): React.JSX.Element {
             <div><span>Signed minimum</span><strong>{minOut === null ? "—" : `${formatToken(minOut)} ${outputSymbol}`}</strong></div>
             <div><span>Quoter gas</span><strong>{quoteGas === null ? "—" : quoteGas.toLocaleString()}</strong></div>
             {autoRefreshedAt && <div className={styles.autoRefreshed}>Auto-updated {autoRefreshedAt} — your signed floor stays at the quote you last requested.</div>}
-            <button className="btn btnGhost" data-testid="quote-button" disabled={busy !== null || amountIn <= 0n} onClick={() => void requestQuote()} type="button">
+            <button data-busy={busy === "quote"} className="btn btnGhost" data-testid="quote-button" disabled={busy !== null || amountIn <= 0n} onClick={() => void requestQuote()} type="button">
               {busy === "quote" ? "Quoting…" : quote === null ? "Get live quote" : "Refresh quote"}
             </button>
           </div>
 
           <div className={styles.flow}>
             <FlowStep number="1" title="Create immutable zap" detail="Policy binds owner, recipient, adapter, spender, input token, and exact amount." done={zap !== null}>
-              <button className="btn btnPrimary" data-testid="create-zap" disabled={!account || !protocolReady || wrongNetwork || zap !== null || busy !== null || amountIn <= 0n} onClick={() => void createZap()} type="button">
+              <button data-busy={busy === "create"} className="btn btnPrimary" data-testid="create-zap" disabled={!account || !protocolReady || wrongNetwork || zap !== null || busy !== null || amountIn <= 0n} onClick={() => void createZap()} type="button">
                 {busy === "create" ? "Creating…" : "Create zap"}
               </button>
               {zap && <button className="btn btnGhost" disabled={busy !== null} onClick={startNewZap} type="button">Build another</button>}
             </FlowStep>
             <FlowStep number="2" title={`Fund with ${inputSymbol}`} detail="Direct ERC-20 transfer only. No standing wallet allowance is created." done={funded}>
               {direction === "buy" && (
-                <button className="btn btnGhost" disabled={!account || busy !== null || amountIn <= 0n || nativeBalance < amountIn} onClick={() => void wrapEth()} type="button">
+                <button data-busy={busy === "wrap"} className="btn btnGhost" disabled={!account || busy !== null || amountIn <= 0n || nativeBalance < amountIn} onClick={() => void wrapEth()} type="button">
                   {busy === "wrap" ? "Wrapping…" : "Wrap ETH"}
                 </button>
               )}
-              <button className="btn btnPrimary" disabled={!zap || !protocolReady || funded || busy !== null} onClick={() => void fundZap()} type="button">
+              <button data-busy={busy === "fund"} className="btn btnPrimary" disabled={!zap || !protocolReady || funded || busy !== null} onClick={() => void fundZap()} type="button">
                 {busy === "fund" ? "Funding…" : "Fund zap"}
               </button>
             </FlowStep>
             <FlowStep number="3" title="Sign and execute" detail="Requires a reviewed live quote; execution aborts if the price drops below your displayed minimum. The EIP-712 intent expires in ten minutes and caps gas and fee price." done={executionComplete}>
-              <button className="btn btnPrimary" disabled={!protocolReady || !funded || reviewedQuote === null || busy !== null || executionComplete} onClick={() => void executeZap()} type="button">
+              <button data-busy={busy === "execute"} className="btn btnPrimary" disabled={!protocolReady || !funded || reviewedQuote === null || busy !== null || executionComplete} onClick={() => void executeZap()} type="button">
                 {busy === "execute" ? "Executing…" : executionComplete ? "Execution confirmed" : "Sign & execute"}
               </button>
             </FlowStep>
@@ -1185,7 +1185,7 @@ export default function AppPage(): React.JSX.Element {
                     ))}
                 </div>
                 <button className="btn btnGhost" disabled={busy !== null} onClick={exportCurrentZap} type="button">Export public config</button>
-                <button className="btn btnGhost" disabled={busy !== null || recoverableBalance === 0n} onClick={() => void recoverFunds()} type="button">
+                <button data-busy={busy === "recover"} className="btn btnGhost" disabled={busy !== null || recoverableBalance === 0n} onClick={() => void recoverFunds()} type="button">
                   {busy === "recover" ? "Recovering…" : "Emergency recover"}
                 </button>
               </>
@@ -1195,7 +1195,7 @@ export default function AppPage(): React.JSX.Element {
           <div className={styles.loadZap}>
             <label htmlFor="load-zap">Resume or recover an owned canonical zap</label>
             <input id="load-zap" className={styles.input} placeholder="0x…" value={manualZap} onChange={(event) => setManualZap(event.target.value)} />
-            <button className="btn btnGhost" disabled={!account || !protocolReady || busy !== null || manualZap.length !== 42} onClick={() => void loadExistingZap()} type="button">
+            <button data-busy={busy === "load"} className="btn btnGhost" disabled={!account || !protocolReady || busy !== null || manualZap.length !== 42} onClick={() => void loadExistingZap()} type="button">
               {busy === "load" ? "Loading…" : "Load verified zap"}
             </button>
           </div>

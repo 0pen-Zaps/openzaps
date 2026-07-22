@@ -2,8 +2,10 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useEffect, useState } from "react";
 import { OpenZapMark } from "./OpenZapMark";
 import { BuyButton } from "./BuyButton";
+import { ScrollProgress } from "./ScrollProgress";
 import { TOKEN } from "@/lib/config";
 import styles from "./SiteNav.module.css";
 
@@ -18,8 +20,29 @@ const LINKS = [
 
 export function SiteNav(): React.JSX.Element {
   const pathname = usePathname();
+  const [condensed, setCondensed] = useState(false);
+
+  // Condense the bar once the page has moved at all: the nav gives back
+  // vertical space and deepens its backdrop so content reads over it cleanly.
+  useEffect(() => {
+    let frame = 0;
+    const measure = (): void => {
+      frame = 0;
+      setCondensed(window.scrollY > 12);
+    };
+    const onScroll = (): void => {
+      frame ||= requestAnimationFrame(measure);
+    };
+    measure();
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => {
+      window.removeEventListener("scroll", onScroll);
+      cancelAnimationFrame(frame);
+    };
+  }, []);
+
   return (
-    <header className={styles.wrap}>
+    <header className={styles.wrap} data-condensed={condensed}>
       <nav className={styles.nav} aria-label="Primary">
         <Link href="/" className={styles.brand} aria-label="OpenZaps home">
           <OpenZapMark className={styles.mark} />
@@ -36,13 +59,14 @@ export function SiteNav(): React.JSX.Element {
                 className={active ? styles.active : undefined}
                 aria-current={active ? "page" : undefined}
               >
-                {l.label}
+                <span>{l.label}</span>
               </Link>
             );
           })}
         </div>
         <BuyButton className={styles.cta} />
       </nav>
+      <ScrollProgress />
     </header>
   );
 }
