@@ -22,7 +22,7 @@ Key facts:
 ## Official links
 
 - X (Twitter): https://x.com/0xzaps
-- GitHub: https://github.com/nodar/openzaps
+- Verified contract source: https://robinhoodchain.blockscout.com/address/0xFC775017b25d2458623E2f3E735A4B750dD8b4E4?tab=contract
 - Token market (Clanker): https://www.clanker.world/clanker/0xDd90bFa4adC7F4401E611AbaC692D939F9F4CB07
 - Explorer: https://robinhoodchain.blockscout.com/token/0xDd90bFa4adC7F4401E611AbaC692D939F9F4CB07
 

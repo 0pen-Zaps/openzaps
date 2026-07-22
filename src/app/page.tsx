@@ -367,8 +367,8 @@ export default function Home(): React.JSX.Element {
               </Reveal>
             ))}
           </div>
-          <a className={styles.repoLink} href={LINKS.github} target="_blank" rel="noreferrer">
-            Read the contracts + internal review on GitHub ↗
+          <a className={styles.repoLink} href={LINKS.contractSource} target="_blank" rel="noreferrer">
+            Read the verified contract source ↗
           </a>
           <br />
           <Link className={styles.repoLink} href="/security">

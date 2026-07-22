@@ -77,7 +77,9 @@ export function explorer(addr: string): string {
 }
 
 export const LINKS = {
-  github: "https://github.com/nodar/openzaps",
+  /** Verified factory source on the block explorer. The GitHub repo is private, so
+   *  the explorer is the only publicly readable source of truth for the contracts. */
+  contractSource: `${explorer(CONTRACTS.factory)}?tab=contract`,
   farcaster: "https://farcaster.xyz/nodes",
   x: "https://x.com/0xzaps",
   clanker: TOKEN_LAUNCH.tradeUrl,

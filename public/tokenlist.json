@@ -9,7 +9,7 @@
   "keywords": [
     "openzaps",
     "0xzaps",
-    "robinhood-chain",
+    "robinhood chain",
     "clanker"
   ],
   "tokens": [
@@ -22,12 +22,7 @@
       "logoURI": "https://www.0xzaps.com/0xzaps-token.png",
       "extensions": {
         "website": "https://www.0xzaps.com/token",
-        "x": "https://x.com/0xzaps",
-        "clanker": "https://www.clanker.world/clanker/0xDd90bFa4adC7F4401E611AbaC692D939F9F4CB07",
-        "dexScreener": "https://dexscreener.com/robinhood/0xb040f18affd851c6ea02b896b2f846cb77edbb33cc5361f7f8c6d14b87c01573",
-        "explorer": "https://robinhoodchain.blockscout.com/token/0xDd90bFa4adC7F4401E611AbaC692D939F9F4CB07",
-        "onchainImageURI": "ipfs://bafkreidndqit6ydpkivgmm4qdukh7sgv6uexjp3rc76iyvx22zd425ae7i",
-        "onchainImageGateway": "https://turquoise-blank-swallow-685.mypinata.cloud/ipfs/bafkreidndqit6ydpkivgmm4qdukh7sgv6uexjp3rc76iyvx22zd425ae7i"
+        "x": "https://x.com/0xzaps"
       }
     }
   ]
