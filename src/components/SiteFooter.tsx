@@ -36,6 +36,9 @@ export function SiteFooter(): React.JSX.Element {
             <a href={LINKS.github} target="_blank" rel="noreferrer">
               GitHub
             </a>
+            <a href={LINKS.x} target="_blank" rel="noreferrer">
+              X @0xzaps
+            </a>
             <Link href="/security">Security</Link>
             <Link href="/pricing">Pricing</Link>
           </div>
@@ -44,6 +47,9 @@ export function SiteFooter(): React.JSX.Element {
             <Link href="/token">{TOKEN.symbol} token</Link>
             <a href={LINKS.buy} target="_blank" rel="noreferrer">
               Buy on Clanker
+            </a>
+            <a href={LINKS.dexscreener} target="_blank" rel="noreferrer">
+              View on Dexscreener
             </a>
             <a href={LINKS.tokenExplorer} target="_blank" rel="noreferrer">
               View token contract

@@ -1,9 +1,20 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Inter, JetBrains_Mono } from "next/font/google";
+import { Analytics } from "@vercel/analytics/next";
 import "./globals.css";
 import { SiteNav } from "@/components/SiteNav";
 import { SiteFooter } from "@/components/SiteFooter";
-import { TOKEN, TOKEN_LAUNCH } from "@/lib/config";
+import { JsonLd } from "@/components/JsonLd";
+import { LINKS, TOKEN, TOKEN_LAUNCH, X_HANDLE } from "@/lib/config";
+import {
+  SITE_URL,
+  SITE_NAME,
+  DEFAULT_TITLE,
+  DEFAULT_DESCRIPTION,
+  SEO_KEYWORDS,
+  OG_IMAGE,
+  absoluteUrl,
+} from "@/lib/seo";
 
 const inter = Inter({
   variable: "--font-inter",
@@ -17,90 +28,105 @@ const jetBrainsMono = JetBrains_Mono({
   display: "swap",
 });
 
-const siteUrl =
-  process.env.NEXT_PUBLIC_SITE_URL ??
-  (process.env.VERCEL_PROJECT_PRODUCTION_URL
-    ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`
-    : process.env.VERCEL_URL
-      ? `https://${process.env.VERCEL_URL}`
-      : "https://openzaps.vercel.app");
-
-const title = "OpenZaps — bounded onchain execution for agents";
-const description =
-  "OpenZaps are tightly bounded policy capsules for agent-triggered DeFi: simulate, submit, monitor, and revoke without broad wallet authority.";
-
-const structuredData = [
-  {
-    "@context": "https://schema.org",
-    "@type": "SoftwareApplication",
-    name: "OpenZaps",
-    applicationCategory: "FinanceApplication",
-    operatingSystem: "Web",
-    url: siteUrl,
-    description,
-    offers: {
-      "@type": "Offer",
-      price: "0",
-      priceCurrency: "USD",
-      availability: "https://schema.org/PreOrder",
-    },
-  },
-  {
-    "@context": "https://schema.org",
-    "@type": "Product",
-    name: `${TOKEN.name} (${TOKEN.symbol})`,
-    alternateName: `$${TOKEN.symbol}`,
-    description: `${TOKEN.symbol} is the OpenZaps community and operator coordination token, live on Clanker on ${TOKEN_LAUNCH.network}.`,
-    url: TOKEN_LAUNCH.tradeUrl,
-    additionalProperty: [
-      { "@type": "PropertyValue", name: "Contract address", value: TOKEN_LAUNCH.contract },
-      { "@type": "PropertyValue", name: "Network", value: TOKEN_LAUNCH.network },
-      { "@type": "PropertyValue", name: "Launch venue", value: TOKEN_LAUNCH.venue },
-    ],
-  },
-];
-
 export const metadata: Metadata = {
-  metadataBase: new URL(siteUrl),
+  metadataBase: new URL(SITE_URL),
   title: {
-    default: title,
-    template: "%s | OpenZaps",
+    default: DEFAULT_TITLE,
+    template: `%s | ${SITE_NAME}`,
   },
-  description,
-  keywords: [
-    "OpenZaps",
-    TOKEN.symbol,
-    "0xZAPS",
-    "Clanker",
-    "Robinhood Chain",
-    TOKEN_LAUNCH.contract,
-    "DeFi automation",
-    "Hermes agent",
-    "EIP-712 intents",
-    "immutable zaps",
-    "Base",
-  ],
+  description: DEFAULT_DESCRIPTION,
+  applicationName: SITE_NAME,
+  category: "finance",
+  creator: SITE_NAME,
+  publisher: SITE_NAME,
+  keywords: SEO_KEYWORDS,
   alternates: { canonical: "/" },
   openGraph: {
-    title,
-    description,
+    title: DEFAULT_TITLE,
+    description: DEFAULT_DESCRIPTION,
     url: "/",
-    siteName: "OpenZaps",
+    siteName: SITE_NAME,
     type: "website",
-    images: [{ url: "/og.png", width: 1200, height: 630, alt: `OpenZaps — $${TOKEN.symbol} live on Clanker` }],
+    locale: "en_US",
+    images: [
+      {
+        url: OG_IMAGE,
+        width: 1200,
+        height: 630,
+        alt: `${SITE_NAME} — $${TOKEN.symbol} live on ${TOKEN_LAUNCH.venue}`,
+      },
+    ],
   },
   twitter: {
     card: "summary_large_image",
-    title,
-    description,
-    images: ["/og.png"],
+    site: X_HANDLE,
+    creator: X_HANDLE,
+    title: DEFAULT_TITLE,
+    description: DEFAULT_DESCRIPTION,
+    images: [OG_IMAGE],
   },
   icons: {
     icon: [{ url: "/openzap-mark.svg", type: "image/svg+xml" }],
     shortcut: ["/openzap-mark.svg"],
+    apple: [{ url: "/apple-icon.png", sizes: "180x180", type: "image/png" }],
   },
   manifest: "/manifest.webmanifest",
-  robots: { index: true, follow: true },
+  robots: {
+    index: true,
+    follow: true,
+    googleBot: {
+      index: true,
+      follow: true,
+      "max-image-preview": "large",
+      "max-snippet": -1,
+      "max-video-preview": -1,
+    },
+  },
+};
+
+export const viewport: Viewport = {
+  colorScheme: "dark",
+};
+
+const siteGraph = {
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "Organization",
+      "@id": `${SITE_URL}/#organization`,
+      name: SITE_NAME,
+      url: SITE_URL,
+      logo: {
+        "@type": "ImageObject",
+        url: absoluteUrl("/openzap-mark.svg"),
+      },
+      sameAs: [LINKS.github, LINKS.x],
+    },
+    {
+      "@type": "WebSite",
+      "@id": `${SITE_URL}/#website`,
+      url: SITE_URL,
+      name: SITE_NAME,
+      description: DEFAULT_DESCRIPTION,
+      publisher: { "@id": `${SITE_URL}/#organization` },
+      inLanguage: "en",
+    },
+    {
+      "@type": "Product",
+      "@id": `${SITE_URL}/#token`,
+      name: `${TOKEN.name} (${TOKEN.symbol})`,
+      alternateName: `$${TOKEN.symbol}`,
+      description: `${TOKEN.symbol} is the OpenZaps community and operator coordination token, live on ${TOKEN_LAUNCH.venue} on ${TOKEN_LAUNCH.network}.`,
+      url: TOKEN_LAUNCH.tradeUrl,
+      brand: { "@id": `${SITE_URL}/#organization` },
+      additionalProperty: [
+        { "@type": "PropertyValue", name: "Contract address", value: TOKEN_LAUNCH.contract },
+        { "@type": "PropertyValue", name: "Network", value: TOKEN_LAUNCH.network },
+        { "@type": "PropertyValue", name: "Launch venue", value: TOKEN_LAUNCH.venue },
+        { "@type": "PropertyValue", name: "Dexscreener market", value: LINKS.dexscreener },
+      ],
+    },
+  ],
 };
 
 export default function RootLayout({
@@ -109,16 +135,14 @@ export default function RootLayout({
   return (
     <html lang="en" className={`${inter.variable} ${jetBrainsMono.variable}`}>
       <body>
-        <script
-          type="application/ld+json"
-          dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData).replace(/</g, "\\u003c") }}
-        />
+        <JsonLd data={siteGraph} />
         <a href="#main" className="skipLink">
           Skip to content
         </a>
         <SiteNav />
         {children}
         <SiteFooter />
+        <Analytics />
       </body>
     </html>
   );

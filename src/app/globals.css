@@ -174,9 +174,16 @@ a {
 
 .gradientText {
   background: var(--grad-text);
+  background-size: 220% 100%;
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
+  animation: gradientSweep 9s ease-in-out infinite alternate;
+}
+
+@keyframes gradientSweep {
+  from { background-position: 0% 50%; }
+  to { background-position: 100% 50%; }
 }
 
 /* Buttons (shared across nav, hero, pages) */
@@ -249,6 +256,7 @@ a {
   html { scroll-behavior: auto; }
   .btnPrimary { animation: none; }
   .badge::before { animation: none; }
+  .gradientText { animation: none; }
 }
 
 @media (max-width: 780px) {

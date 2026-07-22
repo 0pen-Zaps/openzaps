@@ -1,0 +1,33 @@
+# OpenZaps
+
+> OpenZaps turn approved DeFi workflows into sealed, immutable policy capsules that a Hermes agent can simulate, submit, monitor, and revoke — without ever holding discretionary wallet authority. The 0xZAPS community token is live on Robinhood Chain through a creator-verified Clanker V4 market (contract 0xDd90bFa4adC7F4401E611AbaC692D939F9F4CB07).
+
+Key facts:
+- Protocol reference contracts are deployed on Base mainnet (factory 0xc7C5897e4738a157731c2F93b1d73Db9926E926C) and are internally reviewed but pre-external-audit; mainnet real-fund creation is intentionally gated.
+- The token confers no yield, equity, revenue claim, or protocol access guarantee.
+- Execution authority is bound in EIP-712-signed policies: fixed adapters, spend ceilings, recipients, deadlines, postconditions, and unconditional owner revoke paths.
+
+## Pages
+
+- [Home](https://www.0xzaps.com): what OpenZaps are, authority models, security posture, FAQ
+- [Policy console](https://www.0xzaps.com/app): design, simulate, and review bounded execution policies
+- [Developer docs](https://www.0xzaps.com/docs): policy schema, simulation API, templates, lifecycle
+- [Security architecture](https://www.0xzaps.com/security): threat model, controls, production gates
+- [Pricing](https://www.0xzaps.com/pricing): simulation is free; protocol fees are governance-gated
+- [Roadmap](https://www.0xzaps.com/roadmap): templates → wallet creation → relayers → audits
+- [0xZAPS token](https://www.0xzaps.com/token): verified contract, official Clanker market, FAQ
+- [Risk disclosures](https://www.0xzaps.com/legal): pre-audit software, onchain irreversibility, token risk
+
+## Official links
+
+- X (Twitter): https://x.com/0xzaps
+- GitHub: https://github.com/nodar/openzaps
+- Token market (Clanker): https://www.clanker.world/clanker/0xDd90bFa4adC7F4401E611AbaC692D939F9F4CB07
+- Explorer: https://robinhoodchain.blockscout.com/token/0xDd90bFa4adC7F4401E611AbaC692D939F9F4CB07
+
+## API
+
+- POST https://www.0xzaps.com/api/policies/simulate — deterministic policy simulation; never broadcasts and never requests wallet authority
+- GET https://www.0xzaps.com/api/health — public protocol status
+
+Not financial advice. Always verify the token contract address on this site before trading.

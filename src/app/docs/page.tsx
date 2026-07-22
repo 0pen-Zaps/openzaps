@@ -1,15 +1,18 @@
-import type { Metadata } from "next";
 import Link from "next/link";
 import { CHAIN, CONTRACTS, LINKS, TOKEN } from "@/lib/config";
 import { POLICY_TEMPLATES } from "@/lib/policy";
+import { JsonLd } from "@/components/JsonLd";
+import { pageMetadata, breadcrumbJsonLd, SITE_URL } from "@/lib/seo";
 import styles from "./docs.module.css";
 
-export const metadata: Metadata = {
+export const metadata = pageMetadata({
   title: "Developer docs",
   description:
     "OpenZaps developer docs for bounded policy capsules, simulation review, EIP-712 intents, revocation, and the simulation API.",
-  alternates: { canonical: "/docs" },
-};
+  path: "/docs",
+  ogImage: "/og/docs.png",
+  keywords: ["OpenZaps docs", "policy capsule docs", "simulation API", "EIP-712 intent docs"],
+});
 
 const lifecycle = [
   ["1", "Draft policy", "Select a template, authority model, spend ceiling, cadence, adapter, recipient, submitter, and postconditions."],
@@ -22,6 +25,7 @@ const lifecycle = [
 export default function DocsPage(): React.JSX.Element {
   return (
     <main className={styles.page} id="main">
+      <JsonLd data={{ "@context": "https://schema.org", ...breadcrumbJsonLd("/docs", "Developer docs") }} />
       <section className={`container ${styles.hero}`}>
         <div>
           <span className="eyebrow">Developer docs</span>
@@ -73,7 +77,7 @@ export default function DocsPage(): React.JSX.Element {
               Farcaster Mini App. Simulation never broadcasts a transaction and never asks for wallet authority.
             </p>
             <div className={styles.codeBlock}>
-              <pre>{`curl -X POST https://openzaps.vercel.app/api/policies/simulate \\
+              <pre>{`curl -X POST ${SITE_URL}/api/policies/simulate \\
   -H "content-type: application/json" \\
   -d '{
     "templateId": "recurring-dca",

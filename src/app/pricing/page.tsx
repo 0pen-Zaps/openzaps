@@ -1,14 +1,17 @@
-import type { Metadata } from "next";
 import Link from "next/link";
 import { TOKEN } from "@/lib/config";
+import { JsonLd } from "@/components/JsonLd";
+import { pageMetadata, breadcrumbJsonLd } from "@/lib/seo";
 import styles from "../docs/docs.module.css";
 
-export const metadata: Metadata = {
+export const metadata = pageMetadata({
   title: "Pricing and protocol fees",
   description:
     "OpenZaps pricing model for simulation, policy creation, relayer execution, protocol fees, and enterprise agent operations.",
-  alternates: { canonical: "/pricing" },
-};
+  path: "/pricing",
+  ogImage: "/og/pricing.png",
+  keywords: ["OpenZaps pricing", "protocol fees", "relayer fee cap"],
+});
 
 const feeRows = [
   ["Simulation", "Free", "Local and API simulation should stay free so users can inspect policies before wallet review."],
@@ -39,6 +42,7 @@ const tiers = [
 export default function PricingPage(): React.JSX.Element {
   return (
     <main className={styles.page} id="main">
+      <JsonLd data={{ "@context": "https://schema.org", ...breadcrumbJsonLd("/pricing", "Pricing and protocol fees") }} />
       <section className={`container ${styles.hero}`}>
         <div>
           <span className="eyebrow">Pricing</span>

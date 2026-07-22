@@ -1,13 +1,16 @@
-import type { Metadata } from "next";
 import { TOKEN } from "@/lib/config";
+import { JsonLd } from "@/components/JsonLd";
+import { pageMetadata, breadcrumbJsonLd } from "@/lib/seo";
 import styles from "../docs/docs.module.css";
 
-export const metadata: Metadata = {
+export const metadata = pageMetadata({
   title: "Risk disclosures",
   description:
     "OpenZaps risk disclosures for pre-audit contracts, onchain execution, token utility, relayer behavior, and user responsibility.",
-  alternates: { canonical: "/legal" },
-};
+  path: "/legal",
+  ogImage: "/og/legal.png",
+  keywords: ["OpenZaps risk disclosures", "0xZAPS token risk"],
+});
 
 const risks = [
   ["Pre-audit software", "The contracts and interface are not externally audited and should not be treated as production-cleared for real funds."],
@@ -21,6 +24,7 @@ const risks = [
 export default function LegalPage(): React.JSX.Element {
   return (
     <main className={styles.page} id="main">
+      <JsonLd data={{ "@context": "https://schema.org", ...breadcrumbJsonLd("/legal", "Risk disclosures") }} />
       <section className={`container ${styles.hero}`}>
         <div>
           <span className="eyebrow">Risk disclosures</span>

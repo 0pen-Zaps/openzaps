@@ -1,13 +1,16 @@
-import type { Metadata } from "next";
 import Link from "next/link";
+import { JsonLd } from "@/components/JsonLd";
+import { pageMetadata, breadcrumbJsonLd } from "@/lib/seo";
 import styles from "../docs/docs.module.css";
 
-export const metadata: Metadata = {
+export const metadata = pageMetadata({
   title: "Roadmap",
   description:
     "OpenZaps roadmap for policy templates, wallet creation, Hermes relayers, adapter governance, monitoring, SDK, audits, and production launch.",
-  alternates: { canonical: "/roadmap" },
-};
+  path: "/roadmap",
+  ogImage: "/og/roadmap.png",
+  keywords: ["OpenZaps roadmap", "DeFi agent roadmap"],
+});
 
 const phases = [
   [
@@ -47,6 +50,7 @@ const principles = [
 export default function RoadmapPage(): React.JSX.Element {
   return (
     <main className={styles.page} id="main">
+      <JsonLd data={{ "@context": "https://schema.org", ...breadcrumbJsonLd("/roadmap", "Roadmap") }} />
       <section className={`container ${styles.hero}`}>
         <div>
           <span className="eyebrow">Roadmap</span>

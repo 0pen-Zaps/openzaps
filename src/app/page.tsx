@@ -1,14 +1,16 @@
 import Link from "next/link";
 import { OpenZapMark } from "@/components/OpenZapMark";
 import { BuyButton } from "@/components/BuyButton";
+import { JsonLd } from "@/components/JsonLd";
 import { TOKEN, TOKEN_LAUNCH, LINKS, CHAIN, CONTRACTS, contractsLive, explorer } from "@/lib/config";
 import { POLICY_TEMPLATES } from "@/lib/policy";
+import { absoluteUrl } from "@/lib/seo";
 import styles from "./page.module.css";
 
 const stats = [
   { v: "0", k: "Broad wallet approvals" },
   { v: "4", k: "Policy templates" },
-  { v: "47 / 0", k: "Contract tests passing / failing" },
+  { v: "63 / 0", k: "Contract tests passing / failing" },
   { v: "9 / 9", k: "Internal findings fixed" },
 ] as const;
 
@@ -62,6 +64,42 @@ const flow = [
     grade: "Audit trail",
   },
 ] as const;
+
+const faqs = [
+  {
+    q: "What is OpenZaps?",
+    a: "OpenZaps turn approved DeFi workflows into sealed policy capsules. A Hermes agent can simulate, submit, monitor, and revoke them, but it cannot choose arbitrary targets, recipients, assets, or calldata.",
+  },
+  {
+    q: "How is this different from giving an agent my wallet?",
+    a: "The agent never holds broad approvals or custody. Authority is bound inside an EIP-712-signed policy — chain, spend ceiling, recipient, deadline, and postconditions — and the owner always keeps an unconditional revoke and exit path.",
+  },
+  {
+    q: `Is the ${TOKEN.symbol} token live?`,
+    a: `Yes. ${TOKEN.symbol} is live on ${TOKEN_LAUNCH.network} through a creator-verified ${TOKEN_LAUNCH.venue} ${TOKEN_LAUNCH.version} market. Verify the contract address published on this site before trading.`,
+  },
+  {
+    q: `Do I need ${TOKEN.symbol} to use the protocol?`,
+    a: "No — nothing is token-gated. The token aligns the community and operators around the execution layer. Robinhood mainnet actions remain wallet-confirmed and the v1.1 contracts are pre-external-audit.",
+  },
+  {
+    q: "Are the contracts audited?",
+    a: "The v1.1 contracts are a complete, internally reviewed reference implementation — 63 passing tests, 9 internal findings fixed — but are pre-external-audit. Treat anything onchain accordingly.",
+  },
+] as const;
+
+// Derived from the same `faqs` array that renders the visible FAQ, so the structured data
+// can never drift from on-page copy (a Google FAQPage requirement).
+const homeFaqJsonLd = {
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  "@id": absoluteUrl("/#faq"),
+  mainEntity: faqs.map((f) => ({
+    "@type": "Question",
+    name: f.q,
+    acceptedAnswer: { "@type": "Answer", text: f.a },
+  })),
+};
 
 const agentLoop = [
   "Discover registry events",
@@ -127,12 +165,21 @@ export default function Home(): React.JSX.Element {
               <strong>policy.review()</strong>
               <span className={styles.live}>{contractsLive() ? "gated" : "preview"}</span>
             </div>
-            <pre>{`draft(template)           pass
-simulate(latestBlock)     pass
-diff(policyVersion)       pass
-bind(spend, recipient)    pass
-submit(privateChannel)    gated
-revoke(ownerPath)         ready`}</pre>
+            <pre>
+              {[
+                "draft(template)           pass",
+                "simulate(latestBlock)     pass",
+                "diff(policyVersion)       pass",
+                "bind(spend, recipient)    pass",
+                "submit(privateChannel)    gated",
+                "revoke(ownerPath)         ready",
+              ].map((line) => (
+                <span className={styles.execLine} key={line}>
+                  {line}
+                </span>
+              ))}
+              <span className={styles.caret} aria-hidden />
+            </pre>
             <div className={styles.route}>
               <span>You</span>
               <i />
@@ -143,6 +190,30 @@ revoke(ownerPath)         ready`}</pre>
           </div>
         </div>
       </section>
+
+      {/* ---------------- live fact ticker ---------------- */}
+      <div className={styles.ticker} aria-hidden="true">
+        <div className={styles.tickerTrack}>
+          {[0, 1].map((n) => (
+            <div className={styles.tickerGroup} key={n}>
+              <span>${TOKEN.symbol} live</span>
+              <i>⚡</i>
+              <span>
+                {TOKEN_LAUNCH.venue} {TOKEN_LAUNCH.version}
+              </span>
+              <i>⚡</i>
+              <span>{TOKEN_LAUNCH.network}</span>
+              <i>⚡</i>
+              <span className={styles.tickerCa}>CA {TOKEN_LAUNCH.contract}</span>
+              <i>⚡</i>
+              <span>Zero discretionary approvals</span>
+              <i>⚡</i>
+              <span>Simulate → submit → monitor → revoke</span>
+              <i>⚡</i>
+            </div>
+          ))}
+        </div>
+      </div>
 
       {/* ---------------- stat strip ---------------- */}
       <section className={`container ${styles.statStrip}`}>
@@ -168,6 +239,9 @@ revoke(ownerPath)         ready`}</pre>
           </p>
           <div className={styles.tokenActions}>
             <BuyButton />
+            <a href={LINKS.dexscreener} className="btn btnGhost" target="_blank" rel="noreferrer">
+              Dexscreener ↗
+            </a>
             <a href={LINKS.tokenExplorer} className="btn btnGhost" target="_blank" rel="noreferrer">
               View contract ↗
             </a>
@@ -248,7 +322,7 @@ revoke(ownerPath)         ready`}</pre>
           <span className="eyebrow">Security posture</span>
           <h2>Narrow policy beats universal routing.</h2>
           <p>
-            The v1 contracts are a complete, internally-reviewed reference implementation: 47 passing tests, an
+            The v1.1 contracts are a complete, internally-reviewed reference implementation: 63 passing tests, an
             adversarial multi-agent review, and 9 internal findings fixed — including a critical clone-hijack
             (all documented in the linked repo). Not externally audited; we say so plainly.
           </p>
@@ -261,7 +335,7 @@ revoke(ownerPath)         ready`}</pre>
             ))}
           </div>
           <a className={styles.repoLink} href={LINKS.github} target="_blank" rel="noreferrer">
-            Read the contracts + audit on GitHub ↗
+            Read the contracts + internal review on GitHub ↗
           </a>
           <br />
           <Link className={styles.repoLink} href="/security">
@@ -269,7 +343,7 @@ revoke(ownerPath)         ready`}</pre>
           </Link>
           {contractsLive() && (
             <p className={styles.deployed}>
-              <span className={styles.liveDot} aria-hidden /> v1 reference contracts deployed on {CHAIN.name} ·{" "}
+              <span className={styles.liveDot} aria-hidden /> v1.1 production contracts deployed on {CHAIN.name} ·{" "}
               <a href={explorer(CONTRACTS.factory)} target="_blank" rel="noreferrer">
                 factory {CONTRACTS.factory.slice(0, 6)}…{CONTRACTS.factory.slice(-4)} ↗
               </a>
@@ -285,6 +359,23 @@ revoke(ownerPath)         ready`}</pre>
             </div>
           ))}
         </aside>
+      </section>
+
+      {/* ---------------- faq ---------------- */}
+      <section className={`container ${styles.section}`} id="faq">
+        <JsonLd data={homeFaqJsonLd} />
+        <header className={styles.head}>
+          <span className="eyebrow">FAQ</span>
+          <h2>Straight answers.</h2>
+        </header>
+        <div className={styles.faqs}>
+          {faqs.map((f) => (
+            <details className={styles.faq} key={f.q}>
+              <summary>{f.q}</summary>
+              <p>{f.a}</p>
+            </details>
+          ))}
+        </div>
       </section>
 
       {/* ---------------- final CTA ---------------- */}

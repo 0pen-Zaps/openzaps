@@ -1,9 +1,11 @@
 {
-  "name": "OpenZaps",
+  "id": "/",
+  "name": "OpenZaps — bounded onchain execution for agents",
   "short_name": "OpenZaps",
-  "description": "Bounded policy capsules for agent-triggered DeFi execution.",
+  "description": "Bounded policy capsules for agent-triggered DeFi execution. 0xZAPS is live on Clanker on Robinhood Chain.",
   "start_url": "/",
   "scope": "/",
+  "lang": "en",
   "display": "standalone",
   "background_color": "#08090A",
   "theme_color": "#6B5CFF",
@@ -13,7 +15,25 @@
       "src": "/openzap-mark.svg",
       "sizes": "any",
       "type": "image/svg+xml",
-      "purpose": "any maskable"
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
     }
   ]
 }

@@ -2,9 +2,12 @@
   position: sticky;
   top: 0;
   z-index: 50;
-  backdrop-filter: blur(18px);
-  background: linear-gradient(180deg, rgba(8, 9, 10, 0.82), rgba(8, 9, 10, 0.32));
-  border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+  /* The Apple navigation glass: translucent dark + saturated blur that floats
+     above content regardless of the scene behind it. Non-negotiable to the look. */
+  backdrop-filter: saturate(180%) blur(20px);
+  -webkit-backdrop-filter: saturate(180%) blur(20px);
+  background: rgba(0, 0, 0, 0.62);
+  border-bottom: 1px solid var(--line-soft);
 }
 
 .nav {
@@ -14,13 +17,13 @@
   gap: 1rem;
   width: var(--container);
   margin: 0 auto;
-  padding: 0.85rem 0;
+  padding: 0.6rem 0;
 }
 
 .brand {
   display: flex;
   align-items: center;
-  gap: 0.6rem;
+  gap: 0.55rem;
   min-height: 44px;
   font-size: 0.96rem;
   font-weight: 600;
@@ -28,19 +31,18 @@
 }
 
 .mark {
-  width: 2.2rem;
-  height: 2.2rem;
+  width: 2rem;
+  height: 2rem;
   flex: 0 0 auto;
-  border-radius: 0.6rem;
-  filter: drop-shadow(0 0 20px rgba(107, 92, 255, 0.45));
+  border-radius: 0.55rem;
 }
 
 .ticker {
-  padding: 0.2rem 0.5rem;
-  border: 1px solid rgba(55, 240, 154, 0.32);
-  border-radius: 999px;
-  color: #37f09a;
-  background: rgba(33, 208, 122, 0.08);
+  padding: 0.18rem 0.5rem;
+  border: 1px solid var(--line);
+  border-radius: var(--pill);
+  color: var(--muted);
+  background: rgba(255, 255, 255, 0.04);
   font-family: var(--font-jetbrains-mono), ui-monospace, monospace;
   font-size: 0.66rem;
   font-weight: 500;
@@ -50,33 +52,28 @@
 .links {
   display: flex;
   align-items: center;
-  gap: 0.2rem;
-  padding: 0.3rem;
-  border: 1px solid rgba(255, 255, 255, 0.07);
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.035);
-  font-size: 0.82rem;
-  font-weight: 510;
+  gap: 0.1rem;
+  font-size: 0.9rem;
+  font-weight: 500;
+  letter-spacing: -0.01em;
 }
 
 .links a {
   display: grid;
   place-items: center;
-  min-height: 38px;
-  padding: 0 0.85rem;
-  border-radius: 999px;
-  color: #d0d6e0;
-  transition: color 160ms ease, background 160ms ease;
+  min-height: 36px;
+  padding: 0 0.9rem;
+  border-radius: var(--pill);
+  color: var(--muted);
+  transition: color 160ms ease;
 }
 
 .links a:hover {
-  color: #f7f8f8;
-  background: rgba(255, 255, 255, 0.055);
+  color: var(--fg);
 }
 
 .active {
-  color: #f7f8f8 !important;
-  background: rgba(142, 160, 255, 0.14) !important;
+  color: var(--fg) !important;
 }
 
 @media (max-width: 920px) {
@@ -101,8 +98,10 @@
     order: 3;
     width: 100%;
     justify-content: space-between;
+    gap: 0.2rem;
+    padding-top: 0.35rem;
+    border-top: 1px solid var(--line-soft);
     overflow-x: auto;
-    border-radius: 0.85rem;
     scrollbar-width: none;
   }
 
@@ -112,5 +111,6 @@
 
   .links a {
     min-width: max-content;
+    padding: 0 0.7rem;
   }
 }

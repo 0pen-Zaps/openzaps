@@ -35,7 +35,7 @@ The canonical record is this file plus `contracts/broadcast/DeployRobinhood.s.so
 
 - Sourcify reports creation and runtime `match` for all five artifacts on chain `4663`.
 - Robinhood Blockscout exposes the source, ABI, compiler settings, and constructor args.
-- Foundry: 64 unit/fuzz/invariant tests pass.
+- Foundry: 63 unit/fuzz/invariant tests pass.
 - Robinhood fork: real adapter buy/sell and complete Factory→clone→EIP-712→execute tests pass.
 - Slither: 95 detectors run; remaining reports are triaged guarded-event, clone-bytecode, naming, and complexity findings.
 - Mainnet smoke zap: [`0x0006e5C42776239Db6abAeF3fdf22BbCfA8Cb5b4`](https://robinhoodchain.blockscout.com/address/0x0006e5C42776239Db6abAeF3fdf22BbCfA8Cb5b4).
@@ -76,7 +76,7 @@ The OpenZap v1 protocol contracts are **live on Base mainnet**. Deployed from
 - **Allowlists:** empty at deploy — no adapters and no tokens are allowlisted, so no zaps can be
   created against the factory until governance adds them.
 
-> ⚠️ **Pre-external-audit.** These contracts shipped from a complete internal review (47 passing
+> ⚠️ **Pre-external-audit.** These contracts shipped from a complete internal v1 review (47 passing
 > tests, 9 internal-audit findings fixed) but have **not** had a professional third-party audit or a
 > formal-verification run. See [`invariant-spec.md`](invariant-spec.md).
 

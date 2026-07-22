@@ -15,6 +15,7 @@ export const TOKEN_LAUNCH = {
   network: "Robinhood Chain",
   contract: tokenContract,
   tradeUrl: `https://www.clanker.world/clanker/${tokenContract}`,
+  dexscreenerUrl: "https://dexscreener.com/robinhood/0xdd90bfa4adc7f4401e611abac692d939f9f4cb07",
   explorer: "https://robinhoodchain.blockscout.com",
   contractUrl: `https://robinhoodchain.blockscout.com/token/${tokenContract}`,
 } as const;
@@ -65,10 +66,15 @@ export function explorer(addr: string): string {
 
 export const LINKS = {
   github: "https://github.com/nodar/openzaps",
+  x: "https://x.com/0xzaps",
   clanker: TOKEN_LAUNCH.tradeUrl,
+  dexscreener: TOKEN_LAUNCH.dexscreenerUrl,
   tokenExplorer: TOKEN_LAUNCH.contractUrl,
   buy: buyUrl(),
 } as const;
+
+/** Official X (Twitter) handle, for twitter:site/creator card tags. */
+export const X_HANDLE = "@0xzaps";
 
 export const STATUS = {
   // Honest posture — see docs/invariant-spec.md production-readiness gate.

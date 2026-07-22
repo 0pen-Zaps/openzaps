@@ -1,15 +1,24 @@
-import type { Metadata } from "next";
 import Link from "next/link";
 import { OpenZapMark } from "@/components/OpenZapMark";
 import { BuyButton } from "@/components/BuyButton";
+import { JsonLd } from "@/components/JsonLd";
 import { TOKEN, TOKEN_LAUNCH, LINKS } from "@/lib/config";
+import { pageMetadata, absoluteUrl, SITE_URL } from "@/lib/seo";
 import styles from "./token.module.css";
 
-export const metadata: Metadata = {
-  title: `${TOKEN.symbol} token`,
+export const metadata = pageMetadata({
+  title: `${TOKEN.symbol} token — live on ${TOKEN_LAUNCH.venue}`,
   description: `${TOKEN.symbol} is live on ${TOKEN_LAUNCH.venue} on ${TOKEN_LAUNCH.network}. Verify the official contract and trade link for the OpenZaps community token.`,
-  alternates: { canonical: "/token" },
-};
+  path: "/token",
+  ogImage: "/og/token.png",
+  keywords: [
+    `buy ${TOKEN.symbol}`,
+    `${TOKEN.symbol} ${TOKEN_LAUNCH.venue}`,
+    `${TOKEN.symbol} ${TOKEN_LAUNCH.network}`,
+    `${TOKEN.symbol} contract address`,
+    "how to buy 0xZAPS",
+  ],
+});
 
 const facts = [
   { k: "Ticker", v: TOKEN.symbol },
@@ -62,17 +71,43 @@ const faqs = [
   },
   {
     q: "Do I need the token to use OpenZaps?",
-    a: "No. The protocol is permissionless. The token aligns the community and the execution layer around it.",
+    a: "No — nothing is token-gated. The token aligns the community and execution layer around it. Robinhood mainnet actions remain wallet-confirmed and the v1.1 contracts are pre-external-audit.",
   },
   {
     q: "Are the contracts audited?",
-    a: "The OpenZap protocol contracts are a complete, internally-audited reference implementation (47 passing tests, 9 findings fixed) but are pre-external-audit. Treat anything onchain accordingly.",
+    a: "The OpenZap protocol contracts are a complete, internally reviewed v1.1 reference implementation (63 passing tests, 9 findings fixed) but are pre-external-audit. Treat anything onchain accordingly.",
   },
 ] as const;
+
+// Derived from the same `faqs` array that renders the visible FAQ, so the structured data
+// can never drift from on-page copy (a Google FAQPage requirement).
+const tokenPageJsonLd = {
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "FAQPage",
+      "@id": absoluteUrl("/token#faq"),
+      mainEntity: faqs.map((f) => ({
+        "@type": "Question",
+        name: f.q,
+        acceptedAnswer: { "@type": "Answer", text: f.a },
+      })),
+    },
+    {
+      "@type": "BreadcrumbList",
+      "@id": absoluteUrl("/token#breadcrumbs"),
+      itemListElement: [
+        { "@type": "ListItem", position: 1, name: "OpenZaps", item: SITE_URL },
+        { "@type": "ListItem", position: 2, name: `${TOKEN.symbol} token`, item: absoluteUrl("/token") },
+      ],
+    },
+  ],
+};
 
 export default function TokenPage(): React.JSX.Element {
   return (
     <main className={styles.page} id="main">
+      <JsonLd data={tokenPageJsonLd} />
       {/* hero */}
       <section className={`container ${styles.hero}`}>
         <span className="badge">Live on {TOKEN_LAUNCH.network}</span>
@@ -88,6 +123,9 @@ export default function TokenPage(): React.JSX.Element {
         </p>
         <div className={styles.heroActions}>
           <BuyButton size="lg" />
+          <a className="btn btnGhost btnLg" href={LINKS.dexscreener} target="_blank" rel="noreferrer">
+            Dexscreener ↗
+          </a>
           <a className="btn btnGhost btnLg" href={LINKS.tokenExplorer} target="_blank" rel="noreferrer">
             View contract ↗
           </a>
@@ -170,6 +208,11 @@ export default function TokenPage(): React.JSX.Element {
             <a className={styles.verifyRow} href={LINKS.clanker} target="_blank" rel="noreferrer">
               <span>Official market</span>
               <strong>{TOKEN_LAUNCH.venue} {TOKEN_LAUNCH.version}</strong>
+              <i aria-hidden>↗</i>
+            </a>
+            <a className={styles.verifyRow} href={LINKS.dexscreener} target="_blank" rel="noreferrer">
+              <span>Live chart</span>
+              <strong>Dexscreener</strong>
               <i aria-hidden>↗</i>
             </a>
             <a className={styles.verifyRow} href={TOKEN_LAUNCH.explorer} target="_blank" rel="noreferrer">

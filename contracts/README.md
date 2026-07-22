@@ -9,7 +9,7 @@ verified against the invariants in [`../docs/invariant-spec.md`](../docs/invaria
 
 > ## ⚠️ Security status: LIVE, INTERNALLY TESTED, PRE-EXTERNAL-AUDIT
 >
-> v1.1 is deployed on Robinhood Chain with 64 passing unit/fuzz/invariant tests, Slither review,
+> v1.1 is deployed on Robinhood Chain with 63 passing unit/fuzz/invariant tests, Slither review,
 > live-pool fork tests in both directions, a full Factory/clone/EIP-712 fork test, exact Sourcify
 > matches, and a successful bounded mainnet smoke zap. It has **not** had a professional third-party
 > audit or formal prover run. Keep deposits scoped, use narrow allowlisted adapters, and preserve the
