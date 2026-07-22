@@ -68,6 +68,29 @@
   font-size: 0.72rem;
 }
 
+/* The CA label is 42 characters and CopyButton holds it on one line, which
+   gives this flex item a ~378px min-content width — wider than a 375px
+   viewport, so the hero column stretches and clips the h1 off the right edge.
+   Truncating the label here is free: the full address still reaches the
+   clipboard, and the explorer link beside it is unaffected. */
+.launchNotice button {
+  min-width: 0;
+  max-width: 100%;
+}
+
+/* Let the address wrap rather than truncating it: `overflow: hidden` only
+   lowers a flex item's *automatic minimum*, not its min-content contribution,
+   so a nowrap 42-character address keeps the floor no matter what min-width
+   says. Breaking anywhere drops the contribution to one character, and the
+   full CA stays on screen — people verify a contract address by reading it,
+   so an ellipsis would be the wrong trade here. */
+.launchNotice button > span:first-child {
+  min-width: 0;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  text-align: left;
+}
+
 .launchNotice strong {
   color: var(--mint-2);
   font-weight: 600;
@@ -348,6 +371,7 @@
 
 .head h2,
 .security h2,
+.capsules h2,
 .cta h2 {
   margin-top: 0.9rem;
   font-size: clamp(2.3rem, 5.2vw, 4.6rem);
@@ -422,6 +446,395 @@
   color: var(--indigo);
   font-size: 0.9rem;
   font-weight: 600;
+}
+
+/* The product flow is four steps, not three. Explicit tracks rather than
+   auto-fit: auto-fit resolves to three columns across roughly 870-1150px and
+   strands the fourth step alone on its own row. Four divides evenly or not at
+   all, so it steps 4 -> 2x2 -> 1. */
+.flowGrid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+@media (max-width: 1180px) {
+  .flowGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 620px) {
+  .flowGrid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* ---------------- visual builder ---------------- */
+.builderGrid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.04fr) minmax(0, 0.86fr);
+  gap: clamp(1.2rem, 3vw, 2.4rem);
+  align-items: start;
+}
+
+.builderPanel {
+  display: grid;
+  gap: 1.15rem;
+  align-content: start;
+}
+
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.legendItem {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.34rem 0.7rem;
+  border: 1px solid var(--line);
+  border-radius: var(--pill);
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--text);
+  font-family: var(--font-jetbrains-mono), ui-monospace, monospace;
+  font-size: 0.72rem;
+}
+
+/* The swatch is the connector colour itself — same value the canvas draws. */
+.legendItem i {
+  width: 0.55rem;
+  height: 0.55rem;
+  flex: 0 0 auto;
+  border-radius: 2px;
+}
+
+.legendNote {
+  max-width: 40rem;
+  color: var(--muted);
+  font-size: 0.95rem;
+  line-height: 1.6;
+  text-wrap: pretty;
+}
+
+.legendNote em {
+  color: var(--fg);
+  font-style: normal;
+  font-weight: 600;
+}
+
+.catRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.cat {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.32rem 0.62rem;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--pill);
+  color: var(--muted-2);
+  font-size: 0.74rem;
+}
+
+.cat b {
+  color: var(--mint-2);
+  font-family: var(--font-jetbrains-mono), ui-monospace, monospace;
+  font-size: 0.72rem;
+  font-weight: 500;
+}
+
+.builderActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.honesty {
+  padding: 0.85rem 0.95rem;
+  border: 1px solid var(--line);
+  border-left: 2px solid var(--indigo);
+  border-radius: 0.5rem;
+  background: rgba(255, 255, 255, 0.022);
+  color: var(--muted);
+  font-size: 0.88rem;
+  line-height: 1.58;
+  text-wrap: pretty;
+}
+
+.honesty strong {
+  color: var(--fg);
+  font-weight: 600;
+}
+
+/* ---- the blueprint drawn as a chain ---- */
+.chainCard {
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--card);
+  box-shadow: var(--card-shadow);
+}
+
+.chainHead {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.8rem 1rem;
+  border-bottom: 1px solid var(--line-soft);
+  background: rgba(13, 14, 15, 0.55);
+}
+
+.chainHead strong {
+  font-size: 0.95rem;
+  font-weight: 560;
+  letter-spacing: 0;
+}
+
+.chainHead span {
+  margin-left: auto;
+  padding: 0.16rem 0.5rem;
+  border: 1px solid var(--line);
+  border-radius: var(--pill);
+  color: var(--muted-2);
+  font-family: var(--font-jetbrains-mono), ui-monospace, monospace;
+  font-size: 0.62rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.chain {
+  padding: 0.5rem 1rem 0.2rem;
+  list-style: none;
+}
+
+.chainRow {
+  position: relative;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.25rem 0.75rem;
+  padding: 0.6rem 0 0.6rem 1.45rem;
+}
+
+/* The stud: a square in the colour of the shape this block puts on the wire. */
+.chainRow::before {
+  position: absolute;
+  top: 0.85rem;
+  left: 0;
+  width: 0.62rem;
+  height: 0.62rem;
+  content: "";
+  border-radius: 2px;
+  background: var(--stud);
+  box-shadow: 0 0 12px var(--stud);
+  animation: studPulse 3.4s var(--ease-standard) infinite;
+  animation-delay: calc(var(--row-i, 0) * 240ms);
+}
+
+/* The connector between two studs, in the colour of what is still on the wire —
+   which is why it keeps its colour past a guard. */
+.chainRow::after {
+  position: absolute;
+  top: 1.6rem;
+  bottom: -0.25rem;
+  left: 0.29rem;
+  width: 1px;
+  content: "";
+  background: linear-gradient(180deg, var(--wire), transparent);
+  opacity: 0.85;
+}
+
+.chainRow:last-child::after {
+  display: none;
+}
+
+.chainName {
+  font-size: 0.95rem;
+  font-weight: 540;
+  letter-spacing: 0;
+}
+
+.chainShape {
+  margin-left: auto;
+  color: var(--muted-2);
+  font-family: var(--font-jetbrains-mono), ui-monospace, monospace;
+  font-size: 0.7rem;
+  white-space: nowrap;
+}
+
+.chainFoot {
+  padding: 0.4rem 1rem 1.05rem;
+  color: var(--muted);
+  font-size: 0.82rem;
+  line-height: 1.55;
+}
+
+/* Explicit tracks rather than auto-fit: the catalog ships six blueprints, and
+   3 / 2 / 1 are the counts that divide six into full rows at every width.
+   auto-fit picked five at desktop and left a lone card stranded below. */
+.blueprints {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.7rem;
+  margin-top: 1.4rem;
+}
+
+.blueprint {
+  display: grid;
+  gap: 0.3rem;
+  padding: 0.9rem 1rem;
+  border: 1px solid var(--line);
+  border-radius: 0.7rem;
+  background: var(--card);
+  transition: border-color var(--dur-2) var(--ease-standard), transform var(--dur-2) var(--ease-emphasis);
+}
+
+.blueprint::before {
+  width: 1.8rem;
+  height: 0.22rem;
+  content: "";
+  border-radius: var(--pill);
+  background: var(--accent);
+}
+
+.blueprint:hover {
+  transform: translateY(-3px);
+  border-color: rgba(107, 92, 255, 0.4);
+}
+
+.blueprint strong {
+  font-size: 0.96rem;
+  font-weight: 560;
+  letter-spacing: 0;
+}
+
+.blueprint span {
+  color: var(--muted);
+  font-size: 0.84rem;
+  line-height: 1.45;
+}
+
+/* ---------------- deployed capsules ---------------- */
+.capsules {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(320px, 0.6fr);
+  gap: clamp(1.5rem, 4vw, 3rem);
+  align-items: start;
+}
+
+.capsules p {
+  max-width: 44rem;
+  margin-top: 1rem;
+  color: var(--muted);
+  font-size: clamp(1rem, 1.25vw, 1.12rem);
+  line-height: 1.62;
+  text-wrap: pretty;
+}
+
+.proofList {
+  display: grid;
+  gap: 0.7rem;
+  margin-top: 1.9rem;
+  list-style: none;
+}
+
+.proofItem {
+  display: flex;
+  gap: 0.8rem;
+  padding: 0.9rem 1rem;
+  border: 1px solid var(--line-soft);
+  border-radius: 0.5rem;
+  background: rgba(255, 255, 255, 0.026);
+}
+
+.proofItem b {
+  flex: 0 0 auto;
+  color: var(--mint-2);
+  font-family: var(--font-jetbrains-mono), ui-monospace, monospace;
+  font-size: 0.72rem;
+  font-weight: 500;
+  line-height: 1.7;
+}
+
+.proofItem span {
+  color: var(--fg);
+  font-size: 0.95rem;
+  font-weight: 540;
+  line-height: 1.5;
+}
+
+.proofItem em {
+  display: block;
+  margin-top: 0.25rem;
+  color: var(--muted);
+  font-size: 0.88rem;
+  font-style: normal;
+  font-weight: 400;
+  line-height: 1.55;
+}
+
+/* Scoped past the `.capsules p` intro rule above, which would otherwise win on
+   specificity and blow these two notes up to lead size. */
+.capsules .capsuleNote {
+  max-width: 42rem;
+  margin-top: 1.4rem;
+  color: var(--muted-2);
+  font-size: 0.86rem;
+  line-height: 1.55;
+}
+
+.neverCard {
+  padding: 1.1rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--card);
+  box-shadow: var(--card-shadow);
+}
+
+/* Divider between rows only. `:first-of-type` cannot express that here — the
+   card's first child is the header pill, so the first .never is the second
+   element and never matches, leaving a stray hairline under the header. */
+.never {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  padding: 0.75rem 0;
+}
+
+.never + .never {
+  border-top: 1px solid var(--line-soft);
+}
+
+.never i {
+  display: grid;
+  width: 1.3rem;
+  height: 1.3rem;
+  flex: 0 0 auto;
+  place-items: center;
+  border: 1px solid rgba(255, 122, 144, 0.45);
+  border-radius: 50%;
+  color: #ff7a90;
+  font-size: 0.66rem;
+  font-style: normal;
+}
+
+.never strong {
+  font-size: 0.96rem;
+  font-weight: 540;
+  letter-spacing: 0;
+}
+
+.capsules .neverNote {
+  margin-top: 1rem;
+  padding-top: 0.95rem;
+  border-top: 1px solid var(--line-soft);
+  color: var(--muted);
+  font-size: 0.85rem;
+  line-height: 1.55;
 }
 
 /* ---------------- security ---------------- */
@@ -598,7 +1011,9 @@
 /* ---------------- responsive ---------------- */
 @media (max-width: 1120px) {
   .hero,
-  .security {
+  .security,
+  .builderGrid,
+  .capsules {
     grid-template-columns: 1fr;
   }
 
@@ -630,6 +1045,10 @@
   .statStrip {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
+
+  .blueprints {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 @media (max-width: 780px) {
@@ -655,6 +1074,24 @@
   .node1 { top: 1.6rem; left: 1rem; }
   .node2 { right: 1rem; bottom: 3rem; }
   .route i { display: none; }
+}
+
+@media (max-width: 560px) {
+  /* Name over shape rather than a right-aligned orphan once the pair no longer
+     fits on one line. */
+  .chainRow {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 0.15rem;
+  }
+
+  .chainShape {
+    margin-left: 0;
+  }
+
+  .blueprints {
+    grid-template-columns: 1fr;
+  }
 }
 
 @media (max-width: 460px) {
@@ -713,6 +1150,14 @@
 @keyframes dotPulse {
   0%, 100% { box-shadow: 0 0 0 0 rgba(55, 240, 154, 0.45), 0 0 14px rgba(55, 240, 154, 0.9); }
   60% { box-shadow: 0 0 0 8px rgba(55, 240, 154, 0), 0 0 14px rgba(55, 240, 154, 0.9); }
+}
+
+/* Studs breathe down the chain in sequence, so the connector reads as a
+   direction of travel rather than a static list. Local by necessity: CSS
+   Modules scope animation-name, so a copy in globals.css would never apply. */
+@keyframes studPulse {
+  0%, 100% { opacity: 0.55; }
+  45% { opacity: 1; }
 }
 
 @keyframes auroraDrift {
@@ -873,14 +1318,17 @@
   .caret,
   .live,
   .liveDot,
+  .chainRow::before,
   .tickerTrack {
     animation: none !important;
   }
 
   .execLine { opacity: 1; }
+  .chainRow::before { opacity: 1; }
   .caret { display: none; }
   .execCard:hover,
-  .modelCard:hover { transform: none; }
+  .modelCard:hover,
+  .blueprint:hover { transform: none; }
   .tickerTrack { flex-wrap: wrap; width: 100%; }
 }
 
