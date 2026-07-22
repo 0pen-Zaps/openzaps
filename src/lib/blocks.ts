@@ -608,6 +608,65 @@ export function decodeChain(token: string): ChainNode[] | null {
   return nodes;
 }
 
+/**
+ * Read a design back from whatever a user has on their clipboard.
+ *
+ * The builder hands out two representations — a `?d=` share link and the
+ * "Copy design JSON" export — and until now accepted only the first, and only
+ * by being navigated to. A design mailed to a colleague as JSON had no way
+ * back in. This takes either, plus the bare token and the bare `chain` array,
+ * because someone pasting from a chat window will have grabbed whichever part
+ * looked like the answer.
+ *
+ * Everything lands in the same catalog validation `decodeChain` uses: this
+ * text is no more trusted for arriving through a paste than through a URL.
+ */
+export function decodeDesign(text: string): ChainNode[] | null {
+  const trimmed = typeof text === "string" ? text.trim() : "";
+  if (!trimmed) return null;
+
+  // A share link, or anything else carrying the query key. Parsed as a URL
+  // when it is one so that a trailing `#anchor` or extra params cannot end up
+  // inside the token, and by hand when it is a bare `?d=…` fragment.
+  const fromQuery = trimmed.match(/[?&]d=([A-Za-z0-9_-]+)/);
+  if (fromQuery) return nonEmpty(decodeChain(fromQuery[1]));
+
+  if (trimmed.startsWith("{") || trimmed.startsWith("[")) {
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(trimmed);
+    } catch {
+      return null;
+    }
+    const chain = Array.isArray(parsed) ? parsed : (parsed as { chain?: unknown } | null)?.chain;
+    return nonEmpty(nodesFromExport(chain));
+  }
+
+  return nonEmpty(decodeChain(trimmed));
+}
+
+/** The `chain` array of a design export, validated back into placements. */
+function nodesFromExport(raw: unknown): ChainNode[] | null {
+  if (!Array.isArray(raw)) return null;
+  const nodes: ChainNode[] = [];
+  for (const [index, entry] of raw.slice(0, MAX_SHARED_NODES).entries()) {
+    if (entry === null || typeof entry !== "object" || Array.isArray(entry)) continue;
+    const { block: blockId, params } = entry as { block?: unknown; params?: unknown };
+    if (typeof blockId !== "string") continue;
+    const block = getBlock(blockId);
+    if (!block) continue;
+    // The export carries no uids — it is a description of a design, not of a
+    // canvas — so every placement is renamed here rather than risking a
+    // collision with whatever is already on the board.
+    nodes.push({ uid: `i${index}`, blockId, params: { ...defaultParams(block), ...sharedParams(block, params) } });
+  }
+  return nodes;
+}
+
+function nonEmpty(nodes: ChainNode[] | null): ChainNode[] | null {
+  return nodes && nodes.length > 0 ? nodes : null;
+}
+
 function sharedParams(block: LegoBlock, raw: unknown): Record<string, ParamValue> {
   if (raw === null || typeof raw !== "object" || Array.isArray(raw)) return {};
   const params: Record<string, ParamValue> = {};

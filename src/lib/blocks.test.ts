@@ -6,6 +6,7 @@ import {
   canInsert,
   compileChain,
   decodeChain,
+  decodeDesign,
   encodeChain,
   getBlock,
   makeNode,
@@ -386,5 +387,78 @@ describe("sharing", () => {
     const token = encodeChain([makeNode("wallet-balance", "same"), makeNode("swap", "same")]);
     const decoded = decodeChain(token);
     expect(new Set(decoded?.map((node) => node.uid)).size).toBe(2);
+  });
+});
+
+describe("decodeDesign", () => {
+  const design = chain("wallet-balance", "guard-slippage", "swap", "send");
+
+  /** Exactly what the readout's "Copy design JSON" button puts on the clipboard. */
+  function exportJson(nodes: ChainNode[]): string {
+    return JSON.stringify(
+      {
+        version: 1,
+        designFingerprint: compileChain(nodes).hash,
+        status: compileChain(nodes).status,
+        chain: nodes.map((node) => ({ block: node.blockId, params: node.params })),
+      },
+      null,
+      2,
+    );
+  }
+
+  it("reads back a share link, a bare token, and the raw JSON export", () => {
+    const ids = design.map((node) => node.blockId);
+    const token = encodeChain(design);
+
+    for (const text of [
+      `https://www.0xzaps.com/build?d=${token}`,
+      `?d=${token}`,
+      token,
+      exportJson(design),
+      // Someone who grabbed only the interesting half of the export.
+      JSON.stringify(design.map((node) => ({ block: node.blockId, params: node.params }))),
+    ]) {
+      expect(decodeDesign(text)?.map((node) => node.blockId), text.slice(0, 40)).toEqual(ids);
+    }
+  });
+
+  it("survives the trimming and decoration a paste picks up", () => {
+    const token = encodeChain(design);
+    expect(decodeDesign(`  \n https://www.0xzaps.com/build?d=${token}#chain \n `)?.length).toBe(design.length);
+    expect(decodeDesign(`https://www.0xzaps.com/build?utm=x&d=${token}`)?.length).toBe(design.length);
+  });
+
+  it("keeps the params the design was carrying", () => {
+    const nodes = chain("wallet-balance", "guard-slippage", "swap", "send");
+    nodes[0].params.amount = "1.25";
+    nodes[1].params.bps = 35;
+    const back = decodeDesign(exportJson(nodes));
+    expect(back?.[0].params.amount).toBe("1.25");
+    expect(back?.[1].params.bps).toBe(35);
+  });
+
+  it("refuses anything that is not a design", () => {
+    for (const text of ["", "   ", "hello world", "{", "{}", "[]", '{"chain":[]}', '{"chain":"nope"}', "null"]) {
+      expect(decodeDesign(text), JSON.stringify(text)).toBeNull();
+    }
+  });
+
+  it("drops blocks this build does not ship rather than importing a hole", () => {
+    const back = decodeDesign(
+      JSON.stringify({ chain: [{ block: "wallet-balance" }, { block: "flash-loan-9000" }, { block: "send" }] }),
+    );
+    expect(back?.map((node) => node.blockId)).toEqual(["wallet-balance", "send"]);
+  });
+
+  it("gives every imported placement its own id", () => {
+    const back = decodeDesign(exportJson(chain("wallet-balance", "guard-slippage", "guard-slippage", "swap", "send")));
+    expect(new Set(back?.map((node) => node.uid)).size).toBe(back?.length);
+  });
+
+  it("refuses a value outside the catalog's domain, as a link would", () => {
+    // The same rule `decodeChain` applies: a select only carries its options.
+    const back = decodeDesign(JSON.stringify({ chain: [{ block: "swap", params: { venue: "MyOwnRouter" } }] }));
+    expect(back?.[0].params.venue).toBe("Uniswap v4");
   });
 });

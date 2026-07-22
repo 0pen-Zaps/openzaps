@@ -14,6 +14,7 @@ import {
   canInsert,
   compileChain,
   decodeChain,
+  decodeDesign,
   encodeChain,
   getBlock,
   makeNode,
@@ -252,6 +253,8 @@ export function ZapBuilder(): React.JSX.Element {
   const [flaggedUid, setFlaggedUid] = useState<string | null>(null);
   const [category, setCategory] = useState<BlockCategory | "all">("all");
   const [query, setQuery] = useState("");
+  const [importing, setImporting] = useState(false);
+  const [importText, setImportText] = useState("");
   const [drag, setDrag] = useState<DragState | null>(null);
   const [dropIndex, setDropIndex] = useState<number | null>(null);
   const [dropValid, setDropValid] = useState(false);
@@ -761,6 +764,28 @@ export function ZapBuilder(): React.JSX.Element {
   const deployHref = deployment.deployable
     ? `/app?src=build&dir=${deployment.direction}&amount=${encodeURIComponent(deployment.amountIn)}&bps=${deployment.slippageBps}`
     : null;
+
+  /**
+   * Load a design pasted as a share link or a copied JSON export.
+   *
+   * Importing goes through `commit`, so it lands on the undo stack like any
+   * other edit — pasting the wrong thing over a chain you were working on is
+   * one press of ⌘Z, not a lost afternoon.
+   */
+  const importDesign = useCallback((): void => {
+    const nodes = decodeDesign(importText);
+    if (!nodes) {
+      flash("That is not a design. Paste a /build share link or the JSON from “Copy design JSON”.");
+      return;
+    }
+    advancePlacementCounter(nodes);
+    commit(nodes);
+    setOpenUid(null);
+    setImportText("");
+    setImporting(false);
+    flash(`Loaded ${nodes.length} block${nodes.length === 1 ? "" : "s"}. ⌘Z puts your previous chain back.`);
+    trackEvent("builder_design_imported", { blocks: nodes.length });
+  }, [commit, flash, importText]);
 
   const saveDesign = useCallback((): void => {
     // The draft already persists on every edit; this is the explicit route for
@@ -1320,6 +1345,40 @@ export function ZapBuilder(): React.JSX.Element {
               title="Copy a link that reopens this exact design"
             />
             <CopyButton className={styles.exportBtn} value={exportPayload} label="Copy design JSON" title="Copy the compiled chain" />
+
+            {/* The other half of those two buttons. A design copied out as JSON
+                had no way back in except by hand. */}
+            <button
+              type="button"
+              className={styles.importToggle}
+              aria-expanded={importing}
+              onClick={() => setImporting((open) => !open)}
+            >
+              {importing ? "Cancel import" : "Paste a design"}
+            </button>
+            {importing ? (
+              <div className={styles.import}>
+                <label htmlFor="import-design">Paste a share link or a copied design JSON.</label>
+                <textarea
+                  id="import-design"
+                  value={importText}
+                  rows={3}
+                  spellCheck={false}
+                  placeholder="https://www.0xzaps.com/build?d=… or { &quot;chain&quot;: [ … ] }"
+                  onChange={(event) => setImportText(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Escape") setImporting(false);
+                    // Enter alone would fight the textarea; the modifier is the
+                    // usual "send this" gesture and the button is right there.
+                    if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) importDesign();
+                  }}
+                />
+                <button type="button" onClick={importDesign} disabled={!importText.trim()}>
+                  Load design
+                </button>
+              </div>
+            ) : null}
+
             <Link className={styles.openApp} href="/app">
               Open the live app →
             </Link>

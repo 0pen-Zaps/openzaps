@@ -1172,6 +1172,96 @@
   width: 100%;
 }
 
+/* Deliberately the same shape as the CopyButton it sits under: the two are one
+   pair of actions — a design out, a design in — and styling them apart would
+   read as different weights of decision. */
+.importToggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  padding: 0.34rem 0.6rem;
+  border: 1px solid var(--line);
+  border-radius: 0.45rem;
+  background: rgba(255, 255, 255, 0.035);
+  color: var(--text);
+  font-family: var(--font-jetbrains-mono), ui-monospace, monospace;
+  font-size: 0.72rem;
+  cursor: pointer;
+  transition:
+    border-color var(--dur-2) var(--ease-standard),
+    background var(--dur-2) var(--ease-standard),
+    color var(--dur-2) var(--ease-standard),
+    transform var(--dur-2) var(--ease-emphasis);
+}
+
+.importToggle:hover {
+  border-color: rgba(255, 255, 255, 0.22);
+  background: rgba(255, 255, 255, 0.07);
+  color: var(--fg);
+  transform: translateY(-1px);
+}
+
+.importToggle:active {
+  transform: translateY(0) scale(0.97);
+}
+
+.import {
+  display: grid;
+  gap: 0.4rem;
+  padding: 0.6rem;
+  border: 1px solid var(--line-soft);
+  border-radius: 0.55rem;
+  background: rgba(0, 0, 0, 0.22);
+  animation: bodyIn var(--dur-3) var(--ease-emphasis);
+}
+
+.import label {
+  color: var(--muted);
+  font-size: 0.72rem;
+  line-height: 1.45;
+}
+
+.import textarea {
+  width: 100%;
+  padding: 0.45rem 0.5rem;
+  border: 1px solid var(--line);
+  border-radius: 0.4rem;
+  background: var(--bg-2);
+  color: var(--fg);
+  font-family: var(--font-jetbrains-mono), ui-monospace, monospace;
+  font-size: 0.72rem;
+  line-height: 1.5;
+  resize: vertical;
+}
+
+.import textarea::placeholder {
+  color: var(--muted-2);
+}
+
+.import button {
+  justify-self: start;
+  padding: 0.34rem 0.7rem;
+  border: 1px solid var(--line);
+  border-radius: var(--pill);
+  background: transparent;
+  color: var(--text);
+  font-family: inherit;
+  font-size: 0.75rem;
+  cursor: pointer;
+  transition: color var(--dur-1) var(--ease-standard), border-color var(--dur-1) var(--ease-standard);
+}
+
+.import button:hover:not(:disabled) {
+  border-color: rgba(55, 240, 154, 0.4);
+  color: var(--mint-2);
+}
+
+.import button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
 .openApp {
   padding: 0.5rem 0.8rem;
   border: 1px solid rgba(55, 240, 154, 0.32);
