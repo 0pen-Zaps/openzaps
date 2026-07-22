@@ -62,7 +62,7 @@ export default function PricingPage(): React.JSX.Element {
         </div>
         <aside className={styles.heroCard}>
           <span>v1 protocol fee</span>
-          <strong>Disabled until audit</strong>
+          <strong>Disabled in v1</strong>
         </aside>
       </section>
 
@@ -106,8 +106,9 @@ export default function PricingPage(): React.JSX.Element {
           <span>Token disclosure</span>
           <strong>{TOKEN.symbol} is not a fee claim, yield promise, equity claim, or guarantee of access.</strong>
           <p>
-            {TOKEN.symbol} is the ERC-20 paired with aeWETH in the first bounded live route. It grants no governance,
-            staking, revenue share, or privileged access, and the product stays fully usable without it.
+            {TOKEN.symbol} is the ERC-20 paired with aeWETH in the first bounded live route. Holding 100,000+ unlocks
+            app-level conveniences (auto-refreshing quotes, extended history, receipt export). It grants no governance,
+            staking, revenue share, or protocol rights, and every core workflow stays fully usable without it.
           </p>
         </section>
       </section>

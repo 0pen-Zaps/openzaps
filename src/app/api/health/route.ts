@@ -10,7 +10,7 @@ export function GET(): NextResponse {
       contractsLive: contractsLive(),
       tokenLive: tokenLive(),
       preAudit: STATUS.preAudit,
-      creationGate: STATUS.preAudit ? "open — bounded v1.1 route; scope deposits pending external audit" : "open",
+      creationGate: STATUS.preAudit ? "open — bounded v1.1 route; external audit is a planned hardening milestone" : "open",
     },
     contracts: CONTRACTS,
   });

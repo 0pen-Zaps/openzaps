@@ -52,12 +52,16 @@ const utility = [
     body: "The live OpenZaps v1.1 adapter supports one pinned Robinhood v4 pool: aeWETH ↔ 0xZAPS. The app builds immutable one-route policy capsules around it.",
   },
   {
+    title: "Holder utilities, live in the app",
+    body: "Hold 100,000+ 0xZAPS in your connected wallet and the app console unlocks auto-refreshing live quotes, extended zap history (50 slots; 100 at 1,000,000+), longer receipt retention, and one-click receipt JSON export. App-level conveniences, checked against your live balance — not protocol rights.",
+  },
+  {
     title: "Wallet-readable ERC-20",
     body: `Use the exact ${TOKEN_LAUNCH.network} address, ${TOKEN.decimals} decimals, and the add-to-wallet utility on this page. Wallet support varies.`,
   },
   {
     title: "No invented rights",
-    body: "The token does not grant protocol governance, staking, revenue, yield, equity, or fee rights. OpenZaps usage is not token-gated.",
+    body: "The token does not grant protocol governance, staking, revenue, yield, equity, or fee rights. Every core OpenZaps workflow — create, fund, execute, recover — works without holding it.",
   },
 ] as const;
 
@@ -72,7 +76,7 @@ const faqs = [
   },
   {
     q: "Do I need the token to use OpenZaps?",
-    a: "No. OpenZaps usage is not token-gated. The current app route itself swaps between aeWETH and 0xZAPS, and every Robinhood mainnet action remains wallet-confirmed.",
+    a: "No. Every core workflow — create, fund, execute, recover — works without it. Holding 100,000+ 0xZAPS unlocks optional app conveniences: auto-refreshing quotes, extended zap and receipt history, and receipt JSON export.",
   },
   {
     q: "Are the contracts audited?",
@@ -177,10 +181,13 @@ export default function TokenPage(): React.JSX.Element {
 
       {/* utility */}
       <section className={`container ${styles.section}`}>
-        <header className={styles.head}>
+        <header className={styles.head} id="utilities">
           <span className="eyebrow">What it&apos;s for</span>
           <h2>Only the utility that exists today.</h2>
-          <p>No governance, staking, fee share, revenue claim, equity, yield, or returns are represented.</p>
+          <p>
+            Every utility below is implemented and live right now. No governance, staking, fee share, revenue claim,
+            equity, yield, or returns are represented.
+          </p>
         </header>
         <div className={styles.utilGrid}>
           {utility.map((u) => (

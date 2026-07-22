@@ -80,7 +80,7 @@ const faqs = [
   },
   {
     q: `Do I need ${TOKEN.symbol} to use the protocol?`,
-    a: "No — nothing is token-gated. 0xZAPS is the asset paired with aeWETH in the first bounded live route. Robinhood mainnet actions remain wallet-confirmed and the v1.1 contracts are pre-external-audit.",
+    a: "No — every core workflow works without it. 0xZAPS is the asset paired with aeWETH in the first bounded live route, and holding 100,000+ unlocks optional app conveniences: auto-refreshing quotes, extended history, and receipt export.",
   },
   {
     q: "Are the contracts audited?",
@@ -166,7 +166,7 @@ export default function Home(): React.JSX.Element {
             <div className={styles.execTop}>
               <OpenZapMark className={styles.execMark} />
               <strong>policy.review()</strong>
-              <span className={styles.live}>{contractsLive() ? "gated" : "preview"}</span>
+              <span className={styles.live}>{contractsLive() ? "live" : "preview"}</span>
             </div>
             <pre>
               {[
@@ -174,7 +174,7 @@ export default function Home(): React.JSX.Element {
                 "simulate(latestBlock)     pass",
                 "diff(policyVersion)       pass",
                 "bind(spend, recipient)    pass",
-                "submit(privateChannel)    gated",
+                "submit(ownerWallet)       live",
                 "revoke(ownerPath)         ready",
               ].map((line) => (
                 <span className={styles.execLine} key={line}>
@@ -303,8 +303,8 @@ export default function Home(): React.JSX.Element {
           <span className="eyebrow">Reusable templates</span>
           <h2>Start narrow. Expand only after the controls hold.</h2>
           <p>
-            The live route starts with one exact Robinhood pool and a fixed adapter. Broader templates remain gated
-            until their adapters and tokens receive the same review and fork coverage.
+            The live route starts with one exact Robinhood pool and a fixed adapter. Broader templates ship as their
+            adapters and tokens receive the same review and fork coverage.
           </p>
         </header>
         <div className={styles.modelGrid}>
