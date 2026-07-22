@@ -32,6 +32,31 @@ any price. Every multi-protocol chain in the builder is a Base chain or it is no
 
 ---
 
+## 0b. The second rule: a step's input amount is frozen
+
+`Step.amountIn` (`src/libraries/OpenZapTypes.sol`) is a constant written into the policy at creation
+and covered by the policy hash. **A step cannot consume "whatever the previous step produced."** That
+quantity is not knowable when the owner signs, and making it knowable would mean signing a blank
+cheque.
+
+Proven end to end against the deployed contracts in `test/DeployedBaseE2E.t.sol`: a capsule swapped
+2,000 USDC through Uniswap v3 into ~1.05 WETH, then supplied the **0.2 WETH the policy named** to
+Aave. The other ~0.85 WETH stayed in the capsule. It is recoverable — the owner's `emergencyExit`
+sweeps it, and the test asserts that — but it does not flow onward.
+
+So "multi-step" here means *a fixed sequence of fixed amounts*, not a pipeline. Two consequences the
+builder must respect:
+
+- A design like "swap, then supply the proceeds" is only expressible if the author fixes the second
+  amount in advance and accepts that any surplus strands until swept.
+- Chains where the intermediate amount is inherently unpredictable (anything downstream of a swap at
+  an unknown price) will routinely strand value. The UI should say so at design time rather than let
+  someone discover it after signing.
+
+Proportional or balance-relative step inputs are a v2 core change, not an adapter.
+
+---
+
 ## 1. The rule everything else follows from
 
 `OpenZap.execute()` (`src/OpenZap.sol`):
