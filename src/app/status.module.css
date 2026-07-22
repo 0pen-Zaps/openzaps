@@ -20,7 +20,7 @@
   width: 4.5rem;
   height: 4.5rem;
   margin-bottom: 1.5rem;
-  filter: drop-shadow(0 0 46px rgba(107, 92, 255, 0.5));
+  filter: drop-shadow(0 0 46px rgba(204, 248, 63, 0.5));
   animation: statusMark 5.5s var(--ease-standard) infinite;
 }
 
@@ -110,8 +110,8 @@
 }
 
 .suggest a:hover {
-  border-color: rgba(142, 160, 255, 0.42);
-  background: rgba(142, 160, 255, 0.1);
+  border-color: rgba(204, 248, 63, 0.42);
+  background: rgba(204, 248, 63, 0.1);
   color: var(--fg);
   transform: translateY(-2px);
 }

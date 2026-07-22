@@ -57,7 +57,7 @@
 
 .brand:hover .mark {
   transform: rotate(-8deg) scale(1.08);
-  filter: drop-shadow(0 0 14px rgba(107, 92, 255, 0.6));
+  filter: drop-shadow(0 0 14px rgba(204, 248, 63, 0.6));
 }
 
 .brand:active .mark {
@@ -78,8 +78,8 @@
 }
 
 .brand:hover .ticker {
-  border-color: rgba(55, 240, 154, 0.4);
-  color: var(--mint-2);
+  border-color: rgba(204, 248, 63, 0.4);
+  color: var(--accent-bright);
 }
 
 .links {
@@ -138,8 +138,8 @@
 .active::before {
   opacity: 1;
   transform: scale(1);
-  background: rgba(142, 160, 255, 0.14);
-  box-shadow: inset 0 0 0 1px rgba(142, 160, 255, 0.22);
+  background: rgba(204, 248, 63, 0.14);
+  box-shadow: inset 0 0 0 1px rgba(204, 248, 63, 0.22);
 }
 
 /* Underline marker that grows out from the centre when a route becomes current. */

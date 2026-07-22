@@ -19,7 +19,7 @@
 .heroMark svg {
   width: clamp(5.5rem, 13vw, 8.5rem);
   height: clamp(5.5rem, 13vw, 8.5rem);
-  filter: drop-shadow(0 0 50px rgba(107, 92, 255, 0.5));
+  filter: drop-shadow(0 0 50px rgba(204, 248, 63, 0.5));
   animation: float 6s ease-in-out infinite;
 }
 
@@ -40,7 +40,7 @@
 }
 
 .lead strong {
-  color: var(--mint-2);
+  color: var(--accent-bright);
   font-weight: 600;
 }
 
@@ -69,7 +69,7 @@
   flex-direction: column;
   gap: 0.4rem;
   padding: 1.3rem;
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.035), rgba(8, 9, 10, 0.6));
+  background: transparent;
 }
 
 .fact span {
@@ -109,13 +109,13 @@
 }
 
 .addressLabel {
-  color: var(--indigo);
+  color: var(--accent-dim);
   font-family: var(--font-jetbrains-mono), ui-monospace, monospace;
   font-size: 0.78rem;
 }
 
 .addressValue {
-  color: var(--mint-2);
+  color: var(--accent-bright);
   font-family: var(--font-jetbrains-mono), ui-monospace, monospace;
   font-size: 0.8rem;
   word-break: break-all;
@@ -170,7 +170,7 @@
 
 .stepNum {
   display: inline-flex;
-  color: var(--indigo);
+  color: var(--accent-dim);
   font-family: var(--font-jetbrains-mono), ui-monospace, monospace;
   font-size: 1.4rem;
   font-weight: 500;
@@ -275,8 +275,8 @@
 }
 
 .verifyRow:hover {
-  border-color: rgba(55, 240, 154, 0.35);
-  background: rgba(33, 208, 122, 0.06);
+  border-color: rgba(204, 248, 63, 0.35);
+  background: rgba(204, 248, 63, 0.06);
 }
 
 .verifyRow span {
@@ -297,7 +297,7 @@
 }
 
 .verifyRow i {
-  color: var(--mint-2);
+  color: var(--accent-bright);
   font-style: normal;
 }
 
@@ -329,7 +329,7 @@
 .faq summary::after {
   float: right;
   content: "+";
-  color: var(--indigo);
+  color: var(--accent-dim);
   font-weight: 400;
 }
 
@@ -357,7 +357,7 @@
   border: 1px solid var(--line);
   border-radius: 0.5rem;
   background:
-    linear-gradient(135deg, rgba(107, 92, 255, 0.12), transparent 54%),
+    linear-gradient(135deg, rgba(204, 248, 63, 0.12), transparent 54%),
     var(--card);
   box-shadow: var(--card-shadow);
 }
@@ -420,7 +420,7 @@
 .utilCard:hover,
 .step:hover {
   transform: translateY(-4px);
-  border-color: rgba(142, 160, 255, 0.4);
+  border-color: rgba(204, 248, 63, 0.4);
   box-shadow: 0 16px 38px rgba(0, 0, 0, 0.42);
 }
 
@@ -437,7 +437,7 @@
 
 .step:hover .stepNum,
 .step:focus-within .stepNum {
-  color: var(--mint-2);
+  color: var(--accent-bright);
   transform: scale(1.14) translateY(-2px);
 }
 
@@ -462,8 +462,8 @@
 }
 
 @keyframes tokenBreathe {
-  0%, 100% { transform: translateY(0) scale(1); filter: drop-shadow(0 0 34px rgba(33, 208, 122, 0.28)); }
-  50% { transform: translateY(-9px) scale(1.025); filter: drop-shadow(0 0 54px rgba(33, 208, 122, 0.45)); }
+  0%, 100% { transform: translateY(0) scale(1); filter: drop-shadow(0 0 34px rgba(204, 248, 63, 0.28)); }
+  50% { transform: translateY(-9px) scale(1.025); filter: drop-shadow(0 0 54px rgba(204, 248, 63, 0.45)); }
 }
 
 .addressValue {

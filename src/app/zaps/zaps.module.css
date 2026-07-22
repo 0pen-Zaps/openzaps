@@ -119,9 +119,9 @@
 }
 
 .badge[data-verified="true"] {
-  border-color: rgba(55, 240, 154, 0.42);
-  color: var(--mint-2);
-  background: rgba(33, 208, 122, 0.11);
+  border-color: rgba(204, 248, 63, 0.42);
+  color: var(--accent-bright);
+  background: rgba(204, 248, 63, 0.11);
 }
 
 .verifyFacts {
@@ -163,7 +163,7 @@
 
 .updatedSpinner {
   align-self: center;
-  color: var(--indigo);
+  color: var(--accent-dim);
 }
 
 .staleWarning {
@@ -207,7 +207,7 @@
 }
 
 .panelHead a {
-  color: var(--indigo);
+  color: var(--accent-dim);
 }
 
 /* ------------------------------------------------------------ deviations */
@@ -362,7 +362,7 @@
 }
 
 .cardLink {
-  color: var(--indigo);
+  color: var(--accent-dim);
   font-family: var(--font-jetbrains-mono), ui-monospace, monospace;
   font-size: 0.7rem;
   white-space: nowrap;
@@ -405,7 +405,7 @@
 }
 
 .fact dd a {
-  color: var(--indigo);
+  color: var(--accent-dim);
   font-family: var(--font-jetbrains-mono), ui-monospace, monospace;
   font-size: 0.8rem;
 }
@@ -566,7 +566,7 @@
 
 .row:hover {
   transform: translateX(3px);
-  border-color: rgba(55, 240, 154, 0.3);
+  border-color: rgba(204, 248, 63, 0.3);
   background: rgba(255, 255, 255, 0.03);
 }
 
@@ -578,7 +578,7 @@
 }
 
 .rowType[data-type="executed"] {
-  color: var(--mint-2);
+  color: var(--accent-bright);
 }
 
 .rowType[data-type="recovered"] {
@@ -656,7 +656,7 @@
 
 .listLink:hover {
   transform: translateX(3px);
-  border-color: rgba(142, 160, 255, 0.42);
+  border-color: rgba(204, 248, 63, 0.42);
   background: rgba(255, 255, 255, 0.03);
 }
 
@@ -682,7 +682,7 @@
 }
 
 .listRuns[data-active="true"] {
-  color: var(--mint-2);
+  color: var(--accent-bright);
 }
 
 .listTime {
@@ -699,7 +699,7 @@
   right: 0.9rem;
   z-index: 1;
   transform: translateY(-50%);
-  color: var(--indigo);
+  color: var(--accent-dim);
   font-size: 0.73rem;
   white-space: nowrap;
 }
@@ -721,7 +721,7 @@
 }
 
 .note a {
-  color: var(--indigo);
+  color: var(--accent-dim);
 }
 
 .unavailable {

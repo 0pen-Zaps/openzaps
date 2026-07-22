@@ -28,7 +28,7 @@
 }
 
 .brand strong {
-  color: #f7f8f8;
+  color: #eef2ef;
   font-size: 1.05rem;
   font-weight: 600;
 }
@@ -36,7 +36,7 @@
 .brand p {
   max-width: 24rem;
   margin-top: 0.35rem;
-  color: #8a8f98;
+  color: #9aa79f;
   font-size: 0.92rem;
   line-height: 1.55;
 }
@@ -74,14 +74,14 @@
 .col a {
   width: max-content;
   max-width: 100%;
-  color: #d0d6e0;
+  color: #b9c4bd;
   font-size: 0.92rem;
   overflow-wrap: anywhere;
   transition: color 160ms ease;
 }
 
 .col a:hover {
-  color: #37f09a;
+  color: #ccf83f;
 }
 
 .legal {
@@ -148,5 +148,5 @@
 
 .brand:hover .mark {
   transform: rotate(8deg) scale(1.07);
-  filter: drop-shadow(0 0 18px rgba(107, 92, 255, 0.55));
+  filter: drop-shadow(0 0 18px rgba(204, 248, 63, 0.55));
 }

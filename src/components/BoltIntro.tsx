@@ -2,8 +2,8 @@
 
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
 import { ZapLinesMark } from "@/components/ZapLinesMark";
-import { BOLT_LINES } from "./content";
-import styles from "./LinesIntro.module.css";
+import { INTRO_LINES } from "@/lib/scanlines";
+import styles from "./BoltIntro.module.css";
 
 /** Horizontal bands the black field is torn into on the way out. */
 const BANDS = 14;
@@ -26,7 +26,7 @@ const BANDS = 14;
  */
 const FAILSAFE_MS = 6000;
 
-export function LinesIntro(): React.JSX.Element | null {
+export function BoltIntro(): React.JSX.Element | null {
   const [done, setDone] = useState(false);
   const [skipped, setSkipped] = useState(false);
   const finished = useRef(false);
@@ -112,9 +112,9 @@ export function LinesIntro(): React.JSX.Element | null {
 
       <div className={styles.stage}>
         <span className={styles.seed} />
-        <ZapLinesMark className={styles.bolt} lines={BOLT_LINES} weight={0.62} motion="draw" />
+        <ZapLinesMark className={styles.bolt} lines={INTRO_LINES} weight={0.62} motion="draw" />
         <p className={styles.caption}>
-          tracing <b>{BOLT_LINES} lines</b>
+          tracing <b>{INTRO_LINES} lines</b>
         </p>
       </div>
 

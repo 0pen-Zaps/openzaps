@@ -5,7 +5,6 @@ import { Analytics } from "@vercel/analytics/next";
 import "./globals.css";
 import { SiteNav } from "@/components/SiteNav";
 import { SiteFooter } from "@/components/SiteFooter";
-import { ChromeGate } from "@/components/ChromeGate";
 import { Spotlight } from "@/components/Spotlight";
 import { JsonLd } from "@/components/JsonLd";
 import { LINKS, TOKEN, TOKEN_LAUNCH, X_HANDLE } from "@/lib/config";
@@ -147,7 +146,7 @@ const siteGraph = {
  * flash black on every repeat visit — a strobe worse than the intro it is
  * suppressing. A `beforeInteractive` script is the only placement Next
  * supports for that, and Next only honours it in the root layout, which is why
- * a rule about one preview route lives here and gates itself on the pathname.
+ * a rule about the home page lives here and gates itself on the pathname.
  *
  * `?intro` forces a replay: a once-per-session intro is otherwise nearly
  * impossible to demo to anyone.
@@ -157,40 +156,36 @@ const siteGraph = {
  * before rendering, hence the blanket catch.
  */
 const INTRO_GUARD = `(function(){try{
-if(location.pathname!=="/lines")return;
-var k="oz-lines-intro";
+if(location.pathname!=="/")return;
+var k="oz-intro-seen";
 if(new URLSearchParams(location.search).has("intro")){sessionStorage.setItem(k,"1");return}
-if(sessionStorage.getItem(k)){document.documentElement.dataset.linesIntro="seen";return}
+if(sessionStorage.getItem(k)){document.documentElement.dataset.introSeen="1";return}
 sessionStorage.setItem(k,"1")}catch(e){}})()`;
 
 export default function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>): React.JSX.Element {
   return (
-    // The guard script above stamps `data-lines-intro` onto this element before
+    // The guard script above stamps `data-intro-seen` onto this element before
     // React hydrates, so the live DOM legitimately carries an attribute the
     // server never rendered. Without this, React reports that difference as a
-    // hydration mismatch on every repeat visit to the preview.
+    // hydration mismatch on every repeat visit.
     <html
       lang="en"
       className={`${inter.variable} ${jetBrainsMono.variable}`}
       suppressHydrationWarning
     >
       <body>
-        <Script id="lines-intro-guard" strategy="beforeInteractive">
+        <Script id="intro-guard" strategy="beforeInteractive">
           {INTRO_GUARD}
         </Script>
         <JsonLd data={siteGraph} />
         <a href="#main" className="skipLink">
           Skip to content
         </a>
-        <ChromeGate>
-          <SiteNav />
-        </ChromeGate>
+        <SiteNav />
         {children}
-        <ChromeGate>
-          <SiteFooter />
-        </ChromeGate>
+        <SiteFooter />
         <Spotlight />
         <Analytics />
       </body>

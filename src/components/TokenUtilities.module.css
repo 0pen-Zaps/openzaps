@@ -19,9 +19,9 @@
 }
 
 .success {
-  border: 1px solid rgba(55, 240, 154, 0.28);
-  color: var(--mint-2);
-  background: rgba(33, 208, 122, 0.08);
+  border: 1px solid rgba(204, 248, 63, 0.28);
+  color: var(--accent-bright);
+  background: rgba(204, 248, 63, 0.08);
 }
 
 /* Live region stays mounted so screen readers announce updates; collapse it when idle. */

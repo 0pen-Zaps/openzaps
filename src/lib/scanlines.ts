@@ -119,3 +119,9 @@ export const BOLT: readonly Point[] = [
   [78, 64],
   [52, 64],
 ];
+
+/**
+ * Rules the entrance bolt is sliced into. The intro counts these out loud, so
+ * the number lives next to the geometry it describes rather than in the copy.
+ */
+export const INTRO_LINES = 32;

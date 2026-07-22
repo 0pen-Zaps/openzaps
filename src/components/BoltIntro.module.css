@@ -222,6 +222,6 @@
    black panel is visible. Doing this from an effect instead would hide it only
    after the first paint, which on an opaque full-viewport overlay is a black
    strobe on every visit — worse than simply replaying the intro. */
-:global(html[data-lines-intro="seen"]) .overlay {
+:global(html[data-intro-seen="1"]) .overlay {
   display: none;
 }
