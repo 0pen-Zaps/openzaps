@@ -9,11 +9,11 @@ export const SITE_URL = (process.env.NEXT_PUBLIC_SITE_URL ?? "https://www.0xzaps
 export const SITE_NAME = "OpenZaps";
 export const OG_IMAGE = "/og.png";
 
-export const DEFAULT_TITLE = "OpenZaps — bounded onchain execution for agents";
+export const DEFAULT_TITLE = "OpenZaps — DeFi policy capsules agents cannot redirect";
 
 export const DEFAULT_DESCRIPTION =
-  "OpenZaps are tightly bounded policy capsules for agent-triggered DeFi: simulate, submit, monitor, and revoke without broad wallet authority. " +
-  `${TOKEN.symbol} is live on ${TOKEN_LAUNCH.venue} on ${TOKEN_LAUNCH.network}.`;
+  "A capsule fixes the target, recipient, asset, and calldata before it is signed. Nothing that executes it can change them. The owner submits every transaction from their own wallet. " +
+  `One bounded aeWETH ↔ ${TOKEN.symbol} route is live on ${TOKEN_LAUNCH.network}. The contracts are not externally audited.`;
 
 export const SEO_KEYWORDS = [
   "OpenZaps",
@@ -32,7 +32,8 @@ export const SEO_KEYWORDS = [
   "EIP-712 intents",
   "ERC-1271",
   "immutable zaps",
-  "intent lockers",
+  "visual DeFi builder",
+  "aeWETH 0xZAPS route",
   CHAIN.name,
 ];
 

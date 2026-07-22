@@ -10,8 +10,8 @@ import { CopyButton } from "@/components/CopyButton";
 import styles from "./token.module.css";
 
 export const metadata = pageMetadata({
-  title: `${TOKEN.symbol} token — live on ${TOKEN_LAUNCH.network}`,
-  description: `${TOKEN.symbol} is live on ${TOKEN_LAUNCH.network} through ${TOKEN_LAUNCH.venue}. Verify the contract, add it to your wallet, or open the bounded aeWETH/0xZAPS route.`,
+  title: `${TOKEN.symbol} token — contract, market, and what it is not`,
+  description: `${TOKEN.symbol} is an ERC-20 on ${TOKEN_LAUNCH.network}, traded through ${TOKEN_LAUNCH.venue}. It has no claim on revenue, yield, or assets. Verify the contract address before trading or adding it to a wallet.`,
   path: "/token",
   ogImage: "/og/token.png",
   keywords: [
@@ -39,7 +39,7 @@ const steps = [
   {
     n: "02",
     title: "Verify the contract",
-    body: `Match the token contract exactly: ${TOKEN_LAUNCH.contract}. Do not trade a lookalike ticker.`,
+    body: `Match the token contract exactly: ${TOKEN_LAUNCH.contract}. A ticker and a logo cost nothing to copy, and anyone can deploy a lookalike. The address is the only thing that tells them apart.`,
   },
   {
     n: "03",
@@ -50,20 +50,20 @@ const steps = [
 
 const utility = [
   {
-    title: "A bounded route asset",
-    body: "The live OpenZaps v1.1 adapter supports one pinned Robinhood v4 pool: aeWETH ↔ 0xZAPS. The app builds immutable one-route policy capsules around it.",
+    title: "The asset in the one live route",
+    body: "The live v1.1 adapter is bound to a single pinned Robinhood v4 pool: aeWETH ↔ 0xZAPS. It cannot route to another token, spender, hook, or DEX. Every capsule the app deploys is built around that one pool.",
   },
   {
-    title: "Holder utilities, live in the app",
-    body: "Hold 100,000+ 0xZAPS in your connected wallet and the app console unlocks auto-refreshing live quotes, extended zap history (50 slots; 100 at 1,000,000+), longer receipt retention, and one-click receipt JSON export. App-level conveniences, checked against your live balance — not protocol rights.",
+    title: "App conveniences at a balance threshold",
+    body: "Hold 100,000+ 0xZAPS in the connected wallet and the app auto-refreshes live quotes, keeps 50 saved zaps instead of 20, retains 100 receipts instead of 20, and enables receipt JSON export. At 1,000,000+ the saved-zap limit is 100. The app reads the balance; the contracts never do.",
   },
   {
     title: "Wallet-readable ERC-20",
     body: `Use the exact ${TOKEN_LAUNCH.network} address, ${TOKEN.decimals} decimals, and the add-to-wallet utility on this page. Wallet support varies.`,
   },
   {
-    title: "No invented rights",
-    body: "The token does not grant protocol governance, staking, revenue, yield, equity, or fee rights. Every core OpenZaps workflow — create, fund, execute, recover — works without holding it.",
+    title: "What it does not grant",
+    body: "The token grants no protocol governance, staking, revenue, yield, equity, or fee rights. It is not equity and no return is implied. Every core workflow — create, fund, execute, recover — works without holding it.",
   },
 ] as const;
 
@@ -78,11 +78,11 @@ const faqs = [
   },
   {
     q: "Do I need the token to use OpenZaps?",
-    a: "No. Every core workflow — create, fund, execute, recover — works without it. Holding 100,000+ 0xZAPS unlocks optional app conveniences: auto-refreshing quotes, extended zap and receipt history, and receipt JSON export.",
+    a: "No. Creating, funding, executing, and recovering a capsule all work without holding 0xZAPS. Holding 100,000+ 0xZAPS turns on app conveniences — auto-refreshing quotes, more saved zaps and receipts, and receipt JSON export — which the app checks against the connected wallet's balance. The contracts do not read it.",
   },
   {
     q: "Are the contracts audited?",
-    a: "No external audit is published for the OpenZap v1.1 protocol contracts. The app labels the live workflow pre-external-audit; deposited funds are at risk.",
+    a: "No external audit is published for the OpenZap v1.1 protocol contracts. Deposited funds are at risk. Onchain actions are irreversible.",
   },
 ] as const;
 
@@ -125,8 +125,9 @@ export default function TokenPage(): React.JSX.Element {
           <span className="gradientText">{TOKEN.symbol}</span>
         </h1>
         <p className={styles.lead}>
-          The ERC-20 paired with aeWETH in OpenZaps&apos; first bounded live route. Verify the exact contract on{" "}
-          <strong>{TOKEN_LAUNCH.network}</strong> before trading or adding it to a wallet.
+          An ERC-20 with no claim on revenue, yield, or assets. It is the asset paired with aeWETH in the one route the
+          live contracts can execute. Verify the exact contract on <strong>{TOKEN_LAUNCH.network}</strong> before you
+          trade it or add it to a wallet.
         </p>
         <div className={styles.heroActions}>
           <BuyButton size="lg" />
@@ -195,8 +196,8 @@ export default function TokenPage(): React.JSX.Element {
           <span className="eyebrow">What it&apos;s for</span>
           <h2>Only the utility that exists today.</h2>
           <p>
-            Every utility below is implemented and live right now. No governance, staking, fee share, revenue claim,
-            equity, yield, or returns are represented.
+            Everything below is implemented and live in the app right now. Nothing below is a protocol right. No
+            governance, staking, fee share, revenue claim, equity, yield, or return is represented.
           </p>
         </header>
         <div className={styles.utilGrid}>
@@ -216,8 +217,9 @@ export default function TokenPage(): React.JSX.Element {
             <span className="eyebrow">Verify before trading</span>
             <h2>One contract. One official market.</h2>
             <p>
-              Tickers and screenshots can be copied. The Clanker market and {TOKEN_LAUNCH.network} contract below are
-              the canonical references; live market data can change at any time.
+              A ticker, a logo, and a screenshot cost nothing to copy, and anyone can deploy a token that looks like
+              this one. The {TOKEN_LAUNCH.venue} market and the {TOKEN_LAUNCH.network} contract below are the canonical
+              references. Live market data can change at any time.
             </p>
           </div>
           <div className={styles.verifyList}>
@@ -265,7 +267,7 @@ export default function TokenPage(): React.JSX.Element {
       <section className={`container ${styles.cta}`}>
         <div className={styles.ctaInner}>
           <h2>
-            Ready? Get <span className="gradientText">{TOKEN.symbol}</span>.
+            Check the address. Then trade <span className="gradientText">{TOKEN.symbol}</span>.
           </h2>
           <div className={styles.heroActions}>
             <BuyButton size="lg" />
@@ -274,8 +276,9 @@ export default function TokenPage(): React.JSX.Element {
             </Link>
           </div>
           <p className={styles.disclaimer}>
-            Not financial advice. {TOKEN.symbol} is an ERC-20 with no claim on revenue, yield, or assets.
-            Onchain actions are irreversible; the protocol is pre-external-audit.
+            Not financial advice. {TOKEN.symbol} is an ERC-20 with no claim on revenue, yield, or assets. It is not
+            equity and no return is implied. Onchain actions are irreversible. The contracts have not been externally
+            audited.
           </p>
         </div>
       </section>

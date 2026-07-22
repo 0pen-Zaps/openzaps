@@ -92,8 +92,9 @@ export default async function DashboardPage(): Promise<React.JSX.Element> {
           ))}
         </div>
         <p className={styles.note}>
-          Contracts are live but pre-external-audit. Depositing funds can result in total loss —{" "}
-          <Link href="/security">read the security posture</Link>.
+          The contracts have not been externally audited. Depositing funds can result in total loss. Onchain
+          actions are irreversible.{" "}
+          <Link href="/security">Read the security posture</Link>.
         </p>
       </section>
     </main>

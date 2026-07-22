@@ -26,8 +26,8 @@ export default function NotFound(): React.JSX.Element {
         <span className={styles.code}>404</span>
         <h1 className={styles.title}>This route was never in the policy.</h1>
         <p className={styles.body}>
-          The page you asked for does not exist. Nothing failed and nothing was executed — the address simply
-          has no capsule behind it.
+          The page you asked for does not exist. Nothing failed and nothing was executed. The address has no
+          capsule behind it.
         </p>
         <div className={styles.actions}>
           <Link href="/" className="btn btnPrimary btnLg">

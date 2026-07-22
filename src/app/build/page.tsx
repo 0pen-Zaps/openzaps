@@ -5,9 +5,9 @@ import { ZapBuilder } from "./ZapBuilder";
 import styles from "./build.module.css";
 
 export const metadata = pageMetadata({
-  title: "Builder — compose a zap from DeFi lego",
+  title: "Builder — design a zap from typed DeFi blocks",
   description:
-    "Drag and drop DeFi building blocks — swaps, lending, liquidity, bridges, yield, and guards — into a bounded zap. Every connector is typed, every chain compiles to a policy hash, and nothing is ever broadcast.",
+    "Drag DeFi blocks — swaps, lending, liquidity, bridges, yield, and guards — into a chain. Every block declares its connectors, so a joint seats only where the shapes match. Nothing here signs, funds, or broadcasts anything.",
   path: "/build",
   keywords: [
     "DeFi lego builder",
@@ -28,11 +28,12 @@ export default function BuildPage(): React.JSX.Element {
 
       <section className={`container ${styles.hero}`}>
         <span className="eyebrow">Zap builder</span>
-        <h1>Snap a strategy together.</h1>
+        <h1>A block only seats where the shapes match.</h1>
         <p>
-          Every DeFi activity is a block with a typed connector. Drag pieces into the chain and they only seat where the
-          shape flowing out of the block above matches the shape the block below expects — the same rule the policy
-          compiler enforces before anything gets signed.
+          Every DeFi activity here is a block that declares its connectors: a source emits a shape, a settlement
+          block takes one, and everything between does both. A joint seats only when the shape leaving the block
+          above is the shape the block below takes, so dragging cannot assemble a mismatched chain. A shared link
+          can still carry one, and the readout names the joint that does not fit.
         </p>
         <div className={styles.legend}>
           {SHAPES.map((shape) => (

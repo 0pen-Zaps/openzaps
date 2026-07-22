@@ -867,8 +867,8 @@ export function ZapBuilder(): React.JSX.Element {
           {/* No count in the copy: it went stale the first time a blueprint was
               added, and the row is right there to be counted. */}
           <p>
-            One kind of zap each. The one marked <em>deployable</em> is the only shape today’s contracts can carry —
-            load any of them, then rebuild piece by piece.
+            One kind of zap each. The one marked <em>deployable</em> is the only shape the live contracts can carry.
+            Load any of them, then rebuild piece by piece.
           </p>
         </div>
         <div className={styles.recipeRow}>
@@ -1024,9 +1024,10 @@ export function ZapBuilder(): React.JSX.Element {
           </header>
 
           <p className={styles.scopeBanner} role="note">
-            <strong>This canvas designs zaps — it does not deploy them.</strong> Every chain here compiles and
-            simulates, but the only one the live contracts can carry today is a single-step aeWETH ↔ 0xZAPS swap.
-            Anything else is saved as a design, and the panel on the right says which one you have.
+            <strong>This canvas designs zaps. It does not deploy them.</strong> A chain that seats here compiles
+            and simulates. The only one the live contracts can carry is a single-step aeWETH ↔ 0xZAPS swap, with
+            the recipient forced to the owner and the relayer fee cap at zero. Anything else saves as a design,
+            and the panel on the right names which one you have.
           </p>
 
           <div className={styles.canvas} ref={canvasRef}>
@@ -1378,8 +1379,8 @@ export function ZapBuilder(): React.JSX.Element {
                 This design reduces to the live route. The app page opens with{" "}
                 {deployment.direction === "buy" ? "aeWETH → 0xZAPS" : "0xZAPS → aeWETH"}, {deployment.amountIn}{" "}
                 {deployment.direction === "buy" ? "aeWETH" : "0xZAPS"}, and a{" "}
-                {(deployment.slippageBps / 100).toFixed(2)}% signed slippage cap filled in. You still create, fund,
-                and sign there — nothing is submitted from here.
+                {(deployment.slippageBps / 100).toFixed(2)}% signed slippage cap filled in. You create, fund, and
+                sign there. Nothing is submitted from here.
               </p>
               {deployment.unenforcedGuards.length > 0 ? (
                 // Rendered in full, in the CTA's own line of sight. Summarising
@@ -1469,8 +1470,8 @@ export function ZapBuilder(): React.JSX.Element {
           </div>
 
           <p className={styles.disclaimer}>
-            The builder compiles and simulates only. Nothing here signs, funds, or submits a transaction — the live route
-            on the app page remains the bounded aeWETH ↔ 0xZAPS capsule.
+            The builder compiles and simulates. It cannot sign, fund, or submit a transaction. The one route the app
+            page can deploy is the bounded aeWETH ↔ 0xZAPS capsule.
           </p>
         </aside>
       </div>

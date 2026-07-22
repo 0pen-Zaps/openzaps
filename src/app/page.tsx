@@ -74,17 +74,17 @@ const DEMO_ROWS = (() => {
 
 const stats = [
   { v: "0", k: "Broad wallet approvals" },
-  { v: String(BLOCKS.length), k: "Blocks in the visual builder" },
-  { v: "1", k: "Bounded route live onchain" },
-  { v: "63 / 0", k: "Contract tests passing / failing" },
+  { v: String(BLOCKS.length), k: "Typed blocks in the builder" },
+  { v: String(RECIPES.length), k: "Blueprints to start from" },
+  { v: "1", k: "Route the live contracts can deploy" },
 ] as const;
 
 const authorityModels = [
   {
     label: "01 / Deposit",
     title: "Pre-funded immutable zap",
-    body: "Assets sit inside a narrow policy capsule. Hermes triggers only the frozen action graph; you keep an unconditional withdraw and revocation path.",
-    grade: "Recurring automation",
+    body: "The assets sit in the capsule instead of your wallet. The capsule runs the step its policy already commits to and nothing else. The owner keeps an unconditional withdraw and revocation path.",
+    grade: "One signed step",
   },
   {
     label: "02 / Signature",
@@ -95,13 +95,13 @@ const authorityModels = [
   {
     label: "03 / Wallet-native",
     title: "Safe / ERC-1271 signer",
-    body: "Contract wallets sign the same typed policy. Hermes stays a submitter, simulator, and monitor — never an operator with discretion.",
+    body: "Contract wallets sign the same typed policy. Hermes stays a submitter, simulator, and monitor. It holds no discretion over what executes.",
     grade: "Power users",
   },
 ] as const;
 
 const security = [
-  "No arbitrary target + calldata — fixed adapters only",
+  "Fixed adapters only — no arbitrary target or calldata",
   "Exact approvals, reset to zero on every path",
   "Authorization consumed before any external call",
   "Measured balance-delta postconditions",
@@ -119,13 +119,13 @@ const flow = [
   {
     label: "02 / Review",
     title: "Read the compiled verdict",
-    body: "Connector fit, block maturity, the governing slippage cap, guard coverage, and a gas estimate — compiled from the chain itself, before any wallet is asked for anything.",
+    body: "Connector fit, block maturity, the governing slippage cap, guard coverage, and a gas estimate, compiled from the chain you drew. No wallet is asked for anything at this point.",
     grade: "No wallet yet",
   },
   {
     label: "03 / Deploy",
     title: "Only the bounded route leaves the canvas",
-    body: "A design that reduces to the one route the live contracts implement hands the app a prefilled direction, amount, and slippage cap. You create, fund, and sign it there. Everything else saves as a design.",
+    body: "A design that reduces to the one route the live contracts implement hands the app a prefilled direction, amount, and slippage cap. You create, fund, and sign it there. Every other design stays a design and cannot be deployed today.",
     grade: "aeWETH ↔ 0xZAPS",
   },
   {
@@ -157,15 +157,15 @@ const capsuleNevers = ["USD value", "Token price", "PnL", "APY", "Success rate"]
 const faqs = [
   {
     q: "What is OpenZaps?",
-    a: "OpenZaps turn approved DeFi workflows into sealed policy capsules. A Hermes agent can simulate, submit, monitor, and revoke them, but it cannot choose arbitrary targets, recipients, assets, or calldata.",
+    a: "An OpenZaps capsule is a DeFi action with its choices already made: the target, the recipient, the asset, and the calldata are fixed when the owner signs the policy. Whatever executes the capsule cannot change any of those four fields, because changing one changes the policy hash the capsule committed to. Today the owner submits every transaction from their own wallet.",
   },
   {
     q: "How is this different from giving an agent my wallet?",
-    a: "The agent never holds broad approvals or custody. Authority is bound inside an EIP-712-signed policy — chain, spend ceiling, recipient, deadline, and postconditions — and the owner always keeps an unconditional revoke and exit path.",
+    a: "A wallet approval lets whoever holds it spend up to the allowance on anything it can reach. An OpenZaps policy is signed with EIP-712 and binds the chain, the exact input amount, the recipient, the deadline, and the postconditions before anything can execute. The agent holds no broad approval and no custody, and the owner keeps an unconditional revoke and exit path.",
   },
   {
     q: "Can a chain I design in the builder actually be deployed?",
-    a: "Only if it reduces to the single bounded route the live v1.1 contracts implement: a one-step aeWETH ↔ 0xZAPS swap on Robinhood Chain, with the recipient forced to the capsule owner and the relayer fee cap at zero. That design hands the app a prefilled direction, amount, and slippage cap, and you still create, fund, and sign the capsule yourself — nothing is auto-submitted. Every other chain — multi-step routes, lending, liquidity, bridges, loops — compiles, simulates, and saves as a design, but cannot be deployed today. The builder is a design surface first, and it says so on the canvas.",
+    a: "Only if the design reduces to the single bounded route the live v1.1 contracts implement: a one-step aeWETH ↔ 0xZAPS swap on Robinhood Chain, with the recipient forced to the capsule owner and the relayer fee cap at zero. Such a design hands the app a prefilled direction, amount, and slippage cap. You still create, fund, and sign the capsule yourself; nothing is auto-submitted. Multi-step routes, lending, liquidity, bridges, and loops compile, simulate, and save as designs, but cannot be deployed today. The canvas says which one you have.",
   },
   {
     q: `Is the ${TOKEN.symbol} token live?`,
@@ -173,11 +173,11 @@ const faqs = [
   },
   {
     q: `Do I need ${TOKEN.symbol} to use the protocol?`,
-    a: "No — every core workflow works without it. 0xZAPS is the asset paired with aeWETH in the first bounded live route, and holding 100,000+ unlocks optional app conveniences: auto-refreshing quotes, extended history, and receipt export.",
+    a: "No. Every core workflow — create, fund, execute, recover — works without holding it. 0xZAPS is the ERC-20 paired with aeWETH in the first bounded live route, and it carries no claim on revenue, yield, or assets. Holding 100,000 or more turns on app-level conveniences: auto-refreshing quotes, extended history, and receipt export.",
   },
   {
     q: "Are the contracts audited?",
-    a: "The v1.1 contracts are a complete, internally reviewed reference implementation — 63 passing tests, 9 internal findings fixed — but are pre-external-audit. Treat anything onchain accordingly.",
+    a: "No. The v1.1 contracts have not been externally audited. They are deployed on Robinhood Chain and their source is verified on the block explorer, so you can read what you are signing before you sign it. Onchain actions are irreversible and deposited funds are at risk.",
   },
 ] as const;
 
@@ -209,15 +209,16 @@ export default function Home(): React.JSX.Element {
       {/* ---------------- hero ---------------- */}
       <section className={`container ${styles.hero}`} id="top">
         <div className={styles.heroCopy}>
-          <span className="badge">Bounded execution for agent-native DeFi</span>
+          <span className="badge">Bounded execution on {CHAIN.name}</span>
           <h1 className={styles.title}>
-            <span>Policy capsules</span>
-            <span>for agents that</span>
-            <span className="gradientText">cannot freelance.</span>
+            <span>A zap cannot do</span>
+            <span>anything it was</span>
+            <span className="gradientText">not signed to do.</span>
           </h1>
           <p className={styles.lead}>
-            OpenZaps turn approved DeFi workflows into sealed policy capsules. Hermes can simulate, submit,
-            monitor, alert, and revoke, but it cannot choose arbitrary targets, recipients, assets, or calldata.
+            A zap is a DeFi action with the choices already made: the target, the recipient, the asset, and the
+            calldata are fixed when the owner signs the policy. Nothing that executes it can change the four. Today
+            the owner submits every transaction from their own wallet.
           </p>
           {/* The builder is the most engaging surface we have, so it takes the
               single primary slot. Dashboard was demoted out of the row entirely
@@ -435,9 +436,10 @@ export default function Home(): React.JSX.Element {
         </div>
         <div>
           <p className={styles.tokenLead}>
-            ${TOKEN.symbol} is live through a creator-verified Clanker V4 market on {TOKEN_LAUNCH.network}. It is the
-            ERC-20 paired with aeWETH in the protocol&apos;s first bounded live route; OpenZaps is usable without it,
-            and the token is not yield, equity, or a fee claim.
+            ${TOKEN.symbol} is the ERC-20 paired with aeWETH in the one bounded route the live contracts carry. It
+            trades through a creator-verified {TOKEN_LAUNCH.venue} {TOKEN_LAUNCH.version} market on{" "}
+            {TOKEN_LAUNCH.network}. It has no claim on revenue, yield, or assets, it is not equity, and every core
+            OpenZaps workflow runs without holding it.
           </p>
           <div className={styles.tokenActions}>
             <BuyButton />
@@ -461,7 +463,7 @@ export default function Home(): React.JSX.Element {
           <p>
             The builder composes, the readout compiles a verdict, the app signs the one route the live contracts
             implement, and the capsule&apos;s own page reports what actually happened. The steps are separate on
-            purpose — nothing skips ahead of the review, and nothing here submits a transaction for you.
+            purpose. Nothing skips ahead of the review, and nothing on this site submits a transaction for you.
           </p>
         </Reveal>
         <div className={`${styles.modelGrid} ${styles.flowGrid}`}>
@@ -486,12 +488,12 @@ export default function Home(): React.JSX.Element {
       <section className={`container ${styles.section} ${styles.capsules}`} id="capsules">
         <div>
           <span className="eyebrow">Deployed capsules</span>
-          <h2>Every capsule has a page that earns its numbers.</h2>
+          <h2>A capsule page reports reads, not estimates.</h2>
           <p>
             Each address the factory created gets its own page, read from {CHAIN.name}{" "}
-            at a single pinned block. Provenance is the gate — three things have to hold before the page claims anything at all — and the
-            deployed policy is then drawn back as a lego chain in the builder&apos;s own vocabulary, from the policy&apos;s
-            real fields rather than a template.
+            at a single pinned block. Provenance is the gate: three things have to hold before the page claims
+            anything at all. Only then is the deployed policy drawn back as a lego chain in the builder&apos;s own
+            vocabulary, from the policy&apos;s real fields rather than a template.
           </p>
           <ol className={styles.proofList}>
             {capsuleProof.map((item, i) => (
@@ -510,9 +512,8 @@ export default function Home(): React.JSX.Element {
             </Link>
           </div>
           <p className={styles.capsuleNote}>
-            How many capsules exist is not a number this page states. It changes onchain and this page is statically
-            rendered, so the count is counted where it can be counted honestly: from the factory&apos;s own ZapCreated
-            logs, on /zaps.
+            This page does not state how many capsules exist. The number changes onchain and this page is statically
+            rendered, so it is counted where it can be counted: from the factory&apos;s own ZapCreated logs, on /zaps.
           </p>
         </div>
 
@@ -525,9 +526,9 @@ export default function Home(): React.JSX.Element {
             </Reveal>
           ))}
           <p className={styles.neverNote}>
-            A reverted execution emits no log, so any success rate would be unfalsifiable — and a failed RPC read
-            renders as an explicit unavailable state rather than a zero. Reporting no executions when the read simply
-            failed would be a false claim about a blockchain.
+            A reverted execution emits no log, so any success rate computed from logs would be unfalsifiable. A failed
+            RPC read renders as an explicit unavailable state rather than a zero. Reporting no executions when the read
+            simply failed would be a false claim about a blockchain.
           </p>
         </aside>
       </section>
@@ -565,8 +566,9 @@ export default function Home(): React.JSX.Element {
           <span className="eyebrow">Reusable templates</span>
           <h2>Start narrow. Expand only after the controls hold.</h2>
           <p>
-            The live route starts with one exact Robinhood pool and a fixed adapter. Broader templates ship as their
-            adapters and tokens receive the same review and fork coverage.
+            The live route is one pinned Robinhood pool and one fixed adapter. None of the templates below reduces to
+            it, so none of them can be deployed today. Each one carries its own production status, and a template
+            widens only once an adapter and a token allowlist exist for it onchain.
           </p>
         </Reveal>
         <div className={styles.modelGrid}>
@@ -591,11 +593,13 @@ export default function Home(): React.JSX.Element {
       <section className={`container ${styles.section} ${styles.security}`} id="security">
         <div>
           <span className="eyebrow">Security posture</span>
-          <h2>Narrow policy beats universal routing.</h2>
+          <h2>A narrow contract has fewer things an attacker can ask it to do.</h2>
           <p>
-            The v1.1 contracts are a complete, internally-reviewed reference implementation: 63 passing tests, an
-            adversarial multi-agent review, and 9 internal findings fixed — including a critical clone-hijack
-            (all documented in the linked repo). Not externally audited; we say so plainly.
+            The v1.1 contracts have not been externally audited. The source is verified on the block explorer and
+            linked below; read it before you sign anything. One route is live: a single-step aeWETH ↔ 0xZAPS swap,
+            with the recipient forced to the capsule owner and the relayer fee cap set to zero. The multi-block designs
+            you can assemble in the builder cannot be deployed today. Onchain actions are irreversible. The owner keeps
+            an unconditional withdraw and revoke path.
           </p>
           <div className={styles.checkGrid}>
             {security.map((c, i) => (
@@ -622,7 +626,12 @@ export default function Home(): React.JSX.Element {
           )}
         </div>
         <aside className={styles.agentCard}>
-          <div className={styles.agentHead}>Hermes execution loop</div>
+          <div className={styles.agentHead}>Designed agent loop</div>
+          <p className={styles.agentNote}>
+            None of this runs today. The owner submits every transaction from their own wallet. These are the six
+            steps an agent would be confined to, and the reason each one is safe to hand over is that the policy has
+            already fixed what it may touch.
+          </p>
           {agentLoop.map((item, i) => (
             <Reveal className={styles.loopRow} delay={i * 70} key={item}>
               <span>{String(i + 1).padStart(2, "0")}</span>
@@ -654,7 +663,7 @@ export default function Home(): React.JSX.Element {
         <div className={styles.ctaInner}>
           <OpenZapMark className={styles.ctaMark} />
           <h2>
-            Build the policy first. Let agents act second.
+            Bound the agent before you fund it.
           </h2>
           <p>Connect a wallet to quote, deploy, fund, sign, execute, verify, and recover a bounded zap.</p>
           <div className={styles.actions}>
@@ -666,8 +675,8 @@ export default function Home(): React.JSX.Element {
             </Link>
           </div>
           <p className={styles.ctaNote}>
-            Not financial advice. {TOKEN.symbol} is an ERC-20 with no claim on revenue, yield, or
-            assets; onchain actions are irreversible and the protocol is pre-external-audit.
+            Not financial advice. {TOKEN.symbol} is an ERC-20. It has no claim on revenue, yield, or assets, and no
+            return is implied. Onchain actions are irreversible. The contracts have not been externally audited.
           </p>
         </div>
       </section>
