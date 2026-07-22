@@ -1,0 +1,43 @@
+{
+  "schemaVersion": 1,
+  "updatedAt": "2026-07-22T03:58:20Z",
+  "project": {
+    "name": "OpenZaps",
+    "website": "https://www.0xzaps.com",
+    "tokenPage": "https://www.0xzaps.com/token",
+    "description": "OpenZaps turn approved DeFi workflows into sealed policy capsules. Hermes can simulate, submit, monitor, alert, and revoke, but it cannot choose arbitrary targets, recipients, assets, or calldata.",
+    "github": "https://github.com/nodar/openzaps",
+    "x": "https://x.com/0xzaps",
+    "farcaster": "https://farcaster.xyz/nodes"
+  },
+  "token": {
+    "name": "OpenZaps",
+    "symbol": "0xZAPS",
+    "chain": "Robinhood Chain",
+    "chainId": 4663,
+    "contract": "0xDd90bFa4adC7F4401E611AbaC692D939F9F4CB07",
+    "decimals": 18,
+    "totalSupply": "100000000000",
+    "totalSupplyRaw": "100000000000000000000000000000",
+    "logo": "https://www.0xzaps.com/0xzaps-token.png",
+    "logoTransparent200": "https://www.0xzaps.com/0xzaps-token-transparent-200.png",
+    "banner1500x500": "https://www.0xzaps.com/0xzaps-banner-1500x500.png",
+    "onchainImageURI": "ipfs://bafkreidndqit6ydpkivgmm4qdukh7sgv6uexjp3rc76iyvx22zd425ae7i",
+    "onchainImageGateway": "https://turquoise-blank-swallow-685.mypinata.cloud/ipfs/bafkreidndqit6ydpkivgmm4qdukh7sgv6uexjp3rc76iyvx22zd425ae7i",
+    "venue": "Clanker V4",
+    "market": "https://www.clanker.world/clanker/0xDd90bFa4adC7F4401E611AbaC692D939F9F4CB07",
+    "dexScreener": "https://dexscreener.com/robinhood/0xb040f18affd851c6ea02b896b2f846cb77edbb33cc5361f7f8c6d14b87c01573",
+    "explorer": "https://robinhoodchain.blockscout.com/token/0xDd90bFa4adC7F4401E611AbaC692D939F9F4CB07"
+  },
+  "disclosures": {
+    "category": "community and operator coordination token",
+    "noClaims": [
+      "revenue",
+      "yield",
+      "assets",
+      "equity"
+    ],
+    "protocolExternalAudit": false,
+    "notice": "Verify the Robinhood Chain contract before signing. Market data changes over time."
+  }
+}

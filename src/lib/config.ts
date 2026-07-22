@@ -4,20 +4,32 @@ export const TOKEN = {
   name: "OpenZaps",
   symbol: "0xZAPS",
   decimals: 18,
+  totalSupply: "100000000000",
+  logoPath: "/0xzaps-token.png",
 } as const;
 
 const tokenContract = "0xDd90bFa4adC7F4401E611AbaC692D939F9F4CB07";
+const primaryPair = "0xb040f18affd851c6ea02b896b2f846cb77edbb33cc5361f7f8c6d14b87c01573";
 
 export const TOKEN_LAUNCH = {
   status: "Live",
   venue: "Clanker",
   version: "V4",
   network: "Robinhood Chain",
+  chainId: 4663,
+  nativeCurrency: "ETH",
   contract: tokenContract,
+  pair: `${TOKEN.symbol}/WETH`,
+  primaryPair,
+  onchainImageUri:
+    "ipfs://bafkreidndqit6ydpkivgmm4qdukh7sgv6uexjp3rc76iyvx22zd425ae7i",
+  onchainImageGateway:
+    "https://turquoise-blank-swallow-685.mypinata.cloud/ipfs/bafkreidndqit6ydpkivgmm4qdukh7sgv6uexjp3rc76iyvx22zd425ae7i",
   tradeUrl: `https://www.clanker.world/clanker/${tokenContract}`,
-  dexscreenerUrl: "https://dexscreener.com/robinhood/0xdd90bfa4adc7f4401e611abac692d939f9f4cb07",
+  dexscreenerUrl: `https://dexscreener.com/robinhood/${primaryPair}`,
   explorer: "https://robinhoodchain.blockscout.com",
   contractUrl: `https://robinhoodchain.blockscout.com/token/${tokenContract}`,
+  rpcUrl: "https://rpc.mainnet.chain.robinhood.com",
 } as const;
 
 /** The canonical 0xZAPS buy/trade page. */
@@ -66,6 +78,7 @@ export function explorer(addr: string): string {
 
 export const LINKS = {
   github: "https://github.com/nodar/openzaps",
+  farcaster: "https://farcaster.xyz/nodes",
   x: "https://x.com/0xzaps",
   clanker: TOKEN_LAUNCH.tradeUrl,
   dexscreener: TOKEN_LAUNCH.dexscreenerUrl,

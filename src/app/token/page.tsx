@@ -7,8 +7,8 @@ import { pageMetadata, absoluteUrl, SITE_URL } from "@/lib/seo";
 import styles from "./token.module.css";
 
 export const metadata = pageMetadata({
-  title: `${TOKEN.symbol} token — live on ${TOKEN_LAUNCH.venue}`,
-  description: `${TOKEN.symbol} is live on ${TOKEN_LAUNCH.venue} on ${TOKEN_LAUNCH.network}. Verify the official contract and trade link for the OpenZaps community token.`,
+  title: `${TOKEN.symbol} token — live on ${TOKEN_LAUNCH.network}`,
+  description: `${TOKEN.symbol} is live on ${TOKEN_LAUNCH.network} through ${TOKEN_LAUNCH.venue}. Verify the official contract and trade link for the OpenZaps community token.`,
   path: "/token",
   ogImage: "/og/token.png",
   keywords: [
@@ -176,7 +176,7 @@ export default function TokenPage(): React.JSX.Element {
         <header className={styles.head}>
           <span className="eyebrow">What it&apos;s for</span>
           <h2>One token, aligned with the protocol.</h2>
-          <p>No yield, no TVL, no returns are implied. {TOKEN.symbol} is coordination, not a security.</p>
+          <p>No yield, no TVL, no returns are implied. {TOKEN.symbol} is a coordination token, not a claim on revenue or assets.</p>
         </header>
         <div className={styles.utilGrid}>
           {utility.map((u) => (
