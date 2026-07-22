@@ -6,6 +6,7 @@ export const metadata = pageMetadata({
   title: "App — build bounded execution policies",
   description: `Design an OpenZap policy capsule on ${CHAIN.name}: simulate the diff, save the review artifact, and keep revoke and pause controls in one place. ${TOKEN.symbol} powers the network.`,
   path: "/app",
+  ogImage: "/og/app.png",
   keywords: ["OpenZaps app", "policy capsule builder", "simulate DeFi policy", "DeFi automation app", "EIP-712 policy review"],
 });
 

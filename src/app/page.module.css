@@ -883,3 +883,46 @@
   .modelCard:hover { transform: none; }
   .tickerTrack { flex-wrap: wrap; width: 100%; }
 }
+
+/* ---------------- faq ---------------- */
+.faqs {
+  display: grid;
+  gap: 0.7rem;
+  max-width: 52rem;
+}
+
+.faq {
+  padding: 1.1rem 1.3rem;
+  border: 1px solid var(--line);
+  border-radius: 0.5rem;
+  background: var(--card);
+}
+
+.faq summary {
+  cursor: pointer;
+  font-size: 1.02rem;
+  font-weight: 580;
+  letter-spacing: 0;
+  list-style: none;
+}
+
+.faq summary::-webkit-details-marker {
+  display: none;
+}
+
+.faq summary::after {
+  float: right;
+  content: "+";
+  color: var(--indigo);
+  font-weight: 400;
+}
+
+.faq[open] summary::after {
+  content: "–";
+}
+
+.faq p {
+  margin-top: 0.8rem;
+  color: var(--muted);
+  line-height: 1.6;
+}

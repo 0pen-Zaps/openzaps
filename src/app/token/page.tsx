@@ -10,6 +10,7 @@ export const metadata = pageMetadata({
   title: `${TOKEN.symbol} token — live on ${TOKEN_LAUNCH.venue}`,
   description: `${TOKEN.symbol} is live on ${TOKEN_LAUNCH.venue} on ${TOKEN_LAUNCH.network}. Verify the official contract and trade link for the OpenZaps community token.`,
   path: "/token",
+  ogImage: "/og/token.png",
   keywords: [
     `buy ${TOKEN.symbol}`,
     `${TOKEN.symbol} ${TOKEN_LAUNCH.venue}`,
@@ -70,7 +71,7 @@ const faqs = [
   },
   {
     q: "Do I need the token to use OpenZaps?",
-    a: "No. The protocol is permissionless. The token aligns the community and the execution layer around it.",
+    a: "No — nothing is token-gated. The token aligns the community and the execution layer around it. Separately, mainnet real-fund creation stays gated until the external audit process clears.",
   },
   {
     q: "Are the contracts audited?",
