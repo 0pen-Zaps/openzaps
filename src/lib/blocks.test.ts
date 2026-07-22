@@ -375,7 +375,9 @@ describe("sharing", () => {
 
   it("falls back to the catalog default for an out-of-domain select", () => {
     const token = encodeChain([{ uid: "p1", blockId: "swap", params: { into: "SCAMCOIN", venue: "Uniswap v3" } }]);
-    expect(decodeChain(token)?.[0].params).toEqual({ into: "WETH", venue: "Uniswap v3" });
+    // `amount` is blank by catalog default — a swap in first position spends
+    // what the source drew and needs no amount of its own.
+    expect(decodeChain(token)?.[0].params).toEqual({ into: "WETH", venue: "Uniswap v3", amount: "" });
   });
 
   it("rejects an amount that is not a decimal number", () => {

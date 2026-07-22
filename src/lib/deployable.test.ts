@@ -1,11 +1,23 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 
-import { RECIPES, compileChain, makeNode, type ChainNode, type ParamValue } from "@/lib/blocks";
+import { RECIPES, compileChain, getBlock, makeNode, type ChainNode, type ParamValue } from "@/lib/blocks";
+import {
+  BOUNDED_SWAP_IDS,
+  MAX_POLICY_STEPS,
+  ROBINHOOD_ADAPTERS,
+  adapterAddress,
+  deployedAdapters,
+  findDeployedAdapter,
+  isAdapterDeployed,
+  onlyBoundedSwapIsDeployed,
+  type AdapterSet,
+} from "@/lib/chains";
 import {
   DEFAULT_SLIPPAGE_BPS,
   MAX_SLIPPAGE_BPS,
   MIN_SLIPPAGE_BPS,
   SLIPPAGE_STEP_BPS,
+  reduceChainToLivePolicy,
   reduceChainToLiveRoute,
 } from "@/lib/deployable";
 
@@ -595,5 +607,541 @@ describe("the Live route blueprint", () => {
     );
     const mapping = reduceChainToLiveRoute(nodes);
     expect(mapping.deployable && mapping.unenforcedGuards.filter((note) => note.startsWith("Slippage cap:"))).toEqual([]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The deployed-adapter registry, and what it is allowed to change.
+//
+// `chains.ts` is the only thing that decides what this build offers. The rule
+// it exists to enforce: nothing is offered as deployable unless an adapter
+// address is configured for it. So these tests pin both halves — that the
+// unconfigured world is exactly the one-route world the app already signs, and
+// that configuring an address is what, and all that, widens it.
+// ---------------------------------------------------------------------------
+
+/** Any well-formed address; the registry only cares that one is configured. */
+const VAULT_DEPOSIT_ADDRESS = "0x1111111111111111111111111111111111111111";
+
+const ADAPTER_ENV = [
+  "NEXT_PUBLIC_OPENZAP_ROBINHOOD_V4_ADAPTER",
+  "NEXT_PUBLIC_OPENZAP_ZAP_VAULT_DEPOSIT_ADAPTER",
+  "NEXT_PUBLIC_OPENZAP_ZAP_VAULT_REDEEM_ADAPTER",
+] as const;
+
+afterEach(() => {
+  // Env leaking between tests would make one test's configured adapter widen
+  // another test's "nothing is deployed" baseline — which is the exact claim
+  // most of this file exists to check.
+  for (const key of ADAPTER_ENV) delete process.env[key];
+});
+
+function configureVaultDeposit(address: string = VAULT_DEPOSIT_ADDRESS): void {
+  process.env.NEXT_PUBLIC_OPENZAP_ZAP_VAULT_DEPOSIT_ADAPTER = address;
+}
+
+function policyReasons(nodes: ChainNode[], adapters?: AdapterSet): string[] {
+  const mapping = reduceChainToLivePolicy(nodes, adapters);
+  if (mapping.deployable) throw new Error(`expected a rejection, got ${JSON.stringify(mapping)}`);
+  return mapping.reasons;
+}
+
+describe("the deployed-adapter registry", () => {
+  it("deploys nothing but the bounded swap when no adapter env is set", () => {
+    expect(deployedAdapters().map((adapter) => adapter.id)).toEqual([...BOUNDED_SWAP_IDS]);
+    expect(onlyBoundedSwapIsDeployed()).toBe(true);
+  });
+
+  it("treats an entry with no baked address as NOT DEPLOYED", () => {
+    for (const spec of ROBINHOOD_ADAPTERS) {
+      if (spec.deployedAddress) continue;
+      expect(isAdapterDeployed(spec), spec.id).toBe(false);
+      expect(adapterAddress(spec), spec.id).toBeNull();
+    }
+  });
+
+  it("counts a configured address, and only then", () => {
+    const vault = ROBINHOOD_ADAPTERS.find((spec) => spec.id === "robinhood-zap-vault-deposit");
+    expect(vault).toBeDefined();
+    if (!vault) return;
+
+    expect(isAdapterDeployed(vault)).toBe(false);
+    configureVaultDeposit();
+    expect(adapterAddress(vault)).toBe(VAULT_DEPOSIT_ADDRESS);
+    expect(onlyBoundedSwapIsDeployed()).toBe(false);
+    expect(deployedAdapters().map((adapter) => adapter.id)).toContain("robinhood-zap-vault-deposit");
+  });
+
+  // A malformed value must never widen what the builder claims. Being wrongly
+  // rejected costs a user one env fix; being wrongly offered costs them a
+  // capsule that reverts, or worse, one that does something else.
+  it("fails closed on a value that is not a live address", () => {
+    for (const bad of ["", "0x0", "not-an-address", "0x0000000000000000000000000000000000000000", "0x1234"]) {
+      configureVaultDeposit(bad);
+      expect(
+        deployedAdapters().map((adapter) => adapter.id),
+        bad || "<empty>",
+      ).toEqual([...BOUNDED_SWAP_IDS]);
+      expect(onlyBoundedSwapIsDeployed(), bad || "<empty>").toBe(true);
+    }
+  });
+
+  it("finds no deployed adapter for a vault deposit until one is configured", () => {
+    const query = { blockId: "supply", tokenIn: "USDG", params: { market: "ZapVault" } };
+    expect(findDeployedAdapter(query)).toBeNull();
+    configureVaultDeposit();
+    expect(findDeployedAdapter(query)?.address).toBe(VAULT_DEPOSIT_ADDRESS);
+  });
+
+  it("will not answer a query for a protocol or asset it is not welded to", () => {
+    configureVaultDeposit();
+    // The weld is the whole safety property: an adapter's vault and asset are
+    // immutable constructor args, so a USDG ZapVault adapter answering either
+    // of these would be the registry lying about what an address does.
+    expect(findDeployedAdapter({ blockId: "supply", tokenIn: "USDG", params: { market: "Morpho" } })).toBeNull();
+    expect(findDeployedAdapter({ blockId: "supply", tokenIn: "0xZAPS", params: { market: "ZapVault" } })).toBeNull();
+  });
+
+  it("names blocks and params that exist in the catalog", () => {
+    for (const spec of ROBINHOOD_ADAPTERS) {
+      if (spec.blockId === null) continue;
+      const block = getBlock(spec.blockId);
+      // A typo here would not fail loudly — it would silently make the adapter
+      // unreachable, i.e. an adapter that IS deployed and never offered.
+      expect(block, spec.id).toBeDefined();
+      for (const key of Object.keys(spec.weldedParams)) {
+        expect(block?.params.some((param) => param.key === key), `${spec.id} welds ${key}`).toBe(true);
+      }
+    }
+  });
+
+  it("welds the vault to a market and an asset the catalog cannot select", () => {
+    // Deliberate, and pinned so it cannot drift unnoticed. `supply` offers
+    // Morpho, Aave v3 and Compound v3 — none of which is on Robinhood Chain —
+    // and no source offers USDG, which is what the deploy script's vault takes.
+    // So configuring the address alone does NOT put a vault step in front of a
+    // user: teaching the catalog these names is a separate change, and it is
+    // the one that has to carry the copy for what a vault deposit does. Until
+    // then a design that says "Morpho" can never be deployed as something else.
+    // The catalog now names both, which is what makes a vault chain drawable at
+    // all. Configuring the address is still not sufficient on its own — the
+    // adapter has to be deployed AND allowlisted — but the names are no longer
+    // the thing standing in the way, so this asserts they are present and the
+    // reachability tests below carry the "is it actually deployable" question.
+    const market = getBlock("supply")?.params.find((param) => param.key === "market");
+    expect(market?.type === "select" && market.options).toContain("ZapVault");
+    const asset = getBlock("wallet-balance")?.params.find((param) => param.key === "asset");
+    expect(asset?.type === "select" && asset.options).toContain("USDG");
+    // And the copy must not promise yield the vault does not pay.
+    expect(getBlock("supply")?.detail).toContain("earns nothing at all");
+  });
+});
+
+describe("with nothing new deployed, the mapper is exactly the one-route mapper", () => {
+  it("rejects a swap-then-supply design in the same words it always did", () => {
+    const reasons = reasonsOf(
+      chain(
+        ["wallet-balance", { asset: "WETH", amount: "0.05" }],
+        ["swap", { into: "0xZAPS", venue: "Uniswap v4" }],
+        ["supply", { market: "ZapVault", amount: "100" }],
+      ),
+    );
+    expect(reasons[0]).toContain("exactly one step; this design has 2 actions");
+    expect(reasons[1]).toBe(
+      "Supply has no adapter on the live route — the only step the v1.1 capsule can execute is a single aeWETH ↔ 0xZAPS swap.",
+    );
+  });
+
+  it("rejects a second swap step, because one adapter is welded to one pool", () => {
+    const reasons = reasonsOf(
+      chain(
+        ["wallet-balance", { asset: "WETH", amount: "0.05" }],
+        ["swap", { into: "0xZAPS", venue: "Uniswap v4" }],
+        ["swap", { into: "WETH", venue: "Uniswap v4", amount: "100" }],
+      ),
+    );
+    expect(reasons[0]).toContain("exactly one step; this design has 2 actions");
+  });
+
+  it("emits a single-step policy for the live route, with the deployed adapter on it", () => {
+    const policy = reduceChainToLivePolicy(buyChain());
+    expect(policy.deployable).toBe(true);
+    if (!policy.deployable) return;
+
+    expect(policy.steps).toHaveLength(1);
+    expect(policy.steps[0]).toMatchObject({
+      position: 1,
+      blockId: "swap",
+      adapterId: "robinhood-v4-weth-zaps",
+      kind: "swap",
+      tokenIn: "WETH",
+      tokenOut: "0xZAPS",
+      amountIn: "0.05",
+      direction: "buy",
+    });
+    expect(policy.steps[0].adapterAddress).toMatch(/^0x[0-9a-fA-F]{40}$/);
+    expect(policy.outAsset).toBe("0xZAPS");
+    expect(policy.direction).toBe("buy");
+    // One step has no boundary, so there is nothing to strand and nothing to
+    // warn about. A stray notice here would be crying wolf on the one design
+    // this product actually ships.
+    expect(policy.notices).toEqual([]);
+  });
+
+  it("routes a sell through the other side of the same pool", () => {
+    const policy = reduceChainToLivePolicy(
+      buyChain({ source: { asset: "0xZAPS", amount: "1200" }, swap: { into: "WETH" } }),
+    );
+    const buy = reduceChainToLivePolicy(buyChain());
+    if (!policy.deployable || !buy.deployable) throw new Error("both directions must reduce to a policy");
+
+    expect(policy.steps[0].adapterId).toBe("robinhood-v4-zaps-weth");
+    expect(policy.direction).toBe("sell");
+    // Same contract, both directions — the adapter picks its side from the
+    // token it is handed, so allowlisting one address covers the pair.
+    expect(policy.steps[0].adapterAddress).toBe(buy.steps[0].adapterAddress);
+  });
+});
+
+/**
+ * What changes, and what does not, once a real vault adapter is configured.
+ *
+ * The vault the deploy script builds takes USDG, and nothing in the deployed
+ * set produces USDG, so configuring it does NOT make a two-step design
+ * reachable. These tests pin that — an address alone changes nothing a user
+ * can draw — and the fixture suite below proves the multi-step reduction
+ * itself.
+ */
+describe("with the real vault adapter configured", () => {
+  it("still refuses to deposit an asset the vault is not welded to", () => {
+    configureVaultDeposit();
+    const reasons = policyReasons(
+      chain(
+        ["wallet-balance", { asset: "WETH", amount: "0.05" }],
+        ["swap", { into: "0xZAPS", venue: "Uniswap v4" }],
+        ["supply", { market: "ZapVault", amount: "100" }],
+      ),
+    );
+    expect(reasons).toHaveLength(1);
+    expect(reasons[0]).toContain("Supply is handed 0xZAPS, and no adapter here takes that");
+    expect(reasons[0]).toContain("OpenZap USDG Vault deposit (takes USDG, welded to market ZapVault)");
+  });
+
+  it("refuses a policy that spends the asset it settles in", () => {
+    configureVaultDeposit();
+    // aeWETH -> 0xZAPS -> aeWETH, through the two sides of the one deployed
+    // pool. Both steps have an adapter and both amounts are stated, so nothing
+    // else catches it: what catches it is the capsule's own settlement rule,
+    // which snapshots one balance before the loop and subtracts it after.
+    const reasons = policyReasons(
+      chain(
+        ["wallet-balance", { asset: "WETH", amount: "0.05" }],
+        ["swap", { into: "0xZAPS", venue: "Uniswap v4" }],
+        ["swap", { into: "WETH", venue: "Uniswap v4", amount: "100" }],
+      ),
+    );
+    expect(reasons).toHaveLength(1);
+    expect(reasons[0]).toContain("Step 1 (Swap) spends WETH, and WETH is also what this design settles in");
+    expect(reasons[0]).toContain("reverts unless the round trip comes back profitable");
+  });
+
+  it("maps a single vault deposit, and refuses to hand it to the deploy page", () => {
+    configureVaultDeposit();
+    // Not a chain anyone can draw today — no source offers USDG — so it is
+    // built directly. It is here because it is the first policy shape with no
+    // swap in it, and the handoff has to refuse it rather than send `/app` a
+    // direction it has no way to sign.
+    const nodes = chain(
+      ["wallet-balance", { asset: "USDG", amount: "500" }],
+      ["supply", { market: "ZapVault", amount: "500" }],
+    );
+    const policy = reduceChainToLivePolicy(nodes);
+    expect(policy.deployable, policy.deployable ? "" : policy.reasons.join(" | ")).toBe(true);
+    if (!policy.deployable) return;
+
+    expect(policy.steps).toHaveLength(1);
+    expect(policy.steps[0]).toMatchObject({
+      adapterId: "robinhood-zap-vault-deposit",
+      adapterAddress: VAULT_DEPOSIT_ADDRESS,
+      kind: "vault-deposit",
+      tokenIn: "USDG",
+      tokenOut: "ozUSDG",
+      amountIn: "500",
+    });
+    expect(policy.direction).toBeNull();
+    expect(policy.outAsset).toBe("ozUSDG");
+
+    const route = reduceChainToLiveRoute(nodes);
+    expect(route.deployable).toBe(false);
+    expect(route.deployable || route.reasons[0]).toContain("The deploy page signs one aeWETH ↔ 0xZAPS swap");
+  });
+
+  it("leaves the live route, and every guard disclosure on it, untouched", () => {
+    configureVaultDeposit();
+    // Deploying a vault adapter must not change one thing about the route the
+    // app already signs.
+    expect(reduceChainToLiveRoute(buyChain())).toEqual({
+      deployable: true,
+      direction: "buy",
+      amountIn: "0.05",
+      slippageBps: 50,
+      unenforcedGuards: [],
+    });
+  });
+
+  it("does not turn any other blueprint into a deployable one", () => {
+    configureVaultDeposit();
+    const deployable = RECIPES.filter((entry) =>
+      reduceChainToLiveRoute(
+        entry.blocks.map(([id, params], index) => makeNode(id, `${entry.id}-${index}`, params)),
+      ).deployable,
+    ).map((entry) => entry.id);
+    expect(deployable).toEqual(["live-route"]);
+  });
+});
+
+/**
+ * The multi-step reduction, against a FIXTURE adapter set.
+ *
+ * No two adapters in the real registry chain into a policy that settles: the
+ * deployed pair round-trips one pool, and the vault takes an asset nothing
+ * produces. So the two-step machinery is exercised here against a set that
+ * exists only in this file. It is passed in explicitly — `ROBINHOOD_ADAPTERS`
+ * is never mutated — so no fictional adapter can reach the shipped registry,
+ * which is the file that decides what the product claims.
+ */
+describe("multi-step, against a deployed adapter set", () => {
+  const FIXTURE_VAULT_ADDRESS = "0x2222222222222222222222222222222222222222";
+
+  const FIXTURE_ADAPTERS: AdapterSet = [
+    ...ROBINHOOD_ADAPTERS.filter((spec) => BOUNDED_SWAP_IDS.includes(spec.id)),
+    {
+      id: "fixture-zaps-vault-deposit",
+      chainId: ROBINHOOD_ADAPTERS[0].chainId,
+      kind: "vault-deposit",
+      label: "Fixture 0xZAPS vault deposit",
+      blockId: "supply",
+      weldedParams: { market: "ZapVault" },
+      tokenIn: "0xZAPS",
+      tokenOut: "fzZAPS",
+      direction: null,
+      envVar: "NEXT_PUBLIC_OPENZAP_ZAP_VAULT_DEPOSIT_ADAPTER",
+      deployedAddress: FIXTURE_VAULT_ADDRESS,
+      refuses: "Fixture. Nothing is deployed at this address.",
+    },
+  ];
+
+  /** A swap into 0xZAPS followed by a vault deposit of a stated amount. */
+  function vaultChain(supply: Record<string, ParamValue> = {}): ChainNode[] {
+    return chain(
+      ["wallet-balance", { asset: "WETH", amount: "0.05" }],
+      ["guard-slippage", { bps: 50 }],
+      ["swap", { into: "0xZAPS", venue: "Uniswap v4" }],
+      ["supply", { market: "ZapVault", amount: "100", ...supply }],
+    );
+  }
+
+  it("reduces swap-then-deposit to a two-step policy", () => {
+    const policy = reduceChainToLivePolicy(vaultChain(), FIXTURE_ADAPTERS);
+    expect(policy.deployable, policy.deployable ? "" : policy.reasons.join(" | ")).toBe(true);
+    if (!policy.deployable) return;
+
+    expect(
+      policy.steps.map((step) => [step.position, step.adapterId, step.tokenIn, step.tokenOut, step.amountIn]),
+    ).toEqual([
+      [1, "robinhood-v4-weth-zaps", "WETH", "0xZAPS", "0.05"],
+      [2, "fixture-zaps-vault-deposit", "0xZAPS", "fzZAPS", "100"],
+    ]);
+    expect(policy.steps[1].adapterAddress).toBe(FIXTURE_VAULT_ADDRESS);
+    expect(policy.steps[1].kind).toBe("vault-deposit");
+    expect(policy.outAsset).toBe("fzZAPS");
+    // The pull the owner funds and signs is still step 1's.
+    expect(policy.amountIn).toBe("0.05");
+    // Two steps have no single direction, and calling this one a "buy" would
+    // describe a fraction of what gets signed.
+    expect(policy.direction).toBeNull();
+    // Every guard disclosure keeps working across a longer policy.
+    expect(policy.slippageBps).toBe(50);
+  });
+
+  it("names the step whose surplus strands, the amount, and the exit", () => {
+    const policy = reduceChainToLivePolicy(vaultChain(), FIXTURE_ADAPTERS);
+    expect(policy.deployable).toBe(true);
+    if (!policy.deployable) return;
+
+    expect(policy.notices).toHaveLength(1);
+    const [notice] = policy.notices;
+    expect(notice).toContain("Step 2 (Supply) spends exactly 100 0xZAPS");
+    expect(notice).toContain("frozen into the policy when you sign it");
+    expect(notice).toContain("Step 1 (Swap)");
+    expect(notice).toContain("stays in the capsule");
+    expect(notice).toContain("emergency exit");
+    expect(notice).toContain("nothing sweeps it back automatically");
+    // The other half of a frozen amount: too little is not a smaller zap, it
+    // is a reverted one.
+    expect(notice).toContain("the whole zap reverts");
+  });
+
+  it("quotes the amount that will be signed, never the size drawn upstream", () => {
+    const policy = reduceChainToLivePolicy(vaultChain({ amount: "40" }), FIXTURE_ADAPTERS);
+    expect(policy.deployable && policy.notices).toHaveLength(1);
+    expect(policy.deployable && policy.notices[0]).toContain("spends exactly 40 0xZAPS");
+    expect(policy.deployable && policy.notices[0]).not.toContain("0.05");
+  });
+
+  it("refuses a step that states no amount of its own", () => {
+    const reasons = policyReasons(
+      chain(
+        ["wallet-balance", { asset: "WETH", amount: "0.05" }],
+        ["swap", { into: "0xZAPS", venue: "Uniswap v4" }],
+        ["supply", { market: "ZapVault" }],
+      ),
+      FIXTURE_ADAPTERS,
+    );
+    expect(reasons).toHaveLength(1);
+    expect(reasons[0]).toContain("Supply is step 2 of this design and states no amount of its own");
+    expect(reasons[0]).toContain("a step cannot spend what the step above it produced");
+  });
+
+  it("refuses a step amount the router would not accept", () => {
+    for (const [amount, message] of [
+      ["0", "Amount must be greater than zero."],
+      ["abc", "Enter a valid token amount."],
+      ["0.0000000000000000001", "Token amounts support at most 18 decimal places."],
+      ["999999999999999999999", "uint128"],
+    ] as Array<[string, string]>) {
+      const reasons = policyReasons(vaultChain({ amount }), FIXTURE_ADAPTERS);
+      expect(reasons.some((reason) => reason.includes(message)), amount).toBe(true);
+      expect(reasons.some((reason) => reason.includes("is step 2")), amount).toBe(true);
+    }
+  });
+
+  it("refuses to deploy a market the adapter is not welded to", () => {
+    const reasons = policyReasons(vaultChain({ market: "Morpho" }), FIXTURE_ADAPTERS);
+    expect(reasons).toHaveLength(1);
+    expect(reasons[0]).toContain("Supply names market Morpho");
+    expect(reasons[0]).toContain("welded to market ZapVault");
+    expect(reasons[0]).toContain("fixed when it is deployed");
+  });
+
+  it("still refuses a block no adapter executes, and says what it can deploy", () => {
+    const reasons = policyReasons(
+      chain(["wallet-balance", { asset: "WETH", amount: "0.05" }], ["unwrap", { mode: "wrap" }]),
+      FIXTURE_ADAPTERS,
+    );
+    expect(reasons[0]).toContain("Wrap / unwrap has no adapter on the live route");
+    expect(reasons[0]).toContain("Fixture 0xZAPS vault deposit");
+  });
+
+  it("refuses more steps than the capsule walks", () => {
+    const swaps: Spec[] = Array.from({ length: MAX_POLICY_STEPS + 1 }, () => [
+      "swap",
+      { into: "0xZAPS", venue: "Uniswap v4", amount: "1" },
+    ]);
+    const reasons = policyReasons(
+      chain(["wallet-balance", { asset: "WETH", amount: "0.05" }], ...swaps),
+      FIXTURE_ADAPTERS,
+    );
+    expect(reasons.some((reason) => reason.includes(`walks at most ${MAX_POLICY_STEPS} steps`))).toBe(true);
+  });
+
+  it("keeps forcing the recipient, however many steps there are", () => {
+    const reasons = policyReasons(
+      chain(
+        ["wallet-balance", { asset: "WETH", amount: "0.05" }],
+        ["swap", { into: "0xZAPS", venue: "Uniswap v4" }],
+        ["supply", { market: "ZapVault", amount: "100" }],
+        ["hold"],
+      ),
+      FIXTURE_ADAPTERS,
+    );
+    expect(reasons.some((reason) => reason.startsWith("Hold in zap cannot be deployed"))).toBe(true);
+  });
+
+  it("keeps naming every unenforced guard across a longer policy", () => {
+    const policy = reduceChainToLivePolicy(
+      chain(
+        ["wallet-balance", { asset: "WETH", amount: "0.05" }],
+        ["guard-window", { expiry: "30 days" }],
+        ["guard-approval"],
+        ["swap", { into: "0xZAPS", venue: "Uniswap v4" }],
+        ["supply", { market: "ZapVault", amount: "100" }],
+      ),
+      FIXTURE_ADAPTERS,
+    );
+    expect(policy.deployable).toBe(true);
+    if (!policy.deployable) return;
+    expect(policy.unenforcedGuards).toHaveLength(2);
+    expect(policy.unenforcedGuards[0]).toContain("Time window (30 days)");
+    expect(policy.unenforcedGuards[1]).toContain("Human gate");
+    // Guards and notices stay separate lists: one is about what the policy
+    // does not bind, the other about what the policy does.
+    expect(policy.notices).toHaveLength(1);
+  });
+
+  it("never emits a partial policy when one step of it fails", () => {
+    // Step 2 has no amount, so there is no honest two-step policy — and a
+    // one-step policy would silently deploy half of what was drawn.
+    const mapping = reduceChainToLivePolicy(vaultChain({ amount: "" }), FIXTURE_ADAPTERS);
+    expect(mapping.deployable).toBe(false);
+  });
+
+  describe("the deploy handoff never offers more than the app page can sign", () => {
+    it("refuses a multi-step design and repeats the stranding notice verbatim", () => {
+      const policy = reduceChainToLivePolicy(vaultChain(), FIXTURE_ADAPTERS);
+      const route = reduceChainToLiveRoute(vaultChain(), FIXTURE_ADAPTERS);
+      expect(policy.deployable).toBe(true);
+      // The capsule can carry it; `/app` builds one-step policies with
+      // `buildRobinhoodPolicy`, so the CTA must not appear. An enabled Deploy
+      // that creates a different capsule from the one on the canvas is the
+      // same broken promise as an unenforced guard.
+      expect(route.deployable).toBe(false);
+      if (route.deployable || !policy.deployable) return;
+
+      expect(route.reasons[0]).toContain("2-step capsule");
+      expect(route.reasons[0]).toContain("signs single-step capsules only");
+      expect(route.reasons[0]).toContain("Step 2 (Supply)");
+      // Being rejected is not a reason to drop what the design would have done.
+      expect(route.reasons.slice(1)).toEqual(policy.notices);
+    });
+
+    it("carries every policy notice into the array the CTA renders word for word", () => {
+      // Single-step policies have no notices today, so this pins the wiring
+      // rather than a value: whatever a future rule adds to `notices` reaches
+      // the list the deploy CTA prints, instead of stopping at a layer nobody
+      // renders.
+      const policy = reduceChainToLivePolicy(buyChain());
+      const route = reduceChainToLiveRoute(buyChain());
+      if (!policy.deployable || !route.deployable) throw new Error("the live route must deploy");
+      expect(route.unenforcedGuards).toEqual([...policy.notices, ...policy.unenforcedGuards]);
+    });
+
+    it("never offers a route the policy layer rejected, or one the compiler blocks", () => {
+      const designs: ChainNode[][] = [
+        buyChain(),
+        vaultChain(),
+        vaultChain({ amount: "" }),
+        chain(["wallet-balance", { asset: "WETH", amount: "0.05" }], ["supply", { market: "ZapVault", amount: "1" }]),
+        chain(["swap", { into: "0xZAPS", venue: "Uniswap v4" }], ["wallet-balance", { asset: "WETH", amount: "0.05" }]),
+        chain(["wallet-balance", { asset: "WETH", amount: "0.05" }], ["loop", { runs: 12 }]),
+        [],
+      ];
+      for (const adapters of [undefined, FIXTURE_ADAPTERS]) {
+        for (const design of designs) {
+          const shape = design.map((node) => node.blockId).join(" -> ") || "<empty>";
+          const policy = reduceChainToLivePolicy(design, adapters);
+          const route = reduceChainToLiveRoute(design, adapters);
+          if (route.deployable) {
+            expect(policy.deployable, `route deployable but policy is not: ${shape}`).toBe(true);
+            expect(policy.deployable && policy.steps.length, shape).toBe(1);
+          }
+          // And the invariant the whole module rests on: a deployable design is
+          // never one the compiler calls broken.
+          if (policy.deployable) {
+            expect(compileChain(design).status, `deployable but status=block: ${shape}`).not.toBe("block");
+          }
+        }
+      }
+    });
   });
 });

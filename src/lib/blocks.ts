@@ -130,7 +130,7 @@ export const BLOCKS: readonly LegoBlock[] = [
     params: [
       // "WETH" is the stored value on purpose: drafts, shared links, and tests
       // already serialise it, and the detail copy carries the aeWETH truth.
-      { key: "asset", label: "Asset", type: "select", value: "WETH", options: ["USDC", "WETH", "cbBTC", "DAI", "0xZAPS"] },
+      { key: "asset", label: "Asset", type: "select", value: "WETH", options: ["USDC", "USDG", "WETH", "cbBTC", "DAI", "0xZAPS"] },
       { key: "amount", label: "Amount", type: "amount", value: "0.05", placeholder: "0.05" },
     ],
   },
@@ -186,8 +186,14 @@ export const BLOCKS: readonly LegoBlock[] = [
     gas: 132_000,
     maturity: "live",
     params: [
-      { key: "into", label: "Buy", type: "select", value: "WETH", options: ["USDC", "WETH", "cbBTC", "DAI", "0xZAPS"] },
+      { key: "into", label: "Buy", type: "select", value: "WETH", options: ["USDC", "USDG", "WETH", "cbBTC", "DAI", "0xZAPS"] },
       { key: "venue", label: "Venue", type: "select", value: "Uniswap v4", options: ["Uniswap v4", "Uniswap v3", "Aerodrome"] },
+      // Blank on purpose. A first action spends whatever the source drew, so it
+      // needs no amount of its own. A LATER step does: `Step.amountIn` is frozen
+      // into the policy at signing, so it cannot inherit what the step above
+      // happened to produce. Leaving this blank keeps the block exactly as it
+      // was; filling it is what makes the block usable past position one.
+      { key: "amount", label: "Amount (later steps)", type: "amount", value: "", placeholder: "leave blank if first" },
     ],
   },
   {
@@ -230,16 +236,18 @@ export const BLOCKS: readonly LegoBlock[] = [
     name: "Supply",
     kind: "action",
     category: "lend",
-    blurb: "Deposit into a lending market.",
+    blurb: "Deposit into a market or vault for a share token.",
     detail:
-      "Supplies the incoming balance and returns the market's share token. Interest accrues to the share, so the receipt is what the rest of the chain moves.",
+      "Deposits the incoming balance and returns the venue's share token, which is what the rest of the chain moves. Whether that share earns anything is the venue's business, not this block's: a lending market accrues interest to it, while the OpenZap USDG vault is a plain receipt wrapper that earns nothing at all.",
     accepts: "token",
     emits: "receipt",
     glyph: "vault",
     gas: 154_000,
     maturity: "preview",
     params: [
-      { key: "market", label: "Market", type: "select", value: "Morpho", options: ["Morpho", "Aave v3", "Compound v3"] },
+      { key: "market", label: "Venue", type: "select", value: "Morpho", options: ["Morpho", "Aave v3", "Compound v3", "ZapVault"] },
+      // Same rule as `swap`: blank means "first action only".
+      { key: "amount", label: "Amount (later steps)", type: "amount", value: "", placeholder: "leave blank if first" },
     ],
   },
   {

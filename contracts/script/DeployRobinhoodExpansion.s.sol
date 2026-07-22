@@ -8,6 +8,8 @@ import {AdapterRegistry} from "../src/AdapterRegistry.sol";
 import {TokenAllowlist} from "../src/TokenAllowlist.sol";
 import {OpenZapFactory} from "../src/OpenZapFactory.sol";
 import {RobinhoodV4PoolAdapter} from "../src/adapters/RobinhoodV4PoolAdapter.sol";
+import {ZapVaultDepositAdapter} from "../src/adapters/ZapVaultDepositAdapter.sol";
+import {ZapVaultRedeemAdapter} from "../src/adapters/ZapVaultRedeemAdapter.sol";
 import {ZapVault} from "../src/primitives/ZapVault.sol";
 import {IERC20} from "../src/interfaces/IERC20.sol";
 import {SafeApprove} from "../src/libraries/SafeApprove.sol";
@@ -18,12 +20,25 @@ interface IPoolManagerRead {
 }
 
 /// @title DeployRobinhoodExpansion
-/// @notice Adds two contracts to the EXISTING, ALREADY-DEPLOYED OpenZap v1.1.0 set on Robinhood
+/// @notice Adds four contracts to the EXISTING, ALREADY-DEPLOYED OpenZap v1.1.0 set on Robinhood
 ///         Chain (4663):
 ///           1. `RobinhoodV4PoolAdapter` — an exact-input swap adapter for ONE named Uniswap-v4
 ///              pool, with the whole PoolKey supplied as constructor arguments.
 ///           2. `ZapVault` — a minimal, admin-less ERC-4626 vault, optionally seeded in the same
 ///              run so the empty-vault donation grief is closed before anyone else can reach it.
+///           3. `ZapVaultDepositAdapter` — the only way a zap step can enter the vault: asset in,
+///              shares out, shares booked to the calling zap.
+///           4. `ZapVaultRedeemAdapter` — the unwind leg: shares in, asset out, both booked to the
+///              calling zap. Without it a vault position is a one-way door that only the zap
+///              owner's `emergencyExit` could reopen.
+///
+///      THE ALLOWLIST ENTRY PEOPLE FORGET. A step's `tokenOut` must be allowlisted or
+///      `OpenZap.execute` reverts `InvalidAdapterResult`; a step's `tokenIn` must be allowlisted or
+///      `initialize` reverts `TokenNotAllowed`. The vault SHARE TOKEN (the vault address itself) is
+///      the deposit step's `tokenOut` AND the redeem step's `tokenIn`, so **the share token must be
+///      in `TokenAllowlist` or neither vault adapter is usable at all.** The vault's underlying
+///      asset must be allowlisted for the same reason on the mirrored legs. This script allowlists
+///      both when it is allowed to, and prints them as PENDING with raw calldata when it is not.
 ///
 /// @dev THIS SCRIPT DEPLOYS NOTHING ELSE. It does not deploy a registry, an allowlist, a factory or
 ///      an OpenZap implementation. Those already exist on chain 4663 and are pinned as constants
@@ -46,8 +61,9 @@ interface IPoolManagerRead {
 ///
 ///      The deployer can do these ONLY IF they happen to be the current `owner()` of the
 ///      corresponding governance contract:
-///        * `AdapterRegistry.setAdapter(adapter, true)`,
-///        * `TokenAllowlist.setToken(token, true)` for each currency and for the vault share token.
+///        * `AdapterRegistry.setAdapter(adapter, true)` for the swap, deposit and redeem adapters,
+///        * `TokenAllowlist.setToken(token, true)` for each pool currency, for the vault's
+///          underlying asset, and for the vault SHARE TOKEN.
 ///
 ///      The script checks `owner()` live and takes the branch that is actually available. When the
 ///      deployer is not the owner it does NOT pretend: it skips those calls, the run still succeeds,
@@ -164,7 +180,17 @@ contract DeployRobinhoodExpansion is Script {
         address seedRecipient;
     }
 
-    function run() external returns (RobinhoodV4PoolAdapter adapter, ZapVault vault) {
+    /// @dev Everything this run produced. Grouped so `run` stays readable and the reporters take one
+    ///      argument instead of six.
+    struct Deployed {
+        RobinhoodV4PoolAdapter swapAdapter;
+        ZapVault vault;
+        ZapVaultDepositAdapter depositAdapter;
+        ZapVaultRedeemAdapter redeemAdapter;
+        uint256 seedShares;
+    }
+
+    function run() external returns (Deployed memory d) {
         Config memory cfg = _config();
 
         AdapterRegistry registry = AdapterRegistry(ADAPTER_REGISTRY);
@@ -177,60 +203,107 @@ contract DeployRobinhoodExpansion is Script {
         bool deployerOwnsRegistry = cfg.deployer == registryOwner;
         bool deployerOwnsAllowlist = cfg.deployer == allowlistOwner;
 
-        // Which allowlist entries are actually missing right now. Read before broadcasting so the
-        // printed governance list is the real remaining work, not a blanket re-set of everything.
-        bool needCurrency0 = !allowlist.isAllowed(cfg.currency0);
-        bool needCurrency1 = !allowlist.isAllowed(cfg.currency1);
-
         // ---- deploy --------------------------------------------------------------------------- //
         vm.startBroadcast();
 
-        adapter = new RobinhoodV4PoolAdapter(
+        d.swapAdapter = new RobinhoodV4PoolAdapter(
             UNIVERSAL_ROUTER, PERMIT2, cfg.currency0, cfg.currency1, cfg.fee, cfg.tickSpacing, cfg.hooks
         );
 
-        vault = new ZapVault(cfg.vaultAsset, cfg.vaultName, cfg.vaultSymbol);
+        d.vault = new ZapVault(cfg.vaultAsset, cfg.vaultName, cfg.vaultSymbol);
+
+        // The two adapters that make the vault reachable from a frozen policy. Both read `asset()`
+        // off the vault in their own constructors, so a vault/asset mismatch cannot be introduced
+        // here — and both carry the same 4663 chain guard the swap adapter does.
+        d.depositAdapter = new ZapVaultDepositAdapter(address(d.vault));
+        d.redeemAdapter = new ZapVaultRedeemAdapter(address(d.vault));
 
         // Seed inside the same run. An empty ZapVault can be griefed: donating X before the first
         // deposit sets a price floor of X/1000 per share and makes smaller deposits revert. Nothing
         // is stolen, but seeding closes it, and the seed shares are burned so the floor is permanent.
-        uint256 seedShares;
         if (cfg.seedAssets != 0) {
-            cfg.vaultAsset.approveExact(address(vault), cfg.seedAssets);
-            seedShares = vault.deposit(cfg.seedAssets, cfg.seedRecipient);
-            if (seedShares == 0) revert SeedProducedNoShares();
+            cfg.vaultAsset.approveExact(address(d.vault), cfg.seedAssets);
+            d.seedShares = d.vault.deposit(cfg.seedAssets, cfg.seedRecipient);
+            if (d.seedShares == 0) revert SeedProducedNoShares();
             // Leave no standing approval behind, exactly as the adapters do.
-            cfg.vaultAsset.approveExact(address(vault), 0);
+            cfg.vaultAsset.approveExact(address(d.vault), 0);
         }
 
         // ---- governance wiring, only where the deployer actually has the right ------------------ //
         if (deployerOwnsRegistry) {
-            registry.setAdapter(address(adapter), true);
+            registry.setAdapter(address(d.swapAdapter), true);
+            registry.setAdapter(address(d.depositAdapter), true);
+            registry.setAdapter(address(d.redeemAdapter), true);
         }
         if (deployerOwnsAllowlist) {
-            if (needCurrency0) allowlist.setToken(cfg.currency0, true);
-            if (needCurrency1) allowlist.setToken(cfg.currency1, true);
-            allowlist.setToken(address(vault), true);
+            // Guarded on the live flag so an already-allowed token costs no gas, and so a
+            // `vaultAsset` that happens to equal a pool currency is not written twice.
+            _allowToken(allowlist, cfg.currency0);
+            _allowToken(allowlist, cfg.currency1);
+            // The vault's underlying: deposit-step `tokenIn`, redeem-step `tokenOut`.
+            _allowToken(allowlist, cfg.vaultAsset);
+            // The SHARE TOKEN: deposit-step `tokenOut`, redeem-step `tokenIn`. Without this entry
+            // both vault adapters are dead on arrival.
+            _allowToken(allowlist, address(d.vault));
         }
 
         vm.stopBroadcast();
 
-        // ---- post-deploy assertions ------------------------------------------------------------- //
+        _assertDeployment(cfg, d, registry, allowlist, deployerOwnsRegistry, deployerOwnsAllowlist);
+
+        _report(cfg, d, registryOwner, allowlistOwner);
+        _reportGovernanceWork(cfg, d, registry, allowlist);
+    }
+
+    /// @dev `setToken` is idempotent, but reading first keeps the broadcast free of no-op writes and
+    ///      makes the dedupe between `vaultAsset` and the pool currencies automatic.
+    function _allowToken(TokenAllowlist allowlist, address token) internal {
+        if (!allowlist.isAllowed(token)) allowlist.setToken(token, true);
+    }
+
+    /// @dev Split out of `run` purely to keep that function under the stack limit.
+    function _assertDeployment(
+        Config memory cfg,
+        Deployed memory d,
+        AdapterRegistry registry,
+        TokenAllowlist allowlist,
+        bool deployerOwnsRegistry,
+        bool deployerOwnsAllowlist
+    ) internal view {
+        // The swap adapter is wired to the pool that was named.
         if (
-            adapter.poolId() != cfg.expectedPoolId || adapter.universalRouter() != UNIVERSAL_ROUTER
-                || adapter.permit2() != PERMIT2 || adapter.currency0() != cfg.currency0
-                || adapter.currency1() != cfg.currency1 || adapter.fee() != cfg.fee
-                || adapter.tickSpacing() != cfg.tickSpacing || adapter.hooks() != cfg.hooks
-                || vault.asset() != cfg.vaultAsset || address(vault).code.length == 0
-                || (cfg.seedAssets != 0 && (vault.totalAssets() != cfg.seedAssets || vault.totalSupply() != seedShares))
-                || (deployerOwnsRegistry && !registry.isAllowed(address(adapter)))
-                || (deployerOwnsAllowlist && !allowlist.isAllowed(address(vault)))
-                || (deployerOwnsAllowlist && !allowlist.isAllowed(cfg.currency0))
-                || (deployerOwnsAllowlist && !allowlist.isAllowed(cfg.currency1))
+            d.swapAdapter.poolId() != cfg.expectedPoolId || d.swapAdapter.universalRouter() != UNIVERSAL_ROUTER
+                || d.swapAdapter.permit2() != PERMIT2 || d.swapAdapter.currency0() != cfg.currency0
+                || d.swapAdapter.currency1() != cfg.currency1 || d.swapAdapter.fee() != cfg.fee
+                || d.swapAdapter.tickSpacing() != cfg.tickSpacing || d.swapAdapter.hooks() != cfg.hooks
         ) revert DeploymentAssertionFailed();
 
-        _report(cfg, adapter, vault, seedShares, registryOwner, allowlistOwner);
-        _reportGovernanceWork(cfg, registry, allowlist, address(adapter), address(vault));
+        // The vault is the vault that was asked for, and the seed actually landed.
+        if (
+            d.vault.asset() != cfg.vaultAsset || address(d.vault).code.length == 0
+                || (cfg.seedAssets != 0
+                    && (d.vault.totalAssets() != cfg.seedAssets || d.vault.totalSupply() != d.seedShares))
+        ) revert DeploymentAssertionFailed();
+
+        // Both vault adapters point at THIS vault and agree with it about the underlying asset.
+        if (
+            d.depositAdapter.vault() != address(d.vault) || d.depositAdapter.asset() != cfg.vaultAsset
+                || d.redeemAdapter.vault() != address(d.vault) || d.redeemAdapter.asset() != cfg.vaultAsset
+        ) revert DeploymentAssertionFailed();
+
+        // Governance only where it was actually exercised — never assert a call we skipped.
+        if (deployerOwnsRegistry) {
+            if (
+                !registry.isAllowed(address(d.swapAdapter)) || !registry.isAllowed(address(d.depositAdapter))
+                    || !registry.isAllowed(address(d.redeemAdapter))
+            ) revert DeploymentAssertionFailed();
+        }
+        if (deployerOwnsAllowlist) {
+            if (
+                !allowlist.isAllowed(cfg.currency0) || !allowlist.isAllowed(cfg.currency1)
+                    || !allowlist.isAllowed(cfg.vaultAsset) || !allowlist.isAllowed(address(d.vault))
+            ) revert DeploymentAssertionFailed();
+        }
     }
 
     // ------------------------------------------------------------------------------------------- //
@@ -329,14 +402,12 @@ contract DeployRobinhoodExpansion is Script {
     // Reporting                                                                                   //
     // ------------------------------------------------------------------------------------------- //
 
-    function _report(
-        Config memory cfg,
-        RobinhoodV4PoolAdapter adapter,
-        ZapVault vault,
-        uint256 seedShares,
-        address registryOwner,
-        address allowlistOwner
-    ) internal view {
+    function _report(Config memory cfg, Deployed memory d, address registryOwner, address allowlistOwner)
+        internal
+        view
+    {
+        RobinhoodV4PoolAdapter adapter = d.swapAdapter;
+        ZapVault vault = d.vault;
         console2.log("=== DeployRobinhoodExpansion ===");
         console2.log("chain id", block.chainid);
         console2.log("block", block.number);
@@ -367,9 +438,16 @@ contract DeployRobinhoodExpansion is Script {
         console2.log("  name", vault.name());
         console2.log("  symbol", vault.symbol());
         console2.log("  share decimals", uint256(vault.decimals()));
+        console2.log("ZapVaultDepositAdapter", address(d.depositAdapter));
+        console2.log("  vault", d.depositAdapter.vault());
+        console2.log("  asset (tokenIn)", d.depositAdapter.asset());
+        console2.log("  tokenOut is the share token", address(vault));
+        console2.log("ZapVaultRedeemAdapter", address(d.redeemAdapter));
+        console2.log("  vault (tokenIn)", d.redeemAdapter.vault());
+        console2.log("  asset (tokenOut)", d.redeemAdapter.asset());
         if (cfg.seedAssets != 0) {
             console2.log("  seeded assets", cfg.seedAssets);
-            console2.log("  seed shares", seedShares);
+            console2.log("  seed shares", d.seedShares);
             console2.log("  seed shares sent to (unredeemable by design)", cfg.seedRecipient);
         } else {
             console2.log("  WARNING: vault deployed UNSEEDED.");
@@ -382,35 +460,49 @@ contract DeployRobinhoodExpansion is Script {
 
     function _reportGovernanceWork(
         Config memory cfg,
+        Deployed memory d,
         AdapterRegistry registry,
-        TokenAllowlist allowlist,
-        address adapter,
-        address vault
+        TokenAllowlist allowlist
     ) internal view {
         console2.log("");
         console2.log("-- governance --");
 
-        bool adapterLive = registry.isAllowed(adapter);
-        bool vaultLive = allowlist.isAllowed(vault);
+        address vault = address(d.vault);
+        bool swapLive = registry.isAllowed(address(d.swapAdapter));
+        bool depositLive = registry.isAllowed(address(d.depositAdapter));
+        bool redeemLive = registry.isAllowed(address(d.redeemAdapter));
+        bool vaultShareLive = allowlist.isAllowed(vault);
+        bool assetLive = allowlist.isAllowed(cfg.vaultAsset);
         bool c0Live = allowlist.isAllowed(cfg.currency0);
         bool c1Live = allowlist.isAllowed(cfg.currency1);
 
-        if (adapterLive && vaultLive && c0Live && c1Live) {
+        if (swapLive && depositLive && redeemLive && vaultShareLive && assetLive && c0Live && c1Live) {
             console2.log("DONE. The deployer owned both governance contracts, so every call below");
             console2.log("was executed in this run. Nothing further is required.");
         } else {
             console2.log("ACTION REQUIRED. At least one entry below is still PENDING, because the");
             console2.log("deployer is not the owner of the governance contract it belongs to.");
-            console2.log("Until every PENDING call lands, the new adapter is not callable from any");
-            console2.log("zap and the vault share token cannot be a step output or an outAsset.");
+            console2.log("Until every PENDING call lands, the new adapters are not callable from any");
+            console2.log("zap and the vault share token cannot be a step input, a step output, or an");
+            console2.log("outAsset.");
         }
 
         console2.log("");
         console2.log("registry owner must send to", address(registry));
         _printCall(
-            adapterLive,
-            "AdapterRegistry.setAdapter(adapter, true)",
-            abi.encodeCall(registry.setAdapter, (adapter, true))
+            swapLive,
+            "AdapterRegistry.setAdapter(swapAdapter, true)",
+            abi.encodeCall(registry.setAdapter, (address(d.swapAdapter), true))
+        );
+        _printCall(
+            depositLive,
+            "AdapterRegistry.setAdapter(vaultDepositAdapter, true)",
+            abi.encodeCall(registry.setAdapter, (address(d.depositAdapter), true))
+        );
+        _printCall(
+            redeemLive,
+            "AdapterRegistry.setAdapter(vaultRedeemAdapter, true)",
+            abi.encodeCall(registry.setAdapter, (address(d.redeemAdapter), true))
         );
 
         console2.log("");
@@ -426,7 +518,14 @@ contract DeployRobinhoodExpansion is Script {
             abi.encodeCall(allowlist.setToken, (cfg.currency1, true))
         );
         _printCall(
-            vaultLive, "TokenAllowlist.setToken(vaultShare, true)", abi.encodeCall(allowlist.setToken, (vault, true))
+            assetLive,
+            "TokenAllowlist.setToken(vaultAsset, true)   <- deposit tokenIn / redeem tokenOut",
+            abi.encodeCall(allowlist.setToken, (cfg.vaultAsset, true))
+        );
+        _printCall(
+            vaultShareLive,
+            "TokenAllowlist.setToken(vaultShare, true)   <- REQUIRED: deposit tokenOut / redeem tokenIn",
+            abi.encodeCall(allowlist.setToken, (vault, true))
         );
 
         address registryPending = registry.pendingOwner();
@@ -444,10 +543,64 @@ contract DeployRobinhoodExpansion is Script {
         }
 
         console2.log("");
-        console2.log("STILL MISSING, and this script cannot supply it: there is no adapter that");
-        console2.log("deposits into ZapVault, so the vault is not yet reachable from a zap step.");
-        console2.log("A deposit adapter calling vault.deposit(amountIn, msg.sender) must be written,");
-        console2.log("fork-tested and allowlisted before the vault is part of any capsule.");
+        console2.log("-- what this deployment does NOT give you --");
+        console2.log("1. ZapVault is UNAUDITED and custodies real funds. It has been unit-tested by");
+        console2.log("   the same agent that wrote it, which is not a review. It earns nothing:");
+        console2.log("   totalAssets() is literally asset.balanceOf(vault). Do not present it as a");
+        console2.log("   yield product. See ROBINHOOD_EXPANSION.md section 3.");
+        console2.log("2. A deposit-then-redeem round trip in ONE capsule cannot settle. Settlement");
+        console2.log("   measures balanceOf(outAsset) after minus before, so a run that spends the");
+        console2.log("   asset and returns it nets to zero at best and underflow-reverts once");
+        console2.log("   rounding bites. Redeem belongs in a capsule FUNDED WITH SHARES.");
+        console2.log("3. Step.amountIn is frozen at signing. A redeem step cannot consume whatever");
+        console2.log("   the deposit step minted; the share count must be named in advance and any");
+        console2.log("   surplus strands until the owner calls emergencyExit.");
+        console2.log("4. The builder cannot draw a supply chain yet: send accepts a token and the");
+        console2.log("   vault share is a receipt, so compileChain rejects it. That is front-end");
+        console2.log("   work, not a contract gap. See BASE_CAPABILITIES.md section 4b.");
+
+        console2.log("");
+        console2.log("-- frontend configuration (src/lib/chains.ts) --");
+        console2.log("The builder decides what it will OFFER TO SIGN from these env vars. Setting");
+        console2.log("one is the moment the product starts telling users a step is deployable, so");
+        console2.log("set it LAST: only after the adapter is allowlisted above AND the registry");
+        console2.log("entry in src/lib/chains.ts still describes it exactly (same tokens, same");
+        console2.log("welded vault). An entry that has drifted from the contract it names is how a");
+        console2.log("user signs a policy that does something other than what the block said.");
+        console2.log("An unset or malformed value fails CLOSED: the step is treated as undeployed.");
+        console2.log("");
+        console2.log("NEXT_PUBLIC_OPENZAP_ROBINHOOD_V4_ADAPTER", address(d.swapAdapter));
+        console2.log("NEXT_PUBLIC_OPENZAP_ZAP_VAULT_DEPOSIT_ADAPTER", address(d.depositAdapter));
+        console2.log("NEXT_PUBLIC_OPENZAP_ZAP_VAULT_REDEEM_ADAPTER", address(d.redeemAdapter));
+        console2.log("");
+        console2.log("NOTE: setting the two vault vars alone changes NOTHING a user can draw. The");
+        console2.log("catalogue in src/lib/blocks.ts offers no USDG asset and no ZapVault market, so");
+        console2.log("no drawn chain selects these entries and no deployed adapter produces USDG to");
+        console2.log("feed one. Making a vault step reachable is a separate, deliberate catalogue");
+        console2.log("change -- and it is the one that must carry honest copy for what a deposit");
+        console2.log("into an unaudited, non-yield-bearing vault actually does.");
+
+        // Drift guard. src/lib/chains.ts hard-codes USDG / ozUSDG on both vault rows, because
+        // that is what this script deploys by default. VAULT_ASSET and VAULT_SYMBOL are env
+        // overrides, so a non-default run silently makes those two rows describe a vault that
+        // does not exist -- and the registry entry is what the builder shows a user before they
+        // sign. Fail loud here rather than let the frontend claim the wrong token.
+        bool assetDrifted = cfg.vaultAsset != USDG;
+        bool symbolDrifted = keccak256(bytes(cfg.vaultSymbol)) != keccak256(bytes("ozUSDG"));
+        if (assetDrifted || symbolDrifted) {
+            console2.log("");
+            console2.log("WARNING: this vault does NOT match what src/lib/chains.ts describes.");
+            if (assetDrifted) {
+                console2.log("  VAULT_ASSET is not the USDG the registry rows name:", cfg.vaultAsset);
+            }
+            if (symbolDrifted) {
+                console2.log("  VAULT_SYMBOL is not the 'ozUSDG' the registry rows name:", cfg.vaultSymbol);
+            }
+            console2.log("  The two vault entries in src/lib/chains.ts carry tokenIn/tokenOut symbols");
+            console2.log("  USDG and ozUSDG. They are WRONG for this deployment. Correct them in the");
+            console2.log("  SAME change that sets the env vars above -- never after, because between");
+            console2.log("  the two the builder would offer a step naming a token it does not touch.");
+        }
     }
 
     /// @dev `satisfied` means the on-chain state is ALREADY what the call would produce — either
