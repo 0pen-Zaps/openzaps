@@ -411,6 +411,21 @@ export function ZapBuilder(): React.JSX.Element {
     [chain],
   );
 
+  /**
+   * Which palette blocks seat anywhere in the current chain, worked out once.
+   *
+   * This drives the dimming on all two dozen chips, and it only depends on the
+   * chain — but it used to be recomputed inline during render, and a drag
+   * re-renders on every single `pointermove`. That meant two dozen seating
+   * searches, each scanning every position in the chain, for every pixel the
+   * pointer travelled, to arrive at exactly the answer from the frame before.
+   * Keyed on the chain, so it recomputes when the answer can actually change.
+   */
+  const fitsById = useMemo(
+    () => new Map(BLOCKS.map((block) => [block.id, bestIndexFor(block) !== null])),
+    [bestIndexFor],
+  );
+
   const insertBlock = useCallback(
     (blockId: string, index: number): void => {
       const uid = nextUid();
@@ -745,8 +760,23 @@ export function ZapBuilder(): React.JSX.Element {
       }
       setRunIndex(step);
     }, 380);
+    announce(`Previewing ${chain.length} step${chain.length === 1 ? "" : "s"} in order.`);
     trackEvent("builder_preview_run", { blocks: chain.length });
-  }, [chain.length, compiled.status]);
+  }, [announce, chain.length, compiled.status]);
+
+  /**
+   * The block the preview highlight is currently on.
+   *
+   * Read off the chain rather than out of `compiled.steps`, which only holds
+   * entries for blocks the catalog still knows — one unrecognised placement and
+   * every index after it would name the wrong card.
+   */
+  const runStep = useMemo(() => {
+    const node = runIndex >= 0 ? chain[runIndex] : undefined;
+    const block = node ? getBlock(node.blockId) : undefined;
+    if (!node || !block) return null;
+    return { position: runIndex + 1, name: block.name, summary: summarise(block, node) };
+  }, [chain, runIndex]);
 
   /**
    * The palette, narrowed by tab and by search.
@@ -903,7 +933,7 @@ export function ZapBuilder(): React.JSX.Element {
               </p>
             ) : null}
             {visibleBlocks.map((block) => {
-              const fits = bestIndexFor(block) !== null;
+              const fits = fitsById.get(block.id) ?? false;
               const accent = SHAPE_COLOR[block.emits ?? block.accepts ?? "token"];
               return (
                 <button
@@ -1208,6 +1238,21 @@ export function ZapBuilder(): React.JSX.Element {
               <span />
             </div>
           </div>
+
+          {/* What the highlight travelling down the chain is actually on.
+              Without this, "Preview run" lit each card in turn and said
+              nothing — the animation showed the order, which the vertical
+              layout already showed, and the settings it would execute with
+              stayed inside whichever card happened to be open. */}
+          {runStep ? (
+            <p className={styles.runStep}>
+              <span>
+                Step {runStep.position} of {chain.length}
+              </span>
+              <strong>{runStep.name}</strong>
+              <em>{runStep.summary}</em>
+            </p>
+          ) : null}
 
           {hint ? (
             <p className={styles.hint} role="status">

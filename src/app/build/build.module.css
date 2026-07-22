@@ -797,6 +797,43 @@
   font-size: 0.82rem;
 }
 
+/* The step the preview highlight is on. Mint like the flow dot travelling the
+   joints above it, so the two read as one moving thing. */
+.runStep {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  padding: 0.5rem 0.8rem;
+  border: 1px solid rgba(55, 240, 154, 0.28);
+  border-radius: 0.55rem;
+  background: rgba(33, 208, 122, 0.06);
+  font-size: 0.8rem;
+  animation: bodyIn var(--dur-2) var(--ease-emphasis);
+}
+
+.runStep > span {
+  color: var(--mint-2);
+  font-family: var(--font-jetbrains-mono), ui-monospace, monospace;
+  font-size: 0.7rem;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+
+.runStep strong {
+  font-weight: 540;
+}
+
+.runStep em {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 0.76rem;
+  font-style: normal;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 /* The chain's running commentary, for anyone who cannot see it rearrange.
    Kept off-screen rather than shown: sighted users already watch the card move,
    and a visible toast for every drag would be noise on top of the answer. */
