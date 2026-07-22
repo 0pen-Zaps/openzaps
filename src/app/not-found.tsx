@@ -5,15 +5,15 @@ import styles from "./status.module.css";
 
 export const metadata: Metadata = {
   title: "Page not found",
-  description: "That OpenZaps route does not exist. Jump back to the console, dashboard, or docs.",
+  description: "That OpenZaps route does not exist. Jump back to the console, the Zaps Feed, or the docs.",
   robots: { index: false, follow: true },
 };
 
 const SUGGESTIONS = [
   { href: "/app", label: "Policy console" },
-  { href: "/dashboard", label: "Live dashboard" },
+  { href: "/zaps", label: "Zaps Feed" },
   { href: "/docs", label: "Docs" },
-  { href: "/security", label: "Security" },
+  { href: "/docs#security", label: "Security" },
   { href: "/token", label: "Tokenomics" },
   { href: "/roadmap", label: "Roadmap" },
 ] as const;

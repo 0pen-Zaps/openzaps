@@ -270,27 +270,6 @@
   line-height: 1.55;
 }
 
-.auditWarning {
-  display: grid;
-  gap: 0.3rem;
-  margin-bottom: 1rem;
-  padding: 0.8rem 0.9rem;
-  border: 1px solid rgba(255, 194, 107, 0.34);
-  border-radius: 0;
-  color: #ffd398;
-  background: rgba(255, 194, 107, 0.075);
-}
-
-.auditWarning strong {
-  font-size: 0.84rem;
-}
-
-.auditWarning span {
-  color: #e0c5a1;
-  font-size: 0.78rem;
-  line-height: 1.45;
-}
-
 .cardHead,
 .liveBadge {
   display: inline-flex;

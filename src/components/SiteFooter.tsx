@@ -30,7 +30,7 @@ export function SiteFooter(): React.JSX.Element {
           <div className={styles.col}>
             <h3>Product</h3>
             <Link href="/app">Open the app</Link>
-            <Link href="/dashboard">Live dashboard</Link>
+            <Link href="/zaps">Zaps Feed</Link>
             <Link href="/docs">Developer docs</Link>
             <Link href="/roadmap">Roadmap</Link>
           </div>
@@ -42,8 +42,8 @@ export function SiteFooter(): React.JSX.Element {
             <a href={LINKS.x} target="_blank" rel="noreferrer">
               X @0xzaps
             </a>
-            <Link href="/security">Security</Link>
-            <Link href="/pricing">Pricing</Link>
+            <Link href="/docs#security">Security</Link>
+            <Link href="/build">Visual builder</Link>
           </div>
           <div className={styles.col}>
             <h3>Token</h3>

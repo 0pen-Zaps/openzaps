@@ -1196,11 +1196,6 @@ export default function AppPage(): React.JSX.Element {
             <span className={styles.liveBadge}>onchain</span>
           </div>
 
-          <div className={styles.auditWarning} role="note">
-            <strong>Funds at risk.</strong>
-            <span>Creation is open for this bounded route. The contracts have not been externally audited. Fund only what you can lose.</span>
-          </div>
-
           <div className={styles.segment}>
             <button className={direction === "buy" ? styles.segOn : styles.seg} onClick={() => changeDirection("buy")} disabled={zap !== null} type="button">
               Buy 0xZAPS <em>aeWETH → 0xZAPS</em>
@@ -1360,7 +1355,7 @@ export default function AppPage(): React.JSX.Element {
             >
               Export receipts (JSON)
             </button>
-            <Link href="/dashboard">Protocol-wide activity →</Link>
+            <Link href="/zaps">Protocol-wide activity →</Link>
             <a href={ROBINHOOD_EXPLORER_URL} target="_blank" rel="noreferrer">Open Robinhood Blockscout ↗</a>
           </div>
         </div>

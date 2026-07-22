@@ -5,14 +5,11 @@ const ROUTES = [
   { path: "", priority: 1, changeFrequency: "weekly" },
   { path: "/app", priority: 0.95, changeFrequency: "weekly" },
   { path: "/build", priority: 0.92, changeFrequency: "weekly" },
-  { path: "/dashboard", priority: 0.9, changeFrequency: "daily" },
   // Only the index: per-zap URLs are minted onchain, so enumerating them here
   // would need an RPC read at build time and would go stale the moment the
   // next capsule is deployed. The index links every one of them.
-  { path: "/zaps", priority: 0.9, changeFrequency: "daily" },
+  { path: "/zaps", priority: 0.92, changeFrequency: "daily" },
   { path: "/docs", priority: 0.9, changeFrequency: "weekly" },
-  { path: "/security", priority: 0.88, changeFrequency: "weekly" },
-  { path: "/pricing", priority: 0.75, changeFrequency: "weekly" },
   { path: "/roadmap", priority: 0.72, changeFrequency: "weekly" },
   { path: "/token", priority: 0.7, changeFrequency: "weekly" },
   { path: "/legal", priority: 0.55, changeFrequency: "monthly" },

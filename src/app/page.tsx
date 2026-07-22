@@ -618,8 +618,8 @@ export default function Home(): React.JSX.Element {
             Read the verified contract source ↗
           </a>
           <br />
-          <Link className={styles.repoLink} href="/security">
-            Security architecture →
+          <Link className={styles.repoLink} href="/docs#security">
+            Security model →
           </Link>
           {contractsLive() && (
             <p className={styles.deployed}>

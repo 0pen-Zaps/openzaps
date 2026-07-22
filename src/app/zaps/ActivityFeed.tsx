@@ -6,7 +6,7 @@ import { formatUnits } from "viem";
 import { OPENZAP_CONTRACTS, explorerTransaction, explorerAddress } from "@/lib/robinhood";
 import type { ActivityEntry, ProtocolActivity } from "@/lib/activity";
 import { CountUp } from "@/components/CountUp";
-import styles from "./dashboard.module.css";
+import styles from "./feed.module.css";
 
 export type ActivityPayload = ProtocolActivity & { headBlock: string };
 
@@ -27,7 +27,7 @@ const TYPE_LABEL: Record<ActivityEntry["type"], string> = {
   recovered: "Recovered",
 };
 
-export function DashboardActivity({ initial }: { initial: ActivityPayload | null }): React.JSX.Element {
+export function ActivityFeed({ initial }: { initial: ActivityPayload | null }): React.JSX.Element {
   const [state, setState] = useState<FeedState>(
     initial ? { status: "ready", data: initial, staleSince: null, fresh: EMPTY } : { status: "loading" },
   );
