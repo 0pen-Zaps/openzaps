@@ -125,6 +125,20 @@
   background: rgba(33, 208, 122, 0.08);
 }
 
+/* The notice live region stays mounted so screen readers announce updates;
+   collapse the box whenever it has no message. */
+.notice:empty {
+  height: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  overflow: hidden;
+}
+
+.notice:focus {
+  outline: none;
+}
+
 .error {
   border: 1px solid rgba(255, 110, 110, 0.32);
   color: #ffadad;
@@ -162,6 +176,52 @@
 .metric span {
   color: var(--muted);
   font-size: 0.8rem;
+}
+
+.tokenTools {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-top: 1rem;
+  padding: 0.9rem 1rem;
+  border: 1px solid var(--line);
+  border-radius: 0.65rem;
+  background: rgba(255, 255, 255, 0.025);
+}
+
+.tokenTools > div:first-child {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 0.2rem 0.7rem;
+  align-items: center;
+}
+
+.tokenTools span {
+  grid-column: 1 / -1;
+  color: var(--muted);
+  font-size: 0.72rem;
+}
+
+.tokenTools strong {
+  color: var(--fg);
+  font-size: 1rem;
+}
+
+.tokenTools code {
+  min-width: 0;
+  color: var(--mint-2);
+  font-size: 0.72rem;
+  overflow-wrap: anywhere;
+}
+
+.tokenActions {
+  display: flex;
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.5rem;
 }
 
 .workspace {
@@ -208,6 +268,27 @@
   color: var(--text);
   font-size: 0.94rem;
   line-height: 1.55;
+}
+
+.auditWarning {
+  display: grid;
+  gap: 0.3rem;
+  margin-bottom: 1rem;
+  padding: 0.8rem 0.9rem;
+  border: 1px solid rgba(255, 194, 107, 0.34);
+  border-radius: 0.55rem;
+  color: #ffd398;
+  background: rgba(255, 194, 107, 0.075);
+}
+
+.auditWarning strong {
+  font-size: 0.84rem;
+}
+
+.auditWarning span {
+  color: #e0c5a1;
+  font-size: 0.78rem;
+  line-height: 1.45;
 }
 
 .cardHead,
@@ -493,6 +574,52 @@
   margin-top: 0.75rem;
 }
 
+.savedZaps {
+  display: grid;
+  gap: 0.45rem;
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--line-soft);
+}
+
+.savedZaps > span {
+  margin-bottom: 0.1rem;
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+.savedZap,
+.savedZapActive {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.65rem;
+  padding: 0.65rem 0.7rem;
+  border: 1px solid var(--line-soft);
+  border-radius: 0.45rem;
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.018);
+  cursor: pointer;
+  text-align: left;
+}
+
+.savedZapActive {
+  border-color: rgba(55, 240, 154, 0.35);
+  background: rgba(33, 208, 122, 0.06);
+}
+
+.savedZap strong,
+.savedZapActive strong {
+  font-size: 0.78rem;
+}
+
+.savedZap code,
+.savedZapActive code {
+  color: var(--muted);
+  font-size: 0.68rem;
+}
+
 .receipts {
   margin-top: 1rem;
   padding: clamp(1rem, 2vw, 1.35rem);
@@ -596,6 +723,15 @@
   .quoteBox {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
+
+  .tokenTools {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .tokenActions {
+    justify-content: flex-start;
+  }
 }
 
 @media (max-width: 620px) {
@@ -605,7 +741,8 @@
 
   .statusBar,
   .titleRow,
-  .wallet {
+  .wallet,
+  .tokenTools {
     align-items: flex-start;
     flex-direction: column;
   }
@@ -616,8 +753,18 @@
   }
 
   .wallet,
-  .wallet > * {
+  .wallet > *,
+  .tokenActions,
+  .tokenActions > * {
     width: 100%;
+  }
+
+  .tokenTools > div:first-child {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .tokenTools span {
+    grid-column: auto;
   }
 
   .addr {

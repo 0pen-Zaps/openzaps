@@ -1,20 +1,20 @@
 # OpenZaps
 
-> OpenZaps turn approved DeFi workflows into sealed, immutable policy capsules that a Hermes agent can simulate, submit, monitor, and revoke — without ever holding discretionary wallet authority. The 0xZAPS community token is live on Robinhood Chain through a creator-verified Clanker V4 market (contract 0xDd90bFa4adC7F4401E611AbaC692D939F9F4CB07).
+> OpenZaps turn approved DeFi workflows into sealed, immutable policy capsules that a Hermes agent can simulate, submit, monitor, and revoke — without ever holding discretionary wallet authority. 0xZAPS, the ERC-20 paired with aeWETH in OpenZaps' first bounded live route, is live on Robinhood Chain through a creator-verified Clanker V4 market (contract 0xDd90bFa4adC7F4401E611AbaC692D939F9F4CB07).
 
 Key facts:
-- Protocol reference contracts are deployed on Base mainnet (factory 0xc7C5897e4738a157731c2F93b1d73Db9926E926C) and are internally reviewed but pre-external-audit; mainnet real-fund creation is intentionally gated.
-- The token confers no yield, equity, revenue claim, or protocol access guarantee.
+- Production v1.1 contracts are live on Robinhood Chain (chain ID 4663; factory 0xFC775017b25d2458623E2f3E735A4B750dD8b4E4). Bounded aeWETH ↔ 0xZAPS creation is open; contracts are internally reviewed (63 Foundry tests, 9 internal findings fixed) but pre-external-audit, and deposits carry funds-at-risk warnings. An earlier Base mainnet factory (0xc7C5897e4738a157731c2F93b1d73Db9926E926C) is historical only and not used by the production app.
+- The token confers no yield, equity, revenue claim, governance, staking, or protocol access guarantee.
 - Execution authority is bound in EIP-712-signed policies: fixed adapters, spend ceilings, recipients, deadlines, postconditions, and unconditional owner revoke paths.
 
 ## Pages
 
 - [Home](https://www.0xzaps.com): what OpenZaps are, authority models, security posture, FAQ
-- [Policy console](https://www.0xzaps.com/app): design, simulate, and review bounded execution policies
+- [Live zap console](https://www.0xzaps.com/app): connect a wallet to quote, create, fund, execute, and recover a bounded aeWETH ↔ 0xZAPS policy capsule
 - [Developer docs](https://www.0xzaps.com/docs): policy schema, simulation API, templates, lifecycle
 - [Security architecture](https://www.0xzaps.com/security): threat model, controls, production gates
 - [Pricing](https://www.0xzaps.com/pricing): simulation is free; protocol fees are governance-gated
-- [Roadmap](https://www.0xzaps.com/roadmap): templates → wallet creation → relayers → audits
+- [Roadmap](https://www.0xzaps.com/roadmap): live bounded route → more templates → relayers → audits
 - [0xZAPS token](https://www.0xzaps.com/token): verified contract, official Clanker market, FAQ
 - [Risk disclosures](https://www.0xzaps.com/legal): pre-audit software, onchain irreversibility, token risk
 

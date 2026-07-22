@@ -18,7 +18,7 @@ const controls = [
   ["Nonce consumed first", "Authorization is consumed before external calls to narrow replay and reentrancy surfaces."],
   ["Exact approvals", "Approvals are scoped to the exact step amount and reset to zero on success and revert paths."],
   ["Balance-delta checks", "Postconditions assert tracked output assets, recipient, min-out, and residual allowance."],
-  ["Private submission", "Price-sensitive routes can use private orderflow after late-block simulation."],
+  ["Private submission", "Designed so price-sensitive routes can route through private orderflow; the live bounded route submits from the owner's wallet today."],
   ["Owner revoke", "The owner can pause, invalidate nonce space, or emergency-exit without Hermes."],
 ] as const;
 
@@ -31,7 +31,7 @@ const gates = [
 ] as const;
 
 const threats = [
-  ["MEV / sandwiching", "Private submission, strict min-out, short deadlines, and public receipt review."],
+  ["MEV / sandwiching", "Strict min-out, short deadlines, and public receipt review today; private submission is planned."],
   ["Approval leakage", "Exact approvals, zero reset, post-exec allowance checks, and emergency exit."],
   ["Scope drift", "Policy hash, adapter allowlist, chain-aware nonce, and typed intent domain."],
   ["Relayer optionality", "Fee caps, allowed submitters, self-submit fallback, and human approval gates."],
@@ -48,7 +48,7 @@ export default function SecurityPage(): React.JSX.Element {
           <h1>The product is the boundary.</h1>
           <p>
             OpenZaps does not sell invisible autonomy. It sells explicit execution limits: fixed adapters, spend caps,
-            postconditions, private submission, wallet-reviewed policies, and owner revoke paths.
+            postconditions, wallet-reviewed policies, and owner revoke paths, with private submission on the roadmap.
           </p>
           <div className={styles.heroActions}>
             <Link className="btn btnPrimary btnLg" href="/app">

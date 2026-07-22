@@ -20,8 +20,8 @@ const phases = [
   ],
   [
     "Next",
-    "Wallet-reviewed creation",
-    "Connect wallet, prepare EIP-712 typed data, show exact approvals, and generate factory transactions without automatic broadcast.",
+    "Broader bounded routes",
+    "More policy templates, additional governed adapters, and Hermes-assisted submission within owner-signed caps.",
   ],
   [
     "Audit",
@@ -70,7 +70,7 @@ export default function RoadmapPage(): React.JSX.Element {
         </div>
         <aside className={styles.heroCard}>
           <span>Current release</span>
-          <strong>Review console</strong>
+          <strong>Live v1.1 console</strong>
         </aside>
       </section>
 

@@ -2,13 +2,14 @@ import Link from "next/link";
 import { OpenZapMark } from "@/components/OpenZapMark";
 import { BuyButton } from "@/components/BuyButton";
 import { JsonLd } from "@/components/JsonLd";
+import { TokenUtilities } from "@/components/TokenUtilities";
 import { TOKEN, TOKEN_LAUNCH, LINKS } from "@/lib/config";
 import { pageMetadata, absoluteUrl, SITE_URL } from "@/lib/seo";
 import styles from "./token.module.css";
 
 export const metadata = pageMetadata({
   title: `${TOKEN.symbol} token — live on ${TOKEN_LAUNCH.network}`,
-  description: `${TOKEN.symbol} is live on ${TOKEN_LAUNCH.network} through ${TOKEN_LAUNCH.venue}. Verify the official contract and trade link for the OpenZaps community token.`,
+  description: `${TOKEN.symbol} is live on ${TOKEN_LAUNCH.network} through ${TOKEN_LAUNCH.venue}. Verify the contract, add it to your wallet, or open the bounded aeWETH/0xZAPS route.`,
   path: "/token",
   ogImage: "/og/token.png",
   keywords: [
@@ -24,7 +25,7 @@ const facts = [
   { k: "Ticker", v: TOKEN.symbol },
   { k: "Token network", v: TOKEN_LAUNCH.network },
   { k: "Venue", v: TOKEN_LAUNCH.venue },
-  { k: "Status", v: TOKEN_LAUNCH.status },
+  { k: "Decimals", v: String(TOKEN.decimals) },
 ] as const;
 
 const steps = [
@@ -47,16 +48,16 @@ const steps = [
 
 const utility = [
   {
-    title: "Align the operators",
-    body: "Hermes runs, simulates, and monitors zaps. The token aligns the people who keep that execution layer honest and live.",
+    title: "A bounded route asset",
+    body: "The live OpenZaps v1.1 adapter supports one pinned Robinhood v4 pool: aeWETH ↔ 0xZAPS. The app builds immutable one-route policy capsules around it.",
   },
   {
-    title: "Public market identity",
-    body: `The creator-verified ${TOKEN_LAUNCH.venue} ${TOKEN_LAUNCH.version} page and the onchain contract are the canonical token references.`,
+    title: "Wallet-readable ERC-20",
+    body: `Use the exact ${TOKEN_LAUNCH.network} address, ${TOKEN.decimals} decimals, and the add-to-wallet utility on this page. Wallet support varies.`,
   },
   {
-    title: "A signal, not a promise",
-    body: "0xZAPS is a community + coordination token. No yield, no TVL, no returns are implied — utility grows with the protocol.",
+    title: "No invented rights",
+    body: "The token does not grant protocol governance, staking, revenue, yield, equity, or fee rights. OpenZaps usage is not token-gated.",
   },
 ] as const;
 
@@ -71,11 +72,11 @@ const faqs = [
   },
   {
     q: "Do I need the token to use OpenZaps?",
-    a: "No — nothing is token-gated. The token aligns the community and execution layer around it. Robinhood mainnet actions remain wallet-confirmed and the v1.1 contracts are pre-external-audit.",
+    a: "No. OpenZaps usage is not token-gated. The current app route itself swaps between aeWETH and 0xZAPS, and every Robinhood mainnet action remains wallet-confirmed.",
   },
   {
     q: "Are the contracts audited?",
-    a: "The OpenZap protocol contracts are a complete, internally reviewed v1.1 reference implementation (63 passing tests, 9 findings fixed) but are pre-external-audit. Treat anything onchain accordingly.",
+    a: "No external audit is published for the OpenZap v1.1 protocol contracts. The app labels the live workflow pre-external-audit; deposited funds are at risk.",
   },
 ] as const;
 
@@ -118,8 +119,8 @@ export default function TokenPage(): React.JSX.Element {
           <span className="gradientText">{TOKEN.symbol}</span>
         </h1>
         <p className={styles.lead}>
-          The community token for OpenZaps — immutable policy capsules for agent-triggered DeFi. Now live on{" "}
-          <strong>{TOKEN_LAUNCH.network}</strong> through Clanker.
+          The ERC-20 paired with aeWETH in OpenZaps&apos; first bounded live route. Verify the exact contract on{" "}
+          <strong>{TOKEN_LAUNCH.network}</strong> before trading or adding it to a wallet.
         </p>
         <div className={styles.heroActions}>
           <BuyButton size="lg" />
@@ -144,10 +145,13 @@ export default function TokenPage(): React.JSX.Element {
       {/* contract address */}
       <section className={`container ${styles.addressWrap}`}>
         <div className={styles.address}>
-          <span className={styles.addressLabel}>{TOKEN.symbol} contract</span>
-          <a className={styles.addressValue} href={LINKS.tokenExplorer} target="_blank" rel="noreferrer">
-            {TOKEN_LAUNCH.contract} ↗
-          </a>
+          <div className={styles.addressIdentity}>
+            <span className={styles.addressLabel}>{TOKEN.symbol} contract</span>
+            <a className={styles.addressValue} href={LINKS.tokenExplorer} target="_blank" rel="noreferrer">
+              {TOKEN_LAUNCH.contract} ↗
+            </a>
+          </div>
+          <TokenUtilities />
         </div>
       </section>
 
@@ -175,8 +179,8 @@ export default function TokenPage(): React.JSX.Element {
       <section className={`container ${styles.section}`}>
         <header className={styles.head}>
           <span className="eyebrow">What it&apos;s for</span>
-          <h2>One token, aligned with the protocol.</h2>
-          <p>No yield, no TVL, no returns are implied. {TOKEN.symbol} is a coordination token, not a claim on revenue or assets.</p>
+          <h2>Only the utility that exists today.</h2>
+          <p>No governance, staking, fee share, revenue claim, equity, yield, or returns are represented.</p>
         </header>
         <div className={styles.utilGrid}>
           {utility.map((u) => (
@@ -253,7 +257,7 @@ export default function TokenPage(): React.JSX.Element {
             </Link>
           </div>
           <p className={styles.disclaimer}>
-            Not financial advice. {TOKEN.symbol} is a community token with no claim on revenue, yield, or assets.
+            Not financial advice. {TOKEN.symbol} is an ERC-20 with no claim on revenue, yield, or assets.
             Onchain actions are irreversible; the protocol is pre-external-audit.
           </p>
         </div>

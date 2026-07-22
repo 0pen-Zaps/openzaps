@@ -4,7 +4,7 @@ import { pageMetadata, absoluteUrl, SITE_URL, SITE_NAME } from "@/lib/seo";
 
 export const metadata = pageMetadata({
   title: "App — build bounded execution policies",
-  description: `Design an OpenZap policy capsule on ${CHAIN.name}: simulate the diff, save the review artifact, and keep revoke and pause controls in one place. ${TOKEN.symbol} powers the network.`,
+  description: `Connect a wallet on ${CHAIN.name} to quote, create, fund, execute, and recover a bounded aeWETH ↔ ${TOKEN.symbol} policy capsule. Pre-external-audit; deposits are at risk.`,
   path: "/app",
   ogImage: "/og/app.png",
   keywords: ["OpenZaps app", "policy capsule builder", "simulate DeFi policy", "DeFi automation app", "EIP-712 policy review"],
@@ -22,7 +22,7 @@ const appJsonLd = {
       operatingSystem: "Web",
       offers: { "@type": "Offer", price: "0", priceCurrency: "USD" },
       publisher: { "@id": `${SITE_URL}/#organization` },
-      description: `Design and simulate bounded OpenZap policy capsules for agent-triggered DeFi on ${CHAIN.name}.`,
+      description: `Create, fund, execute, and recover bounded aeWETH ↔ ${TOKEN.symbol} OpenZap policy capsules on ${CHAIN.name}.`,
     },
     {
       "@type": "BreadcrumbList",

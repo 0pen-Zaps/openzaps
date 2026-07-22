@@ -7,7 +7,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "verify:token": "node scripts/verify-token-metadata.mjs"
+    "verify:token": "node scripts/verify-token-metadata.mjs",
+    "test": "vitest run"
   },
   "dependencies": {
     "@vercel/analytics": "^2.0.1",
@@ -22,6 +23,7 @@
     "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "^16.2.11",
-    "typescript": "^5"
+    "typescript": "^5",
+    "vitest": "^4.1.10"
   }
 }

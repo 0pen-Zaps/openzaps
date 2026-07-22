@@ -8,7 +8,8 @@ import {
 } from "viem";
 
 export const ROBINHOOD_CHAIN_ID = 4663;
-export const ROBINHOOD_RPC_URL = "https://rpc.mainnet.chain.robinhood.com";
+export const ROBINHOOD_RPC_URL =
+  process.env.NEXT_PUBLIC_ROBINHOOD_RPC_URL ?? "https://rpc.mainnet.chain.robinhood.com";
 export const ROBINHOOD_EXPLORER_URL = "https://robinhoodchain.blockscout.com";
 
 export const robinhoodChain = defineChain({
@@ -39,6 +40,10 @@ export const ROBINHOOD_LIQUIDITY = {
 } as const;
 
 export const OPENZAP_CONTRACTS = {
+  implementation: optionalAddress(
+    process.env.NEXT_PUBLIC_OPENZAP_IMPLEMENTATION,
+    "0x2a5EB455952d25b8060Ee933d2bADB022c7aE11A",
+  ),
   factory: optionalAddress(
     process.env.NEXT_PUBLIC_OPENZAP_FACTORY,
     "0xFC775017b25d2458623E2f3E735A4B750dD8b4E4",
@@ -72,6 +77,53 @@ export function explorerTransaction(hash: Hex): string {
 export function getInjectedProvider(): EIP1193Provider | null {
   if (typeof window === "undefined" || !("ethereum" in window)) return null;
   return window.ethereum as EIP1193Provider;
+}
+
+export async function ensureRobinhoodChain(provider: EIP1193Provider): Promise<void> {
+  const expected = `0x${ROBINHOOD_CHAIN_ID.toString(16)}`;
+  const current = await provider.request({ method: "eth_chainId" });
+  if (typeof current === "string" && current.toLowerCase() === expected) return;
+
+  try {
+    await provider.request({
+      method: "wallet_switchEthereumChain",
+      params: [{ chainId: expected }],
+    });
+  } catch (switchError) {
+    if (walletErrorCode(switchError) !== 4902) throw switchError;
+    await provider.request({
+      method: "wallet_addEthereumChain",
+      params: [
+        {
+          chainId: expected,
+          chainName: robinhoodChain.name,
+          nativeCurrency: robinhoodChain.nativeCurrency,
+          rpcUrls: [ROBINHOOD_RPC_URL],
+          blockExplorerUrls: [ROBINHOOD_EXPLORER_URL],
+        },
+      ],
+    });
+    await provider.request({
+      method: "wallet_switchEthereumChain",
+      params: [{ chainId: expected }],
+    });
+  }
+}
+
+export async function watchZapsAsset(provider: EIP1193Provider, image?: string): Promise<boolean> {
+  const result = await provider.request({
+    method: "wallet_watchAsset",
+    params: {
+      type: "ERC20",
+      options: {
+        address: ROBINHOOD_ASSETS.zaps,
+        symbol: "0xZAPS",
+        decimals: 18,
+        ...(image ? { image } : {}),
+      },
+    },
+  });
+  return result === true;
 }
 
 export const robinhoodPoolKey = {
@@ -134,15 +186,15 @@ export const wethAbi = [
   },
 ] as const;
 
-const stepComponents = [
+export const stepComponents = [
   { name: "adapter", type: "address" },
-  { name: "spender", type: "address" },
   { name: "tokenIn", type: "address" },
+  { name: "spender", type: "address" },
   { name: "amountIn", type: "uint256" },
   { name: "data", type: "bytes" },
 ] as const;
 
-const policyComponents = [
+export const policyComponents = [
   { name: "owner", type: "address" },
   { name: "recipient", type: "address" },
   { name: "maxRelayerFeeCap", type: "uint256" },
@@ -168,6 +220,27 @@ const intentComponents = [
 ] as const;
 
 export const openZapFactoryAbi = [
+  {
+    type: "function",
+    name: "implementation",
+    inputs: [],
+    outputs: [{ name: "", type: "address" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "implCodeHash",
+    inputs: [],
+    outputs: [{ name: "", type: "bytes32" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "VERSION",
+    inputs: [],
+    outputs: [{ name: "", type: "string" }],
+    stateMutability: "view",
+  },
   {
     type: "function",
     name: "createZap",
@@ -202,6 +275,41 @@ export const openZapFactoryAbi = [
 ] as const;
 
 export const openZapAbi = [
+  {
+    type: "function",
+    name: "recipient",
+    inputs: [],
+    outputs: [{ name: "", type: "address" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "maxRelayerFeeCap",
+    inputs: [],
+    outputs: [{ name: "", type: "uint256" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "optimization",
+    inputs: [],
+    outputs: [{ name: "", type: "bool" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "trackedAssets",
+    inputs: [],
+    outputs: [{ name: "", type: "address[]" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "stepCount",
+    inputs: [],
+    outputs: [{ name: "", type: "uint256" }],
+    stateMutability: "view",
+  },
   {
     type: "function",
     name: "step",
@@ -297,4 +405,12 @@ function optionalAddress(value: string | undefined, fallback: Address): Address 
   } catch {
     return zeroAddress;
   }
+}
+
+function walletErrorCode(error: unknown): number | null {
+  if (!error || typeof error !== "object") return null;
+  const direct = "code" in error ? Number(error.code) : Number.NaN;
+  if (Number.isFinite(direct)) return direct;
+  if ("cause" in error) return walletErrorCode(error.cause);
+  return null;
 }

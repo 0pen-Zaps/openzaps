@@ -18,7 +18,7 @@ const lifecycle = [
   ["1", "Draft policy", "Select a template, authority model, spend ceiling, cadence, adapter, recipient, submitter, and postconditions."],
   ["2", "Simulate", "Run deterministic checks before any wallet prompt. Blocked policies cannot proceed; warned policies require review."],
   ["3", "Review signature", "Bind chain, owner, recipient, nonce, deadline, policy hash, min-out, relayer fee cap, and postconditions."],
-  ["4", "Submit privately", "Hermes re-simulates on the latest block and submits through the selected private path when price sensitive."],
+  ["4", "Submit", "The owner submits from their own wallet within signed limits today; Hermes-assisted and private submission are planned."],
   ["5", "Monitor and revoke", "Receipts, allowance checks, balance deltas, alerts, and owner revoke paths stay attached to the capsule."],
 ] as const;
 
@@ -32,8 +32,8 @@ export default function DocsPage(): React.JSX.Element {
           <h1>Build with bounded execution, not broad wallet authority.</h1>
           <p>
             OpenZaps are policy capsules for agent-triggered DeFi. The current interface exposes a deterministic
-            simulation API and review artifacts; onchain creation remains gated until the external audit and adapter
-            governance process clears.
+            simulation API, review artifacts, and open bounded creation on Robinhood Chain; scope deposits remain
+            pre-external-audit, so explicit funds-at-risk warnings apply.
           </p>
           <div className={styles.heroActions}>
             <Link className="btn btnPrimary btnLg" href="/app">
@@ -45,7 +45,7 @@ export default function DocsPage(): React.JSX.Element {
           </div>
         </div>
         <aside className={styles.heroCard}>
-          <span>Base factory</span>
+          <span>Robinhood Chain factory</span>
           <strong>{CONTRACTS.factory}</strong>
         </aside>
       </section>
@@ -63,10 +63,11 @@ export default function DocsPage(): React.JSX.Element {
         <div className={styles.content}>
           <section className={styles.callout}>
             <span>Production status</span>
-            <strong>Pre-audit mainnet fund creation is intentionally disabled.</strong>
+            <strong>Bounded creation is live pre-audit; deposits carry explicit funds-at-risk warnings.</strong>
             <p>
-              The contracts are deployed as a reference implementation on {CHAIN.name}, but production use with real
-              funds requires external audit, formal checks, adapter governance, testnet soak, and live wallet review.
+              The v1.1 contracts are live on {CHAIN.name} with one bounded route (aeWETH ↔ 0xZAPS). 63 Foundry tests
+              pass and 9 internal findings were fixed, but no external audit, formal checks, adapter governance,
+              testnet soak, or live wallet review has completed. Deposit only what you can afford to lose.
             </p>
           </section>
 

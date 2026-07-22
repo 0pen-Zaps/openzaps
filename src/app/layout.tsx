@@ -116,7 +116,7 @@ const siteGraph = {
       "@id": `${SITE_URL}/#token`,
       name: `${TOKEN.name} (${TOKEN.symbol})`,
       alternateName: `$${TOKEN.symbol}`,
-      description: `${TOKEN.symbol} is the OpenZaps community and operator coordination token, live on ${TOKEN_LAUNCH.network} through ${TOKEN_LAUNCH.venue}.`,
+      description: `${TOKEN.symbol} is the ERC-20 paired with aeWETH in OpenZaps' first bounded live route, live on ${TOKEN_LAUNCH.network} through ${TOKEN_LAUNCH.venue}.`,
       url: absoluteUrl("/token"),
       image: absoluteUrl(TOKEN.logoPath),
       category: "Cryptocurrency",
