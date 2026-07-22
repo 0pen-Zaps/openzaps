@@ -22,6 +22,11 @@
   --container: min(1440px, calc(100% - 3rem));
   --radius: 0.5rem;
   --pill: 999px;
+  /* Live height of the sticky nav, republished by SiteNav on every resize and
+     every condense. This value is only the pre-hydration fallback — near the
+     one-row desktop height, so the first paint is not visibly wrong. Anything
+     that has to clear the nav should read this rather than guess. */
+  --nav-h: 4.4rem;
 
   /* ---- motion tokens ----
      One vocabulary of curves and durations so every surface accelerates and
@@ -52,7 +57,7 @@
 html {
   height: 100%;
   scroll-behavior: smooth;
-  scroll-padding-top: 5.5rem;
+  scroll-padding-top: calc(var(--nav-h) + 1rem);
 }
 
 html,

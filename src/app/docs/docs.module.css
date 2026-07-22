@@ -68,7 +68,7 @@
 
 .toc {
   position: sticky;
-  top: 6rem;
+  top: calc(var(--nav-h) + 1rem);
   display: grid;
   gap: 0.35rem;
   padding: 1rem;

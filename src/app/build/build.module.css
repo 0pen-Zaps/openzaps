@@ -818,10 +818,10 @@
    disclosures stay whole and stay attached to the CTA they qualify. */
 .readout {
   position: sticky;
-  top: 5.5rem;
+  top: calc(var(--nav-h) + 1rem);
   display: grid;
   gap: 0.8rem;
-  max-height: calc(100vh - 7rem);
+  max-height: calc(100vh - var(--nav-h) - 2rem);
   padding: 0.95rem;
   border: 1px solid var(--line);
   border-radius: 0.85rem;
@@ -1366,7 +1366,7 @@
      tap-to-add exists alongside dragging. */
   .palette {
     position: sticky;
-    top: 4.2rem;
+    top: calc(var(--nav-h) + 0.4rem);
     z-index: 5;
     order: -1;
     background: linear-gradient(180deg, rgba(12, 14, 17, 0.98), rgba(10, 12, 14, 0.94));
