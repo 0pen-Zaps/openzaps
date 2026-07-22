@@ -8,35 +8,35 @@ import styles from "../docs/docs.module.css";
 export const metadata = pageMetadata({
   title: "Pricing and protocol fees",
   description:
-    "OpenZaps pricing model for simulation, policy creation, relayer execution, protocol fees, and enterprise agent operations.",
+    "What OpenZaps charges today: chain gas, and nothing else. The v1 protocol fee is disabled, the live route sets the relayer fee cap to zero, and every fee has to be visible in the typed policy before it is signed.",
   path: "/pricing",
   ogImage: "/og/pricing.png",
   keywords: ["OpenZaps pricing", "protocol fees", "relayer fee cap"],
 });
 
 const feeRows = [
-  ["Simulation", "Free", "Local and API simulation should stay free so users can inspect policies before wallet review."],
-  ["Policy creation", "Gas only (pre-audit)", "Users pay chain gas. No protocol fee until external audit and governance activation."],
-  ["Hermes execution", "Relayer fee cap", "Planned: policies bind a max relayer fee before signing, so an automated submitter can never charge outside the cap. The live route sets the cap to zero and is self-submitted."],
-  ["Protocol fee", "Governance-disabled v1", "A future fee may apply to successful executions, but only after disclosure and wallet-level review."],
-  ["Enterprise operators", "Custom", "Roadmap: dedicated relayer lanes, compliance logs, policy review, and monitored revoke drills."],
+  ["Simulation", "Free", "Simulation runs locally and through the API. It never broadcasts a transaction and never asks for wallet authority."],
+  ["Policy creation", "Gas only", "You pay chain gas to create and fund a capsule. No protocol fee is taken. The contracts have not been externally audited."],
+  ["Relayer execution", "Cap of zero", "A policy binds a maximum relayer fee before it is signed, so a submitter cannot charge outside the cap. The live route sets that cap to zero, which means no execution of it can pay a relayer at all."],
+  ["Protocol fee", "Disabled in v1", "No protocol fee is charged on any execution. A future fee would have to appear in the same typed policy payload the user signs."],
+  ["Enterprise operators", "Not built", "Dedicated submission lanes, compliance logs, policy review, and revoke drills are on the roadmap. None of them exist yet, and none has a date."],
 ] as const;
 
 const tiers = [
   {
     name: "Builder",
     price: "Free",
-    body: "Design templates, simulate policies, inspect hashes, export JSON, and test the review flow.",
+    body: "Design a chain, simulate a policy, read the compiled checks, and export JSON. No wallet is asked for anything, and nothing is broadcast.",
   },
   {
     name: "Operator",
-    price: "Relayer fee cap",
-    body: "Planned tier: Hermes-assisted submission within owner-signed caps. Today every transaction is submitted and confirmed from your own wallet.",
+    price: "Not live",
+    body: "Assisted submission within owner-signed caps is planned. It does not exist. Today every transaction is submitted and confirmed from your own wallet.",
   },
   {
     name: "Protocol",
-    price: "Governance-set",
-    body: "Adapter governance, custom postconditions, dedicated monitoring, risk review, and launch-pool integrations.",
+    price: "Not live",
+    body: "Adapter governance, custom postconditions, and dedicated monitoring are planned. None of them is available today.",
   },
 ] as const;
 
@@ -47,10 +47,11 @@ export default function PricingPage(): React.JSX.Element {
       <section className={`container ${styles.hero}`}>
         <div>
           <span className="eyebrow">Pricing</span>
-          <h1>Fees must be as bounded as the policies.</h1>
+          <h1>What you pay today is gas.</h1>
           <p>
-            OpenZaps should never hide execution economics. Users see gas, relayer fee caps, protocol-fee status,
-            revocation paths, and token disclosures before they sign.
+            There is no protocol fee in v1. The live route sets the relayer fee cap to zero, so no execution of it can
+            pay a submitter. You see the expected gas, the fee cap, the recipient, and the revocation path before the
+            wallet is asked to sign anything.
           </p>
           <div className={styles.heroActions}>
             <Link className="btn btnPrimary btnLg" href="/app">
@@ -71,8 +72,8 @@ export default function PricingPage(): React.JSX.Element {
         <section className={styles.section}>
           <h2>Commercial model</h2>
           <p>
-            The clean v1 is not a hidden spread business. The user signs the max relayer fee, the app shows expected gas,
-            and any future protocol fee must be visible in the same typed policy payload.
+            There is no spread. The user signs the maximum relayer fee, the app shows the expected gas, and any future
+            protocol fee has to be visible in the same typed policy payload before that payload can be signed.
           </p>
           <div className={styles.table}>
             {feeRows.map(([name, price, body], i) => (
@@ -107,9 +108,10 @@ export default function PricingPage(): React.JSX.Element {
           <span>Token disclosure</span>
           <strong>{TOKEN.symbol} is not a fee claim, yield promise, equity claim, or guarantee of access.</strong>
           <p>
-            {TOKEN.symbol} is the ERC-20 paired with aeWETH in the first bounded live route. Holding 100,000+ unlocks
-            app-level conveniences (auto-refreshing quotes, extended history, receipt export). It grants no governance,
-            staking, revenue share, or protocol rights, and every core workflow stays fully usable without it.
+            {TOKEN.symbol} is an ERC-20 with no claim on revenue, yield, or assets. It is the asset paired with aeWETH
+            in the one live route. Holding 100,000+ turns on app conveniences: auto-refreshing quotes, more saved zaps
+            and receipts, and receipt JSON export. It grants no governance, staking, revenue share, or protocol rights.
+            Every core workflow works without it.
           </p>
         </section>
       </section>

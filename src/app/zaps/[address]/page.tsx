@@ -195,13 +195,13 @@ export default async function ZapDetailPage({ params }: Params): Promise<React.J
           </h1>
           {verified ? (
             <p>
-              Everything below was read from Robinhood Chain at a single pinned block. Nothing is estimated,
-              modelled, or priced — this page reports what the contract stores and what its own logs say, and
-              says so plainly when a read is unavailable.
+              Everything below was read from Robinhood Chain at one pinned block. This page reports what the
+              contract stores and what its own logs say. Nothing is estimated, modelled, or priced. A read
+              that fails is reported as unavailable, never as a zero.
             </p>
           ) : (
             <p>
-              Nothing could be read from Robinhood Chain for this address, so nothing is claimed about it.
+              The reads against Robinhood Chain failed for this address, so nothing about it is claimed here.
               This page is not saying it is a deployed capsule, that it holds anything, or that it has ever
               run — only that the reads failed. Blockscout reads the same chain independently.
             </p>

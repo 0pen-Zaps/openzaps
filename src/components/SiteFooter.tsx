@@ -13,15 +13,16 @@ export function SiteFooter(): React.JSX.Element {
             <div>
               <strong>OpenZaps</strong>
               <p>
-                Bounded policy capsules for agent-triggered DeFi. ${TOKEN.symbol} is live on {TOKEN_LAUNCH.network}
-                through {TOKEN_LAUNCH.venue}.
+                Policy capsules for agent-triggered DeFi: the target, recipient, asset, and calldata are fixed before
+                signing. {TOKEN.symbol} is the ERC-20 in the one live route, traded through {TOKEN_LAUNCH.venue} on{" "}
+                {TOKEN_LAUNCH.network}.
               </p>
             </div>
           </div>
           <p className={styles.note}>
-            {TOKEN.symbol} lives on {TOKEN_LAUNCH.network}. OpenZaps reference protocol contracts are separately
-            deployed on {CHAIN.name} and remain pre-audit. Not financial advice; no live TVL, yield, or returns are
-            implied.
+            {TOKEN.symbol} is on {TOKEN_LAUNCH.network}. The OpenZaps protocol contracts are deployed on {CHAIN.name}{" "}
+            and have not been externally audited. Onchain actions are irreversible. Not financial advice. No TVL, yield,
+            or return is implied.
           </p>
         </div>
 

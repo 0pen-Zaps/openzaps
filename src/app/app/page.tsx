@@ -1089,7 +1089,7 @@ export default function AppPage(): React.JSX.Element {
     <main className={styles.page} id="main">
       <section className={`container ${styles.statusBar}`} aria-label="Protocol status">
         <span className={protocolReady ? styles.statusLive : styles.statusPreview} role="status">
-          {protocolHealth === "checking" ? "Checking contracts" : protocolReady ? "Live · pre-audit" : "Transactions paused"}
+          {protocolHealth === "checking" ? "Checking contracts" : protocolReady ? "Live · unaudited" : "Transactions paused"}
         </span>
         <p>
           {protocolReady ? (
@@ -1098,7 +1098,7 @@ export default function AppPage(): React.JSX.Element {
               <a href={explorerAddress(OPENZAP_CONTRACTS.factory)} target="_blank" rel="noreferrer">
                 {shortAddress(OPENZAP_CONTRACTS.factory)}
               </a>
-              . Contracts are live but not externally audited. Depositing funds can result in total loss.
+              . The contracts have not been externally audited. Depositing funds can result in total loss.
             </>
           ) : (
             <>Contract health is unavailable or configuration is incomplete. Creation, funding, and execution are disabled.</>
@@ -1168,10 +1168,10 @@ export default function AppPage(): React.JSX.Element {
           <code>{ROBINHOOD_ASSETS.zaps}</code>
           <span className={styles.utilStatus}>
             {!account
-              ? "Holding 100,000+ 0xZAPS unlocks app extras — auto-refreshing quotes, longer history, receipt export."
+              ? "Holding 100,000+ 0xZAPS turns on app conveniences: auto-refreshing quotes, more saved zaps and receipts, and receipt JSON export."
               : holderTier === "none"
-                ? "Hold 100,000+ 0xZAPS in this wallet to unlock auto-refreshing quotes, longer history, and receipt export."
-                : `${tierLabel(holderTier)} utilities active: auto-refreshing quotes, extended history, receipt export.`}
+                ? "Hold 100,000+ 0xZAPS in this wallet to turn on auto-refreshing quotes, more saved zaps and receipts, and receipt JSON export."
+                : `${tierLabel(holderTier)} conveniences active: auto-refreshing quotes, more saved zaps and receipts, and receipt JSON export.`}
             {" "}
             <Link href="/token#utilities">Details →</Link>
           </span>
@@ -1197,8 +1197,8 @@ export default function AppPage(): React.JSX.Element {
           </div>
 
           <div className={styles.auditWarning} role="note">
-            <strong>Pre-audit funds-at-risk warning.</strong>
-            <span>Creation is open for this bounded route. Fund only what you can lose; contracts have not completed an external audit.</span>
+            <strong>Funds at risk.</strong>
+            <span>Creation is open for this bounded route. The contracts have not been externally audited. Fund only what you can lose.</span>
           </div>
 
           <div className={styles.segment}>
@@ -1355,7 +1355,7 @@ export default function AppPage(): React.JSX.Element {
               className="btn btnGhost"
               disabled={!canExportReceipts(holderTier) || transactions.length === 0}
               onClick={exportReceipts}
-              title={canExportReceipts(holderTier) ? undefined : "Unlocks with 100,000+ 0xZAPS in the connected wallet"}
+              title={canExportReceipts(holderTier) ? undefined : "Needs 100,000+ 0xZAPS in the connected wallet"}
               type="button"
             >
               Export receipts (JSON)

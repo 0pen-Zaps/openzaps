@@ -6,7 +6,7 @@ import { useEffect, useRef, useState } from "react";
  * Rolls every numeric run inside a string up from zero when it scrolls into view.
  *
  * Takes the finished string rather than a number so composite stats like
- * "63 / 0" or "9 / 9" animate both halves without the caller decomposing them.
+ * "12 / 3" animate both halves without the caller decomposing them.
  * The initial render is the final text, so the value is correct before (and
  * without) hydration — the animation only ever replays what is already there.
  */
