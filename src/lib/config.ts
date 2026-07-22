@@ -56,10 +56,14 @@ export function explorer(addr: string): string {
 
 export const LINKS = {
   github: "https://github.com/nodar/openzaps",
+  x: "https://x.com/0xzaps",
   clanker: TOKEN_LAUNCH.tradeUrl,
   tokenExplorer: TOKEN_LAUNCH.contractUrl,
   buy: buyUrl(),
 } as const;
+
+/** Official X (Twitter) handle, for twitter:site/creator card tags. */
+export const X_HANDLE = "@0xzaps";
 
 export const STATUS = {
   // Honest posture — see docs/invariant-spec.md production-readiness gate.
