@@ -36,12 +36,7 @@
   font-weight: 600;
   line-height: 1;
   letter-spacing: -0.02em;
-  background: var(--grad-brand);
-  background-size: 240% 100%;
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
-  animation: shift 7s ease infinite;
+  color: var(--accent);
 }
 
 .title {

@@ -240,17 +240,10 @@ a {
 }
 
 .gradientText {
-  background: var(--grad-text);
-  background-size: 220% 100%;
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
-  animation: gradientSweep 9s ease-in-out infinite alternate;
-}
-
-@keyframes gradientSweep {
-  from { background-position: 0% 50%; }
-  to { background-position: 100% 50%; }
+  /* The accent is flat now, so this no longer needs to clip a gradient to the
+     glyphs — and the sweep it used to run animated background-position on a
+     solid colour, which is an infinite compositor job for no visible change. */
+  color: var(--accent);
 }
 
 /* Buttons (shared across nav, hero, pages) */
@@ -322,9 +315,7 @@ a {
 .btnPrimary {
   color: var(--bg);
   background: var(--grad-brand);
-  background-size: 160% 160%;
   box-shadow: none;
-  animation: shift 6s ease infinite;
 }
 
 .btnPrimary:hover {
