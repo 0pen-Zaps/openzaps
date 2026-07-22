@@ -632,6 +632,34 @@
   gap: 1rem;
 }
 
+.receiptLinks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem 1.1rem;
+}
+
+.zapHistory {
+  display: grid;
+  gap: 0.35rem;
+  margin-top: 0.5rem;
+  padding-top: 0.6rem;
+  border-top: 1px solid var(--line-soft);
+}
+
+.zapHistory small {
+  color: var(--muted);
+}
+
+.zapHistory span {
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.zapHistory a {
+  color: var(--mint-2);
+  font-size: 0.78rem;
+}
+
 .receiptHead a {
   font-size: 0.82rem;
 }

@@ -29,6 +29,7 @@ export function SiteFooter(): React.JSX.Element {
           <div className={styles.col}>
             <h3>Product</h3>
             <Link href="/app">Open the app</Link>
+            <Link href="/dashboard">Live dashboard</Link>
             <Link href="/docs">Developer docs</Link>
             <Link href="/roadmap">Roadmap</Link>
           </div>

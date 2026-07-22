@@ -130,6 +130,9 @@ export default function Home(): React.JSX.Element {
             <Link href="/app" className="btn btnGhost btnLg">
               Open policy console
             </Link>
+            <Link href="/dashboard" className="btn btnGhost btnLg">
+              Live dashboard
+            </Link>
             <Link href="/docs" className="btn btnPrimary btnLg">
               Read docs
             </Link>

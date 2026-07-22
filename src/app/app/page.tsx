@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   createPublicClient,
@@ -17,6 +18,12 @@ import {
 } from "viem";
 import { OpenZapMark } from "@/components/OpenZapMark";
 import { trackEvent } from "@/lib/analytics";
+import {
+  ACTIVITY_FROM_BLOCK,
+  assetSymbolFor,
+  emergencyExitEvent,
+  executedEvent,
+} from "@/lib/activity";
 import {
   MAX_EXECUTION_FEE_PER_GAS,
   MAX_EXECUTION_GAS,
@@ -72,6 +79,13 @@ type TransactionRecord = {
 };
 
 type HealthState = "checking" | "ready" | "degraded";
+type ZapHistoryEntry = {
+  label: string;
+  txHash: Hex;
+  amount: bigint;
+  assetSymbol: string;
+};
+type ZapHistoryState = "loading" | "unavailable" | ZapHistoryEntry[];
 type ObservableProvider = EIP1193Provider & {
   on?: (event: string, listener: (value: unknown) => void) => void;
   removeListener?: (event: string, listener: (value: unknown) => void) => void;
@@ -109,6 +123,7 @@ export default function AppPage(): React.JSX.Element {
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
   const [transactions, setTransactions] = useState<TransactionRecord[]>([]);
+  const [zapHistory, setZapHistory] = useState<ZapHistoryState>([]);
   // Wallet event handlers and the async restore flow need the freshest values
   // without re-subscribing; refs bridge them across stale closures.
   const accountRef = useRef<Address | null>(null);
@@ -122,6 +137,66 @@ export default function AppPage(): React.JSX.Element {
   useEffect(() => {
     zapRef.current = zap;
   }, [zap]);
+
+  useEffect(() => {
+    const address = zap?.address;
+    let cancelled = false;
+    const loadHistory = async (): Promise<void> => {
+      if (!address) {
+        setZapHistory([]);
+        return;
+      }
+      setZapHistory("loading");
+      try {
+        const [executedLogs, exitLogs] = await Promise.all([
+          publicClient.getLogs({ address, event: executedEvent, fromBlock: ACTIVITY_FROM_BLOCK }),
+          publicClient.getLogs({ address, event: emergencyExitEvent, fromBlock: ACTIVITY_FROM_BLOCK }),
+        ]);
+        if (cancelled) return;
+        const entries: (ZapHistoryEntry & { block: bigint })[] = [
+          ...executedLogs.flatMap((log) =>
+            log.args.outAsset && log.args.amountOut !== undefined
+              ? [{
+                  label: "Executed",
+                  txHash: log.transactionHash,
+                  amount: log.args.amountOut,
+                  assetSymbol: assetSymbolFor(log.args.outAsset),
+                  block: log.blockNumber,
+                }]
+              : [],
+          ),
+          ...exitLogs.flatMap((log) =>
+            log.args.asset && log.args.amount !== undefined
+              ? [{
+                  label: "Recovered",
+                  txHash: log.transactionHash,
+                  amount: log.args.amount,
+                  assetSymbol: assetSymbolFor(log.args.asset),
+                  block: log.blockNumber,
+                }]
+              : [],
+          ),
+        ];
+        entries.sort((a, b) => (a.block < b.block ? 1 : -1));
+        setZapHistory(entries.map((entry) => ({
+          label: entry.label,
+          txHash: entry.txHash,
+          amount: entry.amount,
+          assetSymbol: entry.assetSymbol,
+        })));
+      } catch {
+        if (!cancelled) setZapHistory("unavailable");
+      }
+    };
+    queueMicrotask(() => {
+      if (!cancelled) void loadHistory();
+    });
+    return () => {
+      cancelled = true;
+    };
+    // transactions is a dependency so the history refetches after any
+    // confirmed receipt (execute, recover) for the selected zap.
+  }, [zap?.address, executedZap, transactions]);
 
   const assets = assetsForDirection(direction);
   const { inputSymbol, outputSymbol } = assets;
@@ -980,6 +1055,23 @@ export default function AppPage(): React.JSX.Element {
                 <div><small>Zap 0xZAPS</small><strong>{formatToken(zapZapsBalance)} 0xZAPS</strong></div>
                 <div><small>Zap native</small><strong>{formatToken(zapNativeBalance)} ETH</strong></div>
                 <div><small>Wallet output</small><strong>{formatToken(walletOutputBalance)} {outputSymbol}</strong></div>
+                <div className={styles.zapHistory}>
+                  <small>Onchain history</small>
+                  {zapHistory === "loading" && <span>Reading zap logs…</span>}
+                  {zapHistory === "unavailable" && <span>History unavailable — the RPC log query failed.</span>}
+                  {Array.isArray(zapHistory) && zapHistory.length === 0 && <span>No executions or recoveries yet.</span>}
+                  {Array.isArray(zapHistory) &&
+                    zapHistory.map((entry) => (
+                      <a
+                        href={explorerTransaction(entry.txHash)}
+                        key={`${entry.txHash}:${entry.label}:${entry.assetSymbol}`}
+                        target="_blank"
+                        rel="noreferrer"
+                      >
+                        {entry.label}: {formatToken(entry.amount)} {entry.assetSymbol} ↗
+                      </a>
+                    ))}
+                </div>
                 <button className="btn btnGhost" disabled={busy !== null} onClick={exportCurrentZap} type="button">Export public config</button>
                 <button className="btn btnGhost" disabled={busy !== null || recoverableBalance === 0n} onClick={() => void recoverFunds()} type="button">
                   {busy === "recover" ? "Recovering…" : "Emergency recover"}
@@ -1023,7 +1115,10 @@ export default function AppPage(): React.JSX.Element {
       <section className={`container ${styles.receipts}`} aria-label="Transaction receipts">
         <div className={styles.receiptHead}>
           <div><span className="eyebrow">Receipts</span><h2>Confirmed wallet activity.</h2></div>
-          <a href={ROBINHOOD_EXPLORER_URL} target="_blank" rel="noreferrer">Open Robinhood Blockscout ↗</a>
+          <div className={styles.receiptLinks}>
+            <Link href="/dashboard">Protocol-wide activity →</Link>
+            <a href={ROBINHOOD_EXPLORER_URL} target="_blank" rel="noreferrer">Open Robinhood Blockscout ↗</a>
+          </div>
         </div>
         {transactions.length === 0 ? (
           <p className={styles.empty}>Transactions appear here only after a successful Robinhood RPC receipt.</p>
