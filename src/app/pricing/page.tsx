@@ -2,6 +2,7 @@ import Link from "next/link";
 import { TOKEN } from "@/lib/config";
 import { JsonLd } from "@/components/JsonLd";
 import { pageMetadata, breadcrumbJsonLd } from "@/lib/seo";
+import { Reveal } from "@/components/Reveal";
 import styles from "../docs/docs.module.css";
 
 export const metadata = pageMetadata({
@@ -74,15 +75,15 @@ export default function PricingPage(): React.JSX.Element {
             and any future protocol fee must be visible in the same typed policy payload.
           </p>
           <div className={styles.table}>
-            {feeRows.map(([name, price, body]) => (
-              <div className={styles.row} key={name}>
+            {feeRows.map(([name, price, body], i) => (
+              <Reveal className={styles.row} delay={i * 45} key={name}>
                 <strong>
                   {name}
                   <br />
                   <span>{price}</span>
                 </strong>
                 <p>{body}</p>
-              </div>
+              </Reveal>
             ))}
           </div>
         </section>

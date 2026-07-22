@@ -5,6 +5,8 @@ import { JsonLd } from "@/components/JsonLd";
 import { TokenUtilities } from "@/components/TokenUtilities";
 import { TOKEN, TOKEN_LAUNCH, LINKS } from "@/lib/config";
 import { pageMetadata, absoluteUrl, SITE_URL } from "@/lib/seo";
+import { Reveal } from "@/components/Reveal";
+import { CopyButton } from "@/components/CopyButton";
 import styles from "./token.module.css";
 
 export const metadata = pageMetadata({
@@ -137,11 +139,11 @@ export default function TokenPage(): React.JSX.Element {
         </div>
 
         <div className={styles.facts}>
-          {facts.map((f) => (
-            <div className={styles.fact} key={f.k}>
+          {facts.map((f, i) => (
+            <Reveal className={styles.fact} delay={i * 60} key={f.k}>
               <span>{f.k}</span>
               <strong>{f.v}</strong>
-            </div>
+            </Reveal>
           ))}
         </div>
       </section>
@@ -154,6 +156,14 @@ export default function TokenPage(): React.JSX.Element {
             <a className={styles.addressValue} href={LINKS.tokenExplorer} target="_blank" rel="noreferrer">
               {TOKEN_LAUNCH.contract} ↗
             </a>
+            {/* The address is the highest-stakes string on the site — mistyping
+                it loses funds. Copying it must never require a manual selection. */}
+            <CopyButton
+              className={styles.addressCopy}
+              label="Copy address"
+              title={`Copy the ${TOKEN.symbol} contract address`}
+              value={TOKEN_LAUNCH.contract}
+            />
           </div>
           <TokenUtilities />
         </div>
@@ -166,12 +176,12 @@ export default function TokenPage(): React.JSX.Element {
           <h2>Three steps to {TOKEN.symbol}.</h2>
         </header>
         <div className={styles.steps}>
-          {steps.map((s) => (
-            <article className={styles.step} key={s.n}>
+          {steps.map((s, i) => (
+            <Reveal as="article" className={`${styles.step} spotlight`} delay={i * 90} key={s.n}>
               <span className={styles.stepNum}>{s.n}</span>
               <h3>{s.title}</h3>
               <p>{s.body}</p>
-            </article>
+            </Reveal>
           ))}
         </div>
         <div className={styles.buyRow}>
@@ -190,11 +200,11 @@ export default function TokenPage(): React.JSX.Element {
           </p>
         </header>
         <div className={styles.utilGrid}>
-          {utility.map((u) => (
-            <article className={styles.utilCard} key={u.title}>
+          {utility.map((u, i) => (
+            <Reveal as="article" className={`${styles.utilCard} spotlight`} delay={i * 80} key={u.title}>
               <h3>{u.title}</h3>
               <p>{u.body}</p>
-            </article>
+            </Reveal>
           ))}
         </div>
       </section>

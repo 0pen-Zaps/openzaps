@@ -2,6 +2,9 @@ import Link from "next/link";
 import { OpenZapMark } from "@/components/OpenZapMark";
 import { BuyButton } from "@/components/BuyButton";
 import { JsonLd } from "@/components/JsonLd";
+import { Reveal } from "@/components/Reveal";
+import { CountUp } from "@/components/CountUp";
+import { CopyButton } from "@/components/CopyButton";
 import { TOKEN, TOKEN_LAUNCH, LINKS, CHAIN, CONTRACTS, contractsLive, explorer } from "@/lib/config";
 import { POLICY_TEMPLATES } from "@/lib/policy";
 import { absoluteUrl } from "@/lib/seo";
@@ -143,8 +146,15 @@ export default function Home(): React.JSX.Element {
             <span>
               {TOKEN_LAUNCH.venue} {TOKEN_LAUNCH.version} · {TOKEN_LAUNCH.network}
             </span>
+            {/* Copying the address is the single most common action on this
+                block — make it one click instead of a select-and-drag. */}
+            <CopyButton
+              label={`CA ${TOKEN_LAUNCH.contract}`}
+              title={`Copy the ${TOKEN.symbol} contract address`}
+              value={TOKEN_LAUNCH.contract}
+            />
             <a href={LINKS.tokenExplorer} target="_blank" rel="noreferrer">
-              CA {TOKEN_LAUNCH.contract} ↗
+              Explorer ↗
             </a>
           </div>
           <div className={styles.proof}>
@@ -220,11 +230,13 @@ export default function Home(): React.JSX.Element {
 
       {/* ---------------- stat strip ---------------- */}
       <section className={`container ${styles.statStrip}`}>
-        {stats.map((s) => (
-          <div className={styles.stat} key={s.k}>
-            <strong>{s.v}</strong>
+        {stats.map((s, i) => (
+          <Reveal className={styles.stat} delay={i * 70} key={s.k}>
+            <strong>
+              <CountUp value={s.v} />
+            </strong>
             <span>{s.k}</span>
-          </div>
+          </Reveal>
         ))}
       </section>
 
@@ -256,65 +268,83 @@ export default function Home(): React.JSX.Element {
       </section>
 
       <section className={`container ${styles.section}`} id="workflow">
-        <header className={styles.head}>
+        <Reveal as="header" className={styles.head}>
           <span className="eyebrow">Product flow</span>
           <h2>Every useful automation starts as a reviewable policy.</h2>
           <p>
             The app is a production review console first: template selection, bounded policy design, simulation checks,
             audit history, and revoke controls before the wallet integration is allowed to touch mainnet funds.
           </p>
-        </header>
+        </Reveal>
         <div className={styles.modelGrid}>
-          {flow.map((step) => (
-            <article className={styles.modelCard} key={step.title}>
+          {flow.map((step, i) => (
+            <Reveal
+              as="article"
+              className={`${styles.modelCard} spotlight`}
+              delay={i * 90}
+              key={step.title}
+              style={{ "--sheen-delay": `${-i * 2.6}s` } as React.CSSProperties}
+            >
               <span className={styles.modelLabel}>{step.label}</span>
               <h3>{step.title}</h3>
               <p>{step.body}</p>
               <strong>{step.grade}</strong>
-            </article>
+            </Reveal>
           ))}
         </div>
       </section>
 
       {/* ---------------- protocol ---------------- */}
       <section className={`container ${styles.section}`} id="protocol">
-        <header className={styles.head}>
+        <Reveal as="header" className={styles.head}>
           <span className="eyebrow">Authority model</span>
           <h2>Execution authority must live somewhere explicit.</h2>
           <p>
             OpenZaps split creation, execution, and submission authority so you can walk away without handing an
             agent broad approvals or custody. Pick the surface that fits the workflow.
           </p>
-        </header>
+        </Reveal>
         <div className={styles.modelGrid}>
-          {authorityModels.map((m) => (
-            <article className={styles.modelCard} key={m.title}>
+          {authorityModels.map((m, i) => (
+            <Reveal
+              as="article"
+              className={`${styles.modelCard} spotlight`}
+              delay={i * 90}
+              key={m.title}
+              style={{ "--sheen-delay": `${-i * 3.1}s` } as React.CSSProperties}
+            >
               <span className={styles.modelLabel}>{m.label}</span>
               <h3>{m.title}</h3>
               <p>{m.body}</p>
               <strong>{m.grade}</strong>
-            </article>
+            </Reveal>
           ))}
         </div>
       </section>
 
       <section className={`container ${styles.section}`} id="templates">
-        <header className={styles.head}>
+        <Reveal as="header" className={styles.head}>
           <span className="eyebrow">Reusable templates</span>
           <h2>Start narrow. Expand only after the controls hold.</h2>
           <p>
             The live route starts with one exact Robinhood pool and a fixed adapter. Broader templates ship as their
             adapters and tokens receive the same review and fork coverage.
           </p>
-        </header>
+        </Reveal>
         <div className={styles.modelGrid}>
-          {POLICY_TEMPLATES.map((template) => (
-            <article className={styles.modelCard} key={template.id}>
+          {POLICY_TEMPLATES.map((template, i) => (
+            <Reveal
+              as="article"
+              className={`${styles.modelCard} spotlight`}
+              delay={i * 90}
+              key={template.id}
+              style={{ "--sheen-delay": `${-i * 2.2}s` } as React.CSSProperties}
+            >
               <span className={styles.modelLabel}>{template.production.replace("-", " ")}</span>
               <h3>{template.name}</h3>
               <p>{template.description}</p>
               <strong>{template.category}</strong>
-            </article>
+            </Reveal>
           ))}
         </div>
       </section>
@@ -330,11 +360,11 @@ export default function Home(): React.JSX.Element {
             (all documented in the linked repo). Not externally audited; we say so plainly.
           </p>
           <div className={styles.checkGrid}>
-            {security.map((c) => (
-              <div className={styles.check} key={c}>
+            {security.map((c, i) => (
+              <Reveal className={styles.check} delay={i * 60} key={c}>
                 <span>✓</span>
                 {c}
-              </div>
+              </Reveal>
             ))}
           </div>
           <a className={styles.repoLink} href={LINKS.github} target="_blank" rel="noreferrer">
@@ -356,10 +386,10 @@ export default function Home(): React.JSX.Element {
         <aside className={styles.agentCard}>
           <div className={styles.agentHead}>Hermes execution loop</div>
           {agentLoop.map((item, i) => (
-            <div className={styles.loopRow} key={item}>
+            <Reveal className={styles.loopRow} delay={i * 70} key={item}>
               <span>{String(i + 1).padStart(2, "0")}</span>
               <strong>{item}</strong>
-            </div>
+            </Reveal>
           ))}
         </aside>
       </section>
@@ -367,16 +397,16 @@ export default function Home(): React.JSX.Element {
       {/* ---------------- faq ---------------- */}
       <section className={`container ${styles.section}`} id="faq">
         <JsonLd data={homeFaqJsonLd} />
-        <header className={styles.head}>
+        <Reveal as="header" className={styles.head}>
           <span className="eyebrow">FAQ</span>
           <h2>Straight answers.</h2>
-        </header>
+        </Reveal>
         <div className={styles.faqs}>
-          {faqs.map((f) => (
-            <details className={styles.faq} key={f.q}>
+          {faqs.map((f, i) => (
+            <Reveal as="details" className={styles.faq} delay={i * 60} key={f.q}>
               <summary>{f.q}</summary>
               <p>{f.a}</p>
-            </details>
+            </Reveal>
           ))}
         </div>
       </section>

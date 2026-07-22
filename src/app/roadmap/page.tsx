@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { JsonLd } from "@/components/JsonLd";
 import { pageMetadata, breadcrumbJsonLd } from "@/lib/seo";
+import { Reveal } from "@/components/Reveal";
 import styles from "../docs/docs.module.css";
 
 export const metadata = pageMetadata({
@@ -78,14 +79,14 @@ export default function RoadmapPage(): React.JSX.Element {
         <section className={styles.section}>
           <h2>Release path</h2>
           <div className={styles.timeline}>
-            {phases.map(([phase, title, body]) => (
-              <article className={styles.phase} key={phase}>
+            {phases.map(([phase, title, body], i) => (
+              <Reveal className={styles.phase} delay={i * 45} key={phase}>
                 <span>{phase}</span>
                 <div>
                   <h3>{title}</h3>
                   <p>{body}</p>
                 </div>
-              </article>
+              </Reveal>
             ))}
           </div>
         </section>

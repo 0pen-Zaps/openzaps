@@ -5,6 +5,7 @@ import { formatUnits } from "viem";
 
 import { OPENZAP_CONTRACTS, explorerTransaction, explorerAddress } from "@/lib/robinhood";
 import type { ActivityEntry, ProtocolActivity } from "@/lib/activity";
+import { CountUp } from "@/components/CountUp";
 import styles from "./dashboard.module.css";
 
 export type ActivityPayload = ProtocolActivity & { headBlock: string };
@@ -12,7 +13,13 @@ export type ActivityPayload = ProtocolActivity & { headBlock: string };
 type FeedState =
   | { status: "loading" }
   | { status: "unavailable" }
-  | { status: "ready"; data: ActivityPayload; staleSince: string | null };
+  | {
+      status: "ready";
+      data: ActivityPayload;
+      staleSince: string | null;
+      /** Rows that appeared in this payload but not the previous one. */
+      fresh: ReadonlySet<string>;
+    };
 
 const TYPE_LABEL: Record<ActivityEntry["type"], string> = {
   created: "Zap created",
@@ -22,19 +29,28 @@ const TYPE_LABEL: Record<ActivityEntry["type"], string> = {
 
 export function DashboardActivity({ initial }: { initial: ActivityPayload | null }): React.JSX.Element {
   const [state, setState] = useState<FeedState>(
-    initial ? { status: "ready", data: initial, staleSince: null } : { status: "loading" },
+    initial ? { status: "ready", data: initial, staleSince: null, fresh: EMPTY } : { status: "loading" },
   );
   const requestSeq = useRef(0);
   const headingRef = useRef<HTMLHeadingElement>(null);
+  const [refreshing, setRefreshing] = useState(false);
 
   const load = useCallback(async (): Promise<void> => {
     const seq = ++requestSeq.current;
+    setRefreshing(true);
     try {
       const response = await fetch("/api/protocol/activity", { cache: "no-store" });
       if (!response.ok) throw new Error(String(response.status));
       const data = (await response.json()) as ActivityPayload;
       if (seq !== requestSeq.current) return; // an out-of-order response must never overwrite fresher data
-      setState({ status: "ready", data, staleSince: null });
+      // Diffed inside the updater so it stays a pure function of the previous
+      // state — no ref read during render, and safe under StrictMode replay.
+      setState((current) => ({
+        status: "ready",
+        data,
+        staleSince: null,
+        fresh: current.status === "ready" ? diffRows(current.data, data) : EMPTY,
+      }));
     } catch {
       if (seq !== requestSeq.current) return;
       setState((current) =>
@@ -42,6 +58,8 @@ export function DashboardActivity({ initial }: { initial: ActivityPayload | null
           ? { ...current, staleSince: current.staleSince ?? new Date().toISOString() }
           : { status: "unavailable" },
       );
+    } finally {
+      if (seq === requestSeq.current) setRefreshing(false);
     }
   }, []);
 
@@ -58,15 +76,16 @@ export function DashboardActivity({ initial }: { initial: ActivityPayload | null
   }, [load]);
 
   const stale = state.status === "ready" ? state.staleSince : null;
+  const fresh = state.status === "ready" ? state.fresh : EMPTY;
 
   return (
     <>
       <section className={`container ${styles.metrics}`} aria-label="Live protocol totals">
         {state.status === "ready" ? (
           <>
-            <Metric label="Zaps created" value={String(state.data.stats.zapsCreated)} />
-            <Metric label="Executions" value={String(state.data.stats.executions)} />
-            <Metric label="Recoveries" value={String(state.data.stats.recoveries)} />
+            <Metric count label="Zaps created" value={String(state.data.stats.zapsCreated)} />
+            <Metric count label="Executions" value={String(state.data.stats.executions)} />
+            <Metric count label="Recoveries" value={String(state.data.stats.recoveries)} />
             <Metric
               label="Executed volume"
               value={
@@ -77,12 +96,23 @@ export function DashboardActivity({ initial }: { initial: ActivityPayload | null
             />
           </>
         ) : (
-          <>
-            <Metric label="Zaps created" value={state.status === "loading" ? "…" : "—"} srValue={state.status === "loading" ? "loading" : "unavailable"} />
-            <Metric label="Executions" value={state.status === "loading" ? "…" : "—"} srValue={state.status === "loading" ? "loading" : "unavailable"} />
-            <Metric label="Recoveries" value={state.status === "loading" ? "…" : "—"} srValue={state.status === "loading" ? "loading" : "unavailable"} />
-            <Metric label="Executed volume" value={state.status === "loading" ? "…" : "—"} srValue={state.status === "loading" ? "loading" : "unavailable"} />
-          </>
+          ["Zaps created", "Executions", "Recoveries", "Executed volume"].map((label, i) =>
+            state.status === "loading" ? (
+              // Shaped placeholders rather than an ellipsis: the strip keeps its
+              // height and reads as "arriving" instead of "empty".
+              <div className={styles.skelMetric} key={label}>
+                <span
+                  aria-label={`${label}: loading`}
+                  className={`skeleton ${styles.skelValue}`}
+                  style={{ animationDelay: `${-i * 0.18}s` }}
+                  role="status"
+                />
+                <span aria-hidden className={`skeleton ${styles.skelLabel}`} style={{ animationDelay: `${-i * 0.18}s` }} />
+              </div>
+            ) : (
+              <Metric key={label} label={label} value="—" srValue="unavailable" />
+            ),
+          )
         )}
       </section>
 
@@ -93,6 +123,7 @@ export function DashboardActivity({ initial }: { initial: ActivityPayload | null
             <h2 ref={headingRef} tabIndex={-1}>Onchain activity feed.</h2>
           </div>
           <p className={styles.updated}>
+            {refreshing && <span aria-hidden className={`spinner ${styles.updatedSpinner}`} />}
             {state.status === "ready"
               ? `Head block ${Number(state.data.headBlock).toLocaleString()} · refreshed ${new Date(state.data.updatedAt).toLocaleTimeString("en-US")}`
               : state.status === "loading"
@@ -110,7 +141,25 @@ export function DashboardActivity({ initial }: { initial: ActivityPayload | null
           )}
         </div>
 
-        {state.status === "loading" && <p className={styles.empty}>Reading creations, executions, and recoveries from chain logs…</p>}
+        {state.status === "loading" && (
+          <>
+            <p className={styles.empty}>Reading creations, executions, and recoveries from chain logs…</p>
+            {/* Shaped placeholders in the feed's real geometry, so the rows do not
+                jump when the first payload lands. Negative, index-derived delays
+                start each bar mid-cycle: the shimmer travels down the list
+                instead of every row pulsing in lockstep. */}
+            <div aria-hidden className={styles.feed}>
+              {Array.from({ length: 5 }, (_, i) => (
+                <div className={styles.skelRow} key={i} style={{ "--row-delay": `${-i * 0.14}s` } as React.CSSProperties}>
+                  <i className="skeleton" />
+                  <i className="skeleton" />
+                  <i className="skeleton" />
+                  <i className="skeleton" />
+                </div>
+              ))}
+            </div>
+          </>
+        )}
 
         {state.status === "unavailable" && (
           <div className={styles.unavailable} role="alert">
@@ -135,11 +184,13 @@ export function DashboardActivity({ initial }: { initial: ActivityPayload | null
 
         {state.status === "ready" && state.data.activity.length > 0 && (
           <div className={styles.feed}>
-            {state.data.activity.map((entry) => (
+            {state.data.activity.map((entry, i) => (
               <a
                 className={styles.feedRow}
+                data-fresh={fresh.has(`${entry.txHash}:${entry.logIndex}`)}
                 href={explorerTransaction(entry.txHash)}
                 key={`${entry.txHash}:${entry.logIndex}`}
+                style={{ "--row-delay": `${Math.min(i, 10) * 45}ms` } as React.CSSProperties}
                 target="_blank"
                 rel="noreferrer"
               >
@@ -173,13 +224,42 @@ export function DashboardActivity({ initial }: { initial: ActivityPayload | null
   );
 }
 
-function Metric({ label, value, srValue }: { label: string; value: string; srValue?: string }): React.JSX.Element {
+function Metric({
+  label,
+  value,
+  srValue,
+  count = false,
+}: {
+  label: string;
+  value: string;
+  srValue?: string;
+  /** Roll the number up on first view. Off for composite/textual values. */
+  count?: boolean;
+}): React.JSX.Element {
   return (
     <div className={styles.metric}>
-      <strong aria-label={srValue ? `${label}: ${srValue}` : undefined}>{value}</strong>
+      <strong aria-label={srValue ? `${label}: ${srValue}` : undefined}>
+        {count ? <CountUp value={value} /> : value}
+      </strong>
       <span>{label}</span>
     </div>
   );
+}
+
+const EMPTY: ReadonlySet<string> = new Set();
+
+const rowKey = (entry: ActivityEntry): string => `${entry.txHash}:${entry.logIndex}`;
+
+/**
+ * Row keys present in `next` but not in `previous`.
+ *
+ * Pure, so it can run inside a setState updater. The server-rendered first
+ * payload has no predecessor and therefore highlights nothing — flashing every
+ * row on initial load would carry no information.
+ */
+function diffRows(previous: ActivityPayload, next: ActivityPayload): ReadonlySet<string> {
+  const before = new Set(previous.activity.map(rowKey));
+  return new Set(next.activity.map(rowKey).filter((key) => !before.has(key)));
 }
 
 function formatAmount(wei: string): string {

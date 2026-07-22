@@ -398,3 +398,74 @@
     grid-template-columns: 1fr;
   }
 }
+
+/* ---------------- motion layer ---------------- */
+
+.addressCopy {
+  margin-top: 0.6rem;
+}
+
+.fact,
+.step,
+.utilCard,
+.verifyRow {
+  transition:
+    transform var(--dur-3) var(--ease-emphasis),
+    border-color var(--dur-3) var(--ease-standard),
+    background var(--dur-3) var(--ease-standard),
+    box-shadow var(--dur-3) var(--ease-standard);
+}
+
+.fact:hover,
+.utilCard:hover,
+.step:hover {
+  transform: translateY(-4px);
+  border-color: rgba(142, 160, 255, 0.4);
+  box-shadow: 0 16px 38px rgba(0, 0, 0, 0.42);
+}
+
+.fact strong,
+.stepNum {
+  font-variant-numeric: tabular-nums;
+}
+
+/* The step number inflates and warms up, marking which card is under focus. */
+.stepNum {
+  display: inline-flex;
+  transition: transform var(--dur-3) var(--ease-spring), color var(--dur-2) var(--ease-standard);
+}
+
+.step:hover .stepNum,
+.step:focus-within .stepNum {
+  color: var(--mint-2);
+  transform: scale(1.14) translateY(-2px);
+}
+
+.verifyRow:hover {
+  transform: translateX(4px);
+}
+
+/* Trailing arrow leans out on hover to advertise the external jump. */
+.verifyRow i {
+  display: inline-block;
+  font-style: normal;
+  transition: transform var(--dur-2) var(--ease-emphasis);
+}
+
+.verifyRow:hover i {
+  transform: translate(3px, -3px);
+}
+
+/* The hero mark breathes rather than sitting inert above the fold. */
+.heroMark svg {
+  animation: tokenBreathe 7s var(--ease-standard) infinite;
+}
+
+@keyframes tokenBreathe {
+  0%, 100% { transform: translateY(0) scale(1); filter: drop-shadow(0 0 34px rgba(33, 208, 122, 0.28)); }
+  50% { transform: translateY(-9px) scale(1.025); filter: drop-shadow(0 0 54px rgba(33, 208, 122, 0.45)); }
+}
+
+.addressValue {
+  transition: color var(--dur-2) var(--ease-standard), letter-spacing var(--dur-3) var(--ease-standard);
+}

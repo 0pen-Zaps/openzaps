@@ -21,6 +21,26 @@
 
   --container: min(1440px, calc(100% - 3rem));
   --radius: 0.5rem;
+  --pill: 999px;
+
+  /* ---- motion tokens ----
+     One vocabulary of curves and durations so every surface accelerates and
+     settles the same way. `emphasis` is the expo-out used for anything that
+     enters; `spring` overshoots slightly and is reserved for press/confirm. */
+  --ease-emphasis: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-standard: cubic-bezier(0.4, 0, 0.2, 1);
+  --ease-exit: cubic-bezier(0.4, 0, 1, 1);
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+
+  --dur-1: 120ms;  /* state flips: color, opacity */
+  --dur-2: 200ms;  /* hover, small transforms */
+  --dur-3: 320ms;  /* cards, panels */
+  --dur-4: 560ms;  /* entrances */
+  --dur-5: 840ms;  /* hero-scale reveals */
+
+  /* Distance an element travels on entrance. Zeroed under reduced motion so a
+     single override neutralises every reveal at once. */
+  --reveal-shift: 16px;
 }
 
 * {
@@ -210,6 +230,48 @@ a {
   border-radius: 0.9rem;
 }
 
+.btn {
+  position: relative;
+  overflow: hidden;
+  transition:
+    transform var(--dur-2) var(--ease-emphasis),
+    box-shadow var(--dur-3) var(--ease-standard),
+    border-color var(--dur-2) var(--ease-standard),
+    background var(--dur-2) var(--ease-standard),
+    color var(--dur-2) var(--ease-standard);
+}
+
+/* A light sweep that crosses the button on hover. Sits behind the label via
+   z-index on the children, so it never washes out text. */
+.btn::before {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -60%;
+  z-index: 0;
+  width: 45%;
+  content: "";
+  background: linear-gradient(100deg, transparent, rgba(255, 255, 255, 0.28), transparent);
+  transform: skewX(-18deg);
+  opacity: 0;
+  pointer-events: none;
+}
+
+.btn > * {
+  position: relative;
+  z-index: 1;
+}
+
+.btn:hover::before {
+  animation: btnSweep 720ms var(--ease-standard);
+}
+
+/* Press feedback: every button dips toward the surface it sits on. */
+.btn:active {
+  transform: translateY(1px) scale(0.985);
+  transition-duration: var(--dur-1);
+}
+
 .btnPrimary {
   color: #04130c;
   background: var(--grad-brand);
@@ -223,6 +285,10 @@ a {
   box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.16) inset, 0 18px 50px rgba(107, 92, 255, 0.5), 0 8px 24px rgba(33, 208, 122, 0.3);
 }
 
+.btnPrimary:active {
+  transform: translateY(0) scale(0.985);
+}
+
 .btnGhost {
   border: 1px solid var(--line);
   color: var(--text);
@@ -234,6 +300,61 @@ a {
   border-color: rgba(255, 255, 255, 0.2);
   background: rgba(255, 255, 255, 0.06);
   color: var(--fg);
+}
+
+.btnGhost:active {
+  transform: translateY(0) scale(0.985);
+}
+
+/* Disabled buttons stop advertising interactivity entirely. */
+.btn[disabled],
+.btn[aria-disabled="true"] {
+  cursor: not-allowed;
+  opacity: 0.55;
+  transform: none !important;
+  animation: none;
+}
+
+.btn[disabled]::before,
+.btn[aria-disabled="true"]::before,
+.btn[data-busy="true"]::before {
+  animation: none !important;
+}
+
+/* Busy is distinct from disabled: the action was accepted and is in flight, so
+   the button stays at full contrast and grows a spinner rather than dimming out
+   as if the click had been ignored. */
+.btn[data-busy="true"] {
+  cursor: progress;
+  /* Wins over the `[disabled]` dimming above: these buttons are disabled while
+     the transaction is in flight, but must not read as rejected. */
+  opacity: 1;
+  transform: none !important;
+}
+
+.btn[data-busy="true"]::after {
+  width: 0.85em;
+  height: 0.85em;
+  flex: 0 0 auto;
+  content: "";
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  opacity: 0.9;
+  animation: spin 620ms linear infinite;
+}
+
+/* Inline spinner usable inside any button or status row. */
+.spinner {
+  display: inline-block;
+  width: 0.85em;
+  height: 0.85em;
+  flex: 0 0 auto;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  opacity: 0.85;
+  animation: spin 620ms linear infinite;
 }
 
 /* ---------------- animations ---------------- */
@@ -252,11 +373,163 @@ a {
   50% { opacity: 0.35; }
 }
 
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes btnSweep {
+  from { left: -60%; opacity: 1; }
+  to { left: 130%; opacity: 0; }
+}
+
+/* Skeleton shimmer: a band of light travelling across a placeholder block. */
+@keyframes shimmer {
+  from { background-position: -160% 0; }
+  to { background-position: 260% 0; }
+}
+
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(var(--reveal-shift)); }
+  to { opacity: 1; transform: none; }
+}
+
+@keyframes popIn {
+  from { opacity: 0; transform: scale(0.94); }
+  to { opacity: 1; transform: none; }
+}
+
+/* A ring that expands and dissolves — used to acknowledge a completed action. */
+@keyframes ripple {
+  from { box-shadow: 0 0 0 0 rgba(55, 240, 154, 0.5); }
+  to { box-shadow: 0 0 0 12px rgba(55, 240, 154, 0); }
+}
+
+/* One-shot highlight when a row's value changes underneath the user. */
+@keyframes flashIn {
+  0% { background-color: rgba(107, 92, 255, 0.22); }
+  100% { background-color: transparent; }
+}
+
+/* ---------------- scroll reveal ----------------
+   Deliberately inverted relative to a scroll-timeline approach: the rendered
+   HTML is visible by default, and only a mounted client observer opts an
+   element into the hidden state (`data-reveal="hidden"`). A crawler, a
+   JS-disabled browser, or a reduced-motion user therefore always sees content.
+   See the note in page.module.css about `view()` timelines evaluating to 0. */
+[data-reveal] {
+  will-change: opacity, transform;
+}
+
+/* The attribute is doubled to reach specificity (0,2,0). A revealed element is
+   usually also a CSS-Module class that declares its own `transition` (cards
+   animate transform/box-shadow on hover), and that class ships in a chunk
+   loaded AFTER globals — at equal specificity it would win and silently
+   replace the reveal's transition, making every entrance snap instead of fade. */
+[data-reveal][data-reveal="hidden"] {
+  opacity: 0;
+  transform: translateY(var(--reveal-shift));
+}
+
+[data-reveal][data-reveal="shown"] {
+  opacity: 1;
+  transform: none;
+  transition:
+    opacity var(--dur-4) var(--ease-emphasis),
+    transform var(--dur-4) var(--ease-emphasis);
+  transition-delay: var(--reveal-delay, 0ms);
+}
+
+/* Children of a revealed group cascade instead of arriving as one slab. */
+[data-reveal-group] > * {
+  transition-delay: var(--reveal-delay, 0ms);
+}
+
+/* ---------------- skeleton ---------------- */
+.skeleton {
+  position: relative;
+  overflow: hidden;
+  border-radius: 0.4rem;
+  background:
+    linear-gradient(
+      90deg,
+      rgba(255, 255, 255, 0.04) 0%,
+      rgba(255, 255, 255, 0.1) 45%,
+      rgba(255, 255, 255, 0.04) 90%
+    );
+  background-size: 220% 100%;
+  color: transparent;
+  animation: shimmer 1.5s var(--ease-standard) infinite;
+}
+
+/* ---------------- spotlight ----------------
+   Cards tagged with this follow the cursor with a soft radial highlight. The
+   --mx/--my custom properties are written by the Spotlight client component;
+   with no JS they simply stay at the 50%/50% fallback and nothing moves. */
+.spotlight {
+  position: relative;
+}
+
+.spotlight::after {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  content: "";
+  border-radius: inherit;
+  background: radial-gradient(
+    18rem 18rem at var(--mx, 50%) var(--my, 50%),
+    rgba(142, 160, 255, 0.13),
+    transparent 68%
+  );
+  opacity: 0;
+  transition: opacity var(--dur-3) var(--ease-standard);
+  pointer-events: none;
+}
+
+.spotlight:hover::after,
+.spotlight:focus-within::after {
+  opacity: 1;
+}
+
+/* ---------------- reduced motion ----------------
+   A single global gate. Anything decorative collapses to an instant state
+   change rather than being individually opted out at each call site. */
 @media (prefers-reduced-motion: reduce) {
-  html { scroll-behavior: auto; }
-  .btnPrimary { animation: none; }
-  .badge::before { animation: none; }
-  .gradientText { animation: none; }
+  :root {
+    --reveal-shift: 0px;
+  }
+
+  html {
+    scroll-behavior: auto;
+  }
+
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+    /* Delays must be neutralised too. With `animation-fill-mode: both` an
+       element holds its FIRST keyframe — opacity 0 for every entrance here —
+       for the whole delay. Zeroing only the duration would still leave
+       staggered content blank and then popping in, which is precisely the
+       effect this media query exists to remove. */
+    animation-delay: -1ms !important;
+    transition-delay: 0s !important;
+  }
+
+  /* Spinners are the one exception: they are the only signal that async work is
+     still running, so they keep turning — just slowly enough not to provoke. */
+  .spinner,
+  .btn[data-busy="true"]::after {
+    animation-duration: 1.8s !important;
+    animation-iteration-count: infinite !important;
+  }
+
+  [data-reveal][data-reveal="hidden"] {
+    opacity: 1;
+    transform: none;
+  }
 }
 
 @media (max-width: 780px) {

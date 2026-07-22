@@ -926,3 +926,165 @@
   color: var(--muted);
   line-height: 1.6;
 }
+
+/* ---------------- ported motion patterns ---------------- */
+
+/* Occasional glint across each card. The long 0–66% dead zone is what makes it
+   read as a glint rather than a strobe, and --sheen-delay is set per card to a
+   NEGATIVE value so each starts mid-cycle — a grid never pulses in lockstep,
+   and unlike a positive delay there is no dead wait on first paint. */
+.modelCard::before {
+  position: absolute;
+  top: -35%;
+  bottom: -35%;
+  left: -60%;
+  z-index: 0;
+  width: 26%;
+  content: "";
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.14), transparent);
+  rotate: 13deg;
+  mix-blend-mode: screen;
+  pointer-events: none;
+  animation: cardSheen 9s var(--ease-standard) infinite;
+  animation-delay: var(--sheen-delay, 0s);
+}
+
+@keyframes cardSheen {
+  0%, 66% { transform: translateX(0); opacity: 0; }
+  72% { opacity: 0.75; }
+  86%, 100% { transform: translateX(620%); opacity: 0; }
+}
+
+/* Keyboard users get the same lift as pointer users. */
+.modelCard:focus-within {
+  transform: translateY(-5px);
+  border-color: rgba(107, 92, 255, 0.48);
+}
+
+/* The route connector reads as flowing rather than static. */
+.route i {
+  width: 1.6rem;
+  height: 1px;
+  background: repeating-linear-gradient(
+    90deg,
+    rgba(55, 240, 154, 0.9) 0 4px,
+    transparent 4px 10px
+  );
+  background-size: 20px 1px;
+  animation: routeFlow 900ms linear infinite;
+}
+
+@keyframes routeFlow {
+  to { background-position: 20px 0; }
+}
+
+/* Hover intent: the whole card widens the gap on its trailing arrow. */
+.repoLink {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  transition: gap var(--dur-2) var(--ease-emphasis), border-color var(--dur-2) var(--ease-standard);
+}
+
+.repoLink:hover {
+  gap: 0.7rem;
+}
+
+/* Rotating conic ring on the closing CTA. `@property` makes --angle a real
+   animatable angle; the mask-composite pair carves the fill out so only a
+   1px ring remains. */
+@property --angle {
+  syntax: "<angle>";
+  initial-value: 0deg;
+  inherits: false;
+}
+
+.ctaInner {
+  position: relative;
+}
+
+.ctaInner::before {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  padding: 1px;
+  content: "";
+  border-radius: inherit;
+  background: conic-gradient(
+    from var(--angle),
+    rgba(55, 240, 154, 0.55),
+    rgba(142, 160, 255, 0.5),
+    rgba(107, 92, 255, 0.45),
+    rgba(55, 240, 154, 0.55)
+  );
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  animation: ctaRing 9s linear infinite;
+  pointer-events: none;
+}
+
+.ctaInner > * {
+  position: relative;
+  z-index: 1;
+}
+
+@keyframes ctaRing {
+  to { --angle: 360deg; }
+}
+
+/* FAQ: rotate the marker and ease the answer open instead of snapping. */
+.faq {
+  transition: border-color var(--dur-2) var(--ease-standard), background var(--dur-2) var(--ease-standard);
+}
+
+.faq:hover {
+  border-color: rgba(142, 160, 255, 0.35);
+}
+
+.faq summary::after {
+  display: inline-block;
+  transition: transform var(--dur-3) var(--ease-spring);
+}
+
+.faq[open] summary::after {
+  transform: rotate(180deg);
+}
+
+.faq[open] p {
+  animation: fadeUp var(--dur-3) var(--ease-emphasis) both;
+}
+
+/* Proof chips settle in after the hero copy and lift on hover. */
+.proof span {
+  transition:
+    transform var(--dur-2) var(--ease-emphasis),
+    border-color var(--dur-2) var(--ease-standard),
+    color var(--dur-2) var(--ease-standard);
+}
+
+.proof span:hover {
+  transform: translateY(-2px);
+  border-color: rgba(142, 160, 255, 0.4);
+  color: var(--fg);
+}
+
+/* Ticker: mask the edges so the loop dissolves instead of hard-cutting. */
+.ticker {
+  mask-image: linear-gradient(90deg, transparent, #000 6%, #000 94%, transparent);
+}
+
+.stat {
+  transition: background var(--dur-3) var(--ease-standard);
+}
+
+.stat:hover {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.06), rgba(8, 9, 10, 0.6));
+}
+
+/* Local copy — CSS Modules scope animation-name; see status.module.css. */
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(var(--reveal-shift)); }
+  to { opacity: 1; transform: none; }
+}

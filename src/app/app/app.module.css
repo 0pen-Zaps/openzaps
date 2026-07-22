@@ -857,3 +857,205 @@
     grid-template-columns: minmax(0, 1fr);
   }
 }
+/* ---------------- motion layer ----------------
+   The console is where money moves, so motion here is strictly functional:
+   it confirms that an action registered, marks which step is current, and
+   shows when a value changed underneath the user. Nothing here is decorative. */
+
+/* Status messages slide in from the top edge of their slot. Because .notice is
+   a persistent live region that collapses when empty, the animation is scoped
+   to the non-empty state — an empty box must not animate its own collapse. */
+.notice:not(:empty),
+.error {
+  animation: noticeIn var(--dur-3) var(--ease-emphasis) both;
+}
+
+@keyframes noticeIn {
+  from { opacity: 0; transform: translateY(-6px); }
+  to { opacity: 1; transform: none; }
+}
+
+/* Errors get one attention pulse. Once, not looping: a persistent throb on a
+   failure message is stressful and stops conveying anything after a second. */
+.error {
+  animation:
+    noticeIn var(--dur-3) var(--ease-emphasis) both,
+    errorPulse 900ms var(--ease-standard) 1;
+}
+
+@keyframes errorPulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(255, 78, 78, 0); }
+  35% { box-shadow: 0 0 0 5px rgba(255, 78, 78, 0.16); }
+}
+
+/* ---------------- flow steps ---------------- */
+
+.flowStep {
+  position: relative;
+  transition:
+    border-color var(--dur-3) var(--ease-standard),
+    background var(--dur-3) var(--ease-standard);
+}
+
+.flowStep > span {
+  transition:
+    transform var(--dur-3) var(--ease-spring),
+    border-color var(--dur-3) var(--ease-standard),
+    background var(--dur-3) var(--ease-standard),
+    color var(--dur-2) var(--ease-standard);
+}
+
+/* A completed step confirms itself with a single expanding ring. */
+.flowStep[data-done="true"] {
+  border-color: rgba(55, 240, 154, 0.24);
+  background: rgba(33, 208, 122, 0.035);
+}
+
+.flowStep[data-done="true"] > span {
+  transform: scale(1.06);
+  animation: ripple 700ms var(--ease-standard) 1;
+}
+
+/* The step the user still has to act on breathes gently so the eye lands on it
+   without having to re-read the whole column. */
+.flowStep:not([data-done="true"]):focus-within,
+.flowStep:not([data-done="true"]):hover {
+  border-color: rgba(142, 160, 255, 0.34);
+  background: rgba(255, 255, 255, 0.03);
+}
+
+/* ---------------- inputs ---------------- */
+
+.input,
+.range {
+  transition:
+    border-color var(--dur-2) var(--ease-standard),
+    background var(--dur-2) var(--ease-standard),
+    box-shadow var(--dur-2) var(--ease-standard);
+}
+
+.input:focus {
+  box-shadow: 0 0 0 3px rgba(107, 92, 255, 0.18);
+}
+
+.input:disabled {
+  cursor: not-allowed;
+}
+
+.seg,
+.segOn {
+  position: relative;
+  transition:
+    color var(--dur-2) var(--ease-standard),
+    background var(--dur-3) var(--ease-standard),
+    border-color var(--dur-2) var(--ease-standard),
+    transform var(--dur-2) var(--ease-emphasis);
+}
+
+.seg:not(:disabled):hover {
+  transform: translateY(-1px);
+}
+
+.seg:not(:disabled):active,
+.segOn:not(:disabled):active {
+  transform: translateY(0) scale(0.99);
+}
+
+/* ---------------- quote box ---------------- */
+
+.quoteBox strong {
+  font-variant-numeric: tabular-nums;
+  transition: color var(--dur-2) var(--ease-standard);
+}
+
+.autoRefreshed {
+  animation: noticeIn var(--dur-3) var(--ease-emphasis) both;
+}
+
+/* ---------------- verification + records ---------------- */
+
+.verifyRow {
+  transition:
+    border-color var(--dur-2) var(--ease-standard),
+    background var(--dur-2) var(--ease-standard),
+    transform var(--dur-2) var(--ease-emphasis);
+}
+
+.verifyRow:hover {
+  transform: translateX(3px);
+  background: rgba(255, 255, 255, 0.024);
+}
+
+.verifyRow > span {
+  transition: transform var(--dur-3) var(--ease-spring);
+}
+
+.verifyRow:hover > span {
+  transform: scale(1.12);
+}
+
+.savedZap,
+.savedZapActive {
+  transition:
+    border-color var(--dur-2) var(--ease-standard),
+    background var(--dur-2) var(--ease-standard),
+    transform var(--dur-2) var(--ease-emphasis);
+}
+
+.savedZap:hover {
+  transform: translateY(-2px);
+}
+
+.metric {
+  transition: background var(--dur-3) var(--ease-standard);
+}
+
+.metric strong {
+  font-variant-numeric: tabular-nums;
+}
+
+.metric:hover {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+/* Live/preview chips pulse only while the protocol is actually live. */
+.statusLive::before,
+.liveBadge::before {
+  display: inline-block;
+  width: 0.45rem;
+  height: 0.45rem;
+  margin-right: 0.45rem;
+  content: "";
+  border-radius: 50%;
+  background: currentColor;
+  animation: blink 2.4s var(--ease-standard) infinite;
+}
+
+.holderChip {
+  animation: popIn var(--dur-4) var(--ease-spring) both;
+}
+
+/* Receipt rows cascade as they are appended. */
+.receipts a {
+  transition: transform var(--dur-2) var(--ease-emphasis), color var(--dur-2) var(--ease-standard);
+}
+
+.receipts a:hover {
+  transform: translateX(2px);
+}
+
+/* Local copies — CSS Modules scope animation-name; see status.module.css. */
+@keyframes ripple {
+  from { box-shadow: 0 0 0 0 rgba(55, 240, 154, 0.5); }
+  to { box-shadow: 0 0 0 12px rgba(55, 240, 154, 0); }
+}
+
+@keyframes blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
+
+@keyframes popIn {
+  from { opacity: 0; transform: scale(0.94); }
+  to { opacity: 1; transform: none; }
+}

@@ -322,3 +322,138 @@
     gap: 0.25rem;
   }
 }
+
+/* ---------------- motion + skeleton layer ---------------- */
+
+/* Metrics and contract rows lift the same way cards do elsewhere. */
+.metric {
+  transition: background var(--dur-3) var(--ease-standard);
+}
+
+.metric strong {
+  font-variant-numeric: tabular-nums;
+}
+
+.metric:hover {
+  background: rgba(255, 255, 255, 0.045);
+}
+
+.heroCard {
+  transition: transform var(--dur-3) var(--ease-emphasis), border-color var(--dur-3) var(--ease-standard);
+}
+
+.heroCard:hover {
+  transform: translateY(-3px);
+  border-color: rgba(142, 160, 255, 0.42);
+}
+
+.contractRow {
+  transition:
+    transform var(--dur-2) var(--ease-emphasis),
+    border-color var(--dur-2) var(--ease-standard),
+    background var(--dur-2) var(--ease-standard);
+}
+
+.contractRow:hover {
+  transform: translateX(3px);
+}
+
+/* Feed rows cascade in. The delay is set inline per row from its index so a
+   refreshed batch reads as a sequence rather than a slab. */
+.feedRow {
+  animation: fadeUp var(--dur-3) var(--ease-emphasis) both;
+  animation-delay: var(--row-delay, 0ms);
+  transition:
+    border-color var(--dur-2) var(--ease-standard),
+    background var(--dur-2) var(--ease-standard),
+    transform var(--dur-2) var(--ease-emphasis);
+}
+
+.feedRow:hover {
+  transform: translateX(3px);
+}
+
+/* A row that arrived in the latest poll gets one highlight pass, so the user
+   can tell new onchain activity from what was already on screen. */
+.feedRow[data-fresh="true"] {
+  animation: fadeUp var(--dur-3) var(--ease-emphasis) both, flashIn 1.6s var(--ease-standard) both;
+}
+
+.feedTime {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Nudge the ↗ on hover to advertise that the row opens the explorer. */
+.feedTime span {
+  display: inline-block;
+  transition: transform var(--dur-2) var(--ease-emphasis);
+}
+
+.feedRow:hover .feedTime span {
+  transform: translate(2px, -2px);
+}
+
+/* ---------------- skeletons ---------------- */
+
+.skelMetric {
+  display: grid;
+  gap: 0.55rem;
+  padding: 1.1rem 1.2rem;
+  background: var(--bg-2);
+}
+
+.skelValue {
+  width: 55%;
+  height: 1.5rem;
+}
+
+.skelLabel {
+  width: 78%;
+  height: 0.8rem;
+}
+
+.skelRow {
+  display: grid;
+  grid-template-columns: 8.5rem minmax(0, 1fr) 6rem 5rem;
+  align-items: center;
+  gap: 0.9rem;
+  padding: 0.7rem 0.85rem;
+  border: 1px solid var(--line-soft);
+  border-radius: 0.45rem;
+  background: rgba(255, 255, 255, 0.018);
+}
+
+.skelRow > i {
+  height: 0.85rem;
+  /* Negative, index-derived delays start each bar mid-cycle so the shimmer
+     travels down the list instead of every row pulsing in lockstep. */
+  animation-delay: var(--row-delay, 0ms);
+}
+
+@media (max-width: 620px) {
+  .skelRow {
+    grid-template-columns: 1fr;
+  }
+}
+
+.updated {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.updatedSpinner {
+  color: var(--indigo);
+}
+
+/* Local copies — CSS Modules scope animation-name, so globals.css keyframes
+   are unreachable from this file. See the note in status.module.css. */
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(var(--reveal-shift)); }
+  to { opacity: 1; transform: none; }
+}
+
+@keyframes flashIn {
+  0% { background-color: rgba(107, 92, 255, 0.22); }
+  100% { background-color: transparent; }
+}
