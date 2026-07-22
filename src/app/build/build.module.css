@@ -182,6 +182,33 @@
   line-height: 1.45;
 }
 
+.search input {
+  width: 100%;
+  padding: 0.4rem 0.6rem;
+  border: 1px solid var(--line-soft);
+  border-radius: 0.5rem;
+  background: rgba(0, 0, 0, 0.24);
+  color: var(--fg);
+  font-family: inherit;
+  font-size: 0.8rem;
+}
+
+.search input::placeholder {
+  color: var(--muted-2);
+}
+
+.search input:focus-visible {
+  border-color: rgba(142, 160, 255, 0.5);
+  outline: none;
+}
+
+.noMatch {
+  padding: 0.9rem 0.2rem;
+  color: var(--muted);
+  font-size: 0.78rem;
+  line-height: 1.5;
+}
+
 .tabs {
   display: flex;
   gap: 0.3rem;

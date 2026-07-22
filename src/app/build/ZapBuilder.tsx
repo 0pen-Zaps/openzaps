@@ -26,6 +26,7 @@ import {
   type ZapRecipe,
 } from "@/lib/blocks";
 import { reduceChainToLiveRoute } from "@/lib/deployable";
+import { edgeScrollDelta } from "@/lib/drag";
 import { BlockGlyph } from "./BlockGlyph";
 import styles from "./build.module.css";
 
@@ -237,6 +238,7 @@ export function ZapBuilder(): React.JSX.Element {
   // The block a problem was just jumped to, held only long enough to point at.
   const [flaggedUid, setFlaggedUid] = useState<string | null>(null);
   const [category, setCategory] = useState<BlockCategory | "all">("all");
+  const [query, setQuery] = useState("");
   const [drag, setDrag] = useState<DragState | null>(null);
   const [dropIndex, setDropIndex] = useState<number | null>(null);
   const [dropValid, setDropValid] = useState(false);
@@ -539,6 +541,42 @@ export function ZapBuilder(): React.JSX.Element {
     [chain],
   );
 
+  const dragActive = drag?.active === true;
+
+  /**
+   * Scroll the page while a block is held against a viewport edge.
+   *
+   * Driven by animation frames rather than by pointer movement, because the
+   * gesture that needs this most is a finger parked at the bottom of the screen
+   * — which emits no `pointermove` at all. Each frame that actually scrolls
+   * re-resolves the drop: the pointer has not moved, but every card under it
+   * has. The pointer position is read from the ref rather than from `drag`, so
+   * the loop is set up once per gesture instead of once per pixel travelled.
+   */
+  useEffect(() => {
+    if (!dragActive) return;
+    let frame = window.requestAnimationFrame(function step(): void {
+      const state = dragRef.current;
+      if (state?.active) {
+        const delta = edgeScrollDelta(state.y, window.innerHeight);
+        if (delta !== 0) {
+          const before = window.scrollY;
+          window.scrollBy(0, delta);
+          // At either end of the document `scrollBy` is a no-op, and
+          // re-resolving a drop that cannot have moved would churn state
+          // every frame for as long as the block is held there.
+          if (window.scrollY !== before) {
+            const drop = resolveDrop(state, state.y);
+            setDropIndex(drop.index);
+            setDropValid(drop.valid);
+          }
+        }
+      }
+      frame = window.requestAnimationFrame(step);
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [dragActive, resolveDrop]);
+
   const beginDrag = useCallback(
     (event: React.PointerEvent<HTMLElement>, origin: DragOrigin): void => {
       if (event.button !== 0 && event.pointerType === "mouse") return;
@@ -665,10 +703,22 @@ export function ZapBuilder(): React.JSX.Element {
     trackEvent("builder_preview_run", { blocks: chain.length });
   }, [chain.length, compiled.status]);
 
-  const visibleBlocks = useMemo(
-    () => (category === "all" ? BLOCKS : BLOCKS.filter((block) => block.category === category)),
-    [category],
-  );
+  /**
+   * The palette, narrowed by tab and by search.
+   *
+   * The search reads the blurb and the category label as well as the name,
+   * because the word someone reaches for is rarely the block's title: "dca"
+   * finds the recurring deposit through its blurb, "borrow" finds the whole
+   * lending group through its category.
+   */
+  const visibleBlocks = useMemo(() => {
+    const byCategory = category === "all" ? BLOCKS : BLOCKS.filter((block) => block.category === category);
+    const needle = query.trim().toLowerCase();
+    if (!needle) return byCategory;
+    return byCategory.filter((block) =>
+      `${block.name} ${block.blurb} ${CATEGORY_LABEL[block.category]}`.toLowerCase().includes(needle),
+    );
+  }, [category, query]);
 
   const exportPayload = useMemo(
     () =>
@@ -742,6 +792,18 @@ export function ZapBuilder(): React.JSX.Element {
             <h2>Blocks</h2>
             <p className={styles.paletteHint}>Drag into the chain, or tap to drop it in the first slot that fits.</p>
           </div>
+          <div className={styles.search}>
+            <input
+              type="search"
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Escape") setQuery("");
+              }}
+              placeholder="Search blocks"
+              aria-label="Search blocks by name, description, or category"
+            />
+          </div>
           <div className={styles.tabs} role="tablist" aria-label="Block categories">
             {CATEGORIES.map((entry) => (
               <button
@@ -757,6 +819,12 @@ export function ZapBuilder(): React.JSX.Element {
             ))}
           </div>
           <div className={styles.paletteList}>
+            {visibleBlocks.length === 0 ? (
+              <p className={styles.noMatch} role="status">
+                No block matches “{query.trim()}”
+                {category === "all" ? "." : ` in ${CATEGORY_LABEL[category]}. Try All.`}
+              </p>
+            ) : null}
             {visibleBlocks.map((block) => {
               const fits = bestIndexFor(block) !== null;
               const accent = SHAPE_COLOR[block.emits ?? block.accepts ?? "token"];
