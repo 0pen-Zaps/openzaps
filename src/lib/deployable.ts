@@ -1,4 +1,16 @@
 import { compileChain, getBlock, resolveSlippageGuards, type ChainNode, type LegoBlock } from "@/lib/blocks";
+import {
+  MAX_POLICY_STEPS,
+  ROBINHOOD_ADAPTERS,
+  adapterSpecsForBlock,
+  deployedAdapters,
+  findDeployedAdapter,
+  matchingAdapterSpecs,
+  onlyBoundedSwapIsDeployed,
+  type AdapterKind,
+  type AdapterSet,
+  type AdapterSpec,
+} from "@/lib/chains";
 import { parseRouterAmount, type ZapDirection } from "@/lib/openzap";
 
 /**
@@ -6,12 +18,27 @@ import { parseRouterAmount, type ZapDirection } from "@/lib/openzap";
  * accept.
  *
  * The builder is a design surface: it can express borrows, bridges, loops, and
- * cadences. The deployed v1.1 contracts implement exactly one bounded route — a
- * single-step aeWETH <-> 0xZAPS swap through one adapter, recipient forced to
- * the owner, `maxRelayerFeeCap` 0, `optimization` true. This module is the only
- * place that decides whether a design reduces to that route, and it is
- * deliberately strict: everything it cannot map is rejected by name rather than
- * quietly approximated.
+ * cadences. The capsule holds up to sixteen steps, but a step is only real if
+ * an adapter for it is deployed AND allowlisted — so what this module will
+ * offer is decided entirely by `chains.ts`, the registry of adapters that
+ * exist. With nothing new configured, that set is one bounded aeWETH ↔ 0xZAPS
+ * swap, which is why the reductions below still collapse to the single route
+ * the live app signs.
+ *
+ * Two layers, because "what the contracts can carry" and "what the app page
+ * can sign" are different questions and answering them with one function is
+ * how a Deploy button ends up promising a capsule nobody can create:
+ *
+ *   `reduceChainToLivePolicy` — the general reduction. Emits a multi-step
+ *   policy when the adapters for those steps are deployed.
+ *
+ *   `reduceChainToLiveRoute`  — the deploy handoff. `/app` builds its policy
+ *   with `buildRobinhoodPolicy`, which emits exactly ONE step through the
+ *   bounded swap, so this narrows the policy to that shape and rejects
+ *   anything else by name. It never widens what the CTA offers on its own.
+ *
+ * Everything either layer cannot map is rejected by name rather than quietly
+ * approximated.
  */
 
 /** Mirrors the signed-slippage control on the live app page (10–500 bps). */
@@ -27,6 +54,57 @@ export const MAX_SLIPPAGE_BPS = 500;
 export const SLIPPAGE_STEP_BPS = 10;
 /** What the live app signs when a design never states a slippage cap. */
 export const DEFAULT_SLIPPAGE_BPS = 100;
+
+/** One step of an emitted policy, with the adapter that will execute it. */
+export type LiveStep = {
+  /** 1-based position in the policy the capsule will walk. */
+  position: number;
+  /** The placement this step came from, so the UI can point at the card. */
+  uid: string;
+  blockId: string;
+  /** The block's name, for copy that has to name the step. */
+  label: string;
+  adapterId: string;
+  adapterAddress: string;
+  kind: AdapterKind;
+  tokenIn: string;
+  tokenOut: string;
+  /**
+   * FROZEN AT SIGNING. `Step.amountIn` is a constant in the policy hash, not a
+   * reference to whatever the step above produced — see the stranding notices.
+   * Kept as the decimal string the design stated, so it reaches
+   * `parseRouterAmount` without a float in the middle.
+   */
+  amountIn: string;
+  /** Which side of the bounded pair a swap step is; `null` for anything else. */
+  direction: ZapDirection | null;
+};
+
+export type LivePolicyMapping =
+  | {
+      deployable: true;
+      /** In execution order, one per action block. Never empty. */
+      steps: LiveStep[];
+      /** The single ERC-20 the capsule settles in: the last step's output. */
+      outAsset: string;
+      /** Step 1's amount — the pull the owner funds and signs. */
+      amountIn: string;
+      slippageBps: number;
+      /**
+       * The direction `/app` would sign, or `null` when this policy is not a
+       * single bounded swap and therefore has no such thing.
+       */
+      direction: ZapDirection | null;
+      /**
+       * Facts about this policy that the UI must render WORD FOR WORD: which
+       * step's surplus strands, and what it takes to get it back. Empty for a
+       * single-step policy, which has no such boundary.
+       */
+      notices: string[];
+      /** Guards the design states that the deployed policy does not bind. */
+      unenforcedGuards: string[];
+    }
+  | { deployable: false; reasons: string[] };
 
 export type LiveRouteMapping =
   | { deployable: true; direction: ZapDirection; amountIn: string; slippageBps: number; unenforcedGuards: string[] }
@@ -86,14 +164,22 @@ function unenforcedGuardNote(block: LegoBlock, node: ChainNode): string | null {
 }
 
 /**
- * Reduce a builder chain to the one route the live contracts implement.
+ * Reduce a builder chain to a policy the deployed adapters can execute.
  *
  * Every reason is collected rather than short-circuiting on the first: a user
  * fixing a design needs the whole list, not one problem at a time.
  */
-export function reduceChainToLiveRoute(chain: readonly ChainNode[]): LiveRouteMapping {
+export function reduceChainToLivePolicy(
+  chain: readonly ChainNode[],
+  adapters: AdapterSet = ROBINHOOD_ADAPTERS,
+): LivePolicyMapping {
   const reasons: string[] = [];
   const unenforcedGuards: string[] = [];
+
+  // Read once per call, never cached across calls: an env change must not need
+  // a reload to be believed, and the whole point of the registry is that this
+  // function has no opinion of its own about what exists.
+  const boundedOnly = onlyBoundedSwapIsDeployed(undefined, adapters);
 
   const known: Placed[] = [];
   for (const node of chain) {
@@ -126,44 +212,88 @@ export function reduceChainToLiveRoute(chain: readonly ChainNode[]): LiveRouteMa
     );
   }
 
-  // ---- action: exactly one, and it must be the Uniswap v4 swap ------------
-  const actions = known.filter((entry) => entry.block.kind === "action");
-  let swap: Placed | null = null;
-  if (actions.length === 0) {
-    reasons.push("A live route is exactly one swap; this design has no action to deploy.");
-  } else if (actions.length > 1) {
-    reasons.push(
-      `The live contracts execute exactly one step; this design has ${actions.length} actions (${nameList(actions)}). Multi-step chains cannot be deployed.`,
-    );
-  }
-  for (const entry of actions) {
-    if (entry.block.id === "swap") {
-      swap ??= entry;
-      continue;
-    }
-    reasons.push(
-      `${entry.block.name} has no adapter on the live route — the only step the v1.1 capsule can execute is a single aeWETH ↔ 0xZAPS swap.`,
-    );
-  }
-  if (swap) {
-    const venue = String(swap.node.params.venue ?? "");
-    if (venue !== "Uniswap v4") {
+  // ---- amount: the router's own parser is the authority -------------------
+  // Resolved before the steps because step 1 spends exactly this.
+  let amountIn: string | null = null;
+  if (source) {
+    const raw = String(source.node.params.amount ?? "").trim();
+    try {
+      parseRouterAmount(raw);
+      amountIn = raw;
+    } catch (error) {
       reasons.push(
-        `The live adapter routes through Uniswap v4; this swap names ${venue ? `${venue}, which has no adapter here` : "no venue"}.`,
+        `Wallet balance amount ${raw ? `"${raw}"` : "is empty and"} cannot be deployed: ${error instanceof Error ? error.message : String(error)}`,
       );
     }
   }
 
-  // ---- direction: the pair is the route, and there is only one pair -------
-  let direction: ZapDirection | null = null;
-  if (source && swap) {
-    const from = String(source.node.params.asset ?? "");
-    const into = String(swap.node.params.into ?? "");
-    if (from === "WETH" && into === "0xZAPS") direction = "buy";
-    else if (from === "0xZAPS" && into === "WETH") direction = "sell";
-    else {
+  // ---- actions: one policy step each, and every one needs an adapter ------
+  const actions = known.filter((entry) => entry.block.kind === "action");
+  const stepBudget = boundedOnly ? 1 : MAX_POLICY_STEPS;
+  if (actions.length === 0) {
+    reasons.push(
+      boundedOnly
+        ? "A live route is exactly one swap; this design has no action to deploy."
+        : "A deployable policy needs at least one action; this design has none.",
+    );
+  } else if (actions.length > stepBudget) {
+    reasons.push(
+      boundedOnly
+        ? // Not a limit of the capsule — it walks sixteen steps — but of the
+          // deployed set: one adapter, welded to one pool. A second step could
+          // only be a second pass through that pool, which settles in the
+          // asset it spends and reverts on the balance-delta check.
+          `This build deploys exactly one step; this design has ${actions.length} actions (${nameList(actions)}). One adapter is deployed on Robinhood Chain and it is welded to one pool, so there is nothing to execute a second step.`
+        : `The capsule walks at most ${MAX_POLICY_STEPS} steps; this design has ${actions.length} actions (${nameList(actions)}).`,
+    );
+  }
+
+  const steps: LiveStep[] = [];
+  // The asset flowing into the next step. `null` once it is unknowable — no
+  // source, or a step above that did not resolve.
+  let carried: string | null = source ? String(source.node.params.asset ?? "") : null;
+  for (const [index, entry] of actions.entries()) {
+    const position = index + 1;
+
+    // Whether an adapter for this block exists at all, and whether the venue
+    // it names has one, do not depend on what flows in. Both are reported for
+    // every action in the design, including actions below a step that already
+    // failed: a user fixing a chain should see every block that has no route,
+    // not just the topmost one.
+    const blockLevel = blockLevelRejection(entry, boundedOnly, adapters);
+    if (blockLevel) {
+      reasons.push(blockLevel);
+      carried = null;
+      continue;
+    }
+
+    // Anything past here reads the asset flowing in, so with that unknown the
+    // step is skipped SILENTLY — a rejection derived from an asset nobody knows
+    // would be noise stacked on the real reason above it.
+    if (carried === null) continue;
+
+    const stepAmount = position === 1 ? amountIn : String(entry.node.params.amount ?? "").trim();
+    const resolved = resolveStep(entry, position, carried, stepAmount, boundedOnly, adapters);
+    if (!resolved.ok) {
+      reasons.push(...resolved.reasons);
+      carried = null;
+      continue;
+    }
+    steps.push(resolved.step);
+    carried = resolved.step.tokenOut;
+  }
+
+  // ---- settlement: ONE asset has to end up higher -------------------------
+  // `OpenZap.execute()` reads `balanceOf(outAsset)` before the loop and
+  // subtracts it after, so a policy that spends the very asset it settles in
+  // underflow-reverts unless the round trip came back profitable. A builder
+  // that offered that shape would be selling a coin flip as a zap.
+  if (steps.length > 0 && steps.length === actions.length) {
+    const outAsset = steps[steps.length - 1].tokenOut;
+    const spender = steps.find((step) => step.tokenIn === outAsset);
+    if (spender) {
       reasons.push(
-        `The live route only swaps aeWETH ↔ 0xZAPS. This design swaps ${from || "an unnamed asset"} into ${into || "an unnamed asset"}.`,
+        `Step ${spender.position} (${spender.label}) spends ${outAsset}, and ${outAsset} is also what this design settles in. The capsule measures its ${outAsset} balance before the first step and requires a higher one after the last, so a policy that spends its own output asset reverts unless the round trip comes back profitable. This build will not sign that for you.`,
       );
     }
   }
@@ -187,20 +317,6 @@ export function reduceChainToLiveRoute(chain: readonly ChainNode[]): LiveRouteMa
       SINK_REJECTIONS[entry.block.id] ??
         `${entry.block.name} cannot settle a live route: the v1.1 policy always sends the swap output to the owner wallet.`,
     );
-  }
-
-  // ---- amount: the router's own parser is the authority -------------------
-  let amountIn: string | null = null;
-  if (source) {
-    const raw = String(source.node.params.amount ?? "").trim();
-    try {
-      parseRouterAmount(raw);
-      amountIn = raw;
-    } catch (error) {
-      reasons.push(
-        `Wallet balance amount ${raw ? `"${raw}"` : "is empty and"} cannot be deployed: ${error instanceof Error ? error.message : String(error)}`,
-      );
-    }
   }
 
   // ---- guards: bind what we can, name what we cannot ----------------------
@@ -271,16 +387,289 @@ export function reduceChainToLiveRoute(chain: readonly ChainNode[]): LiveRouteMa
     reasons.push(`This design does not compile, so it cannot be deployed: ${issue.message}`);
   }
 
-  if (reasons.length > 0 || !source || !swap || direction === null || amountIn === null) {
+  if (reasons.length > 0 || !source || amountIn === null || steps.length === 0 || steps.length !== actions.length) {
     return {
       deployable: false,
       reasons: reasons.length > 0 ? reasons : ["This design does not reduce to the live aeWETH ↔ 0xZAPS route."],
     };
   }
 
-  // Slippage first: it qualifies the very number the CTA above it promises,
-  // and the rest of the list is in the order the guards were stacked.
-  return { deployable: true, direction, amountIn, slippageBps, unenforcedGuards: [...slippageNotes, ...unenforcedGuards] };
+  return {
+    deployable: true,
+    steps,
+    outAsset: steps[steps.length - 1].tokenOut,
+    amountIn: steps[0].amountIn,
+    slippageBps,
+    // Only a lone bounded swap has a direction the app page can sign; a
+    // multi-step policy has no single one, and saying "buy" about it would be
+    // describing a fraction of what gets signed.
+    direction: steps.length === 1 ? steps[0].direction : null,
+    notices: strandingNotices(steps),
+    // Slippage first: it qualifies the very number the CTA above it promises,
+    // and the rest of the list is in the order the guards were stacked.
+    unenforcedGuards: [...slippageNotes, ...unenforcedGuards],
+  };
+}
+
+/**
+ * Why this action can never be a step, whatever flows into it.
+ *
+ * Split out from the rest of the resolution because these two facts — nothing
+ * deployed executes this block, and this swap names a venue with no adapter —
+ * are true of the placement alone. They are reported even when the asset
+ * reaching the block is unknown.
+ */
+function blockLevelRejection(entry: Placed, boundedOnly: boolean, adapters: AdapterSet): string | null {
+  const { node, block } = entry;
+
+  // While the bounded swap is the whole deployed set, every other action has
+  // no adapter, full stop — and says so in one sentence rather than reporting
+  // a token or weld mismatch against a contract that does not exist yet.
+  if (boundedOnly && block.id !== "swap") return noAdapterReason(block, true, adapters);
+  if (adapterSpecsForBlock(block.id, undefined, adapters).length === 0) {
+    return noAdapterReason(block, boundedOnly, adapters);
+  }
+
+  // A swap names its venue, and the venue is the adapter. Checked before the
+  // pair so that a design asking for Aerodrome is told about Aerodrome rather
+  // than about a token pair it never got as far as.
+  if (block.id === "swap") {
+    const venue = String(node.params.venue ?? "");
+    if (venue !== "Uniswap v4") {
+      return `The live adapter routes through Uniswap v4; this swap names ${venue ? `${venue}, which has no adapter here` : "no venue"}.`;
+    }
+  }
+
+  return null;
+}
+
+type StepResolution = { ok: true; step: LiveStep } | { ok: false; reasons: string[] };
+
+/**
+ * Turn one action block into a policy step, or say why it cannot be one.
+ *
+ * The rejection copy distinguishes three different facts, because they call for
+ * three different things from the user: no deployed adapter takes what this
+ * step is handed, an adapter that fits exists but is not deployed, and the
+ * step names no amount of its own.
+ *
+ * Callers run `blockLevelRejection` first; by the time this is reached the
+ * block has an adapter in the registry and, if it is a swap, a venue with one.
+ */
+function resolveStep(
+  entry: Placed,
+  position: number,
+  tokenIn: string,
+  amountIn: string | null,
+  boundedOnly: boolean,
+  adapters: AdapterSet,
+): StepResolution {
+  const { node, block } = entry;
+  const candidates = adapterSpecsForBlock(block.id, undefined, adapters);
+  const tokenOut = block.id === "swap" ? String(node.params.into ?? "") : undefined;
+  const query = { blockId: block.id, tokenIn, tokenOut, params: node.params };
+  const fitting = matchingAdapterSpecs(query, adapters);
+  if (fitting.length === 0) {
+    return { ok: false, reasons: [weldReason(block, candidates, tokenIn, tokenOut, node.params)] };
+  }
+
+  const adapter = findDeployedAdapter(query, adapters);
+  if (!adapter) {
+    return { ok: false, reasons: [notDeployedReason(block, fitting, boundedOnly)] };
+  }
+
+  // `Step.amountIn` is a constant in the signed policy. A step therefore cannot
+  // spend "whatever the step above produced" — that quantity does not exist at
+  // signing time — so every step has to name its own figure, and a design that
+  // does not is rejected rather than given a guess.
+  if (amountIn === null || amountIn.length === 0) {
+    // Step 1 spends the wallet pull, whose amount is validated at the source.
+    // Reaching here with position 1 means that validation already failed and
+    // already produced a reason; adding a second one would double-report it.
+    if (position === 1) return { ok: false, reasons: [] };
+    return {
+      ok: false,
+      reasons: [
+        `${block.name} is step ${position} of this design and states no amount of its own. Step.amountIn is frozen into the policy when you sign it, so a step cannot spend what the step above it produced — every step has to name the exact quantity it will pull. This design cannot be deployed until step ${position} names one.`,
+      ],
+    };
+  }
+  if (position > 1) {
+    try {
+      parseRouterAmount(amountIn);
+    } catch (error) {
+      return {
+        ok: false,
+        reasons: [
+          `${block.name} is step ${position} and its amount "${amountIn}" cannot be deployed: ${error instanceof Error ? error.message : String(error)}`,
+        ],
+      };
+    }
+  }
+
+  return {
+    ok: true,
+    step: {
+      position,
+      uid: node.uid,
+      blockId: block.id,
+      label: block.name,
+      adapterId: adapter.id,
+      adapterAddress: adapter.address,
+      kind: adapter.kind,
+      tokenIn: adapter.tokenIn,
+      tokenOut: adapter.tokenOut,
+      amountIn,
+      direction: adapter.direction,
+    },
+  };
+}
+
+/** Nothing in the registry does this at all. */
+function noAdapterReason(block: LegoBlock, boundedOnly: boolean, adapters: AdapterSet): string {
+  if (boundedOnly) {
+    return `${block.name} has no adapter on the live route — the only step the v1.1 capsule can execute is a single aeWETH ↔ 0xZAPS swap.`;
+  }
+  // Only adapters a drawn chain can actually reach. An entry whose `blockId` is
+  // null is deployed but unreachable — no catalog block produces that step — so
+  // listing it would answer "what can I build instead?" with something the user
+  // cannot build. That is the exact failure this module exists to prevent.
+  const live = deployedAdapters(undefined, adapters)
+    .filter((adapter) => adapter.blockId !== null)
+    .map((adapter) => adapter.label)
+    .join(", ");
+  if (!live) {
+    return `${block.name} has no adapter on the live route, and no other step this build deploys can be drawn in the builder either.`;
+  }
+  return `${block.name} has no adapter on the live route. The steps this build can deploy are: ${live}.`;
+}
+
+/**
+ * An adapter for this block exists, but not one that fits what was drawn.
+ *
+ * Two different mistakes, said differently, because they are fixed
+ * differently: the step is handed an asset no adapter takes, or the step names
+ * a protocol the deployed adapter is not welded to. The second is the one that
+ * matters most — an adapter's protocol address is an immutable constructor
+ * arg, so "supply into Morpho" can never be quietly satisfied by an adapter
+ * pointed at something else.
+ */
+function weldReason(
+  block: LegoBlock,
+  candidates: readonly AdapterSpec[],
+  tokenIn: string,
+  tokenOut: string | undefined,
+  params: Readonly<Record<string, unknown>>,
+): string {
+  if (block.id === "swap") {
+    // Kept verbatim from the one-route era: it is the sentence someone reads
+    // when they draw the wrong pair, and it names both sides of what they drew.
+    return `The live route only swaps aeWETH ↔ 0xZAPS. This design swaps ${tokenIn || "an unnamed asset"} into ${tokenOut || "an unnamed asset"}.`;
+  }
+
+  const takesThisAsset = candidates.filter((spec) => spec.tokenIn === tokenIn);
+  if (takesThisAsset.length > 0) {
+    const spec = takesThisAsset[0];
+    const named = Object.keys(spec.weldedParams)
+      .map((key) => `${key} ${String(params[key] ?? "nothing")}`)
+      .join(", ");
+    return `${block.name} names ${named}, and the only adapter this build has for that step is ${spec.label}${describeWeld(spec)}. An adapter's protocol address is fixed when it is deployed, so it cannot be pointed at something else.`;
+  }
+
+  const welds = candidates.map((spec) => `${spec.label} (takes ${spec.tokenIn}${describeWeld(spec)})`).join(", ");
+  return `${block.name} is handed ${tokenIn || "an unnamed asset"}, and no adapter here takes that. What this build knows for this step: ${welds}.`;
+}
+
+/** The right adapter exists in the registry and has no address configured. */
+function notDeployedReason(block: LegoBlock, fitting: readonly AdapterSpec[], boundedOnly: boolean): string {
+  if (boundedOnly) {
+    // Same sentence as "no adapter at all" while the bounded swap is the whole
+    // deployed set. Naming an env var would read as a promise that setting it
+    // is all that stands between this design and a live capsule — the contract
+    // still has to be deployed and allowlisted first.
+    return `${block.name} has no adapter on the live route — the only step the v1.1 capsule can execute is a single aeWETH ↔ 0xZAPS swap.`;
+  }
+  const spec = fitting[0];
+  return `${block.name} matches ${spec.label}, and that adapter is not deployed: no address is configured for it (${spec.envVar}), so nothing onchain can execute this step.`;
+}
+
+function describeWeld(spec: AdapterSpec): string {
+  const welds = Object.entries(spec.weldedParams).map(([key, value]) => `${key} ${value}`);
+  return welds.length ? `, welded to ${welds.join(", ")}` : "";
+}
+
+/**
+ * The frozen-amount disclosure, one sentence per step boundary.
+ *
+ * This is the fact a multi-step design most needs told and is least likely to
+ * guess. `Step.amountIn` is a constant in the policy hash: step 2 spends the
+ * figure that was signed, NOT what step 1 produced. So a swap that returns more
+ * than step 2 names leaves the difference sitting in the capsule — recoverable
+ * only by the owner's exit — and one that returns less reverts the whole zap.
+ * A user who signs a chain that strands most of a swap and was not told is the
+ * failure this product must not commit, so this is rendered word for word.
+ */
+function strandingNotices(steps: readonly LiveStep[]): string[] {
+  const notices: string[] = [];
+  for (const step of steps) {
+    if (step.position === 1) continue;
+    const previous = steps[step.position - 2];
+    notices.push(
+      `Step ${step.position} (${step.label}) spends exactly ${step.amountIn} ${step.tokenIn}, because Step.amountIn is frozen into the policy when you sign it. Step ${previous.position} (${previous.label}) produces an amount nobody can know at signing time, so anything it produces above ${step.amountIn} ${step.tokenIn} stays in the capsule after the zap settles — recovering it takes the owner's emergency exit, nothing sweeps it back automatically — and if it produces less than ${step.amountIn} ${step.tokenIn}, the whole zap reverts.`,
+    );
+  }
+  return notices;
+}
+
+/**
+ * Reduce a builder chain to the one route the deploy handoff can sign.
+ *
+ * `/app` builds its policy with `buildRobinhoodPolicy`, which emits exactly one
+ * step through the bounded aeWETH ↔ 0xZAPS adapter. So a policy this narrowing
+ * cannot express is NOT offered a Deploy button, however deployable the
+ * capsule itself would find it: an enabled CTA that creates a different capsule
+ * from the one on the canvas is the same broken promise as an unenforced guard.
+ */
+export function reduceChainToLiveRoute(
+  chain: readonly ChainNode[],
+  adapters: AdapterSet = ROBINHOOD_ADAPTERS,
+): LiveRouteMapping {
+  const policy = reduceChainToLivePolicy(chain, adapters);
+  if (!policy.deployable) return { deployable: false, reasons: policy.reasons };
+
+  if (policy.steps.length > 1) {
+    const rest = policy.steps.slice(1);
+    const named = rest.map((step) => `${step.position} (${step.label})`).join(", ");
+    return {
+      deployable: false,
+      reasons: [
+        `This design reduces to a ${policy.steps.length}-step capsule, and the deploy page signs single-step capsules only — one adapter call, aeWETH ↔ 0xZAPS. ${rest.length === 1 ? "Step" : "Steps"} ${named} would have nowhere to be signed, so no Deploy button is offered rather than one that creates a capsule this design did not describe.`,
+        ...policy.notices,
+      ],
+    };
+  }
+
+  if (policy.direction === null) {
+    const [step] = policy.steps;
+    return {
+      deployable: false,
+      reasons: [
+        `The deploy page signs one aeWETH ↔ 0xZAPS swap; this design's only step is ${step.label} through ${step.adapterId}, which that page cannot build a policy for.`,
+      ],
+    };
+  }
+
+  return {
+    deployable: true,
+    direction: policy.direction,
+    amountIn: policy.amountIn,
+    slippageBps: policy.slippageBps,
+    // Notices first, ahead of the guard disclosures, and concatenated rather
+    // than dropped: this is the array the CTA renders verbatim, and anything
+    // material about the policy has to reach it even if it arrives from a
+    // later rule than the one this list was built for.
+    unenforcedGuards: [...policy.notices, ...policy.unenforcedGuards],
+  };
 }
 
 function nameList(entries: readonly Placed[]): string {
