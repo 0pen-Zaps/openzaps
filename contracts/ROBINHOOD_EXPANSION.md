@@ -54,7 +54,9 @@ No Aave, Morpho, Compound or Aerodrome-style AMM at any address we could find.
 | --- | --- | --- |
 | `swap` | One hardcoded pool (aeWETH/0xZAPS, dynamic fee, hooked) | **Any ERC-20/ERC-20 v4 pool on the chain**, one adapter deployment per pool, no source edit |
 | Hookless static-fee pools | Untested; assumed to need different encoding | **Proven identical** — same command byte, same action sequence, live swap in both directions |
-| `supply` / `stake` | Impossible — nothing on chain mints an ERC-20 receipt | **A venue now exists** (`ZapVault`), but it is **not yet reachable from a zap** — see §5 |
+| `supply` | Impossible — nothing on chain mints an ERC-20 receipt | **A venue exists AND a zap step can reach it**: `ZapVault` + `ZapVaultDepositAdapter`. Written and tested, **not broadcast** |
+| Leaving a supplied position | n/a | **`ZapVaultRedeemAdapter`** — shares in, asset out. Without it a vault position is a one-way door only `emergencyExit` could reopen |
+| `stake` | Impossible | **Still impossible.** That block takes an `lp`; the vault takes a plain token. The vault does not unblock it and no gauge exists on 4663 |
 | Native-ETH pools (13,122 of them) | Unreachable | **Still unreachable**, and now refused at construction rather than at execution |
 
 Two hard limits that did not change and cannot be fixed by an adapter:
@@ -234,6 +236,111 @@ neither warns about nor resists.
 it, seed it, exercise it with your own money if you like — but the vault is the piece of this work that
 carries real custody risk, and one agent's test suite is not a review.
 
+**The two adapters raise the stakes on that verdict rather than lowering them.** Before they existed,
+`ZapVault` was a standalone contract that someone had to deliberately go and deposit into. Allowlisting
+`ZapVaultDepositAdapter` in `AdapterRegistry` makes it a destination the *product* can route user funds
+into — one governance call turns an unaudited custody contract into part of the advertised surface. The
+adapters are careful (measured deltas, no custody, no arbitrary calldata, hardcoded `receiver`), and
+none of that care audits the vault underneath them. Governance should treat
+`setAdapter(vaultDepositAdapter, true)` as the moment the custody risk becomes other people's problem,
+and should not send it before the review.
+
+Note also that the adapters cannot rescue anything the vault does wrong. They hold nothing between
+calls by design, so there is no privileged position from which to intervene; the only recovery paths
+remain the zap owner's `emergencyExit` (which moves shares, not the assets behind them) and the vault's
+own `redeem`.
+
+---
+
+## 3b. The two vault adapters — how a zap step actually reaches the vault
+
+A vault nothing can call from a policy is a standalone contract, not a capability. `OpenZap.execute`
+only ever calls `IAdapter(adapter).execute(tokenIn, amountIn, data)`, so reaching `ZapVault` required
+adapters. Both now exist.
+
+### `ZapVaultDepositAdapter` — asset in, shares out
+
+`src/adapters/ZapVaultDepositAdapter.sol`. One deployment serves one vault, welded in at construction;
+`asset` is read off the vault in the constructor, so a vault/asset mismatch cannot be introduced.
+
+| | |
+| --- | --- |
+| `tokenIn` | the vault's underlying asset (default USDG) |
+| `tokenOut` | the vault share token — i.e. **the vault address itself** |
+| `data` | empty, or exactly `abi.encode(uint256 minSharesOut)` |
+
+**`receiver` is hardcoded to `msg.sender`, never a parameter.** The shares land on the zap that paid
+for them; a policy cannot redirect a deposit to a third party and the adapter cannot become the
+shareholder of record. Both halves are asserted at runtime — the caller's share balance must rise and
+the adapter's must not move (`SharesMisdirected`).
+
+`amountOut` is the **measured** increase of the caller's share balance. The vault's own return value is
+used only as a cross-check that must agree exactly (`InexactShareMint`), never as the reported figure.
+
+Why `minSharesOut` is worth having even though the zap already signs a final `minOut`: `ZapVault`
+prices a deposit against `totalAssets()` *before* the assets land, so a same-block donation into the
+vault lowers the share count a deposit mints. The signed `minOut` bounds the final settlement;
+`minSharesOut` bounds *this step* even when it is not the last one.
+
+**Do not assume `amountOut` is a function of `amountIn`.** It is
+`assets * (totalSupply + 1000) / (totalAssets + 1)`, rounded down.
+
+### `ZapVaultRedeemAdapter` — shares in, asset out
+
+`src/adapters/ZapVaultRedeemAdapter.sol`.
+
+| | |
+| --- | --- |
+| `tokenIn` | the vault share token — **the vault address itself** |
+| `tokenOut` | the vault's underlying asset |
+| `data` | empty, or exactly `abi.encode(uint256 minAssetsOut)` |
+
+**Why this direction is expressible at all is the interesting part**, because it is the same shape that
+killed the Aave borrow leg: the adapter is the caller, but the shares belong to the zap.
+
+ERC-4626's `redeem(shares, receiver, owner)` spends a plain ERC-20 allowance
+`allowance[owner][msg.sender]` on the share token. `OpenZap.execute` already emits exactly that call —
+`s.tokenIn.approveExact(s.spender, s.amountIn)`, with `spender == adapter` forced equal at
+`initialize` — and for a redeem step `tokenIn` **is** the share token. So the one approval primitive
+OpenZap owns is precisely the primitive ERC-4626 asks for, by coincidence of the standards rather than
+by design. Aave's `approveDelegation(delegatee, amount)` is a different function the core can never
+emit; `ZapVault.approve` is `approve(address,uint256)` itself. **No core change was needed.**
+
+**`redeem`, not `withdraw`, and that choice is forced.** `withdraw(assets, receiver, owner)` is
+denominated in assets and burns a rounded-*up* share count that nobody can compute at signing time.
+`Step.amountIn` is frozen into the policy *and* is the exact size of the allowance OpenZap grants, so a
+`withdraw` step would revert `InsufficientAllowance` the moment the vault's price moved by a wei.
+`redeem` is denominated in shares: `amountIn` shares in, `amountIn` of allowance spent, exactly.
+
+The adapter takes **no custody**: `owner = receiver = msg.sender`, so shares burn straight out of the
+zap and assets are paid straight to it. That is deliberately less custody than the pull-first shape the
+swap and deposit adapters use — a `transferFrom`-then-redeem version would spend the identical
+allowance but leave the adapter transiently holding somebody's shares. The bounded-consumption
+guarantee is kept by measurement instead: the caller's share balance must fall by **exactly**
+`amountIn` (`InexactShareBurn`), so the adapter can never consume more than the policy named.
+
+### Both adapters, common shape
+
+Both follow the same rules as `RobinhoodV4PoolAdapter`: one fixed `IAdapter.execute` selector; **no
+arbitrary calldata** (`data` is one bounded typed scalar or nothing); chain guard `block.chainid ==
+4663` at construction *and* on every call; reentrancy guard; measured deltas only; and they refuse to
+hold funds — reverting rather than sweeping if anything landed on them, because a silent sweep would
+turn a broken vault into a plausible-looking receipt.
+
+One honest note on the chain guard: `ZapVault` itself deliberately has **no** chain guard, so that a
+fork or renumbering can never trap principal in an admin-less contract. Putting the guard on the
+adapters traps nothing — the vault's own `redeem` stays callable directly by whoever holds the shares,
+and `emergencyExit` always moves them out of a zap.
+
+### The two limits that no adapter can fix
+
+1. **Deposit and redeem cannot be combined in one capsule.** Settlement is
+   `balanceOf(outAsset)` after minus before. A run that deposits USDG and redeems it back nets to zero
+   at best and underflow-reverts once rounding bites. **Redeem belongs in a capsule funded with
+   shares**, settling on the underlying.
+2. **`Step.amountIn` is frozen** (§1, limit 2). A redeem step cannot consume whatever the deposit step
+   minted; the share count must be named in advance, and any surplus strands until `emergencyExit`.
+
 ---
 
 ## 4. `script/DeployRobinhoodExpansion.s.sol`
@@ -279,10 +386,19 @@ Two things worth naming rather than glossing:
 | --- | --- |
 | Deploy `RobinhoodV4PoolAdapter` | **anyone** — needs no permission |
 | Deploy `ZapVault` | **anyone** |
+| Deploy `ZapVaultDepositAdapter` / `ZapVaultRedeemAdapter` | **anyone** |
 | Seed the vault | **the deployer**, from their own balance |
-| `AdapterRegistry.setAdapter(adapter, true)` | **only** the current registry `owner()` |
+| `AdapterRegistry.setAdapter(swapAdapter, true)` | **only** the current registry `owner()` |
+| `AdapterRegistry.setAdapter(vaultDepositAdapter, true)` | **only** the current registry `owner()` |
+| `AdapterRegistry.setAdapter(vaultRedeemAdapter, true)` | **only** the current registry `owner()` |
 | `TokenAllowlist.setToken(USDG, true)` | **only** the current allowlist `owner()` |
 | `TokenAllowlist.setToken(vaultShare, true)` | **only** the current allowlist `owner()` |
+
+**The allowlist entry people forget.** The vault SHARE TOKEN — which is the vault address itself — is
+the deposit step's `tokenOut` **and** the redeem step's `tokenIn`. Without
+`setToken(vaultShare, true)`, a deposit step reverts `InvalidAdapterResult` at execution and a redeem
+step reverts `TokenNotAllowed` at `initialize`. Deploying the adapters without this call produces a
+deployment that looks complete and does nothing.
 
 The script checks `owner()` live and takes the branch actually available. If the deployer happens to be
 the owner, it makes the calls in the same run. If not, it **skips them, still succeeds, and prints the
@@ -332,28 +448,37 @@ VAULT_SEED_ASSETS=0 forge script script/DeployRobinhoodExpansion.s.sol:DeployRob
   --sender 0xe17f5150A2954889988e63C49d41cc321c35B986
 ```
 
-Simulated at block 16,740,207:
+Simulated against live chain state at block ~16,768,200:
 
 ```
 RobinhoodV4PoolAdapter  0xE8F21cbF41b3912A35b2DD39550394dE86023E16
   poolId 0x6ba18d461bfe3df70a80b50a4700e330e49efdaf597901b931f210554a5035d2
-  live pool liquidity 458863800268059794
 ZapVault                0x51dEae9a3D7b21fe9CE093167008c833206fB760
   asset USDG, symbol ozUSDG, share decimals 9
+ZapVaultDepositAdapter  0x7736652769A4587B788a42B1ef5D8d9a86dA7ef3
+ZapVaultRedeemAdapter   0x3231217EAb3b07e574EA09Cbb82A53bAee3102d5
 
 DONE. The deployer owned both governance contracts, so every call below was
 executed in this run. Nothing further is required.
-  [satisfied on chain] AdapterRegistry.setAdapter(adapter, true)
+  [satisfied on chain] AdapterRegistry.setAdapter(swapAdapter, true)
+  [satisfied on chain] AdapterRegistry.setAdapter(vaultDepositAdapter, true)
+  [satisfied on chain] AdapterRegistry.setAdapter(vaultRedeemAdapter, true)
   [satisfied on chain] TokenAllowlist.setToken(currency0, true)
   [satisfied on chain] TokenAllowlist.setToken(currency1, true)
+  [satisfied on chain] TokenAllowlist.setToken(vaultAsset, true)
   [satisfied on chain] TokenAllowlist.setToken(vaultShare, true)
 
 NOTE: an ownership handoff is still pending and NOT accepted.
 
-Estimated total gas used for script: 3,057,811
-Estimated gas price: 0.180092001 gwei
-Estimated amount required: 0.000550687301669811 ETH
+Estimated total gas used for script: 4,489,576
+Estimated gas price: 0.187304001 gwei
+Estimated amount required: 0.000840915547593576 ETH
 ```
+
+Only **5** transactions are actually emitted for those 7 governance lines, and that is the script
+working as intended: aeWETH is already allowlisted so `currency0` is skipped, and `vaultAsset` is USDG
+— the same token as `currency1` — so it is written once, not twice. The reporter prints all seven
+lines because it prints the *required end state*, marking each `[satisfied on chain]` or `[PENDING]`.
 
 ### Branch B — deployer is NOT the owner, seeded
 
@@ -366,25 +491,49 @@ forge script script/DeployRobinhoodExpansion.s.sol:DeployRobinhoodExpansion \
   --sender <an address holding >= 1 USDG>
 ```
 
+The sender used was the v4 PoolManager `0x8366a39CC670B4001A1121B8F6A443A643e40951`, chosen only
+because it holds 8,301,364.083732 USDG on chain and is not the governance owner — it exercises the
+seed path and the not-the-owner path in one run. **It is not a suggestion for a real deployer.**
+
 ```
 RobinhoodV4PoolAdapter  0xeC34f375671dECA0492d42bF3a4541FBeF2caF1D
+  live pool liquidity 459410097244564369
 ZapVault                0x6BCC357fE41536D8a19D8F5ECac67ddd55354fc0
+  asset USDG, symbol ozUSDG, share decimals 9
+ZapVaultDepositAdapter  0x3a4A13Cb5B34C672Be2096993c7f681A7434649d
+  vault 0x6BCC…4fc0, asset (tokenIn) USDG, tokenOut = the share token
+ZapVaultRedeemAdapter   0x4ff5446C5845e20617f771d3e027dd0F6E67C1dB
+  vault (tokenIn) 0x6BCC…4fc0, asset (tokenOut) USDG
   seeded assets 1000000
   seed shares   1000000000
   seed shares sent to (unredeemable by design) 0x000000000000000000000000000000000000dEaD
 
 ACTION REQUIRED. At least one entry below is still PENDING ...
-  [PENDING - owner must send] AdapterRegistry.setAdapter(adapter, true)
+  [PENDING - owner must send] AdapterRegistry.setAdapter(swapAdapter, true)
     0x332f6465000000000000000000000000ec34f375671deca0492d42bf3a4541fbef2caf1d
+      0000000000000000000000000000000000000000000000000000000000000001
+  [PENDING - owner must send] AdapterRegistry.setAdapter(vaultDepositAdapter, true)
+    0x332f64650000000000000000000000003a4a13cb5b34c672be2096993c7f681a7434649d
+      0000000000000000000000000000000000000000000000000000000000000001
+  [PENDING - owner must send] AdapterRegistry.setAdapter(vaultRedeemAdapter, true)
+    0x332f64650000000000000000000000004ff5446c5845e20617f771d3e027dd0f6e67c1db
       0000000000000000000000000000000000000000000000000000000000000001
   [satisfied on chain]        TokenAllowlist.setToken(currency0, true)     (aeWETH already allowed)
   [PENDING - owner must send] TokenAllowlist.setToken(currency1, true)     (USDG NOT allowed)
+  [PENDING - owner must send] TokenAllowlist.setToken(vaultAsset, true)    (same call as currency1)
   [PENDING - owner must send] TokenAllowlist.setToken(vaultShare, true)
+    0x3816a2920000000000000000000000006bcc357fe41536d8a19d8f5ecac67ddd55354fc0
+      0000000000000000000000000000000000000000000000000000000000000001
 
-Estimated total gas used for script: 3,156,112
-Estimated gas price: 0.179152001 gwei
-Estimated amount required: 0.000565423780180112 ETH
+Estimated total gas used for script: 4,449,069
+Estimated gas price: 0.184980001 gwei
+Estimated amount required: 0.000822988788069069 ETH
 ```
+
+Note `setToken(currency1)` and `setToken(vaultAsset)` print identical calldata here, because
+`VAULT_ASSET` defaults to USDG which *is* `currency1`. **The owner sends it once.** They are listed
+separately because they are separately required — point `VAULT_ASSET` at a different token and they
+become two distinct calls.
 
 Per-transaction gas from the dry-run record:
 
@@ -392,9 +541,13 @@ Per-transaction gas from the dry-run record:
 | --- | --- |
 | CREATE `RobinhoodV4PoolAdapter` | 1,410,532 |
 | CREATE `ZapVault` | 1,439,084 |
+| CREATE `ZapVaultDepositAdapter` | 703,952 |
+| CREATE `ZapVaultRedeemAdapter` | 589,005 |
 | `USDG.approve(vault, seed)` | 80,078 |
 | `ZapVault.deposit(seed, 0x…dEaD)` | 173,876 |
 | `USDG.approve(vault, 0)` | 52,542 |
+
+The two vault adapters add ~1.29M gas to the run (~0.00024 ETH at 0.185 gwei).
 
 Note the addresses differ between branches only because they are CREATE addresses derived from the
 sender's nonce. The real deployment address depends on the real deployer.
@@ -416,9 +569,11 @@ That is the intended behaviour: you fund the seed, or you explicitly opt out of 
 
 ### Prerequisites the deployer must arrange first
 
-1. **Gas.** `0xe17f5150…` currently holds `0.001074602467948` ETH. The dry run estimates ~0.00057 ETH
-   for the full seeded run at 0.18 gwei. That is enough today, but it is not comfortable margin —
-   top it up.
+1. **Gas.** `0xe17f5150…` currently holds `0.001074602467948` ETH. With the two vault adapters added,
+   the dry run now estimates **~0.00084 ETH** for the full seeded run at ~0.185 gwei — up from
+   ~0.00057 before, because the run went from two CREATEs to four. That leaves roughly 0.00023 ETH of
+   headroom, which is **not** comfortable margin for a four-contract deployment. Top it up before
+   broadcasting.
 2. **Seed capital.** The deployer must hold at least `VAULT_SEED_ASSETS` of `VAULT_ASSET`. Today
    `0xe17f5150…` holds **0 USDG**, so the default run will abort until it is funded with 1 USDG.
 3. **Decide the pool.** The default is the deepest live hookless aeWETH/USDG pool. If you want a
@@ -460,31 +615,61 @@ If the deployer was **not** the registry/allowlist owner, the script printed a `
 raw calldata. Those must be sent **from the current `owner()`** — which is `0xe17f5150…` until
 `0x5a52D4B8…` calls `acceptOwnership()`.
 
+Five calls. **All five are required** — skipping the share-token line leaves a deployment that looks
+complete and cannot execute a single vault step.
+
 ```bash
-# 1. allow the new swap adapter (AdapterRegistry owner)
-cast send 0x9E56e444f490C00A6277326A47Cb462E12dF1f17 \
-  "setAdapter(address,bool)" <NEW_ADAPTER> true \
-  --rpc-url https://rpc.mainnet.chain.robinhood.com --ledger --from <OWNER>
+RPC=https://rpc.mainnet.chain.robinhood.com
+REGISTRY=0x9E56e444f490C00A6277326A47Cb462E12dF1f17
+ALLOWLIST=0x87fBb77a4328B068CADbA2eBE5dBCE0ffbd7141B
+USDG=0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168
 
-# 2. allow USDG as a routable/trackable token (TokenAllowlist owner)
-cast send 0x87fBb77a4328B068CADbA2eBE5dBCE0ffbd7141B \
-  "setToken(address,bool)" 0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168 true \
-  --rpc-url https://rpc.mainnet.chain.robinhood.com --ledger --from <OWNER>
+# --- AdapterRegistry owner ---
+# 1. the new swap adapter
+cast send $REGISTRY "setAdapter(address,bool)" <NEW_SWAP_ADAPTER> true \
+  --rpc-url $RPC --ledger --from <OWNER>
 
-# 3. allow the vault share token (TokenAllowlist owner)
-cast send 0x87fBb77a4328B068CADbA2eBE5dBCE0ffbd7141B \
-  "setToken(address,bool)" <NEW_VAULT> true \
-  --rpc-url https://rpc.mainnet.chain.robinhood.com --ledger --from <OWNER>
+# 2. the vault deposit adapter
+cast send $REGISTRY "setAdapter(address,bool)" <NEW_DEPOSIT_ADAPTER> true \
+  --rpc-url $RPC --ledger --from <OWNER>
+
+# 3. the vault redeem adapter  (skip this one and the position is a one-way door)
+cast send $REGISTRY "setAdapter(address,bool)" <NEW_REDEEM_ADAPTER> true \
+  --rpc-url $RPC --ledger --from <OWNER>
+
+# --- TokenAllowlist owner ---
+# 4. USDG — pool currency1, AND the vault's underlying asset (deposit tokenIn / redeem tokenOut).
+#    One call covers both roles while VAULT_ASSET is USDG.
+cast send $ALLOWLIST "setToken(address,bool)" $USDG true \
+  --rpc-url $RPC --ledger --from <OWNER>
+
+# 5. THE VAULT SHARE TOKEN — the vault address itself.
+#    Deposit step tokenOut AND redeem step tokenIn. Without this, a deposit step reverts
+#    InvalidAdapterResult at execution and a redeem step reverts TokenNotAllowed at initialize.
+cast send $ALLOWLIST "setToken(address,bool)" <NEW_VAULT> true \
+  --rpc-url $RPC --ledger --from <OWNER>
 ```
 
-aeWETH is already allowed; do not re-send it.
+aeWETH is already allowed; do not re-send it. If you pointed `VAULT_ASSET` at something other than
+USDG, that token needs its own `setToken` call as well.
 
-Verify:
+Verify — all five must return `true`:
 
 ```bash
-cast call 0x9E56e444f490C00A6277326A47Cb462E12dF1f17 "isAllowed(address)(bool)" <NEW_ADAPTER> --rpc-url https://rpc.mainnet.chain.robinhood.com
-cast call 0x87fBb77a4328B068CADbA2eBE5dBCE0ffbd7141B "isAllowed(address)(bool)" 0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168 --rpc-url https://rpc.mainnet.chain.robinhood.com
-cast call 0x87fBb77a4328B068CADbA2eBE5dBCE0ffbd7141B "isAllowed(address)(bool)" <NEW_VAULT> --rpc-url https://rpc.mainnet.chain.robinhood.com
+cast call $REGISTRY  "isAllowed(address)(bool)" <NEW_SWAP_ADAPTER>    --rpc-url $RPC
+cast call $REGISTRY  "isAllowed(address)(bool)" <NEW_DEPOSIT_ADAPTER> --rpc-url $RPC
+cast call $REGISTRY  "isAllowed(address)(bool)" <NEW_REDEEM_ADAPTER>  --rpc-url $RPC
+cast call $ALLOWLIST "isAllowed(address)(bool)" $USDG                 --rpc-url $RPC
+cast call $ALLOWLIST "isAllowed(address)(bool)" <NEW_VAULT>           --rpc-url $RPC
+```
+
+Then prove the adapters agree with the vault they were welded to:
+
+```bash
+cast call <NEW_DEPOSIT_ADAPTER> "vault()(address)" --rpc-url $RPC   # == <NEW_VAULT>
+cast call <NEW_DEPOSIT_ADAPTER> "asset()(address)" --rpc-url $RPC   # == $USDG
+cast call <NEW_REDEEM_ADAPTER>  "vault()(address)" --rpc-url $RPC   # == <NEW_VAULT>
+cast call <NEW_REDEEM_ADAPTER>  "asset()(address)" --rpc-url $RPC   # == $USDG
 ```
 
 ### Step 4 — close the governance gap (independent of this work, still required)
@@ -495,24 +680,36 @@ cast call 0x87fBb77a4328B068CADbA2eBE5dBCE0ffbd7141B "isAllowed(address)(bool)" 
    what both contracts' NatSpec assumes. A single EOA holding the kill switch for a live deployment is
    not a production posture.
 
-### Step 5 — what is still missing before the vault is usable in a zap
+### Step 5 — what a capsule can and cannot do once all of the above has landed
 
-**The vault is deployed and allowlisted but still not reachable from a zap step.** `OpenZap.execute`
-calls `IAdapter(adapter).execute(tokenIn, amountIn, data)`; nothing in this work implements an adapter
-that calls `vault.deposit(amountIn, msg.sender)`.
+The gap the previous version of this document recorded — "no adapter reaches the vault" — **is
+closed.** `ZapVaultDepositAdapter` and `ZapVaultRedeemAdapter` exist, are tested, and are deployed and
+allowlisted by this script. Once broadcast and allowlisted, these are expressible:
 
-To close it:
+```
+funded with USDG   → deposit step (ZapVaultDepositAdapter) → settles on ozUSDG
+funded with ozUSDG → redeem step  (ZapVaultRedeemAdapter)  → settles on USDG
+```
 
-1. Write a `ZapVaultDepositAdapter` following the same rules as `RobinhoodV4PoolAdapter` — one fixed
-   selector, no arbitrary calldata, measured delta returned, zero residual allowance on every path,
-   reentrancy guard. `test_oneTokenInOneReceiptOutForAnArbitraryReceiver` in `test/ZapVault.t.sol`
-   already pins the exact interface shape it depends on: exact asset debit, receipt delta equal to the
-   return value, nothing stranded on the caller.
-2. Fork-test it.
-3. Have governance `setAdapter` it.
+These are **not**, and no adapter can make them so:
 
-Until then, `ZapVault` is a standalone vault that people can deposit into directly, and `supply`/`stake`
-blocks remain unavailable on Robinhood Chain inside a capsule.
+1. **Deposit and redeem in the same capsule.** Settlement is `balanceOf(outAsset)` after minus before.
+   A run that spends USDG and gives it back nets to zero at best and underflow-reverts once rounding
+   bites. Redeem belongs in a capsule funded with shares.
+2. **A redeem sized to whatever a deposit produced.** `Step.amountIn` is frozen at signing. The share
+   count must be named in advance; any surplus strands until `emergencyExit`.
+3. **`stake`.** That block takes an `lp`; the vault takes a plain token. The vault does not unblock it,
+   and there is no gauge or farm on 4663 regardless.
+4. **Drawing any of this in the builder.** `compileChain` in `src/lib/blocks.ts` matches shapes by
+   strict equality. `supply` emits a `receipt`; `send` — the only working sink — accepts a `token`, so
+   a `supply` chain is a hard block-level error in the UI even though the contracts execute it fine.
+   And **no block in the catalogue expresses `receipt → token` at all**, so the redeem adapter has no
+   builder representation whatsoever. That is front-end and catalogue work, not a contract gap. See
+   `BASE_CAPABILITIES.md` §4b.
+
+One copy fix is required before `supply` is offered on 4663: the block's detail text reads *"Interest
+accrues to the share, so the receipt is what the rest of the chain moves."* **For `ZapVault` the first
+half is false.** It earns nothing.
 
 ---
 
@@ -522,11 +719,17 @@ Both suites green, no assertions weakened. Nothing was fixed because nothing was
 
 ```
 $ forge test
-Ran 17 test suites in 445.25ms (2.10s CPU time): 151 tests passed, 0 failed, 3 skipped (154 total tests)
+Ran 18 test suites in 363.49ms (2.31s CPU time): 176 tests passed, 0 failed, 3 skipped (179 total tests)
 
-$ forge test --fork-url https://rpc.mainnet.chain.robinhood.com
-Ran 17 test suites in 7.15s (66.90s CPU time): 151 tests passed, 0 failed, 3 skipped (154 total tests)
+$ forge test --match-path test/ZapVaultAdapters.t.sol
+Ran 1 test suite in 97.22ms: 25 tests passed, 0 failed, 0 skipped (25 total tests)
 ```
+
+The 25 new tests cover both vault adapters, including
+`test_roundTripThroughRealOpenZapClones` — a deposit and a redeem driven through **real `OpenZap`
+clones**, which is what proves the redeem allowance path works end to end — and
+`test_redeemRevertsWithoutTheZapsAllowance`, which proves that allowance is load-bearing rather than
+incidental.
 
 **About the 3 skips.** They are all pre-existing, and none of them is new work hiding:
 
@@ -555,17 +758,30 @@ Contract sizes:
 | --- | --- | --- | --- |
 | `RobinhoodV4PoolAdapter` | 4,686 | 5,570 | 19,890 |
 | `ZapVault` | 4,530 | 5,794 | 20,046 |
+| `ZapVaultDepositAdapter` | 2,205 | 2,625 | 22,371 |
+| `ZapVaultRedeemAdapter` | 1,796 | 2,216 | 22,780 |
 | `RobinhoodV4SwapAdapter` (existing) | 4,254 | 5,015 | 20,322 |
 
 ---
 
 ## 8. Summary of what is not done
 
-- **No deposit adapter for `ZapVault`.** The vault cannot be a zap step until one exists (§6 step 5).
-- **`ZapVault` is unaudited** and should not hold third-party funds until reviewed (§3).
-- **Nothing was broadcast.** Every number in §5 is a simulation. No private key was written, requested
-  or read at any point.
+- **Nothing was broadcast.** Every address and every number in §5 is a simulation. No private key was
+  written, requested or read at any point. **Nothing in this work is live on chain 4663.**
+- **`ZapVault` is unaudited** and should not hold third-party funds until reviewed (§3). Allowlisting
+  the deposit adapter is the moment that risk becomes other people's problem.
 - **Governance is an EOA with an unaccepted handoff pending.** Independent of this work, but it gates
   calling any of this production.
+- **No fork test for the vault adapters.** The 25 tests run against a local `ZapVault` and real
+  `OpenZap` clones, which is the right level — the vault has no external protocol dependency to fork
+  against. But the *deployed* pairing has never been exercised on live chain state.
+- **The builder cannot draw any of it.** `supply` is a shape mismatch against `send`, and `redeem` has
+  no block at all (§6 step 5, `BASE_CAPABILITIES.md` §4b). Shipping these adapters did not make the
+  product able to offer them.
+- **The `supply` block's copy is wrong for this vault** — it promises accruing interest; `ZapVault`
+  earns nothing. Fix before offering it on 4663.
 - **Tokenised-equity pools (NVDA/TSLA/AAPL) are untested.** The adapter is pool-agnostic and should
   serve them, but "should" is not "measured".
+- **`forge fmt --check` is not clean repo-wide**, and was not before this work either:
+  `script/Deploy.s.sol` and `test/DeployedBaseE2E.t.sol` both report diffs. Neither is touched by this
+  work and neither was reformatted here. `script/DeployRobinhoodExpansion.s.sol` is clean.
