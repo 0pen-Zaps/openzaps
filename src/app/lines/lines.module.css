@@ -168,10 +168,18 @@
 .brandLink:focus-visible,
 .navLinks a:focus-visible,
 .footerLinks a:focus-visible,
-.ribbon a:focus-visible,
 .btn:focus-visible,
 .btnGhost:focus-visible {
   outline: 2px solid var(--lines-accent);
+  outline-offset: 3px;
+}
+
+/* The ribbon's ground IS the accent, so an accent ring on it is a 1.9:1
+   invisible outline around the one control most likely to be tabbed first.
+   Inside the ribbon the ring inverts to ink, which is the same 16.3:1 the
+   ribbon's own text runs at. */
+.ribbon a:focus-visible {
+  outline: 2px solid var(--lines-ink);
   outline-offset: 3px;
 }
 
