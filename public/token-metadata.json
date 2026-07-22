@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "updatedAt": "2026-07-22T08:05:39Z",
+  "updatedAt": "2026-07-22T09:47:13Z",
   "project": {
     "name": "OpenZaps",
     "website": "https://www.0xzaps.com",
@@ -38,6 +38,18 @@
       "equity"
     ],
     "protocolExternalAudit": false,
-    "notice": "Verify the Robinhood Chain contract before signing. Market data changes over time."
+    "notice": "Verify the Robinhood Chain contract before signing. Market data changes over time.",
+    "appUtilities": {
+      "description": "App-level conveniences unlocked by connected-wallet balance in the 0xzaps.com console; not protocol rights and subject to change.",
+      "holderThreshold": "100000",
+      "operatorThreshold": "1000000",
+      "utilities": [
+        "auto-refreshing live quotes",
+        "extended saved-zap history (50 slots; 100 at operator tier)",
+        "extended receipt retention",
+        "receipt JSON export"
+      ],
+      "coreWorkflowsTokenGated": false
+    }
   }
 }

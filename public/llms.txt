@@ -4,7 +4,7 @@
 
 Key facts:
 - Production v1.1 contracts are live on Robinhood Chain (chain ID 4663; factory 0xFC775017b25d2458623E2f3E735A4B750dD8b4E4). Bounded aeWETH ↔ 0xZAPS creation is open; contracts are internally reviewed (63 Foundry tests, 9 internal findings fixed) but pre-external-audit, and deposits carry funds-at-risk warnings. An earlier Base mainnet factory (0xc7C5897e4738a157731c2F93b1d73Db9926E926C) is historical only and not used by the production app.
-- The token confers no yield, equity, revenue claim, governance, staking, or protocol access guarantee.
+- The token confers no yield, equity, revenue claim, governance, staking, or protocol access guarantee. Live app-level holder utilities exist: wallets holding 100,000+ 0xZAPS unlock auto-refreshing quotes, extended zap/receipt history, and receipt JSON export in the app console (1,000,000+ extends history further). Core workflows are never token-gated.
 - Execution authority is bound in EIP-712-signed policies: fixed adapters, spend ceilings, recipients, deadlines, postconditions, and unconditional owner revoke paths.
 
 ## Pages

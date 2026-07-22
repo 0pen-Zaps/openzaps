@@ -61,7 +61,7 @@ export default function SecurityPage(): React.JSX.Element {
         </div>
         <aside className={styles.heroCard}>
           <span>Security status</span>
-          <strong>{STATUS.preAudit ? "Pre-audit, gated" : "Audit-cleared"}</strong>
+          <strong>{STATUS.preAudit ? "Live, pre-audit" : "Audit-cleared"}</strong>
         </aside>
       </section>
 

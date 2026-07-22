@@ -635,7 +635,41 @@
 .receiptLinks {
   display: flex;
   flex-wrap: wrap;
+  align-items: center;
   gap: 0.4rem 1.1rem;
+}
+
+.holderChip {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 0 0.75rem;
+  border: 1px solid rgba(142, 160, 255, 0.42);
+  border-radius: 999px;
+  background: rgba(107, 92, 255, 0.12);
+  color: var(--indigo);
+  font-family: var(--font-jetbrains-mono), ui-monospace, monospace;
+  font-size: 0.72rem;
+}
+
+.utilStatus {
+  grid-column: 1 / -1;
+  color: var(--muted);
+  font-size: 0.74rem;
+  line-height: 1.5;
+}
+
+.utilStatus a {
+  color: var(--indigo);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.autoRefreshed {
+  grid-column: 1 / -1;
+  color: var(--muted);
+  font-size: 0.72rem;
+  line-height: 1.4;
 }
 
 .zapHistory {

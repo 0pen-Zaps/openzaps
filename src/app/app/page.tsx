@@ -25,6 +25,17 @@ import {
   executedEvent,
 } from "@/lib/activity";
 import {
+  MAX_RECEIPT_RETENTION,
+  QUOTE_AUTO_REFRESH_MS,
+  autoRefreshQuotes,
+  canExportReceipts,
+  holderTierFor,
+  receiptLimitFor,
+  savedZapLimitFor,
+  tierLabel,
+  type HolderTier,
+} from "@/lib/holder";
+import {
   MAX_EXECUTION_FEE_PER_GAS,
   MAX_EXECUTION_GAS,
   assetsForDirection,
@@ -109,6 +120,11 @@ export default function AppPage(): React.JSX.Element {
   const [slippageBps, setSlippageBps] = useState(100);
   const [quote, setQuote] = useState<bigint | null>(null);
   const [quoteGas, setQuoteGas] = useState<bigint | null>(null);
+  // The quote the user explicitly requested and reviewed. Silent auto-refresh
+  // updates `quote` for display but never this — the execute-time abort guard
+  // compares against the floor the user actually acknowledged.
+  const [reviewedQuote, setReviewedQuote] = useState<bigint | null>(null);
+  const [autoRefreshedAt, setAutoRefreshedAt] = useState<string | null>(null);
   const [zap, setZap] = useState<SavedZapRecord | null>(null);
   const [savedZaps, setSavedZaps] = useState<SavedZapRecord[]>([]);
   const [executedZap, setExecutedZap] = useState<Address | null>(null);
@@ -129,6 +145,11 @@ export default function AppPage(): React.JSX.Element {
   const accountRef = useRef<Address | null>(null);
   const zapRef = useRef<SavedZapRecord | null>(null);
   const noticeRef = useRef<HTMLDivElement>(null);
+  const holderTierRef = useRef<HolderTier>("none");
+  const autoQuoteRef = useRef<(() => void) | null>(null);
+  // Bumped whenever direction/amount/zap context changes so an in-flight
+  // quote response for the old context can never land on the new one.
+  const quoteEpochRef = useRef(0);
 
   useEffect(() => {
     accountRef.current = account;
@@ -137,6 +158,39 @@ export default function AppPage(): React.JSX.Element {
   useEffect(() => {
     zapRef.current = zap;
   }, [zap]);
+
+  const resetQuoteState = useCallback((): void => {
+    quoteEpochRef.current += 1;
+    setQuote(null);
+    setQuoteGas(null);
+    setReviewedQuote(null);
+    setAutoRefreshedAt(null);
+  }, []);
+
+  const selectZap = useCallback((record: SavedZapRecord): void => {
+    setZap(record);
+    setDirection(record.direction);
+    setAmount(formatUnits(BigInt(record.amountIn), 18));
+    resetQuoteState();
+    setExecutedZap(null);
+  }, [resetQuoteState]);
+
+  const resetSessionState = useCallback((): void => {
+    setZap(null);
+    setSavedZaps([]);
+    setExecutedZap(null);
+    resetQuoteState();
+    setTransactions([]);
+    setManualZap("");
+    // Balances belong to the departing account; a new account must never
+    // inherit them (the holder tier derives from the 0xZAPS balance).
+    setWalletWethBalance(0n);
+    setWalletZapsBalance(0n);
+    setNativeBalance(0n);
+    setZapWethBalance(0n);
+    setZapZapsBalance(0n);
+    setZapNativeBalance(0n);
+  }, [resetQuoteState]);
 
   useEffect(() => {
     const address = zap?.address;
@@ -210,6 +264,25 @@ export default function AppPage(): React.JSX.Element {
   const executionComplete = zap !== null && executedZap === zap.address;
   const minOut = quote === null ? null : (quote * BigInt(10_000 - slippageBps)) / 10_000n;
   const protocolReady = configured && protocolHealth === "ready";
+  // App-level holder utilities: unlocked by connected-wallet 0xZAPS balance.
+  // Core workflows are never token-gated.
+  const holderTier: HolderTier = account ? holderTierFor(walletZapsBalance) : "none";
+
+  // Latest-callback pattern: the 20s interval always invokes the current
+  // render's closure, so auto-refresh sees fresh state without re-arming.
+  useEffect(() => {
+    holderTierRef.current = holderTier;
+    autoQuoteRef.current = () => {
+      if (!autoRefreshQuotes(holderTier)) return;
+      if (busy !== null || quote === null || executionComplete || amountIn <= 0n) return;
+      void requestQuote({ silent: true });
+    };
+  });
+
+  useEffect(() => {
+    const timer = window.setInterval(() => autoQuoteRef.current?.(), QUOTE_AUTO_REFRESH_MS);
+    return () => window.clearInterval(timer);
+  }, []);
 
   const refreshBalances = useCallback(async (): Promise<void> => {
     if (!account) return;
@@ -331,7 +404,7 @@ export default function AppPage(): React.JSX.Element {
       provider.removeListener?.("chainChanged", updateChain);
       provider.removeListener?.("disconnect", handleDisconnect);
     };
-  }, []);
+  }, [resetSessionState]);
 
   useEffect(() => {
     if (!account) return;
@@ -381,7 +454,10 @@ export default function AppPage(): React.JSX.Element {
       });
       saveZapList(account, merged);
       setSavedZaps(merged);
-      setTransactions(readTransactions(account));
+      // Always read at maximum retention: the holder tier may not be known yet
+      // (balance still loading), and a truncating read followed by a persisting
+      // write would permanently destroy a holder's extended history.
+      setTransactions(readTransactions(account, MAX_RECEIPT_RETENTION));
       if (!rpcHealthy) setNotice("Saved zaps could not be verified right now — Robinhood RPC is unreachable. They remain saved.");
       const firstVerified = merged.find((record) => verified.has(record.address));
       if (firstVerified && zapRef.current === null) selectZap(firstVerified);
@@ -390,7 +466,7 @@ export default function AppPage(): React.JSX.Element {
     return () => {
       cancelled = true;
     };
-  }, [account]);
+  }, [account, selectZap]);
 
   async function connectWallet(): Promise<void> {
     setBusy("connect");
@@ -414,9 +490,13 @@ export default function AppPage(): React.JSX.Element {
     }
   }
 
-  async function requestQuote(): Promise<bigint | null> {
-    setBusy("quote");
-    clearMessages();
+  async function requestQuote(options?: { silent?: boolean }): Promise<bigint | null> {
+    const silent = options?.silent === true;
+    const epoch = quoteEpochRef.current;
+    if (!silent) {
+      setBusy("quote");
+      clearMessages();
+    }
     try {
       const exactAmount = parseRouterAmount(amount);
       const { result } = await publicClient.simulateContract({
@@ -433,17 +513,31 @@ export default function AppPage(): React.JSX.Element {
           },
         ],
       });
+      // The direction/amount/zap context changed while this quote was in
+      // flight; its result belongs to the old context and must be dropped.
+      if (epoch !== quoteEpochRef.current) return null;
       setQuote(result[0]);
       setQuoteGas(result[1]);
-      setNotice("Live pool quote loaded. The signed minimum is enforced after the adapter returns.");
+      if (silent) {
+        setAutoRefreshedAt(new Date().toLocaleTimeString("en-US"));
+      } else {
+        setReviewedQuote(result[0]);
+        setAutoRefreshedAt(null);
+        setNotice("Live pool quote loaded. The signed minimum is enforced after the adapter returns.");
+      }
       return result[0];
     } catch (cause) {
-      setQuote(null);
-      setQuoteGas(null);
-      setError(`Quote unavailable: ${readableError(cause)}`);
+      // A failed silent refresh keeps the last quote on screen; the
+      // execute-time reviewed-floor guard still protects the signed minimum.
+      if (!silent && epoch === quoteEpochRef.current) {
+        setQuote(null);
+        setQuoteGas(null);
+        setReviewedQuote(null);
+        setError(`Quote unavailable: ${readableError(cause)}`);
+      }
       return null;
     } finally {
-      setBusy(null);
+      if (!silent) setBusy(null);
     }
   }
 
@@ -597,14 +691,16 @@ export default function AppPage(): React.JSX.Element {
       if (liveInputBalance < verifiedZap.amountIn) throw new Error("Fund the zap before execution.");
 
       // The signed minOut derives from a click-time re-quote; require a quote
-      // the user actually reviewed, and abort when the market has moved below
-      // the minimum that was on screen — never sign a floor the user never saw.
-      if (quote === null || minOut === null) throw new Error("Request a live quote first to review the minimum output you are signing.");
+      // the user explicitly reviewed, and abort when the market has moved
+      // below THAT floor — a silent auto-refresh must never lower the
+      // threshold the user acknowledged.
+      if (reviewedQuote === null) throw new Error("Request a live quote first to review the minimum output you are signing.");
+      const reviewedFloor = (reviewedQuote * BigInt(10_000 - slippageBps)) / 10_000n;
       const freshQuote = await quoteExactInput(verifiedZap.direction, verifiedZap.amountIn, owner);
-      if (freshQuote < minOut) {
+      if (freshQuote < reviewedFloor) {
         setQuote(freshQuote);
         setQuoteGas(null);
-        throw new Error("The live price moved below your displayed minimum. Review the refreshed quote before signing.");
+        throw new Error("The live price moved below your reviewed minimum. Refresh the quote and review the new minimum before signing.");
       }
       const signedMinOut = (freshQuote * BigInt(10_000 - slippageBps)) / 10_000n;
       if (signedMinOut <= 0n) throw new Error("The live quote is too small for a safe minimum output.");
@@ -791,7 +887,7 @@ export default function AppPage(): React.JSX.Element {
     anchor.href = url;
     anchor.download = `openzap-${zap.address}.json`;
     anchor.click();
-    URL.revokeObjectURL(url);
+    window.setTimeout(() => URL.revokeObjectURL(url), 10_000);
   }
 
   async function disconnect(): Promise<void> {
@@ -807,15 +903,6 @@ export default function AppPage(): React.JSX.Element {
     clearMessages();
   }
 
-  function resetSessionState(): void {
-    setZap(null);
-    setSavedZaps([]);
-    setExecutedZap(null);
-    setQuote(null);
-    setQuoteGas(null);
-    setTransactions([]);
-    setManualZap("");
-  }
 
   function recordTransaction(owner: Address, hash: Hex, label: string, status: "success" | "reverted"): void {
     setTransactions((current) => {
@@ -827,10 +914,33 @@ export default function AppPage(): React.JSX.Element {
           confirmedAt: new Date().toISOString(),
         },
         ...current.filter((transaction) => transaction.hash !== hash),
-      ].slice(0, 20);
+      ].slice(0, Math.max(current.length, receiptLimitFor(holderTierRef.current)));
       saveTransactions(owner, next);
       return next;
     });
+  }
+
+  function exportReceipts(): void {
+    const owner = account;
+    if (!owner || transactions.length === 0 || !canExportReceipts(holderTier)) return;
+    const payload = JSON.stringify(
+      {
+        schema: "openzaps.robinhood.receipts.v1",
+        chainId: ROBINHOOD_CHAIN_ID,
+        account: owner,
+        exportedAt: new Date().toISOString(),
+        receipts: transactions,
+      },
+      null,
+      2,
+    );
+    const url = URL.createObjectURL(new Blob([payload], { type: "application/json" }));
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = `openzaps-receipts-${owner}.json`;
+    anchor.click();
+    // Safari aborts the download if the blob URL is revoked synchronously.
+    window.setTimeout(() => URL.revokeObjectURL(url), 10_000);
   }
 
   function clearMessages(): void {
@@ -840,28 +950,20 @@ export default function AppPage(): React.JSX.Element {
 
   function changeDirection(nextDirection: ZapDirection): void {
     setDirection(nextDirection);
-    setQuote(null);
-    setQuoteGas(null);
+    resetQuoteState();
   }
 
   function changeAmount(nextAmount: string): void {
     setAmount(nextAmount);
-    setQuote(null);
-    setQuoteGas(null);
-  }
-
-  function selectZap(record: SavedZapRecord): void {
-    setZap(record);
-    setDirection(record.direction);
-    setAmount(formatUnits(BigInt(record.amountIn), 18));
-    setQuote(null);
-    setQuoteGas(null);
-    setExecutedZap(null);
+    resetQuoteState();
   }
 
   function rememberZap(owner: Address, record: SavedZapRecord): void {
     setSavedZaps((current) => {
-      const next = [record, ...current.filter((candidate) => candidate.address !== record.address)].slice(0, 20);
+      // A tier downgrade caps future growth but must never destructively
+      // prune existing records — they can point at funded capsules.
+      const limit = Math.max(current.length, savedZapLimitFor(holderTierRef.current));
+      const next = [record, ...current.filter((candidate) => candidate.address !== record.address)].slice(0, limit);
       saveZapList(owner, next);
       return next;
     });
@@ -870,8 +972,7 @@ export default function AppPage(): React.JSX.Element {
   function startNewZap(): void {
     setZap(null);
     setExecutedZap(null);
-    setQuote(null);
-    setQuoteGas(null);
+    resetQuoteState();
     setManualZap("");
     clearMessages();
   }
@@ -925,6 +1026,7 @@ export default function AppPage(): React.JSX.Element {
               <a className={styles.addr} href={explorerAddress(account)} target="_blank" rel="noreferrer">
                 {shortAddress(account)}
               </a>
+              {holderTier !== "none" && <span className={styles.holderChip}>{tierLabel(holderTier)}</span>}
               {wrongNetwork && (
                 <button className="btn btnPrimary" disabled={busy !== null} onClick={() => void connectWallet()} type="button">
                   {busy === "connect" ? "Switching…" : "Switch network"}
@@ -955,6 +1057,15 @@ export default function AppPage(): React.JSX.Element {
           <span>Live token · Robinhood Chain</span>
           <strong>0xZAPS</strong>
           <code>{ROBINHOOD_ASSETS.zaps}</code>
+          <span className={styles.utilStatus}>
+            {!account
+              ? "Holding 100,000+ 0xZAPS unlocks app extras — auto-refreshing quotes, longer history, receipt export."
+              : holderTier === "none"
+                ? "Hold 100,000+ 0xZAPS in this wallet to unlock auto-refreshing quotes, longer history, and receipt export."
+                : `${tierLabel(holderTier)} utilities active: auto-refreshing quotes, extended history, receipt export.`}
+            {" "}
+            <Link href="/token#utilities">Details →</Link>
+          </span>
         </div>
         <div className={styles.tokenActions}>
           <button className="btn btnGhost" onClick={() => void copyTokenAddress()} type="button">Copy address</button>
@@ -1003,6 +1114,7 @@ export default function AppPage(): React.JSX.Element {
             <div><span>Live quote</span><strong>{quote === null ? "Not requested" : `${formatToken(quote)} ${outputSymbol}`}</strong></div>
             <div><span>Signed minimum</span><strong>{minOut === null ? "—" : `${formatToken(minOut)} ${outputSymbol}`}</strong></div>
             <div><span>Quoter gas</span><strong>{quoteGas === null ? "—" : quoteGas.toLocaleString()}</strong></div>
+            {autoRefreshedAt && <div className={styles.autoRefreshed}>Auto-updated {autoRefreshedAt} — your signed floor stays at the quote you last requested.</div>}
             <button className="btn btnGhost" data-testid="quote-button" disabled={busy !== null || amountIn <= 0n} onClick={() => void requestQuote()} type="button">
               {busy === "quote" ? "Quoting…" : quote === null ? "Get live quote" : "Refresh quote"}
             </button>
@@ -1026,7 +1138,7 @@ export default function AppPage(): React.JSX.Element {
               </button>
             </FlowStep>
             <FlowStep number="3" title="Sign and execute" detail="Requires a reviewed live quote; execution aborts if the price drops below your displayed minimum. The EIP-712 intent expires in ten minutes and caps gas and fee price." done={executionComplete}>
-              <button className="btn btnPrimary" disabled={!protocolReady || !funded || quote === null || busy !== null || executionComplete} onClick={() => void executeZap()} type="button">
+              <button className="btn btnPrimary" disabled={!protocolReady || !funded || reviewedQuote === null || busy !== null || executionComplete} onClick={() => void executeZap()} type="button">
                 {busy === "execute" ? "Executing…" : executionComplete ? "Execution confirmed" : "Sign & execute"}
               </button>
             </FlowStep>
@@ -1116,6 +1228,15 @@ export default function AppPage(): React.JSX.Element {
         <div className={styles.receiptHead}>
           <div><span className="eyebrow">Receipts</span><h2>Confirmed wallet activity.</h2></div>
           <div className={styles.receiptLinks}>
+            <button
+              className="btn btnGhost"
+              disabled={!canExportReceipts(holderTier) || transactions.length === 0}
+              onClick={exportReceipts}
+              title={canExportReceipts(holderTier) ? undefined : "Unlocks with 100,000+ 0xZAPS in the connected wallet"}
+              type="button"
+            >
+              Export receipts (JSON)
+            </button>
             <Link href="/dashboard">Protocol-wide activity →</Link>
             <a href={ROBINHOOD_EXPLORER_URL} target="_blank" rel="noreferrer">Open Robinhood Blockscout ↗</a>
           </div>
@@ -1246,7 +1367,7 @@ function saveTransactions(owner: Address, records: TransactionRecord[]): void {
   }
 }
 
-function readTransactions(owner: Address): TransactionRecord[] {
+function readTransactions(owner: Address, limit = 20): TransactionRecord[] {
   let raw: string | null = null;
   try {
     raw = window.localStorage.getItem(`${TX_STORAGE_KEY}:${owner.toLowerCase()}`);
@@ -1271,7 +1392,7 @@ function readTransactions(owner: Address): TransactionRecord[] {
       status: record.status,
       confirmedAt: record.confirmedAt,
     } satisfies TransactionRecord];
-  }).slice(0, 20);
+  }).slice(0, limit);
 }
 
 function parseStoredJson(raw: string | null): unknown {

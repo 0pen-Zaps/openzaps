@@ -16,7 +16,7 @@ const phases = [
   [
     "Now",
     "Live Robinhood v1.1",
-    "Wallet connection, live v4 quotes, deterministic clones, EIP-712 execution, receipts, and owner recovery.",
+    "Wallet connection, live v4 quotes, deterministic clones, EIP-712 execution, receipts, owner recovery, the live activity dashboard, and 0xZAPS holder utilities in the app.",
   ],
   [
     "Next",
@@ -24,9 +24,9 @@ const phases = [
     "More policy templates, additional governed adapters, and Hermes-assisted submission within owner-signed caps.",
   ],
   [
-    "Audit",
-    "External security gates",
-    "Third-party audit, formal verification, testnet soak, adapter manifests, governance runbook, and incident drills.",
+    "Hardening",
+    "External audit milestone",
+    "Third-party audit, formal verification, testnet soak, adapter manifests, governance runbook, and incident drills — planned hardening, not a product gate.",
   ],
   [
     "Beta",
