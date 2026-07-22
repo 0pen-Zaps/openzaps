@@ -108,11 +108,19 @@ describe("canInsert", () => {
     expect(canInsert(built, block("swap"), 1)).toBe(true);
   });
 
-  it("lets guards sit anywhere downstream of a source", () => {
+  it("lets guards sit anywhere value is flowing", () => {
     const built = chain("wallet-balance", "swap", "send");
-    for (let i = 1; i <= built.length; i++) {
-      expect(canInsert(built, block("guard-slippage"), i)).toBe(true);
-    }
+    // Between the source and the sink, a guard binds whatever passes.
+    expect(canInsert(built, block("guard-slippage"), 1)).toBe(true);
+    expect(canInsert(built, block("guard-slippage"), 2)).toBe(true);
+  });
+
+  it("refuses a guard where nothing is flowing to guard", () => {
+    const built = chain("wallet-balance", "swap", "send");
+    // Above the source nothing has been drawn yet, and below the sink the
+    // chain has already settled — `compileChain` calls both orphaned.
+    expect(canInsert(built, block("guard-slippage"), 0)).toBe(false);
+    expect(canInsert(built, block("guard-slippage"), built.length)).toBe(false);
     expect(canInsert([], block("guard-slippage"), 0)).toBe(false);
   });
 });
@@ -221,26 +229,47 @@ describe("canInsert agrees with compileChain", () => {
   // The canvas, the arrow buttons, and the palette dimming all trust canInsert.
   // If it ever green-lights a drop the compiler then rejects, the UI would
   // invite the user to build something it immediately calls broken.
-  it("never accepts an insertion the compiler blocks", () => {
-    const bases: ChainNode[][] = [
-      [],
-      chain("wallet-balance"),
-      chain("wallet-balance", "swap", "send"),
-      chain("wallet-balance", "add-liquidity", "stake", "hold"),
-      chain("pending-rewards", "harvest", "send"),
-      chain("wallet-balance", "supply", "borrow", "draw-debt", "send"),
-    ];
+  const BASES: ChainNode[][] = [
+    [],
+    chain("wallet-balance"),
+    chain("wallet-balance", "swap", "send"),
+    chain("wallet-balance", "add-liquidity", "stake", "hold"),
+    chain("pending-rewards", "harvest", "send"),
+    chain("wallet-balance", "supply", "borrow", "draw-debt", "send"),
+    chain("wallet-balance", "guard-slippage", "swap", "send"),
+  ];
 
-    for (const base of bases) {
+  /** Every insertion `canInsert` green-lights, with the probe's uid. */
+  function* accepted(): Generator<{ next: ChainNode[]; uid: string; where: string }> {
+    for (const base of BASES) {
       for (const candidate of BLOCKS) {
         for (let index = 0; index <= base.length; index++) {
           if (!canInsert(base, candidate, index)) continue;
+          const uid = `probe-${candidate.id}-${index}`;
           const next = [...base];
-          next.splice(index, 0, makeNode(candidate.id, `probe-${candidate.id}-${index}`));
-          const blocked = compileChain(next).issues.filter((issue) => issue.level === "block");
-          expect(blocked, `${candidate.id} at ${index} of [${base.map((n) => n.blockId).join(",")}]`).toEqual([]);
+          next.splice(index, 0, makeNode(candidate.id, uid));
+          yield { next, uid, where: `${candidate.id} at ${index} of [${base.map((n) => n.blockId).join(",")}]` };
         }
       }
+    }
+  }
+
+  it("never accepts an insertion the compiler blocks", () => {
+    for (const { next, where } of accepted()) {
+      const blocked = compileChain(next).issues.filter((issue) => issue.level === "block");
+      expect(blocked, where).toEqual([]);
+    }
+  });
+
+  // Blocking issues were never the whole agreement. A guard dropped below the
+  // sink used to pass the check above — the compiler only *warns* that it has
+  // nothing to guard — while rendering a red card the user never asked for.
+  // Nothing the seating rule accepts may leave the piece it just placed
+  // complained about, at any level.
+  it("never accepts an insertion that faults the block it places", () => {
+    for (const { next, uid, where } of accepted()) {
+      const own = compileChain(next).issues.filter((issue) => issue.uid === uid);
+      expect(own, where).toEqual([]);
     }
   });
 });
