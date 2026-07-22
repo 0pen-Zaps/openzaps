@@ -937,16 +937,27 @@
   font-size: 0.72rem;
 }
 
+/* The card describes a loop that does not run yet, so it says so directly under
+   the heading rather than leaving the six steps to read as current behaviour. */
+.agentNote {
+  margin-bottom: 0.35rem;
+  color: var(--muted);
+  font-size: 0.82rem;
+  line-height: 1.5;
+}
+
 .loopRow {
   display: flex;
   align-items: center;
   gap: 0.85rem;
   padding: 0.95rem 0;
-  border-top: 1px solid var(--line-soft);
 }
 
-.loopRow:first-of-type {
-  border-top: none;
+/* Divider between rows only. `:first-of-type` cannot express that here — the
+   card's first children are the heading pill and the note, so the first row is
+   never the first of its type and kept a stray hairline above it. */
+.loopRow + .loopRow {
+  border-top: 1px solid var(--line-soft);
 }
 
 .loopRow span {

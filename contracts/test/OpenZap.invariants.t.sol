@@ -62,9 +62,8 @@ contract Handler is Test {
             outAsset: address(tokenOut),
             minOut: 0
         });
-        bytes32 domain = keccak256(
-            abi.encode(DOMAIN_TYPEHASH, keccak256("OpenZap"), keccak256("1"), block.chainid, address(zap))
-        );
+        bytes32 domain =
+            keccak256(abi.encode(DOMAIN_TYPEHASH, keccak256("OpenZap"), keccak256("1"), block.chainid, address(zap)));
         bytes32 structHash = keccak256(
             abi.encode(
                 INTENT_TYPEHASH,
@@ -104,6 +103,22 @@ contract OpenZapInvariants is BaseTest {
         super.setUp();
         handler = new Handler(zap, tokenIn, tokenOut, address(adapter), OWNER_PK, recipient, relayer);
         targetContract(address(handler));
+
+        // Pin the senders. `Handler` has no access control of any kind: `doExecute` always calls
+        // `zap.execute` as the handler itself, and `doExit` always pranks the owner, so the address
+        // that pokes the handler cannot change a single branch, storage write, or revert reason. The
+        // explored state space is therefore identical with fixed senders — runs (64), depth (32) and
+        // the fuzzed `feeSeed` domain are all untouched.
+        //
+        // What it does change is the fork case. `forge test --fork-url <base>` puts even mock-only
+        // suites on a forked backend, where every fresh random sender is an unknown account that must
+        // be fetched over RPC. 64 x 32 x 2 random senders is thousands of lookups against a public
+        // endpoint, which answers HTTP 429 and surfaces as "failed to set up invariant testing
+        // environment" — a fake failure that says nothing about the contracts. Three fixed senders are
+        // three cached lookups.
+        targetSender(address(0xA11CE));
+        targetSender(address(0xB0B));
+        targetSender(address(0xCA11));
     }
 
     /// @dev I-APPR-1: between transactions, the zap never holds a live approval to the adapter.

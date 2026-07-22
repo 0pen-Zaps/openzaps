@@ -7,19 +7,19 @@ import styles from "../docs/docs.module.css";
 export const metadata = pageMetadata({
   title: "Risk disclosures",
   description:
-    "OpenZaps risk disclosures for pre-audit contracts, onchain execution, token utility, relayer behavior, and user responsibility.",
+    "The OpenZaps contracts have not been externally audited. Onchain actions are irreversible. 0xZAPS is an ERC-20 with no claim on revenue, yield, or assets. Read the relayer, market, and user-responsibility disclosures before signing anything.",
   path: "/legal",
   ogImage: "/og/legal.png",
   keywords: ["OpenZaps risk disclosures", "0xZAPS token risk"],
 });
 
 const risks = [
-  ["Pre-audit software", "The contracts and interface are not externally audited and should not be treated as production-cleared for real funds."],
-  ["Onchain irreversibility", "Transactions, approvals, swaps, and deposits cannot be reversed by OpenZaps once submitted onchain."],
+  ["No external audit", "The contracts and the interface have not been externally audited. They should not be treated as production-cleared for real funds. Depositing funds can result in total loss."],
+  ["Onchain irreversibility", "Transactions, approvals, swaps, and deposits cannot be reversed by OpenZaps once submitted onchain. Once it executes, it cannot be undone."],
   ["Relayer risk", "A relayer may fail, censor, delay, or submit at an unfavorable time inside the signed constraints."],
   ["Market risk", "Slippage, liquidity, oracle movement, MEV, token volatility, and gas spikes can cause losses."],
-  ["Token risk", `${TOKEN.symbol} does not represent equity, revenue, yield, a redemption right, or a guarantee of protocol access.`],
-  ["User responsibility", "Users must review wallet prompts, policy fields, spend limits, recipients, fees, and revocation paths before signing."],
+  ["Token risk", `${TOKEN.symbol} is an ERC-20. It does not represent equity, revenue, yield, a redemption right, or a guarantee of protocol access. No return is implied.`],
+  ["User responsibility", "Users must review wallet prompts, policy fields, amounts and spend limits, recipients, fees, and revocation paths before signing."],
 ] as const;
 
 export default function LegalPage(): React.JSX.Element {

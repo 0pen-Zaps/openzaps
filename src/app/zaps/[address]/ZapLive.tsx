@@ -98,10 +98,10 @@ export function ZapLive({
       <section className={`container ${styles.panel}`} aria-label="Zap detail">
         <div className={styles.unavailable} role="alert">
           <p>
-            This address&apos;s onchain state is unavailable right now — the Robinhood RPC reads failed. That
-            includes the factory check, so not even &ldquo;this is a deployed capsule&rdquo; is being claimed
-            here. Nothing is shown rather than showing stale balances or a zeroed execution count, either of
-            which would be a claim about the chain that nobody verified.
+            The Robinhood RPC reads for this address failed, so its onchain state is unavailable. The factory
+            check is one of the reads that failed, so not even &ldquo;this is a deployed capsule&rdquo; is
+            claimed here. A stale balance or a zeroed execution count would each be a claim about the chain
+            that nobody verified. Nothing is shown instead.
           </p>
           <button
             className="btn btnGhost"
@@ -134,8 +134,8 @@ export function ZapLive({
           </span>
           <p>
             {verified
-              ? "The factory's own ZapCreated log names this address, its runtime is the EIP-1167 clone of the canonical implementation, and the policy it exposes rehashes to the policyHash it committed to."
-              : "The factory created this address, but at least one integrity check does not hold. Every failing check is listed below — nothing has been rounded off or assumed."}
+              ? "The factory's own ZapCreated log names this address. Its runtime is the EIP-1167 clone of the canonical implementation. The policy it exposes rehashes to the policyHash it committed to."
+              : "The factory created this address, but at least one integrity check does not hold. Every failing check is listed below. Nothing has been rounded off or assumed."}
           </p>
         </div>
         <dl className={styles.verifyFacts}>
@@ -175,8 +175,8 @@ export function ZapLive({
           <span className="eyebrow">What this zap does</span>
           <h2 id="what-this-does">The deployed chain.</h2>
           <p>
-            The same lego vocabulary the <Link href="/build">builder</Link>{" "}
-            uses, drawn from this capsule&apos;s real policy fields rather than a template. Connectors are
+            The same block vocabulary the <Link href="/build">builder</Link>{" "}
+            uses, drawn from this capsule&apos;s own policy fields rather than from a template. Connectors are
             coloured by the shape of value moving along them.
           </p>
         </header>
@@ -238,8 +238,8 @@ export function ZapLive({
 
         {policy.stepCount !== "1" && (
           <p className={styles.note}>
-            The zap declares {policy.stepCount} steps. Only step 0 is shown — it is the only one this snapshot
-            read, and inventing the rest would be fiction.
+            The zap declares {policy.stepCount} steps. Only step 0 is shown: it is the only one this snapshot
+            read. The rest are not guessed at.
           </p>
         )}
 
@@ -285,9 +285,9 @@ export function ZapLive({
           <span className="eyebrow">Measured, not modelled</span>
           <h2 id="what-happened">What has happened.</h2>
           <p>
-            Counts and totals come only from this contract&apos;s own Executed and EmergencyExit logs. A
-            reverted execution emits nothing at all, so no success rate can be computed from them and none is
-            shown.
+            Counts and totals come only from this contract&apos;s own Executed and EmergencyExit logs. No USD
+            value, token price, PnL, APY, or success rate appears on this page. A reverted execution emits no
+            log at all, so a success rate computed from these logs would be unfalsifiable, and none is shown.
           </p>
         </header>
 
@@ -327,7 +327,7 @@ export function ZapLive({
             {feeTotals.length === 0 ? (
               <p className={styles.empty}>
                 {policy.maxRelayerFeeCap === "0"
-                  ? "Zero — and structurally so. This policy commits maxRelayerFeeCap = 0, so no execution can take a fee. That is a guarantee from the policy hash, not a measurement of what happened."
+                  ? "Zero, and not because none happened to be taken. This policy commits maxRelayerFeeCap = 0, so no execution of it can pay a relayer fee. The bound comes from the policy hash, not from a measurement."
                   : "No fee appears in any Executed log for this zap."}
               </p>
             ) : (

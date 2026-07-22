@@ -10,7 +10,7 @@ import styles from "./zaps.module.css";
 export const metadata = pageMetadata({
   title: "Deployed zaps — every capsule the factory created",
   description:
-    "Every OpenZap policy capsule deployed by the canonical factory on Robinhood Chain, newest first, read straight from its ZapCreated logs. Open any one to read its deployed policy and full execution history.",
+    "Every OpenZap policy capsule the canonical factory deployed on Robinhood Chain, newest first, listed only from its own ZapCreated logs. Open one to read the policy it stores and every execution it has logged.",
   path: "/zaps",
   keywords: [
     "deployed zaps",
@@ -38,16 +38,16 @@ export default async function ZapsIndexPage(): Promise<React.JSX.Element> {
 
       <section className={`container ${styles.hero}`}>
         <span className="eyebrow">Deployed zaps</span>
-        <h1>Real capsules, already onchain.</h1>
+        <h1>Deployed by the factory, or not listed.</h1>
         <p>
-          Every address below was deployed by the OpenZaps factory on Robinhood Chain and is listed only
-          because the factory&apos;s own ZapCreated log names it. These are not examples — each one is an
-          immutable contract holding a policy that was committed to a hash before it could ever run.
+          An address reaches this list one way: the canonical OpenZaps factory&apos;s own ZapCreated log on
+          Robinhood Chain names it. Nothing else puts one here. Each row is an immutable contract holding a
+          policy that was committed to a hash before it could run at all.
         </p>
         <p className={styles.heroNote}>
-          What a capsule actually does is stored in the capsule, not in this list, so it is read on the
-          capsule&apos;s own page rather than guessed at here. Open any row to see the deployed policy drawn as
-          a chain, its integrity checks, and its complete execution history.
+          What a capsule does is stored in the capsule, not in this list, and this page does not guess at it.
+          Open a row to read the deployed policy drawn as a chain, the integrity checks against it, and every
+          execution it has logged.
         </p>
         <div className={styles.heroActions}>
           <Link className="btn btnPrimary btnLg" href="/build">
@@ -68,8 +68,8 @@ export default async function ZapsIndexPage(): Promise<React.JSX.Element> {
         {page === null ? (
           <div className={styles.unavailable} role="alert">
             <p>
-              The list of deployed zaps is unavailable right now — the Robinhood RPC log query failed. Nothing
-              is shown rather than showing stale or fabricated rows.
+              The Robinhood RPC log query failed, so this list is unavailable. An empty list would be a claim
+              that the factory has deployed nothing. Nothing is shown instead.
             </p>
             <a
               className="btn btnGhost"
@@ -97,9 +97,9 @@ export default async function ZapsIndexPage(): Promise<React.JSX.Element> {
                   : `${page.total === 1 ? "1 capsule" : `${page.total} capsules`}, newest first.`}
               </h2>
               <p>
-                Counted from ZapCreated logs emitted by the canonical factory and nothing else.
+                Counted from ZapCreated logs emitted by the canonical factory, and from nothing else.
                 {page.truncated
-                  ? " The rest are onchain and readable from the factory; this page just does not list them."
+                  ? " The rest are onchain and readable from the factory. This page does not list them."
                   : ""}
               </p>
             </div>
@@ -141,8 +141,9 @@ export default async function ZapsIndexPage(): Promise<React.JSX.Element> {
         )}
 
         <p className={styles.note}>
-          Contracts are live but pre-external-audit. Depositing funds can result in total loss —{" "}
-          <Link href="/security">read the security posture</Link>.
+          The contracts have not been externally audited. Depositing funds can result in total loss. Onchain
+          actions are irreversible.{" "}
+          <Link href="/security">Read the security posture</Link>.
         </p>
       </section>
     </main>

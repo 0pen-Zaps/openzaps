@@ -74,7 +74,7 @@ export const POLICY_TEMPLATES: PolicyTemplate[] = [
     name: "Recurring DCA",
     short: "Buy a fixed asset on a fixed cadence.",
     description:
-      "A user pre-commits spend, frequency, recipient, slippage, relayer fee cap, and private submission for recurring ERC-20 buys.",
+      "Recurring ERC-20 buys, with spend, cadence, recipient, slippage, and relayer fee cap stated before signing. The live v1.1 capsule holds one signed step that executes once, so it cannot carry the cadence.",
     recommendedModel: "deposit",
     category: "automation",
     production: "ready-preview",
@@ -85,7 +85,7 @@ export const POLICY_TEMPLATES: PolicyTemplate[] = [
       frequency: "weekly",
       maxSpend: "1000",
       slippageBps: 50,
-      adapter: "Uniswap V3 exact-input adapter",
+      adapter: "Uniswap v4 exact-input adapter",
       postcondition: "recipient balance increases by minOut",
     },
   },
@@ -94,7 +94,7 @@ export const POLICY_TEMPLATES: PolicyTemplate[] = [
     name: "Launch pool deposit",
     short: "Fund a specific launch or community pool.",
     description:
-      "A bounded deposit policy for CliqueClaw or pool.fans launch pools, with a fixed recipient vault and no arbitrary calldata.",
+      "A deposit into one named launch pool, with the recipient vault fixed and no arbitrary calldata. The live contracts carry a single-step aeWETH ↔ 0xZAPS swap and nothing else, so this template simulates and does not deploy.",
     recommendedModel: "safe",
     category: "launch",
     production: "requires-review",
@@ -114,7 +114,7 @@ export const POLICY_TEMPLATES: PolicyTemplate[] = [
     name: "Claim and compound",
     short: "Claim rewards and route them back into an approved asset.",
     description:
-      "A repeatable fee-claim policy for audited reward sources, exact approvals, and balance-delta postconditions.",
+      "Claims a reward and routes it into an approved asset, with exact approvals and balance-delta postconditions. A claim is two steps, and the live capsule executes one, so this is a draft shape rather than a route.",
     recommendedModel: "intent",
     category: "yield",
     production: "requires-review",
@@ -134,7 +134,7 @@ export const POLICY_TEMPLATES: PolicyTemplate[] = [
     name: "Guarded exit",
     short: "Exit only if risk limits break.",
     description:
-      "A protective policy for liquidity or oracle-risk exits. This is deliberately blocked in v1 until protective-zap review is complete.",
+      "An exit triggered by a liquidity or oracle condition. The v1.1 policy has no oracle precondition, so nothing onchain could evaluate the trigger. Blocked in v1 until protective-zap review is complete.",
     recommendedModel: "safe",
     category: "protection",
     production: "deferred",
@@ -224,7 +224,7 @@ export function simulatePolicy(policy: PolicyDraft, previous?: PolicyDraft): Sim
     label: "Template production status",
     detail:
       template.production === "deferred"
-        ? "Protective zaps remain blocked until external audit and risk review clear ADR-0004."
+        ? "Protective zaps are blocked in v1. The v1.1 policy has no oracle precondition, so nothing onchain could evaluate the trigger."
         : template.production === "requires-review"
           ? "Template needs governance adapter review before mainnet funds."
           : "Template is suitable for preview and testnet dry-runs.",
@@ -246,8 +246,8 @@ export function simulatePolicy(policy: PolicyDraft, previous?: PolicyDraft): Sim
       amount <= 0
         ? "Amount must be greater than zero."
         : maxSpend > 0 && amount <= maxSpend
-          ? "Single execution amount is inside the policy spend ceiling."
-          : "Single execution amount exceeds the configured spend ceiling.",
+          ? "Single execution amount is inside the draft spend ceiling. The v1.1 policy tracks no cumulative budget, so the only onchain bound is the single step amount."
+          : "Single execution amount exceeds the draft spend ceiling.",
     status: amount <= 0 ? "block" : maxSpend > 0 && amount <= maxSpend ? "pass" : "block",
   });
 
@@ -265,16 +265,16 @@ export function simulatePolicy(policy: PolicyDraft, previous?: PolicyDraft): Sim
   checks.push({
     label: "Submission path",
     detail: policy.privateSubmission
-      ? "Private submission is enabled for price-sensitive execution."
-      : "Public mempool submission should be used only for non-price-sensitive routes.",
+      ? "Private submission is set in this draft. The v1.1 policy has no submitter field, so a deployed capsule does not bind it."
+      : "This draft leaves submission public. The v1.1 policy has no submitter field either way, so whoever executes the capsule chooses the mempool path.",
     status: policy.privateSubmission ? "pass" : "warn",
   });
 
   checks.push({
     label: "Human gate",
     detail: policy.humanApproval
-      ? "A final wallet review is required before Hermes can submit."
-      : "No extra human gate after the signed policy; rely on bounded limits and revocation.",
+      ? "A final wallet review is set in this draft. The v1.1 policy has no per-run approval step, so a deployed capsule does not bind it."
+      : "No human gate beyond the signed policy. The signed amount and the owner's revoke path are the bounds.",
     status: policy.humanApproval ? "pass" : "warn",
   });
 
