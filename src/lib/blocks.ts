@@ -1080,6 +1080,28 @@ export type ZapRecipe = {
 
 export const RECIPES: readonly ZapRecipe[] = [
   {
+    // First, and the chain the builder opens on, because it is the only one of
+    // these that the deployed contracts can actually carry. Every other
+    // blueprint here is a design; a user who loaded one and read the rejection
+    // list had to reverse-engineer this shape from a list of things it is not.
+    //
+    // Its exact contents are the reduction rules in `deployable.ts` read
+    // forwards — WETH in, 0xZAPS out, Uniswap v4, settled to the owner wallet,
+    // an amount the router's own parser accepts. A test holds the two together,
+    // because a catalog edit that quietly drops this off the live route would
+    // otherwise leave the front door pointing nowhere.
+    id: "live-route",
+    name: "Live route",
+    tagline: "The one chain today's contracts can carry: aeWETH into 0xZAPS.",
+    accent: "token",
+    blocks: [
+      ["wallet-balance", { asset: "WETH", amount: "0.05" }],
+      ["guard-slippage", { bps: 50 }],
+      ["swap", { into: "0xZAPS", venue: "Uniswap v4" }],
+      ["send", { recipient: "owner wallet" }],
+    ],
+  },
+  {
     id: "dca",
     name: "Recurring DCA",
     tagline: "Buy the same size every week, straight to your wallet.",

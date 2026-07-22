@@ -100,6 +100,19 @@ type Draft = { chain: ChainNode[]; recipeId: string };
 const DEFAULT_DRAFT: Draft = { chain: nodesFromRecipe(RECIPES[0]), recipeId: RECIPES[0].id };
 
 /**
+ * Which blueprints reduce to the live route, asked of the same function the
+ * deploy panel asks.
+ *
+ * Derived rather than declared on the recipe, so the badge cannot drift from
+ * the verdict: the day a catalog edit knocks a blueprint off the live route,
+ * its badge goes with it in the same render. `RECIPES` is static, so this is
+ * computed once for the module rather than once per keystroke.
+ */
+const DEPLOYABLE_RECIPES: ReadonlySet<string> = new Set(
+  RECIPES.filter((recipe) => reduceChainToLiveRoute(nodesFromRecipe(recipe)).deployable).map((recipe) => recipe.id),
+);
+
+/**
  * The chain this page opens with, resolved exactly once per page load.
  *
  * `useSyncExternalStore` is what makes this hydration-safe: the server snapshot
@@ -765,7 +778,12 @@ export function ZapBuilder(): React.JSX.Element {
       <section className={styles.recipes} aria-label="Zap blueprints">
         <div className={styles.recipeHead}>
           <h2>Start from a blueprint</h2>
-          <p>Six kinds of zap, each a different DeFi activity. Load one, then rebuild it piece by piece.</p>
+          {/* No count in the copy: it went stale the first time a blueprint was
+              added, and the row is right there to be counted. */}
+          <p>
+            One kind of zap each. The one marked <em>deployable</em> is the only shape today’s contracts can carry —
+            load any of them, then rebuild piece by piece.
+          </p>
         </div>
         <div className={styles.recipeRow}>
           {RECIPES.map((recipe) => (
@@ -779,7 +797,10 @@ export function ZapBuilder(): React.JSX.Element {
             >
               <strong>{recipe.name}</strong>
               <span>{recipe.tagline}</span>
-              <em>{recipe.blocks.length} blocks</em>
+              <em>
+                {recipe.blocks.length} blocks
+                {DEPLOYABLE_RECIPES.has(recipe.id) ? <i className={styles.recipeLive}>deployable</i> : null}
+              </em>
             </button>
           ))}
         </div>

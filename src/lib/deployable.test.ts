@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { compileChain, makeNode, type ChainNode, type ParamValue } from "@/lib/blocks";
+import { RECIPES, compileChain, makeNode, type ChainNode, type ParamValue } from "@/lib/blocks";
 import {
   DEFAULT_SLIPPAGE_BPS,
   MAX_SLIPPAGE_BPS,
@@ -551,5 +551,49 @@ describe("the CTA and the verdict can never contradict each other", () => {
       expect(mapping.deployable, `${bps} bps should deploy`).toBe(true);
       expect(mapping.deployable && mapping.slippageBps).toBe(bps);
     }
+  });
+});
+
+describe("the Live route blueprint", () => {
+  // The builder opens on this blueprint and offers it as the one chain today's
+  // contracts can carry. It is the front door to the only thing this product
+  // actually does, so a catalog edit that quietly drops it off the live route —
+  // a renamed venue, a retired asset, a changed default — has to fail here
+  // rather than in front of someone who tapped "Deploy" and found nothing.
+  const recipe = RECIPES.find((entry) => entry.id === "live-route");
+
+  it("exists and is the chain the builder opens on", () => {
+    expect(recipe).toBeDefined();
+    expect(RECIPES[0].id).toBe("live-route");
+  });
+
+  it("reduces to the live route with no rejections", () => {
+    const nodes = (recipe?.blocks ?? []).map(([id, params], index) =>
+      makeNode(id, `live-route-${index}`, params),
+    );
+    const mapping = reduceChainToLiveRoute(nodes);
+    expect(mapping.deployable, mapping.deployable ? "" : mapping.reasons.join(" | ")).toBe(true);
+    expect(mapping.deployable && mapping.direction).toBe("buy");
+  });
+
+  it("is the only blueprint that reduces to the live route", () => {
+    // The blueprint row badges exactly the deployable ones and the copy beside
+    // it says there is one such shape. Both are read off this.
+    const deployable = RECIPES.filter((entry) =>
+      reduceChainToLiveRoute(
+        entry.blocks.map(([id, params], index) => makeNode(id, `${entry.id}-${index}`, params)),
+      ).deployable,
+    ).map((entry) => entry.id);
+    expect(deployable).toEqual(["live-route"]);
+  });
+
+  it("states a slippage cap the live app can sign without rounding it", () => {
+    // A cap the app cannot hold gets stepped on the way over and disclosed as
+    // changed. The blueprint should not be the thing that triggers that notice.
+    const nodes = (recipe?.blocks ?? []).map(([id, params], index) =>
+      makeNode(id, `live-route-${index}`, params),
+    );
+    const mapping = reduceChainToLiveRoute(nodes);
+    expect(mapping.deployable && mapping.unenforcedGuards.filter((note) => note.startsWith("Slippage cap:"))).toEqual([]);
   });
 });
