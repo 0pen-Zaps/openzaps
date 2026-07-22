@@ -7,8 +7,8 @@ import { pageMetadata, absoluteUrl, SITE_URL } from "@/lib/seo";
 import styles from "./token.module.css";
 
 export const metadata = pageMetadata({
-  title: `${TOKEN.symbol} token — live on ${TOKEN_LAUNCH.venue}`,
-  description: `${TOKEN.symbol} is live on ${TOKEN_LAUNCH.venue} on ${TOKEN_LAUNCH.network}. Verify the official contract and trade link for the OpenZaps community token.`,
+  title: `${TOKEN.symbol} token — live on ${TOKEN_LAUNCH.network}`,
+  description: `${TOKEN.symbol} is live on ${TOKEN_LAUNCH.network} through ${TOKEN_LAUNCH.venue}. Verify the official contract and trade link for the OpenZaps community token.`,
   path: "/token",
   keywords: [
     `buy ${TOKEN.symbol}`,

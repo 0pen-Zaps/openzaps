@@ -5,6 +5,8 @@ export const TOKEN = {
   name: "OpenZaps",
   symbol: "0xZAPS",
   decimals: 18,
+  totalSupply: "100000000000",
+  logoPath: "/0xzaps-token.png",
 } as const;
 
 const tokenContract = "0xDd90bFa4adC7F4401E611AbaC692D939F9F4CB07";
@@ -14,10 +16,16 @@ export const TOKEN_LAUNCH = {
   venue: "Clanker",
   version: "V4",
   network: "Robinhood Chain",
+  chainId: 4663,
+  nativeCurrency: "ETH",
   contract: tokenContract,
+  pair: `${TOKEN.symbol}/WETH`,
+  onchainImageUri:
+    "https://turquoise-blank-swallow-685.mypinata.cloud/ipfs/bafkreidndqit6ydpkivgmm4qdukh7sgv6uexjp3rc76iyvx22zd425ae7i",
   tradeUrl: `https://www.clanker.world/clanker/${tokenContract}`,
   explorer: "https://robinhoodchain.blockscout.com",
   contractUrl: `https://robinhoodchain.blockscout.com/token/${tokenContract}`,
+  rpcUrl: "https://rpc.mainnet.chain.robinhood.com",
 } as const;
 
 /** The canonical 0xZAPS buy/trade page. */
@@ -56,6 +64,7 @@ export function explorer(addr: string): string {
 
 export const LINKS = {
   github: "https://github.com/nodar/openzaps",
+  farcaster: "https://farcaster.xyz/nodes",
   clanker: TOKEN_LAUNCH.tradeUrl,
   tokenExplorer: TOKEN_LAUNCH.contractUrl,
   buy: buyUrl(),

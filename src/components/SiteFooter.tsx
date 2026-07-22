@@ -13,7 +13,8 @@ export function SiteFooter(): React.JSX.Element {
             <div>
               <strong>OpenZaps</strong>
               <p>
-                Bounded policy capsules for agent-triggered DeFi. ${TOKEN.symbol} is live on Clanker.
+                Bounded policy capsules for agent-triggered DeFi. ${TOKEN.symbol} is live on {TOKEN_LAUNCH.network}
+                through {TOKEN_LAUNCH.venue}.
               </p>
             </div>
           </div>

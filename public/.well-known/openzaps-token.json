@@ -1,0 +1,13 @@
+{
+  "name": "OpenZaps",
+  "symbol": "0xZAPS",
+  "chainId": 4663,
+  "contract": "0xDd90bFa4adC7F4401E611AbaC692D939F9F4CB07",
+  "decimals": 18,
+  "totalSupply": "100000000000",
+  "logo": "https://www.0xzaps.com/0xzaps-token.png",
+  "onchainImageURI": "https://turquoise-blank-swallow-685.mypinata.cloud/ipfs/bafkreidndqit6ydpkivgmm4qdukh7sgv6uexjp3rc76iyvx22zd425ae7i",
+  "website": "https://www.0xzaps.com/token",
+  "tokenList": "https://www.0xzaps.com/tokenlist.json",
+  "metadata": "https://www.0xzaps.com/token-metadata.json"
+}

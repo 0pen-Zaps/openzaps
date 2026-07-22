@@ -2,6 +2,8 @@
 
 Immutable intent lockers for Hermes-triggered DeFi.
 
+Website: [www.0xzaps.com](https://www.0xzaps.com) · Token: [0xZAPS](https://www.0xzaps.com/token)
+
 OpenZaps are narrow, ERC-20-first policy capsules for pre-authorized DeFi workflows. The core product stance is explicit: OpenZaps are not approval-free and not a universal router. They are pre-committed, tightly bounded authority for fixed action graphs that a Hermes agent can simulate, submit, monitor, and revoke without receiving discretionary wallet power.
 
 ## Product thesis
@@ -21,6 +23,18 @@ OpenZaps are narrow, ERC-20-first policy capsules for pre-authorized DeFi workfl
 - `/roadmap` — staged path from review console to audited relayer network.
 - `/token` — live 0xZAPS contract, Clanker market, and Robinhood Chain verification links.
 - `/legal` — risk disclosures.
+
+## 0xZAPS identity and metadata
+
+- Network: Robinhood Chain mainnet (`4663`)
+- Contract: [`0xDd90bFa4adC7F4401E611AbaC692D939F9F4CB07`](https://robinhoodchain.blockscout.com/token/0xDd90bFa4adC7F4401E611AbaC692D939F9F4CB07)
+- Official market: [Clanker V4](https://www.clanker.world/clanker/0xDd90bFa4adC7F4401E611AbaC692D939F9F4CB07)
+- Token list: [`/tokenlist.json`](https://www.0xzaps.com/tokenlist.json)
+- Canonical metadata: [`/token-metadata.json`](https://www.0xzaps.com/token-metadata.json)
+- Well-known identity: [`/.well-known/openzaps-token.json`](https://www.0xzaps.com/.well-known/openzaps-token.json)
+
+Verify the network and full contract address before trading. Clanker is the launch and trading venue; Robinhood
+Chain is the blockchain. The live token is separate from the pre-audit OpenZaps reference protocol contracts.
 
 ## API routes
 
