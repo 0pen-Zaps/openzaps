@@ -5,8 +5,11 @@ import {
   RECIPES,
   canInsert,
   compileChain,
+  decodeChain,
+  encodeChain,
   getBlock,
   makeNode,
+  resolveSlippageGuards,
   scoreGuardCoverage,
   shapeBefore,
   type ChainNode,
@@ -37,6 +40,33 @@ describe("catalog", () => {
         expect(entry.emits).not.toBeNull();
       }
     }
+  });
+
+  it("gives every param a default of its own declared type", () => {
+    for (const entry of BLOCKS) {
+      for (const param of entry.params) {
+        const expected = param.type === "number" ? "number" : "string";
+        expect(typeof param.value, `${entry.id}.${param.key}`).toBe(expected);
+      }
+    }
+  });
+
+  it("carries token amounts as decimal strings, not slider positions", () => {
+    // A slider that steps in tens cannot reach 0.05 aeWETH, which is the size a
+    // real Robinhood Chain zap actually carries.
+    for (const id of ["wallet-balance", "recurring-stream"]) {
+      const param = block(id).params.find((entry) => entry.key === "amount");
+      expect(param?.type, id).toBe("amount");
+    }
+    expect(block("wallet-balance").params.find((entry) => entry.key === "amount")?.value).toBe("0.05");
+  });
+
+  it("can express both directions of the live pair", () => {
+    const asset = block("wallet-balance").params.find((entry) => entry.key === "asset");
+    expect(asset?.type === "select" && asset.options).toContain("0xZAPS");
+    expect(asset?.type === "select" && asset.options).toContain("WETH");
+    // The stored value stays "WETH"; the copy is what carries the aeWETH truth.
+    expect(block("wallet-balance").detail).toContain("aeWETH");
   });
 });
 
@@ -122,10 +152,68 @@ describe("compileChain", () => {
     expect(result.checks.find((check) => check.label === "Connector fit")?.status).toBe("pass");
   });
 
-  it("blocks slippage wider than the executor band", () => {
+  it("warns about slippage wider than the executor band without calling it a fault", () => {
+    // This check used to return "block", which made the readout say "will not
+    // compile" beside a deploy CTA correctly offering a cap the live contracts
+    // sign — the app's own slider goes to 500 bps. A wide cap is a risk the
+    // user may legitimately take; "block" is reserved for structural faults.
     const wide = chain("wallet-balance", "guard-slippage", "swap", "send");
     wide[1].params.bps = 400;
-    expect(compileChain(wide).checks.find((check) => check.label === "Slippage")?.status).toBe("block");
+    const result = compileChain(wide);
+    expect(result.checks.find((check) => check.label === "Slippage")?.status).toBe("warn");
+    expect(result.status).not.toBe("block");
+    expect(result.issues.filter((issue) => issue.level === "block")).toEqual([]);
+  });
+
+  it("checks the tightest cap when a design states several", () => {
+    // Chain order used to decide this, which let the readout tick a 0.10% cap
+    // green while the deploy handoff carried the 5.00% one.
+    const stacked = chain("wallet-balance", "guard-slippage", "guard-slippage", "swap", "send");
+    stacked[1].params.bps = 10;
+    stacked[2].params.bps = 500;
+    const check = compileChain(stacked).checks.find((entry) => entry.label === "Slippage");
+    expect(check?.status).toBe("pass");
+    expect(check?.detail).toContain("2 caps are placed (10 bps, 500 bps)");
+    expect(check?.detail).toContain("the tightest, 10 bps, is the one that governs");
+
+    // Same two caps, opposite order: same verdict.
+    const flipped = chain("wallet-balance", "guard-slippage", "guard-slippage", "swap", "send");
+    flipped[1].params.bps = 500;
+    flipped[2].params.bps = 10;
+    expect(compileChain(flipped).checks.find((entry) => entry.label === "Slippage")?.status).toBe("pass");
+  });
+
+  it("codes the structural faults so callers can act on them", () => {
+    const orphaned = compileChain(chain("swap", "wallet-balance"));
+    expect(orphaned.issues.find((issue) => issue.code === "orphan")?.message).toBe("Swap needs a source above it.");
+    expect(orphaned.issues.some((issue) => issue.code === "duplicate-source")).toBe(true);
+    expect(compileChain(chain("wallet-balance", "stake")).issues.some((issue) => issue.code === "mismatch")).toBe(true);
+    expect(compileChain([makeNode("teleport", "x")]).issues.some((issue) => issue.code === "unknown-block")).toBe(true);
+  });
+});
+
+describe("resolveSlippageGuards", () => {
+  it("returns nothing when no cap is placed", () => {
+    expect(resolveSlippageGuards(chain("wallet-balance", "swap"))).toEqual({
+      caps: [],
+      invalid: [],
+      governingBps: null,
+    });
+  });
+
+  it("keeps every cap in chain order and governs by the tightest", () => {
+    const nodes = chain("wallet-balance", "guard-slippage", "guard-slippage", "guard-slippage", "swap");
+    nodes[1].params.bps = 300;
+    nodes[2].params.bps = 20;
+    nodes[3].params.bps = 120;
+    expect(resolveSlippageGuards(nodes)).toEqual({ caps: [300, 20, 120], invalid: [], governingBps: 20 });
+  });
+
+  it("separates a cap that is not a number from the ones that are", () => {
+    const nodes = chain("wallet-balance", "guard-slippage", "guard-slippage", "swap");
+    nodes[1].params.bps = "wide";
+    nodes[2].params.bps = 40;
+    expect(resolveSlippageGuards(nodes)).toEqual({ caps: [40], invalid: ["wide"], governingBps: 40 });
   });
 });
 
@@ -189,5 +277,85 @@ describe("recipes", () => {
       const result = compileChain(nodes);
       expect(result.issues.filter((issue) => issue.level === "block"), recipe.id).toEqual([]);
     }
+  });
+
+  it("overrides params with the type the catalog declares", () => {
+    for (const recipe of RECIPES) {
+      for (const [id, params] of recipe.blocks) {
+        for (const [key, value] of Object.entries(params ?? {})) {
+          const param = block(id).params.find((entry) => entry.key === key);
+          expect(param, `${recipe.id} -> ${id}.${key}`).toBeDefined();
+          const expected = param?.type === "number" ? "number" : "string";
+          expect(typeof value, `${recipe.id} -> ${id}.${key}`).toBe(expected);
+        }
+      }
+    }
+  });
+});
+
+describe("sharing", () => {
+  const shared = (): ChainNode[] => [
+    makeNode("wallet-balance", "p1", { asset: "0xZAPS", amount: "12.5" }),
+    makeNode("guard-slippage", "p2", { bps: 25 }),
+    makeNode("swap", "p3", { into: "WETH" }),
+    makeNode("send", "p4"),
+  ];
+
+  it("round-trips a chain without losing anything", () => {
+    const chainToShare = shared();
+    const decoded = decodeChain(encodeChain(chainToShare));
+    expect(decoded).toEqual(chainToShare);
+  });
+
+  it("produces a URL-safe token", () => {
+    expect(encodeChain(shared())).toMatch(/^[A-Za-z0-9_-]+$/);
+  });
+
+  it("round-trips an empty chain", () => {
+    expect(decodeChain(encodeChain([]))).toEqual([]);
+  });
+
+  it("returns null on garbage", () => {
+    for (const token of ["", "!!!!", "not base64url ✨", encodeChain(shared()).slice(0, 5), "eyJhIjoxfQ"]) {
+      expect(decodeChain(token), token).toBeNull();
+    }
+  });
+
+  it("drops a node whose block this build does not ship", () => {
+    const token = encodeChain([
+      makeNode("wallet-balance", "p1", { asset: "WETH" }),
+      { uid: "p2", blockId: "teleport", params: { destination: "moon" } },
+      makeNode("swap", "p3"),
+    ]);
+    const decoded = decodeChain(token);
+    expect(decoded?.map((node) => node.blockId)).toEqual(["wallet-balance", "swap"]);
+  });
+
+  it("never trusts a param the catalog does not declare", () => {
+    // The token comes from a URL a stranger can craft, so the catalog — not the
+    // token — decides which keys and values a node may carry.
+    const token = encodeChain([
+      // A computed key so `__proto__` lands as a real own property, the way it
+      // would after JSON.parse of a hand-written token.
+      { uid: "p1", blockId: "guard-slippage", params: { bps: 90_000, ["__proto__"]: "x", stolen: "yes" } },
+    ]);
+    const decoded = decodeChain(token);
+    expect(decoded?.[0].params).toEqual({ bps: 500 });
+  });
+
+  it("falls back to the catalog default for an out-of-domain select", () => {
+    const token = encodeChain([{ uid: "p1", blockId: "swap", params: { into: "SCAMCOIN", venue: "Uniswap v3" } }]);
+    expect(decodeChain(token)?.[0].params).toEqual({ into: "WETH", venue: "Uniswap v3" });
+  });
+
+  it("rejects an amount that is not a decimal number", () => {
+    const token = encodeChain([{ uid: "p1", blockId: "wallet-balance", params: { amount: "1e9", asset: "WETH" } }]);
+    expect(decodeChain(token)?.[0].params.amount).toBe("0.05");
+  });
+
+  it("gives repeated uids their own identity", () => {
+    const token = encodeChain([makeNode("wallet-balance", "same"), makeNode("swap", "same")]);
+    const decoded = decodeChain(token);
+    expect(new Set(decoded?.map((node) => node.uid)).size).toBe(2);
   });
 });

@@ -13,20 +13,34 @@ import {
   SHAPE_LABEL,
   canInsert,
   compileChain,
+  decodeChain,
+  encodeChain,
   getBlock,
   makeNode,
+  paramSuffix,
   type BlockCategory,
+  type BlockParam,
   type ChainNode,
   type LegoBlock,
   type ParamValue,
   type ZapRecipe,
 } from "@/lib/blocks";
+import { reduceChainToLiveRoute } from "@/lib/deployable";
 import { BlockGlyph } from "./BlockGlyph";
 import styles from "./build.module.css";
 
 const STORAGE_KEY = "openzaps:zap-builder:v1";
+/** Query key a shared design travels under. */
+const SHARE_PARAM = "d";
 /** Pointer travel before a press becomes a drag, so taps still register. */
 const DRAG_THRESHOLD = 6;
+/**
+ * Said out loud wherever the gas figure appears. It is a sum of hand-written
+ * per-block constants from the catalog, not a simulation against a node, and
+ * calling it anything firmer would be inventing a measurement.
+ */
+const GAS_ESTIMATE_NOTE =
+  "An estimate: the sum of this build's per-block gas constants. Nothing here was simulated against a node.";
 
 const CATEGORIES: Array<BlockCategory | "all"> = [
   "all",
@@ -75,15 +89,43 @@ type Draft = { chain: ChainNode[]; recipeId: string };
 const DEFAULT_DRAFT: Draft = { chain: nodesFromRecipe(RECIPES[0]), recipeId: RECIPES[0].id };
 
 /**
- * The saved draft, read from storage exactly once per page load.
+ * The chain this page opens with, resolved exactly once per page load.
  *
  * `useSyncExternalStore` is what makes this hydration-safe: the server snapshot
  * is always `null`, so the server and the first client render agree, and React
- * swaps in the real draft immediately after hydrating. Re-reading the key later
- * would be wrong anyway — the builder writes to it constantly, so a live read
- * would just echo the component's own state back at it.
+ * swaps in the real chain immediately after hydrating. Re-reading later would be
+ * wrong anyway — the builder writes to storage constantly, so a live read would
+ * just echo the component's own state back at it. Seeding a shared design goes
+ * through this same snapshot rather than an effect, because setting state from
+ * an effect body is a hard lint error here (and would flash the wrong chain).
  */
 let cachedDraft: Draft | null | undefined;
+
+function readInitialDraft(): Draft | null {
+  return readSharedDraft() ?? readDraft();
+}
+
+/**
+ * A design carried in `?d=`, which wins over the saved draft.
+ *
+ * Following a share link is a request to see *that* design; the local draft is
+ * untouched in storage and comes back at a bare /build. The query is read from
+ * `window.location.search` rather than `useSearchParams()`, which would push
+ * this statically rendered page into a client-side render bailout.
+ */
+function readSharedDraft(): Draft | null {
+  try {
+    const token = new URLSearchParams(window.location.search).get(SHARE_PARAM);
+    if (!token) return null;
+    const chain = decodeChain(token);
+    if (!chain || chain.length === 0) return null;
+    advancePlacementCounter(chain);
+    return { chain, recipeId: "" };
+  } catch {
+    // A malformed link falls back to the saved draft rather than an error page.
+    return null;
+  }
+}
 
 function readDraft(): Draft | null {
   try {
@@ -94,21 +136,55 @@ function readDraft(): Draft | null {
     // rendering a chain with holes in it.
     const chain = (saved.chain ?? []).filter((node) => node && getBlock(node.blockId));
     if (!chain.length) return null;
-    // Restored placements keep their ids, so the counter has to resume past
-    // them or the next drop would collide with a card already on the canvas.
-    for (const node of chain) {
-      const serial = node.uid.match(/^p(\d+)$/);
-      if (serial) placementCounter = Math.max(placementCounter, Number(serial[1]));
-    }
-    return { chain, recipeId: saved.recipeId ?? "" };
+    advancePlacementCounter(chain);
+    return { chain: chain.map(rebuildNode), recipeId: saved.recipeId ?? "" };
   } catch {
     // A corrupt draft is not worth failing the page over.
     return null;
   }
 }
 
+/**
+ * Resume the placement counter past the ids already on the canvas.
+ *
+ * Restored drafts and shared links both carry their original uids, so the next
+ * drop has to start above the highest of them — a duplicate uid collides as a
+ * React key and makes the wrong card answer a delete.
+ */
+function advancePlacementCounter(chain: readonly ChainNode[]): void {
+  for (const node of chain) {
+    const serial = node.uid.match(/^p(\d+)$/);
+    if (serial) placementCounter = Math.max(placementCounter, Number(serial[1]));
+  }
+}
+
+/**
+ * Rebuild a restored placement on top of today's catalog defaults.
+ *
+ * A stored value only survives if its type still matches the param it belongs
+ * to. `wallet-balance.amount` used to be a slider number and is now decimal
+ * text, so an older draft holds `250` — a figure that meant USDC and would
+ * silently reappear as 250 aeWETH, then go straight to the router's amount
+ * parser. A param whose unit changed underneath it has no honest reading, so it
+ * falls back to the catalog default instead of being coerced.
+ */
+function rebuildNode(node: ChainNode): ChainNode {
+  const block = getBlock(node.blockId);
+  if (!block) return node;
+  const kept: Record<string, ParamValue> = {};
+  for (const param of block.params) {
+    const value = node.params?.[param.key];
+    if (typeof value === expectedParamType(param)) kept[param.key] = value;
+  }
+  return makeNode(node.blockId, node.uid, kept);
+}
+
+function expectedParamType(param: BlockParam): "number" | "string" {
+  return param.type === "number" ? "number" : "string";
+}
+
 function draftSnapshot(): Draft | null {
-  if (cachedDraft === undefined) cachedDraft = readDraft();
+  if (cachedDraft === undefined) cachedDraft = readInitialDraft();
   return cachedDraft;
 }
 
@@ -116,19 +192,37 @@ function serverSnapshot(): null {
   return null;
 }
 
-/** Nothing else writes this key, so there is no external change to subscribe to. */
-function subscribeToDraft(): () => void {
+function originSnapshot(): string {
+  return window.location.origin;
+}
+
+/** Renders a relative share link until hydration supplies the real origin. */
+function serverOrigin(): string {
+  return "";
+}
+
+/**
+ * Neither the draft key nor the location changes underneath this page, so there
+ * is nothing to subscribe to — the store exists purely for its hydration-safe
+ * server snapshot.
+ */
+function subscribeNever(): () => void {
   return () => {};
 }
 
 export function ZapBuilder(): React.JSX.Element {
   // The chain is whatever the user has edited this session, falling back to the
   // saved draft and finally to the opening blueprint.
-  const stored = useSyncExternalStore(subscribeToDraft, draftSnapshot, serverSnapshot);
+  const stored = useSyncExternalStore(subscribeNever, draftSnapshot, serverSnapshot);
+  const origin = useSyncExternalStore(subscribeNever, originSnapshot, serverOrigin);
   const [edited, setEdited] = useState<Draft | null>(null);
   const draft = edited ?? stored ?? DEFAULT_DRAFT;
   const chain = draft.chain;
   const recipeId = draft.recipeId;
+  // The chain that was last written to storage on purpose. Compared by identity:
+  // `commit` hands back a new array for every edit, so the confirmation clears
+  // itself the moment the design changes.
+  const [savedChain, setSavedChain] = useState<readonly ChainNode[] | null>(null);
   const [openUid, setOpenUid] = useState<string | null>(null);
   const [category, setCategory] = useState<BlockCategory | "all">("all");
   const [drag, setDrag] = useState<DragState | null>(null);
@@ -455,7 +549,10 @@ export function ZapBuilder(): React.JSX.Element {
       JSON.stringify(
         {
           version: 1,
-          policyHash: compiled.hash,
+          // Not the onchain policy hash — see the fingerprint note in the
+          // readout. Naming the field for what it is keeps a copied JSON from
+          // being compared against a block explorer and read as a mismatch.
+          designFingerprint: compiled.hash,
           status: compiled.status,
           gasEstimate: compiled.gas,
           guardCoverage: compiled.guardScore,
@@ -467,6 +564,23 @@ export function ZapBuilder(): React.JSX.Element {
       ),
     [chain, compiled],
   );
+
+  const shareUrl = useMemo(() => `${origin}/build?${SHARE_PARAM}=${encodeChain(chain)}`, [chain, origin]);
+
+  /** What, if anything, of this design the live v1.1 contracts can carry. */
+  const deployment = useMemo(() => reduceChainToLiveRoute(chain), [chain]);
+  const deployHref = deployment.deployable
+    ? `/app?src=build&dir=${deployment.direction}&amount=${encodeURIComponent(deployment.amountIn)}&bps=${deployment.slippageBps}`
+    : null;
+
+  const saveDesign = useCallback((): void => {
+    // The draft already persists on every edit; this is the explicit route for
+    // a chain that arrived from a share link or a blueprint and has not been
+    // touched, which would otherwise never have been written.
+    setEdited({ chain, recipeId });
+    setSavedChain(chain);
+    trackEvent("builder_design_saved", { blocks: chain.length });
+  }, [chain, recipeId]);
 
   const dragBlock = drag ? getBlock(drag.blockId) : undefined;
 
@@ -562,7 +676,9 @@ export function ZapBuilder(): React.JSX.Element {
           <header className={styles.canvasHead}>
             <div>
               <h2>Your zap</h2>
-              <p>{chain.length} block{chain.length === 1 ? "" : "s"} · {compiled.gas.toLocaleString("en-US")} gas</p>
+              <p title={GAS_ESTIMATE_NOTE}>
+                {chain.length} block{chain.length === 1 ? "" : "s"} · ≈{compiled.gas.toLocaleString("en-US")} gas (estimate)
+              </p>
             </div>
             <div className={styles.canvasActions}>
               <button type="button" className={styles.ghostBtn} onClick={previewRun} disabled={compiled.status === "block" || !chain.length}>
@@ -581,6 +697,12 @@ export function ZapBuilder(): React.JSX.Element {
               </button>
             </div>
           </header>
+
+          <p className={styles.scopeBanner} role="note">
+            <strong>This canvas designs zaps — it does not deploy them.</strong> Every chain here compiles and
+            simulates, but the only one the live contracts can carry today is a single-step aeWETH ↔ 0xZAPS swap.
+            Anything else is saved as a design, and the panel on the right says which one you have.
+          </p>
 
           <div className={styles.canvas} ref={canvasRef}>
             {chain.length === 0 ? (
@@ -709,8 +831,12 @@ export function ZapBuilder(): React.JSX.Element {
                                     {param.type === "number" ? (
                                       <em>
                                         {value}
-                                        {param.suffix ? ` ${param.suffix}` : ""}
+                                        {paramSuffix(param)}
                                       </em>
+                                    ) : param.type === "amount" && param.unit ? (
+                                      // The figure is already in the field, so only the
+                                      // unit needs saying — an amount is not a slider.
+                                      <em>{param.unit}</em>
                                     ) : null}
                                   </span>
                                   {param.type === "number" ? (
@@ -722,6 +848,18 @@ export function ZapBuilder(): React.JSX.Element {
                                       step={param.step}
                                       value={Number(value)}
                                       onChange={(event) => setParam(node.uid, param.key, Number(event.target.value))}
+                                    />
+                                  ) : param.type === "amount" ? (
+                                    <input
+                                      id={id}
+                                      type="text"
+                                      inputMode="decimal"
+                                      // Never Number() this: the decimal text is what
+                                      // `parseRouterAmount` turns into wei, and a float
+                                      // round-trip would quietly drop the low digits.
+                                      value={String(value)}
+                                      placeholder={param.placeholder}
+                                      onChange={(event) => setParam(node.uid, param.key, event.target.value)}
                                     />
                                   ) : param.type === "select" ? (
                                     <select
@@ -781,8 +919,9 @@ export function ZapBuilder(): React.JSX.Element {
               <strong>
                 {compiled.status === "pass" ? "Ready to simulate" : compiled.status === "warn" ? "Needs a review" : "Will not compile"}
               </strong>
-              <span>
-                {compiled.gas.toLocaleString("en-US")} gas · {chain.length} block{chain.length === 1 ? "" : "s"}
+              <span title={GAS_ESTIMATE_NOTE}>
+                ≈{compiled.gas.toLocaleString("en-US")} gas (estimate) · {chain.length} block
+                {chain.length === 1 ? "" : "s"}
               </span>
             </div>
           </div>
@@ -807,12 +946,83 @@ export function ZapBuilder(): React.JSX.Element {
           </ul>
 
           <div className={styles.hashRow}>
-            <span>Policy hash</span>
-            <CopyButton value={compiled.hash} label={`${compiled.hash.slice(0, 10)}…${compiled.hash.slice(-6)}`} />
+            <span>Design fingerprint</span>
+            <CopyButton
+              value={compiled.hash}
+              label={`${compiled.hash.slice(0, 10)}…${compiled.hash.slice(-6)}`}
+              title="Copy this design's fingerprint"
+            />
           </div>
+          <p className={styles.hashNote}>
+            A local checksum (FNV-1a) that tells two designs apart. It is <strong>not</strong> the onchain policy
+            hash: a deployed capsule commits to a keccak256 hash of its ABI-encoded policy, so this value will not
+            match anything on a block explorer.
+          </p>
+
+          {deployment.deployable && deployHref ? (
+            <div className={styles.deploy} data-deployable="true">
+              <Link
+                className={styles.deployBtn}
+                href={deployHref}
+                onClick={() => trackEvent("builder_deploy_handoff", { direction: deployment.direction })}
+              >
+                Deploy on Robinhood Chain →
+              </Link>
+              <p className={styles.deployNote}>
+                This design reduces to the live route. The app page opens with{" "}
+                {deployment.direction === "buy" ? "aeWETH → 0xZAPS" : "0xZAPS → aeWETH"}, {deployment.amountIn}{" "}
+                {deployment.direction === "buy" ? "aeWETH" : "0xZAPS"}, and a{" "}
+                {(deployment.slippageBps / 100).toFixed(2)}% signed slippage cap filled in. You still create, fund,
+                and sign there — nothing is submitted from here.
+              </p>
+              {deployment.unenforcedGuards.length > 0 ? (
+                // Rendered in full, in the CTA's own line of sight. Summarising
+                // or counting these would let someone deploy believing a guard
+                // they drew is protecting funds that nothing is protecting.
+                <div className={styles.unenforced} role="note">
+                  <strong>
+                    {deployment.unenforcedGuards.length} guard
+                    {deployment.unenforcedGuards.length === 1 ? " in this design is" : "s in this design are"} not
+                    enforced onchain.
+                  </strong>
+                  <p>
+                    The v1.1 policy binds owner, recipient, adapter, spender, input token, and exact amount — and
+                    nothing else. Deploying keeps those bounds and drops the rest:
+                  </p>
+                  <ul>
+                    {deployment.unenforcedGuards.map((guard) => (
+                      <li key={guard}>{guard}</li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
+            </div>
+          ) : (
+            <div className={styles.deploy} data-deployable="false">
+              <button type="button" className={styles.saveBtn} onClick={saveDesign}>
+                {savedChain === chain ? "Saved as design ✓" : "Save as design"}
+              </button>
+              {!deployment.deployable ? (
+                <div className={styles.reasons} role="note">
+                  <strong>This design cannot be deployed on Robinhood Chain today.</strong>
+                  <ul>
+                    {deployment.reasons.map((reason) => (
+                      <li key={reason}>{reason}</li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
+            </div>
+          )}
 
           <div className={styles.readoutActions}>
-            <CopyButton className={styles.exportBtn} value={exportPayload} label="Copy policy JSON" title="Copy the compiled chain" />
+            <CopyButton
+              className={styles.exportBtn}
+              value={shareUrl}
+              label="Copy share link"
+              title="Copy a link that reopens this exact design"
+            />
+            <CopyButton className={styles.exportBtn} value={exportPayload} label="Copy design JSON" title="Copy the compiled chain" />
             <Link className={styles.openApp} href="/app">
               Open the live app →
             </Link>
@@ -848,8 +1058,7 @@ export function ZapBuilder(): React.JSX.Element {
 function summarise(block: LegoBlock, node: ChainNode): string {
   const parts = block.params.map((param) => {
     const value = node.params[param.key] ?? param.value;
-    const suffix = param.type === "number" && param.suffix ? param.suffix : "";
-    return `${value}${suffix}`;
+    return `${value}${paramSuffix(param)}`;
   });
   return parts.length ? parts.join(" · ") : block.blurb;
 }

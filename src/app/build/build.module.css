@@ -363,6 +363,24 @@
   cursor: not-allowed;
 }
 
+/* The standing reminder that this surface designs rather than deploys. Calm on
+   purpose: it is always true, so it must never read as an alarm. */
+.scopeBanner {
+  padding: 0.6rem 0.8rem;
+  border: 1px solid var(--line-soft);
+  border-left: 2px solid rgba(142, 160, 255, 0.5);
+  border-radius: 0 0.55rem 0.55rem 0;
+  color: var(--muted);
+  background: rgba(142, 160, 255, 0.06);
+  font-size: 0.79rem;
+  line-height: 1.55;
+}
+
+.scopeBanner strong {
+  color: var(--text);
+  font-weight: 540;
+}
+
 .canvas {
   display: grid;
   padding: clamp(0.7rem, 1.6vw, 1.1rem);
@@ -867,6 +885,124 @@
   padding-top: 0.2rem;
   color: var(--muted);
   font-size: 0.78rem;
+}
+
+.hashNote {
+  margin-top: -0.45rem;
+  color: var(--muted-2);
+  font-size: 0.71rem;
+  line-height: 1.5;
+}
+
+.hashNote strong {
+  color: var(--text);
+  font-weight: 560;
+}
+
+/* ---- deploy handoff ---- */
+
+.deploy {
+  display: grid;
+  gap: 0.5rem;
+  padding-top: 0.2rem;
+}
+
+.deployBtn {
+  display: block;
+  padding: 0.62rem 0.8rem;
+  border: 1px solid rgba(55, 240, 154, 0.42);
+  border-radius: 0.55rem;
+  color: var(--bg);
+  background: var(--grad-brand);
+  text-align: center;
+  font-size: 0.86rem;
+  font-weight: 600;
+  transition: transform var(--dur-2) var(--ease-emphasis), box-shadow var(--dur-3) var(--ease-standard);
+}
+
+.deployBtn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 12px 30px rgba(33, 208, 122, 0.22);
+}
+
+.saveBtn {
+  padding: 0.62rem 0.8rem;
+  border: 1px solid var(--line);
+  border-radius: 0.55rem;
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.03);
+  font-family: inherit;
+  font-size: 0.86rem;
+  font-weight: 540;
+  cursor: pointer;
+  transition: border-color var(--dur-2) var(--ease-standard), color var(--dur-2) var(--ease-standard);
+}
+
+.saveBtn:hover {
+  border-color: rgba(142, 160, 255, 0.45);
+  color: var(--fg);
+}
+
+.deployNote {
+  color: var(--muted);
+  font-size: 0.73rem;
+  line-height: 1.5;
+}
+
+/* Unenforced guards and rejection reasons are the two places this page tells a
+   user something they will not like. Both stay fully expanded — a collapsed
+   list is a dropped guarantee waiting to happen. */
+.unenforced,
+.reasons {
+  display: grid;
+  gap: 0.35rem;
+  padding: 0.6rem 0.7rem;
+  border: 1px solid rgba(255, 194, 107, 0.34);
+  border-radius: 0.55rem;
+  background: rgba(255, 194, 107, 0.07);
+}
+
+.reasons {
+  border-color: rgba(255, 122, 144, 0.32);
+  background: rgba(255, 122, 144, 0.06);
+}
+
+.unenforced strong,
+.reasons strong {
+  color: #ffc26b;
+  font-size: 0.78rem;
+  font-weight: 560;
+  line-height: 1.45;
+}
+
+.reasons strong {
+  color: #ff9fb0;
+}
+
+.unenforced p {
+  color: var(--muted);
+  font-size: 0.72rem;
+  line-height: 1.5;
+}
+
+.unenforced ul,
+.reasons ul {
+  display: grid;
+  gap: 0.3rem;
+  list-style: none;
+}
+
+.unenforced li,
+.reasons li {
+  padding-left: 0.7rem;
+  border-left: 2px solid rgba(255, 194, 107, 0.4);
+  color: var(--text);
+  font-size: 0.73rem;
+  line-height: 1.5;
+}
+
+.reasons li {
+  border-left-color: rgba(255, 122, 144, 0.4);
 }
 
 .readoutActions {

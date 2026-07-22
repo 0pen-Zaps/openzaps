@@ -32,9 +32,19 @@ export type BlockCategory =
 /** How far a block is from being safe to point at real funds. */
 export type BlockMaturity = "live" | "preview" | "review" | "blocked";
 
+/**
+ * `amount` is deliberately a *string*, not a bounded number.
+ *
+ * Token amounts span eighteen decimals: a slider that steps in tens cannot
+ * express 0.05 aeWETH, which is the size a real Robinhood Chain zap actually
+ * carries. Keeping the raw decimal text also means the value can be handed to
+ * `parseRouterAmount` unchanged, rather than round-tripped through a float that
+ * loses wei on the way.
+ */
 export type BlockParam =
   | { key: string; label: string; type: "number"; value: number; min: number; max: number; step: number; suffix?: string }
   | { key: string; label: string; type: "select"; value: string; options: readonly string[] }
+  | { key: string; label: string; type: "amount"; value: string; unit?: string; placeholder?: string }
   | { key: string; label: string; type: "text"; value: string; placeholder?: string };
 
 export type ParamValue = string | number;
@@ -97,15 +107,17 @@ export const BLOCKS: readonly LegoBlock[] = [
     category: "source",
     blurb: "Pull a fixed amount from the owner wallet.",
     detail:
-      "A one-shot pull with an exact approval. The amount is bound into the policy hash, so the executor can never draw more than the figure you sign here.",
+      "A one-shot pull with an exact approval. The amount is bound into the policy hash, so the executor can never draw more than the figure you sign here. On Robinhood Chain the live route's WETH is aeWETH: picking WETH here means aeWETH there, and 0xZAPS is the only asset it pairs against.",
     accepts: null,
     emits: "token",
     glyph: "wallet",
     gas: 46_000,
     maturity: "live",
     params: [
-      { key: "asset", label: "Asset", type: "select", value: "USDC", options: ["USDC", "WETH", "cbBTC", "DAI"] },
-      { key: "amount", label: "Amount", type: "number", value: 250, min: 0, max: 1_000_000, step: 10 },
+      // "WETH" is the stored value on purpose: drafts, shared links, and tests
+      // already serialise it, and the detail copy carries the aeWETH truth.
+      { key: "asset", label: "Asset", type: "select", value: "WETH", options: ["USDC", "WETH", "cbBTC", "DAI", "0xZAPS"] },
+      { key: "amount", label: "Amount", type: "amount", value: "0.05", placeholder: "0.05" },
     ],
   },
   {
@@ -123,7 +135,7 @@ export const BLOCKS: readonly LegoBlock[] = [
     maturity: "live",
     params: [
       { key: "asset", label: "Asset", type: "select", value: "USDC", options: ["USDC", "WETH", "cbBTC", "DAI"] },
-      { key: "amount", label: "Per run", type: "number", value: 100, min: 0, max: 1_000_000, step: 10 },
+      { key: "amount", label: "Per run", type: "amount", value: "100", placeholder: "100" },
       { key: "cadence", label: "Cadence", type: "select", value: "weekly", options: ["daily", "weekly", "monthly"] },
     ],
   },
@@ -528,6 +540,123 @@ export function makeNode(blockId: string, uid: string, overrides: Record<string,
   return { uid, blockId, params: block ? { ...defaultParams(block), ...overrides } : { ...overrides } };
 }
 
+// ---- sharing ---------------------------------------------------------------
+
+/** Nothing legitimate comes close; the cap just bounds the parse work. */
+const MAX_TOKEN_LENGTH = 8_000;
+const MAX_SHARED_NODES = 64;
+const MAX_UID_LENGTH = 64;
+const MAX_TEXT_LENGTH = 200;
+/** Same shape `parseRouterAmount` accepts, minus the wei-range check. */
+const AMOUNT_PATTERN = /^\d{0,30}(?:\.\d{0,18})?$/;
+
+/**
+ * A chain packed into a URL-safe token: `[blockId, params, uid]` triples.
+ *
+ * Positional tuples rather than objects because this ends up in a query string
+ * and every key name would be paid for twice — once in the JSON, again in the
+ * base64 expansion.
+ */
+export function encodeChain(chain: readonly ChainNode[]): string {
+  return base64UrlEncode(JSON.stringify(chain.map((node) => [node.blockId, node.params, node.uid])));
+}
+
+/**
+ * Read a shared chain back, or `null` if the token is not one.
+ *
+ * This value arrives from a URL a stranger controls, so nothing inside it is
+ * trusted: unknown block ids are dropped rather than rendered as holes, every
+ * param key is looked up in the catalog, and every value is checked against the
+ * param's own declared domain. What survives is a chain the builder could have
+ * produced itself.
+ */
+export function decodeChain(token: string): ChainNode[] | null {
+  if (typeof token !== "string" || token.length === 0 || token.length > MAX_TOKEN_LENGTH) return null;
+  if (!/^[A-Za-z0-9_-]+$/.test(token)) return null;
+
+  const json = base64UrlDecode(token);
+  if (json === null) return null;
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(json);
+  } catch {
+    return null;
+  }
+  if (!Array.isArray(parsed)) return null;
+
+  const nodes: ChainNode[] = [];
+  const seen = new Set<string>();
+  for (const entry of parsed.slice(0, MAX_SHARED_NODES)) {
+    if (!Array.isArray(entry)) continue;
+    const [blockId, rawParams, rawUid] = entry as [unknown, unknown, unknown];
+    if (typeof blockId !== "string") continue;
+    const block = getBlock(blockId);
+    if (!block) continue;
+
+    let uid =
+      typeof rawUid === "string" && rawUid.length > 0 && rawUid.length <= MAX_UID_LENGTH
+        ? rawUid
+        : `s${nodes.length}`;
+    // Duplicate uids would collide as React keys and make the wrong card
+    // respond to a delete, so a repeat gets its own suffix.
+    while (seen.has(uid)) uid = `${uid}-${nodes.length}`;
+    seen.add(uid);
+
+    nodes.push({ uid, blockId, params: { ...defaultParams(block), ...sharedParams(block, rawParams) } });
+  }
+  return nodes;
+}
+
+function sharedParams(block: LegoBlock, raw: unknown): Record<string, ParamValue> {
+  if (raw === null || typeof raw !== "object" || Array.isArray(raw)) return {};
+  const params: Record<string, ParamValue> = {};
+  for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
+    const param = block.params.find((entry) => entry.key === key);
+    if (!param) continue;
+    switch (param.type) {
+      case "number":
+        if (typeof value !== "number" || !Number.isFinite(value)) continue;
+        // Clamped rather than dropped: a shared slider position outside the
+        // catalog's range is still a legible intent, just not a legal one.
+        params[key] = Math.min(param.max, Math.max(param.min, value));
+        break;
+      case "select":
+        if (typeof value !== "string" || !param.options.includes(value)) continue;
+        params[key] = value;
+        break;
+      case "amount":
+        if (typeof value !== "string" || !AMOUNT_PATTERN.test(value)) continue;
+        params[key] = value;
+        break;
+      case "text":
+        if (typeof value !== "string" || value.length > MAX_TEXT_LENGTH) continue;
+        params[key] = value;
+        break;
+    }
+  }
+  return params;
+}
+
+// `btoa`/`atob` are the one base64 pair both the browser and Node ship, and the
+// TextEncoder bridge is what keeps them correct for anything outside Latin-1.
+function base64UrlEncode(value: string): string {
+  const bytes = new TextEncoder().encode(value);
+  let binary = "";
+  for (const byte of bytes) binary += String.fromCharCode(byte);
+  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+
+function base64UrlDecode(token: string): string | null {
+  try {
+    const padded = token.replace(/-/g, "+").replace(/_/g, "/") + "=".repeat((4 - (token.length % 4)) % 4);
+    const binary = atob(padded);
+    return new TextDecoder().decode(Uint8Array.from(binary, (char) => char.charCodeAt(0)));
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Shape flowing *into* a position, ignoring guards.
  *
@@ -584,7 +713,17 @@ export type Joint = {
   status: "ok" | "mismatch" | "orphan";
 };
 
-export type ChainIssue = { level: "block" | "warn"; message: string; uid?: string };
+/**
+ * `code` names the fault so callers can act on it without matching prose.
+ *
+ * `orphan` and `mismatch` are the two purely *structural* faults — the ones
+ * that depend on the order blocks were placed in — which is what lets the
+ * deployability mapper reject a chain it would otherwise wave through: it
+ * counts kinds, and only the compiler knows whether they seat.
+ */
+export type ChainIssueCode = "unknown-block" | "duplicate-source" | "orphan" | "mismatch";
+
+export type ChainIssue = { level: "block" | "warn"; message: string; uid?: string; code?: ChainIssueCode };
 
 export type CompiledZap = {
   status: "pass" | "warn" | "block";
@@ -598,6 +737,44 @@ export type CompiledZap = {
   steps: string[];
   outputShape: FlowShape | null;
 };
+
+export type SlippageResolution = {
+  /** Every cap that parsed as a number, in the order it was placed. */
+  caps: number[];
+  /** Caps that are not numbers at all, as written, in the order placed. */
+  invalid: string[];
+  /** The cap that governs, or `null` when the design states none. */
+  governingBps: number | null;
+};
+
+/**
+ * Which slippage cap a chain actually means, when it states more than one.
+ *
+ * Nothing stops a design carrying several `guard-slippage` blocks — a palette
+ * tap seats a guard anywhere below the source, and a shared link can encode as
+ * many as it likes. Someone who draws a 0.10% cap and a 5.00% cap has asked for
+ * both bounds at once, and only the tighter of the two honours both, so the
+ * TIGHTEST governs. Chain order must never decide it: "the last one wins" would
+ * silently hand a 50x looser bound to whoever happened to drop their caps in an
+ * unlucky order.
+ *
+ * This is the single answer both the readout's Slippage check and the deploy
+ * handoff read, so the two panels cannot claim different caps for one design.
+ */
+export function resolveSlippageGuards(chain: readonly ChainNode[]): SlippageResolution {
+  const caps: number[] = [];
+  const invalid: string[] = [];
+  for (const node of chain) {
+    if (node.blockId !== "guard-slippage") continue;
+    const bps = Number(node.params.bps);
+    if (!Number.isFinite(bps)) {
+      invalid.push(String(node.params.bps));
+      continue;
+    }
+    caps.push(bps);
+  }
+  return { caps, invalid, governingBps: caps.length > 0 ? Math.min(...caps) : null };
+}
 
 /**
  * Turn a chain into the same shape of verdict the rest of the product speaks:
@@ -614,7 +791,7 @@ export function compileChain(chain: readonly ChainNode[]): CompiledZap {
   chain.forEach((node, index) => {
     const block = getBlock(node.blockId);
     if (!block) {
-      issues.push({ level: "block", message: "Unknown block in this chain.", uid: node.uid });
+      issues.push({ level: "block", message: "Unknown block in this chain.", uid: node.uid, code: "unknown-block" });
       return;
     }
     gas += block.gas;
@@ -635,7 +812,12 @@ export function compileChain(chain: readonly ChainNode[]): CompiledZap {
       const legal = shape === null && sourceCount === 1;
       joints.push({ index, shape: null, status: legal ? "ok" : "mismatch" });
       if (!legal) {
-        issues.push({ level: "block", message: `${block.name} is a source — a chain draws from exactly one.`, uid: node.uid });
+        issues.push({
+          level: "block",
+          message: `${block.name} is a source — a chain draws from exactly one.`,
+          uid: node.uid,
+          code: "duplicate-source",
+        });
       }
       shape = block.emits;
       steps.push(describe(block, node));
@@ -645,12 +827,13 @@ export function compileChain(chain: readonly ChainNode[]): CompiledZap {
     const fits = block.accepts === shape;
     joints.push({ index, shape, status: shape === null ? "orphan" : fits ? "ok" : "mismatch" });
     if (shape === null) {
-      issues.push({ level: "block", message: `${block.name} needs a source above it.`, uid: node.uid });
+      issues.push({ level: "block", message: `${block.name} needs a source above it.`, uid: node.uid, code: "orphan" });
     } else if (!fits) {
       issues.push({
         level: "block",
         message: `${block.name} takes ${SHAPE_LABEL[block.accepts as FlowShape]} but receives ${SHAPE_LABEL[shape]}.`,
         uid: node.uid,
+        code: "mismatch",
       });
     }
     shape = block.emits;
@@ -746,17 +929,33 @@ function buildChecks(
     status: worst === "blocked" ? "block" : worst === "review" ? "warn" : "pass",
   });
 
-  const slippage = paramOf(chain, "guard-slippage", "bps");
-  if (typeof slippage === "number") {
+  // The governing cap, never the first one placed: this check sits beside a
+  // deploy CTA that states the cap it will hand over, and the two reading
+  // different guards is how a design ends up showing a reassuring green tick
+  // next to a bound 50x looser.
+  const slippage = resolveSlippageGuards(chain);
+  if (slippage.governingBps !== null) {
+    const bps = slippage.governingBps;
+    const stacked =
+      slippage.caps.length > 1
+        ? ` ${slippage.caps.length} caps are placed (${slippage.caps.map((cap) => `${cap} bps`).join(", ")}) — the tightest, ${bps} bps, is the one that governs.`
+        : "";
     checks.push({
       label: "Slippage",
       detail:
-        slippage <= 100
+        (bps <= 100
           ? "Slippage is bounded at or below 1.00%."
-          : slippage <= 250
+          : bps <= 250
             ? "Slippage is above the default safety band and should require a human gate."
-            : "Slippage is too wide for an unattended executor.",
-      status: slippage <= 100 ? "pass" : slippage <= 250 ? "warn" : "block",
+            : "Slippage is far too wide for an unattended executor — at this cap a fill can come back dramatically worse than quoted.") + stacked,
+      // Never "block", however wide. The live app signs caps up to 500 bps from
+      // its own slider, so a wide cap is a risk the user can legitimately take,
+      // not a chain that cannot be built — and "block" is reserved for
+      // structural faults so the top-line verdict keeps meaning one precise
+      // thing. Grading this as a fault also put the readout in direct
+      // contradiction with the deploy CTA, which correctly still offered a cap
+      // the contracts accept.
+      status: bps <= 100 ? "pass" : "warn",
     });
   }
 
@@ -796,17 +995,20 @@ function buildChecks(
   return checks;
 }
 
-function paramOf(chain: readonly ChainNode[], blockId: string, key: string): ParamValue | undefined {
-  return chain.find((node) => node.blockId === blockId)?.params[key];
-}
-
 function describe(block: LegoBlock, node: ChainNode): string {
   const parts = Object.entries(node.params).map(([key, value]) => {
     const param = block.params.find((entry) => entry.key === key);
-    const suffix = param && param.type === "number" && param.suffix ? param.suffix : "";
-    return `${key} ${value}${suffix}`;
+    return `${key} ${value}${paramSuffix(param)}`;
   });
   return parts.length ? `${block.name} (${parts.join(", ")})` : block.name;
+}
+
+/** Trailing unit for a param value, if the catalog gives it one. */
+export function paramSuffix(param: BlockParam | undefined): string {
+  if (!param) return "";
+  if (param.type === "number") return param.suffix ?? "";
+  if (param.type === "amount") return param.unit ? ` ${param.unit}` : "";
+  return "";
 }
 
 /** Ready-made chains, one per kind of zap the builder is meant to express. */
@@ -832,7 +1034,7 @@ export const RECIPES: readonly ZapRecipe[] = [
     tagline: "Provide liquidity, stake it, and fold the rewards back in.",
     accent: "lp",
     blocks: [
-      ["wallet-balance", { amount: 1000 }],
+      ["wallet-balance", { asset: "USDC", amount: "1000" }],
       ["guard-slippage"],
       ["guard-window"],
       ["add-liquidity"],
@@ -855,7 +1057,7 @@ export const RECIPES: readonly ZapRecipe[] = [
     tagline: "Supply, borrow, and re-supply inside a bounded LTV.",
     accent: "debt",
     blocks: [
-      ["wallet-balance", { asset: "WETH", amount: 2 }],
+      ["wallet-balance", { asset: "WETH", amount: "2" }],
       ["guard-oracle"],
       ["guard-spend"],
       ["guard-window"],
@@ -878,7 +1080,7 @@ export const RECIPES: readonly ZapRecipe[] = [
     tagline: "Unwind a position back to stables when the band breaks.",
     accent: "lp",
     blocks: [
-      ["wallet-balance", { asset: "WETH", amount: 1 }],
+      ["wallet-balance", { asset: "WETH", amount: "1" }],
       ["guard-oracle"],
       ["guard-slippage"],
       ["guard-window"],

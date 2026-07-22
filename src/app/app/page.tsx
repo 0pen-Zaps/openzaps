@@ -106,6 +106,17 @@ const publicClient = createPublicClient({
   chain: robinhoodChain,
   transport: http(ROBINHOOD_RPC_URL, { retryCount: 2, timeout: 10_000 }),
 });
+/**
+ * The saved-zap chip and its "open the onchain page" link, side by side.
+ *
+ * Inline so this change touches no shared stylesheet; it is the one piece of
+ * layout on this page that is not in app.module.css.
+ */
+const SAVED_ZAP_ROW: React.CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "minmax(0, 1fr) auto",
+  gap: "0.45rem",
+};
 const LEGACY_STORAGE_KEY = "openzaps:robinhood-live-zap:v1";
 const ZAP_STORAGE_KEY = "openzaps:robinhood-live-zaps:v2";
 const TX_STORAGE_KEY = "openzaps:robinhood-transactions:v1";
@@ -150,6 +161,10 @@ export default function AppPage(): React.JSX.Element {
   // Bumped whenever direction/amount/zap context changes so an in-flight
   // quote response for the old context can never land on the new one.
   const quoteEpochRef = useRef(0);
+  // Whether this page load came from the builder handoff, and whether the
+  // handoff was usable. Read by the saved-zap restore below, which must not
+  // auto-select an old capsule over an explicit "build this one" intent.
+  const builderImportRef = useRef<"applied" | "rejected" | null>(null);
 
   useEffect(() => {
     accountRef.current = account;
@@ -460,7 +475,12 @@ export default function AppPage(): React.JSX.Element {
       setTransactions(readTransactions(account, MAX_RECEIPT_RETENTION));
       if (!rpcHealthy) setNotice("Saved zaps could not be verified right now — Robinhood RPC is unreachable. They remain saved.");
       const firstVerified = merged.find((record) => verified.has(record.address));
-      if (firstVerified && zapRef.current === null) selectZap(firstVerified);
+      // An import from the builder is an explicit "start a new zap" — selecting
+      // a saved capsule here would overwrite the imported direction and amount
+      // with an older policy's and re-disable the controls, silently.
+      if (firstVerified && zapRef.current === null && builderImportRef.current !== "applied") {
+        selectZap(firstVerified);
+      }
     };
     void restore();
     return () => {
@@ -943,20 +963,24 @@ export default function AppPage(): React.JSX.Element {
     window.setTimeout(() => URL.revokeObjectURL(url), 10_000);
   }
 
-  function clearMessages(): void {
+  // These three and `startNewZap` below are memoised so the builder-import
+  // effect can list them as dependencies honestly and still run exactly once.
+  // They are the only route into direction/amount/zap state that keeps the
+  // quote epoch in step.
+  const clearMessages = useCallback((): void => {
     setNotice("");
     setError("");
-  }
+  }, []);
 
-  function changeDirection(nextDirection: ZapDirection): void {
+  const changeDirection = useCallback((nextDirection: ZapDirection): void => {
     setDirection(nextDirection);
     resetQuoteState();
-  }
+  }, [resetQuoteState]);
 
-  function changeAmount(nextAmount: string): void {
+  const changeAmount = useCallback((nextAmount: string): void => {
     setAmount(nextAmount);
     resetQuoteState();
-  }
+  }, [resetQuoteState]);
 
   function rememberZap(owner: Address, record: SavedZapRecord): void {
     setSavedZaps((current) => {
@@ -969,13 +993,84 @@ export default function AppPage(): React.JSX.Element {
     });
   }
 
-  function startNewZap(): void {
+  const startNewZap = useCallback((): void => {
     setZap(null);
     setExecutedZap(null);
     resetQuoteState();
     setManualZap("");
     clearMessages();
-  }
+  }, [clearMessages, resetQuoteState]);
+
+  /**
+   * One-shot handoff from the visual builder at /build?…&src=build.
+   *
+   * This fills in the same three controls a person would type and then stops.
+   * It never creates, funds, or signs: a URL parameter is not consent for an
+   * onchain write, and the whole point of the create step is that a human read
+   * the numbers first.
+   */
+  useEffect(() => {
+    if (builderImportRef.current !== null) return;
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("src") !== "build") return;
+    builderImportRef.current = "rejected";
+
+    const rawDirection = params.get("dir");
+    const rawAmount = (params.get("amount") ?? "").trim();
+    let imported: { direction: ZapDirection; amount: string; bps: number } | null = null;
+    if (rawDirection === "buy" || rawDirection === "sell") {
+      try {
+        parseRouterAmount(rawAmount);
+        // A missing key reads as null and Number(null) is 0 — finite, so an
+        // absent bps would snap to the 10 bps floor and quietly sign a 0.10%
+        // cap. Anything that is not a real number has to reach the default.
+        const parsedBps = Number(params.get("bps"));
+        imported = {
+          direction: rawDirection,
+          amount: rawAmount,
+          // Snapped to the slider's own min/max/step below. A value off that
+          // grid would leave the thumb on one number while the notice and the
+          // signed minimum used another.
+          // 100 is the same 1.00% the slider starts on when nobody touches it.
+          bps: Number.isFinite(parsedBps) ? Math.min(500, Math.max(10, Math.round(parsedBps / 10) * 10)) : 100,
+        };
+      } catch {
+        imported = null;
+      }
+    }
+    // Set synchronously: the saved-zap restore effect reads this marker to keep
+    // itself from selecting an older capsule over the import.
+    if (imported) builderImportRef.current = "applied";
+
+    // Deferred out of the effect body: this page's lint rules treat a
+    // synchronous setState in an effect as a hard error, and the rest of the
+    // file already hands its post-mount work to a microtask for the same reason.
+    queueMicrotask(() => {
+      // Drop the query so a refresh cannot replay the import over work the user
+      // has since done by hand. Deferred with the rest: the App Router patches
+      // history.replaceState in an ancestor effect, and React runs child
+      // passive effects first, so calling it in this body would hit the raw
+      // API and wipe the router's history state — which breaks the Back button.
+      // The one-shot ref above is already set, so the replay guard is unaffected.
+      window.history.replaceState(null, "", `${window.location.pathname}${window.location.hash}`);
+      if (!imported) {
+        setError(
+          "That builder link did not carry a valid direction and amount, so nothing was imported. Set them here instead.",
+        );
+        return;
+      }
+      // Direction, amount, and Create are all disabled while a zap is selected,
+      // so the import has to start from a clean slate or it would land nowhere.
+      startNewZap();
+      changeDirection(imported.direction);
+      changeAmount(imported.amount);
+      setSlippageBps(imported.bps);
+      setNotice(
+        `Imported from the builder: ${imported.direction === "buy" ? "buy 0xZAPS with aeWETH" : "sell 0xZAPS for aeWETH"}, ${imported.amount} ${imported.direction === "buy" ? "aeWETH" : "0xZAPS"}, ${(imported.bps / 100).toFixed(2)}% max slippage. Nothing has been created — check the numbers, then press Create zap.`,
+      );
+      trackEvent("robinhood_builder_import", { direction: imported.direction });
+    });
+  }, [changeAmount, changeDirection, startNewZap]);
 
   const wrongNetwork = walletChainId !== null && walletChainId !== ROBINHOOD_CHAIN_ID;
   const stepLabel = !account
@@ -1042,7 +1137,21 @@ export default function AppPage(): React.JSX.Element {
         </div>
       </section>
 
-      <div className={`container ${styles.notice}`} ref={noticeRef} role="status" tabIndex={-1}>{notice}</div>
+      {/* The link is conditional on the notice so the live region still
+          collapses to nothing (`.notice:empty`) when there is no message. */}
+      <div className={`container ${styles.notice}`} ref={noticeRef} role="status" tabIndex={-1}>
+        {notice}
+        {notice && zap ? (
+          <>
+            {" "}
+            {/* Global `a` inherits its colour, so the underline is what separates
+                the link from the notice text it sits inside. */}
+            <Link href={`/zaps/${zap.address}`} style={{ textDecoration: "underline" }}>
+              Open this zap&apos;s onchain page →
+            </Link>
+          </>
+        ) : null}
+      </div>
       {error && <div className={`container ${styles.error}`} role="alert">{error}</div>}
 
       <section className={`container ${styles.metrics}`} aria-label="Live protocol metrics">
@@ -1162,6 +1271,9 @@ export default function AppPage(): React.JSX.Element {
             {zap ? (
               <>
                 <a href={explorerAddress(zap.address)} target="_blank" rel="noreferrer">{zap.address}</a>
+                {/* Direct child of .currentZap so it picks up the same block
+                    treatment as the explorer link above it. */}
+                <Link href={`/zaps/${zap.address}`}>Onchain zap page: policy, executions, recoveries →</Link>
                 <div><small>Required</small><strong>{formatToken(requiredAmount)} {inputSymbol}</strong></div>
                 <div><small>Zap aeWETH</small><strong>{formatToken(zapWethBalance)} aeWETH</strong></div>
                 <div><small>Zap 0xZAPS</small><strong>{formatToken(zapZapsBalance)} 0xZAPS</strong></div>
@@ -1206,17 +1318,28 @@ export default function AppPage(): React.JSX.Element {
               {savedZaps.map((record) => {
                 const active = zap?.address === record.address;
                 return (
-                  <button
-                    aria-pressed={active}
-                    className={active ? styles.savedZapActive : styles.savedZap}
-                    disabled={busy !== null}
-                    key={record.address}
-                    onClick={() => selectZap(record)}
-                    type="button"
-                  >
-                    <strong>{active ? "✓ " : ""}{record.direction === "buy" ? "Buy 0xZAPS" : "Sell 0xZAPS"}</strong>
-                    <code>{shortAddress(record.address)}</code>
-                  </button>
+                  // Two controls, not one: selecting a zap for this console and
+                  // opening its public page are different intents, and a link
+                  // cannot live inside the button.
+                  <div style={SAVED_ZAP_ROW} key={record.address}>
+                    <button
+                      aria-pressed={active}
+                      className={active ? styles.savedZapActive : styles.savedZap}
+                      disabled={busy !== null}
+                      onClick={() => selectZap(record)}
+                      type="button"
+                    >
+                      <strong>{active ? "✓ " : ""}{record.direction === "buy" ? "Buy 0xZAPS" : "Sell 0xZAPS"}</strong>
+                      <code>{shortAddress(record.address)}</code>
+                    </button>
+                    <Link
+                      aria-label={`Open the onchain page for zap ${record.address}`}
+                      className="btn btnGhost"
+                      href={`/zaps/${record.address}`}
+                    >
+                      ↗
+                    </Link>
+                  </div>
                 );
               })}
             </div>

@@ -1,0 +1,876 @@
+/* Deployed-zap index and per-zap detail.
+   The chain block reuses the builder's visual vocabulary — stud, typed joint,
+   accent tinted by the shape flowing along the connector — so the strategy you
+   design on /build and the one already onchain read as the same language.
+   Keyframes are declared locally: CSS Modules scope animation-name, so a copy
+   in globals.css would silently never apply. */
+
+.page {
+  position: relative;
+  z-index: 1;
+  padding: clamp(2rem, 5vw, 4rem) 0 5rem;
+}
+
+/* ------------------------------------------------------------------ hero */
+
+.hero {
+  padding-bottom: clamp(1.6rem, 4vw, 2.6rem);
+}
+
+.hero h1 {
+  margin-top: 0.8rem;
+  font-size: clamp(2.3rem, 6vw, 4.6rem);
+  font-weight: 560;
+  line-height: 1.02;
+  text-wrap: balance;
+}
+
+.hero p {
+  max-width: 46rem;
+  margin-top: 1rem;
+  color: var(--text);
+  font-size: clamp(0.98rem, 1.5vw, 1.15rem);
+  line-height: 1.6;
+}
+
+.heroNote {
+  color: var(--muted-2);
+  font-size: 0.92rem;
+}
+
+.heroActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin-top: 1.5rem;
+}
+
+.detailHero {
+  padding-bottom: clamp(1.4rem, 3vw, 2.2rem);
+}
+
+.crumb {
+  color: inherit;
+  text-decoration: none;
+}
+
+.crumb:hover {
+  text-decoration: underline;
+}
+
+.detailHero h1 {
+  margin-top: 0.7rem;
+  font-weight: 560;
+  line-height: 1.1;
+}
+
+/* The full address is the title, so it has to wrap rather than overflow the
+   viewport on a phone. */
+.heroAddress {
+  font-family: var(--font-jetbrains-mono), ui-monospace, monospace;
+  font-size: clamp(1.05rem, 3.4vw, 2.3rem);
+  letter-spacing: -0.01em;
+  overflow-wrap: anywhere;
+}
+
+.detailHero p {
+  max-width: 46rem;
+  margin-top: 1rem;
+  color: var(--text);
+  font-size: clamp(0.95rem, 1.4vw, 1.05rem);
+  line-height: 1.6;
+}
+
+/* ---------------------------------------------------------- verify strip */
+
+.verifyStrip {
+  display: grid;
+  gap: 1rem;
+  padding: clamp(1.1rem, 2.4vw, 1.6rem);
+  border: 1px solid var(--line);
+  border-radius: 0.65rem;
+  background: var(--card);
+  box-shadow: var(--card-shadow);
+}
+
+.verifyMain {
+  display: grid;
+  gap: 0.6rem;
+  justify-items: start;
+}
+
+.verifyMain p {
+  max-width: 62rem;
+  margin: 0;
+  color: var(--text);
+  font-size: 0.92rem;
+  line-height: 1.6;
+}
+
+.badge {
+  padding: 0.28rem 0.7rem;
+  border: 1px solid rgba(255, 194, 107, 0.4);
+  border-radius: var(--pill);
+  color: #ffd398;
+  background: rgba(255, 194, 107, 0.09);
+  font-size: 0.78rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.badge[data-verified="true"] {
+  border-color: rgba(55, 240, 154, 0.42);
+  color: var(--mint-2);
+  background: rgba(33, 208, 122, 0.11);
+}
+
+.verifyFacts {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.9rem;
+  margin: 0;
+  padding-top: 0.9rem;
+  border-top: 1px solid var(--line-soft);
+}
+
+.verifyFacts div {
+  display: grid;
+  gap: 0.25rem;
+}
+
+.verifyFacts dt {
+  color: var(--muted);
+  font-size: 0.76rem;
+}
+
+.verifyFacts dd {
+  margin: 0;
+  color: var(--fg);
+  font-size: 0.9rem;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+
+.refreshLine {
+  display: flex;
+  align-items: baseline;
+  gap: 0.45rem;
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.78rem;
+  line-height: 1.55;
+}
+
+.updatedSpinner {
+  align-self: center;
+  color: var(--indigo);
+}
+
+.staleWarning {
+  margin-top: 1rem;
+  padding: 0.7rem 0.9rem;
+  border: 1px solid rgba(255, 194, 107, 0.34);
+  border-radius: 0.5rem;
+  color: #ffd398;
+  background: rgba(255, 194, 107, 0.07);
+  font-size: 0.84rem;
+  line-height: 1.5;
+}
+
+/* ----------------------------------------------------------------- panel */
+
+.panel {
+  margin-top: clamp(1.6rem, 3.5vw, 2.6rem);
+  padding: clamp(1.2rem, 2.5vw, 1.75rem);
+  border: 1px solid var(--line);
+  border-radius: 0.65rem;
+  background: var(--card);
+  box-shadow: var(--card-shadow);
+}
+
+.panelHead {
+  margin-bottom: 1.3rem;
+}
+
+.panelHead h2 {
+  margin-top: 0.45rem;
+  font-size: clamp(1.35rem, 2.6vw, 1.95rem);
+  font-weight: 560;
+}
+
+.panelHead p {
+  max-width: 52rem;
+  margin-top: 0.55rem;
+  color: var(--muted-2);
+  font-size: 0.9rem;
+  line-height: 1.6;
+}
+
+.panelHead a {
+  color: var(--indigo);
+}
+
+/* ------------------------------------------------------------ deviations */
+
+.deviations {
+  display: grid;
+  gap: 0.6rem;
+  margin-bottom: 1.4rem;
+  padding: 0.95rem 1.1rem;
+  border: 1px solid rgba(255, 122, 144, 0.45);
+  border-radius: 0.55rem;
+  background: rgba(255, 122, 144, 0.07);
+}
+
+.deviations strong {
+  color: #ffadad;
+  font-size: 0.95rem;
+  font-weight: 560;
+}
+
+.deviations ul {
+  display: grid;
+  gap: 0.4rem;
+  margin: 0;
+  padding-left: 1.1rem;
+}
+
+.deviations li {
+  color: var(--text);
+  font-size: 0.86rem;
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+}
+
+/* ------------------------------------------------------------ lego chain */
+
+.chain {
+  display: grid;
+  max-width: 40rem;
+}
+
+.slotGroup {
+  display: grid;
+}
+
+.joint {
+  position: relative;
+  display: grid;
+  place-items: center;
+  height: 2.1rem;
+}
+
+.jointLine {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  border-radius: 2px;
+  background: color-mix(in oklab, var(--accent) 55%, transparent);
+}
+
+.joint[data-status="unknown"] .jointLine {
+  background: repeating-linear-gradient(180deg, #ff7a90 0 4px, transparent 4px 8px);
+}
+
+.jointLabel {
+  position: relative;
+  padding: 0.12rem 0.5rem;
+  border: 1px solid color-mix(in oklab, var(--accent) 40%, transparent);
+  border-radius: var(--pill);
+  color: color-mix(in oklab, var(--accent) 80%, white);
+  background: var(--bg-2);
+  font-family: var(--font-jetbrains-mono), ui-monospace, monospace;
+  font-size: 0.63rem;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+
+.card {
+  position: relative;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.7rem;
+  padding: 0.75rem 0.85rem;
+  border: 1px solid var(--line);
+  border-radius: 0.7rem;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.055), rgba(255, 255, 255, 0.014));
+  transition: border-color var(--dur-2) var(--ease-standard);
+}
+
+.card:hover {
+  border-color: color-mix(in oklab, var(--accent) 38%, transparent);
+}
+
+/* The stud: the piece that makes a block read as something clicked into place.
+   Same geometry as the builder's, tinted by what the block emits. */
+.card::after {
+  position: absolute;
+  bottom: -0.3rem;
+  left: 50%;
+  z-index: 1;
+  width: 1.5rem;
+  height: 0.3rem;
+  margin-left: -0.75rem;
+  content: "";
+  border-radius: 0 0 0.3rem 0.3rem;
+  background: color-mix(in oklab, var(--accent) 70%, transparent);
+}
+
+.card[data-kind="sink"]::after {
+  display: none;
+}
+
+/* A capsule that does not match the live route must not read as a standard
+   one, so the whole chain is tinted rather than only the deviation list. */
+.chain[data-standard="false"] .card {
+  border-color: rgba(255, 122, 144, 0.4);
+}
+
+.cardGlyph {
+  display: grid;
+  place-items: center;
+  width: 2.1rem;
+  height: 2.1rem;
+  border-radius: 0.5rem;
+  color: var(--accent);
+  background: color-mix(in oklab, var(--accent) 15%, transparent);
+}
+
+.glyph {
+  width: 1.05rem;
+  height: 1.05rem;
+}
+
+.cardText {
+  display: grid;
+  gap: 0.15rem;
+  min-width: 0;
+}
+
+.cardText strong {
+  font-size: 0.92rem;
+  font-weight: 540;
+}
+
+.cardText span {
+  color: var(--muted);
+  font-size: 0.79rem;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.cardLink {
+  color: var(--indigo);
+  font-family: var(--font-jetbrains-mono), ui-monospace, monospace;
+  font-size: 0.7rem;
+  white-space: nowrap;
+}
+
+/* ------------------------------------------------------------ fact grids */
+
+.factGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1px;
+  margin: 1.6rem 0 0;
+  border: 1px solid var(--line);
+  border-radius: 0.55rem;
+  overflow: hidden;
+  background: var(--line);
+}
+
+.fact {
+  display: grid;
+  gap: 0.35rem;
+  padding: 0.9rem 1rem;
+  background: var(--bg-2);
+}
+
+.fact dt {
+  color: var(--muted);
+  font-size: 0.76rem;
+}
+
+.fact dd {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem 0.6rem;
+  margin: 0;
+  color: var(--fg);
+  font-size: 0.88rem;
+  overflow-wrap: anywhere;
+}
+
+.fact dd a {
+  color: var(--indigo);
+  font-family: var(--font-jetbrains-mono), ui-monospace, monospace;
+  font-size: 0.8rem;
+}
+
+.factNote {
+  flex-basis: 100%;
+  color: var(--muted);
+  font-size: 0.74rem;
+  line-height: 1.45;
+}
+
+.hexCopy {
+  font-size: 0.74rem;
+}
+
+.assetList {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+/* --------------------------------------------------------------- metrics */
+
+.metrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 1px;
+  border: 1px solid var(--line);
+  border-radius: 0.55rem;
+  overflow: hidden;
+  background: var(--line);
+}
+
+.metric {
+  display: grid;
+  gap: 0.3rem;
+  padding: 1.05rem 1.1rem;
+  background: var(--bg-2);
+  transition: background var(--dur-3) var(--ease-standard);
+}
+
+.metric:hover {
+  background: rgba(255, 255, 255, 0.045);
+}
+
+.metric strong {
+  color: var(--fg);
+  font-size: clamp(1rem, 1.8vw, 1.35rem);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+
+.metric span {
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+/* ---------------------------------------------------------------- totals */
+
+.totalsGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.7rem;
+  margin-top: 0.7rem;
+}
+
+.totalsCard {
+  display: grid;
+  align-content: start;
+  gap: 0.55rem;
+  padding: 0.95rem 1.05rem;
+  border: 1px solid var(--line-soft);
+  border-radius: 0.5rem;
+  background: rgba(255, 255, 255, 0.018);
+}
+
+.totalsCard h3 {
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 540;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+.totalsList {
+  display: grid;
+  gap: 0.6rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.totalsList li {
+  display: grid;
+  gap: 0.2rem;
+}
+
+.amount {
+  color: var(--fg);
+  font-size: 1rem;
+  font-weight: 560;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+
+.amount em {
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-style: normal;
+  font-weight: 400;
+}
+
+.totalsNote {
+  color: var(--muted);
+  font-size: 0.74rem;
+  line-height: 1.5;
+}
+
+/* ------------------------------------------------------------- event rows */
+
+.rowsHead {
+  margin: 1.4rem 0 0.7rem;
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 540;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+.rowsHead:first-of-type {
+  margin-top: 0;
+}
+
+.rows {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.row {
+  display: grid;
+  grid-template-columns: 8rem minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.9rem;
+  padding: 0.7rem 0.85rem;
+  border: 1px solid var(--line-soft);
+  border-radius: 0.45rem;
+  background: rgba(255, 255, 255, 0.018);
+  color: var(--text);
+  text-decoration: none;
+  animation: fadeUp var(--dur-3) var(--ease-emphasis) both;
+  animation-delay: var(--row-delay, 0ms);
+  transition:
+    transform var(--dur-2) var(--ease-emphasis),
+    border-color var(--dur-2) var(--ease-standard),
+    background var(--dur-2) var(--ease-standard);
+}
+
+.row:hover {
+  transform: translateX(3px);
+  border-color: rgba(55, 240, 154, 0.3);
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.rowType {
+  font-size: 0.74rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.rowType[data-type="executed"] {
+  color: var(--mint-2);
+}
+
+.rowType[data-type="recovered"] {
+  color: #ffd398;
+}
+
+.rowDetail {
+  min-width: 0;
+  font-size: 0.85rem;
+  overflow-wrap: anywhere;
+}
+
+.rowNonce {
+  margin-left: 0.5rem;
+  color: var(--muted);
+  font-family: var(--font-jetbrains-mono), ui-monospace, monospace;
+  font-size: 0.7rem;
+  white-space: nowrap;
+}
+
+.rowTime {
+  color: var(--muted);
+  font-size: 0.76rem;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+/* ------------------------------------------------------------ index list */
+
+.listHead {
+  margin-bottom: 1.1rem;
+}
+
+.listHead h2 {
+  font-size: clamp(1.25rem, 2.4vw, 1.7rem);
+  font-weight: 560;
+}
+
+.listHead p {
+  margin-top: 0.4rem;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.list {
+  display: grid;
+  gap: 0.5rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.listItem {
+  position: relative;
+  animation: fadeUp var(--dur-3) var(--ease-emphasis) both;
+  animation-delay: var(--row-delay, 0ms);
+}
+
+.listLink {
+  display: grid;
+  grid-template-columns: 10rem minmax(0, 1fr) minmax(0, 1fr) 8rem 11rem;
+  align-items: center;
+  gap: 0.9rem;
+  padding: 0.8rem 6.5rem 0.8rem 0.9rem;
+  border: 1px solid var(--line-soft);
+  border-radius: 0.45rem;
+  background: rgba(255, 255, 255, 0.018);
+  color: var(--text);
+  text-decoration: none;
+  transition:
+    transform var(--dur-2) var(--ease-emphasis),
+    border-color var(--dur-2) var(--ease-standard),
+    background var(--dur-2) var(--ease-standard);
+}
+
+.listLink:hover {
+  transform: translateX(3px);
+  border-color: rgba(142, 160, 255, 0.42);
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.listAddress {
+  color: var(--fg);
+  font-size: 0.86rem;
+}
+
+.listOwner,
+.listPolicy {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--muted);
+  font-family: var(--font-jetbrains-mono), ui-monospace, monospace;
+  font-size: 0.73rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.listRuns {
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.listRuns[data-active="true"] {
+  color: var(--mint-2);
+}
+
+.listTime {
+  color: var(--muted);
+  font-size: 0.76rem;
+  text-align: right;
+}
+
+/* Sits over the row rather than inside it: a nested <a> is invalid, and the
+   creation tx belongs to the explorer, not to the detail page. */
+.listTx {
+  position: absolute;
+  top: 50%;
+  right: 0.9rem;
+  z-index: 1;
+  transform: translateY(-50%);
+  color: var(--indigo);
+  font-size: 0.73rem;
+  white-space: nowrap;
+}
+
+/* -------------------------------------------------------------- messaging */
+
+.empty {
+  margin: 0.4rem 0;
+  color: var(--muted);
+  font-size: 0.88rem;
+  line-height: 1.55;
+}
+
+.note {
+  margin: 1.3rem 0 0;
+  color: var(--muted);
+  font-size: 0.8rem;
+  line-height: 1.55;
+}
+
+.note a {
+  color: var(--indigo);
+}
+
+.unavailable {
+  display: grid;
+  justify-items: start;
+  gap: 0.8rem;
+  padding: 0.95rem 1.1rem;
+  border: 1px solid rgba(255, 110, 110, 0.32);
+  border-radius: 0.5rem;
+  background: rgba(255, 78, 78, 0.06);
+}
+
+.unavailable p {
+  margin: 0;
+  max-width: 56rem;
+  color: #ffadad;
+  font-size: 0.88rem;
+  line-height: 1.55;
+}
+
+/* ------------------------------------------------------------- skeletons */
+
+.skelGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.6rem;
+  margin-top: 1rem;
+}
+
+.skelCard {
+  display: grid;
+  gap: 0.55rem;
+  padding: 0.95rem 1rem;
+  border: 1px solid var(--line-soft);
+  border-radius: 0.5rem;
+  background: rgba(255, 255, 255, 0.018);
+}
+
+.skelCard > i {
+  height: 0.85rem;
+  /* Negative, index-derived delays start each bar mid-cycle so the shimmer
+     travels across the grid instead of every card pulsing in lockstep. */
+  animation-delay: var(--row-delay, 0ms);
+}
+
+.skelCard > i:first-child {
+  width: 55%;
+  height: 1.3rem;
+}
+
+/* ----------------------------------------------------------- breakpoints */
+
+@media (max-width: 1180px) {
+  .listLink {
+    grid-template-columns: 9rem minmax(0, 1fr) 7.5rem 10rem;
+  }
+
+  .listPolicy {
+    display: none;
+  }
+}
+
+@media (max-width: 860px) {
+  .factGrid,
+  .verifyFacts,
+  .skelGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .totalsGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .listLink {
+    grid-template-columns: minmax(0, 1fr) auto;
+    row-gap: 0.35rem;
+    padding-right: 0.9rem;
+    padding-bottom: 2.3rem;
+  }
+
+  .listOwner {
+    text-align: right;
+  }
+
+  .listRuns {
+    grid-column: 1;
+  }
+
+  .listTime {
+    text-align: right;
+  }
+
+  .listTx {
+    top: auto;
+    bottom: 0.75rem;
+    right: 0.9rem;
+    transform: none;
+  }
+}
+
+@media (max-width: 520px) {
+  .factGrid,
+  .verifyFacts,
+  .metrics,
+  .skelGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .card {
+    grid-template-columns: auto minmax(0, 1fr);
+    row-gap: 0.35rem;
+  }
+
+  .cardLink {
+    grid-column: 2;
+  }
+
+  .row {
+    grid-template-columns: minmax(0, 1fr) auto;
+    row-gap: 0.3rem;
+  }
+
+  .rowDetail {
+    grid-column: 1 / -1;
+  }
+
+  .listLink {
+    grid-template-columns: 1fr;
+  }
+
+  .listOwner,
+  .listTime {
+    text-align: left;
+  }
+}
+
+/* Local copy — CSS Modules scope animation-name, so the globals.css keyframes
+   of the same name are unreachable from this file. */
+@keyframes fadeUp {
+  from {
+    opacity: 0;
+    transform: translateY(var(--reveal-shift));
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}

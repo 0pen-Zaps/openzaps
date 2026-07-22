@@ -12,6 +12,7 @@ import styles from "./SiteNav.module.css";
 const LINKS = [
   { href: "/app", label: "App" },
   { href: "/build", label: "Build" },
+  { href: "/zaps", label: "Zaps" },
   { href: "/dashboard", label: "Dashboard" },
   { href: "/docs", label: "Docs" },
   { href: "/security", label: "Security" },
