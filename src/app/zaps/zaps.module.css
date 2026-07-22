@@ -88,7 +88,7 @@
   gap: 1rem;
   padding: clamp(1.1rem, 2.4vw, 1.6rem);
   border: 1px solid var(--line);
-  border-radius: 0.65rem;
+  border-radius: 0;
   background: var(--card);
   box-shadow: var(--card-shadow);
 }
@@ -110,7 +110,7 @@
 .badge {
   padding: 0.28rem 0.7rem;
   border: 1px solid rgba(255, 194, 107, 0.4);
-  border-radius: var(--pill);
+  border-radius: 0;
   color: #ffd398;
   background: rgba(255, 194, 107, 0.09);
   font-size: 0.78rem;
@@ -170,7 +170,7 @@
   margin-top: 1rem;
   padding: 0.7rem 0.9rem;
   border: 1px solid rgba(255, 194, 107, 0.34);
-  border-radius: 0.5rem;
+  border-radius: 0;
   color: #ffd398;
   background: rgba(255, 194, 107, 0.07);
   font-size: 0.84rem;
@@ -183,7 +183,7 @@
   margin-top: clamp(1.6rem, 3.5vw, 2.6rem);
   padding: clamp(1.2rem, 2.5vw, 1.75rem);
   border: 1px solid var(--line);
-  border-radius: 0.65rem;
+  border-radius: 0;
   background: var(--card);
   box-shadow: var(--card-shadow);
 }
@@ -218,7 +218,7 @@
   margin-bottom: 1.4rem;
   padding: 0.95rem 1.1rem;
   border: 1px solid rgba(255, 122, 144, 0.45);
-  border-radius: 0.55rem;
+  border-radius: 0;
   background: rgba(255, 122, 144, 0.07);
 }
 
@@ -265,7 +265,7 @@
   top: 0;
   bottom: 0;
   width: 2px;
-  border-radius: 2px;
+  border-radius: 0;
   background: color-mix(in oklab, var(--accent) 55%, transparent);
 }
 
@@ -277,7 +277,7 @@
   position: relative;
   padding: 0.12rem 0.5rem;
   border: 1px solid color-mix(in oklab, var(--accent) 40%, transparent);
-  border-radius: var(--pill);
+  border-radius: 0;
   color: color-mix(in oklab, var(--accent) 80%, white);
   background: var(--bg-2);
   font-family: var(--font-jetbrains-mono), ui-monospace, monospace;
@@ -294,7 +294,7 @@
   gap: 0.7rem;
   padding: 0.75rem 0.85rem;
   border: 1px solid var(--line);
-  border-radius: 0.7rem;
+  border-radius: 0;
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.055), rgba(255, 255, 255, 0.014));
   transition: border-color var(--dur-2) var(--ease-standard);
 }
@@ -314,7 +314,7 @@
   height: 0.3rem;
   margin-left: -0.75rem;
   content: "";
-  border-radius: 0 0 0.3rem 0.3rem;
+  border-radius: 0;
   background: color-mix(in oklab, var(--accent) 70%, transparent);
 }
 
@@ -333,7 +333,7 @@
   place-items: center;
   width: 2.1rem;
   height: 2.1rem;
-  border-radius: 0.5rem;
+  border-radius: 0;
   color: var(--accent);
   background: color-mix(in oklab, var(--accent) 15%, transparent);
 }
@@ -376,7 +376,7 @@
   gap: 1px;
   margin: 1.6rem 0 0;
   border: 1px solid var(--line);
-  border-radius: 0.55rem;
+  border-radius: 0;
   overflow: hidden;
   background: var(--line);
 }
@@ -434,7 +434,7 @@
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 1px;
   border: 1px solid var(--line);
-  border-radius: 0.55rem;
+  border-radius: 0;
   overflow: hidden;
   background: var(--line);
 }
@@ -479,7 +479,7 @@
   gap: 0.55rem;
   padding: 0.95rem 1.05rem;
   border: 1px solid var(--line-soft);
-  border-radius: 0.5rem;
+  border-radius: 0;
   background: rgba(255, 255, 255, 0.018);
 }
 
@@ -552,7 +552,7 @@
   gap: 0.9rem;
   padding: 0.7rem 0.85rem;
   border: 1px solid var(--line-soft);
-  border-radius: 0.45rem;
+  border-radius: 0;
   background: rgba(255, 255, 255, 0.018);
   color: var(--text);
   text-decoration: none;
@@ -644,7 +644,7 @@
   gap: 0.9rem;
   padding: 0.8rem 6.5rem 0.8rem 0.9rem;
   border: 1px solid var(--line-soft);
-  border-radius: 0.45rem;
+  border-radius: 0;
   background: rgba(255, 255, 255, 0.018);
   color: var(--text);
   text-decoration: none;
@@ -721,7 +721,15 @@
 }
 
 .note a {
-  color: var(--accent-dim);
+    color: var(--accent-dim);
+  /* Underlined, not just tinted. These sit inside muted prose, and colour
+     alone does not carry a link: --accent-dim against --muted is about 1.5:1,
+     well under the 3:1 that colour-as-sole-cue needs, and it fails outright
+     for anyone who cannot separate the two hues. The underline is the cue;
+     the tint is reinforcement. */
+  text-decoration: underline;
+  text-underline-offset: 0.18em;
+  text-decoration-thickness: 1px;
 }
 
 .unavailable {
@@ -730,7 +738,7 @@
   gap: 0.8rem;
   padding: 0.95rem 1.1rem;
   border: 1px solid rgba(255, 110, 110, 0.32);
-  border-radius: 0.5rem;
+  border-radius: 0;
   background: rgba(255, 78, 78, 0.06);
 }
 
@@ -756,7 +764,7 @@
   gap: 0.55rem;
   padding: 0.95rem 1rem;
   border: 1px solid var(--line-soft);
-  border-radius: 0.5rem;
+  border-radius: 0;
   background: rgba(255, 255, 255, 0.018);
 }
 

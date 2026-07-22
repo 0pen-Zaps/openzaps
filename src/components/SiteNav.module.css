@@ -51,7 +51,7 @@
   width: 2rem;
   height: 2rem;
   flex: 0 0 auto;
-  border-radius: 0.55rem;
+  border-radius: 0;
   transition: transform var(--dur-3) var(--ease-spring), filter var(--dur-3) var(--ease-standard);
 }
 
@@ -67,7 +67,7 @@
 .ticker {
   padding: 0.18rem 0.5rem;
   border: 1px solid var(--line);
-  border-radius: var(--pill);
+  border-radius: 0;
   color: var(--muted);
   background: rgba(255, 255, 255, 0.04);
   font-family: var(--font-jetbrains-mono), ui-monospace, monospace;
@@ -97,7 +97,7 @@
   place-items: center;
   min-height: 36px;
   padding: 0 0.9rem;
-  border-radius: var(--pill);
+  border-radius: 0;
   color: var(--muted);
   transition: color var(--dur-2) var(--ease-standard);
 }
@@ -108,7 +108,7 @@
   position: absolute;
   inset: 0;
   content: "";
-  border-radius: var(--pill);
+  border-radius: 0;
   background: rgba(255, 255, 255, 0.07);
   opacity: 0;
   transform: scale(0.82);
@@ -150,7 +150,7 @@
   width: 1.1rem;
   height: 2px;
   content: "";
-  border-radius: 2px;
+  border-radius: 0;
   background: var(--grad-brand);
   transform: translateX(-50%) scaleX(0);
   transform-origin: 50% 50%;

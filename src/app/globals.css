@@ -24,7 +24,14 @@
   --accent: #ccf83f;
   --accent-bright: #e4ff8c;
   --accent-deep: #93c11a;
-  --accent-dim: #9aa79f;
+
+  /* Quieter accent, NOT a neutral. This was briefly set to #9aa79f, which is
+     byte-for-byte --muted — and the old token it replaced (--indigo) was the
+     colour that told an inline link apart from the prose around it. Collapsing
+     the two made those links invisible as links: same colour, same weight, no
+     underline. Kept in the accent family so it still reads as "this is
+     interactive", and 12:1 on the ground. */
+  --accent-dim: #b4d472;
 
   --line: rgba(238, 242, 239, 0.13);
   --line-soft: rgba(238, 242, 239, 0.06);
@@ -254,7 +261,7 @@ a {
   gap: 0.45rem;
   min-height: 44px;
   padding: 0 1.15rem;
-  border-radius: 0.8rem;
+  border-radius: 0;
   font-size: 0.9rem;
   font-weight: 600;
   letter-spacing: 0;
@@ -267,7 +274,7 @@ a {
   min-height: 52px;
   padding: 0 1.5rem;
   font-size: 1rem;
-  border-radius: 0.9rem;
+  border-radius: 0;
 }
 
 .btn {
@@ -486,7 +493,7 @@ a {
 .skeleton {
   position: relative;
   overflow: hidden;
-  border-radius: 0.4rem;
+  border-radius: 0;
   background:
     linear-gradient(
       90deg,

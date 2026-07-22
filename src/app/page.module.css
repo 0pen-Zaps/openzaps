@@ -62,7 +62,7 @@
   margin-top: 1rem;
   padding: 0.72rem 0.85rem;
   border: 1px solid rgba(204, 248, 63, 0.28);
-  border-radius: 0.5rem;
+  border-radius: 0;
   background: rgba(204, 248, 63, 0.07);
   font-family: var(--font-jetbrains-mono), ui-monospace, monospace;
   font-size: 0.72rem;
@@ -122,7 +122,7 @@
 .proof span {
   padding: 0.46rem 0.7rem;
   border: 1px solid var(--line);
-  border-radius: 999px;
+  border-radius: 0;
   background: rgba(255, 255, 255, 0.03);
   color: var(--text);
   font-family: var(--font-jetbrains-mono), ui-monospace, monospace;
@@ -142,10 +142,10 @@
   width: min(100%, 33rem);
   height: 33rem;
   border: 1px solid var(--line-soft);
-  border-radius: 0.5rem;
+  border-radius: 0;
   background:
-    linear-gradient(135deg, rgba(204, 248, 63, 0.18), transparent 46%),
-    linear-gradient(225deg, rgba(204, 248, 63, 0.12), transparent 46%),
+    transparent,
+    transparent,
     rgba(255, 255, 255, 0.022);
   box-shadow: var(--card-shadow);
 }
@@ -179,7 +179,7 @@
   position: absolute;
   padding: 0.42rem 0.66rem;
   border: 1px solid var(--line);
-  border-radius: 999px;
+  border-radius: 0;
   background: rgba(255, 255, 255, 0.04);
   color: var(--fg);
   font-family: var(--font-jetbrains-mono), ui-monospace, monospace;
@@ -197,7 +197,7 @@
   width: min(28rem, 94%);
   overflow: hidden;
   border: 1px solid var(--line);
-  border-radius: 0.5rem;
+  border-radius: 0;
   background: var(--card);
   box-shadow: var(--card-shadow);
   transform: perspective(1100px) rotateY(-6deg) rotateX(2deg);
@@ -225,7 +225,7 @@
   margin-left: auto;
   padding: 0.16rem 0.5rem;
   border: 1px solid rgba(204, 248, 63, 0.32);
-  border-radius: 999px;
+  border-radius: 0;
   color: var(--accent-bright);
   font-family: var(--font-jetbrains-mono), ui-monospace, monospace;
   font-size: 0.62rem;
@@ -254,7 +254,7 @@
 .route span {
   padding: 0.45rem 0.65rem;
   border: 1px solid var(--line);
-  border-radius: 999px;
+  border-radius: 0;
   background: rgba(255, 255, 255, 0.04);
   font-size: 0.74rem;
   font-weight: 510;
@@ -263,7 +263,7 @@
 .route i {
   width: 1rem;
   height: 1px;
-  background: linear-gradient(90deg, rgba(204, 248, 63, 0), rgba(204, 248, 63, 0.9));
+  background: transparent;
 }
 
 /* ---------------- stat strip ---------------- */
@@ -274,7 +274,7 @@
   margin-top: 1.5rem;
   overflow: hidden;
   border: 1px solid var(--line);
-  border-radius: 0.5rem;
+  border-radius: 0;
   background: var(--line);
 }
 
@@ -306,9 +306,9 @@
   margin-top: clamp(3rem, 6vw, 5rem);
   padding: clamp(1.6rem, 3vw, 2.4rem);
   border: 1px solid var(--line);
-  border-radius: 0.5rem;
+  border-radius: 0;
   background:
-    linear-gradient(135deg, rgba(204, 248, 63, 0.12), transparent 54%),
+    transparent,
     var(--card);
   box-shadow: var(--card-shadow);
 }
@@ -329,7 +329,7 @@
 .tokenTicker {
   padding: 0.3rem 0.7rem;
   border: 1px solid rgba(204, 248, 63, 0.32);
-  border-radius: 999px;
+  border-radius: 0;
   color: var(--accent-bright);
   background: rgba(204, 248, 63, 0.08);
   font-family: var(--font-jetbrains-mono), ui-monospace, monospace;
@@ -402,7 +402,7 @@
   padding: 1.4rem;
   overflow: hidden;
   border: 1px solid var(--line);
-  border-radius: var(--radius);
+  border-radius: 0;
   background: var(--card);
   box-shadow: var(--card-shadow);
 }
@@ -414,7 +414,7 @@
   padding: 0.4rem 0.64rem;
   margin-bottom: 3.5rem;
   border: 1px solid var(--line);
-  border-radius: 999px;
+  border-radius: 0;
   background: rgba(255, 255, 255, 0.035);
   color: var(--text);
   font-family: var(--font-jetbrains-mono), ui-monospace, monospace;
@@ -494,7 +494,7 @@
   gap: 0.45rem;
   padding: 0.34rem 0.7rem;
   border: 1px solid var(--line);
-  border-radius: var(--pill);
+  border-radius: 0;
   background: rgba(255, 255, 255, 0.03);
   color: var(--text);
   font-family: var(--font-jetbrains-mono), ui-monospace, monospace;
@@ -506,7 +506,7 @@
   width: 0.55rem;
   height: 0.55rem;
   flex: 0 0 auto;
-  border-radius: 2px;
+  border-radius: 0;
 }
 
 .legendNote {
@@ -535,7 +535,7 @@
   gap: 0.4rem;
   padding: 0.32rem 0.62rem;
   border: 1px solid var(--line-soft);
-  border-radius: var(--pill);
+  border-radius: 0;
   color: var(--muted-2);
   font-size: 0.74rem;
 }
@@ -557,7 +557,7 @@
   padding: 0.85rem 0.95rem;
   border: 1px solid var(--line);
   border-left: 2px solid var(--accent-dim);
-  border-radius: 0.5rem;
+  border-radius: 0;
   background: rgba(255, 255, 255, 0.022);
   color: var(--muted);
   font-size: 0.88rem;
@@ -574,7 +574,7 @@
 .chainCard {
   overflow: hidden;
   border: 1px solid var(--line);
-  border-radius: var(--radius);
+  border-radius: 0;
   background: var(--card);
   box-shadow: var(--card-shadow);
 }
@@ -598,7 +598,7 @@
   margin-left: auto;
   padding: 0.16rem 0.5rem;
   border: 1px solid var(--line);
-  border-radius: var(--pill);
+  border-radius: 0;
   color: var(--muted-2);
   font-family: var(--font-jetbrains-mono), ui-monospace, monospace;
   font-size: 0.62rem;
@@ -628,7 +628,7 @@
   width: 0.62rem;
   height: 0.62rem;
   content: "";
-  border-radius: 2px;
+  border-radius: 0;
   background: var(--stud);
   box-shadow: 0 0 12px var(--stud);
   animation: studPulse 3.4s var(--ease-standard) infinite;
@@ -688,7 +688,7 @@
   gap: 0.3rem;
   padding: 0.9rem 1rem;
   border: 1px solid var(--line);
-  border-radius: 0.7rem;
+  border-radius: 0;
   background: var(--card);
   transition: border-color var(--dur-2) var(--ease-standard), transform var(--dur-2) var(--ease-emphasis);
 }
@@ -697,7 +697,7 @@
   width: 1.8rem;
   height: 0.22rem;
   content: "";
-  border-radius: var(--pill);
+  border-radius: 0;
   background: var(--accent);
 }
 
@@ -747,7 +747,7 @@
   gap: 0.8rem;
   padding: 0.9rem 1rem;
   border: 1px solid var(--line-soft);
-  border-radius: 0.5rem;
+  border-radius: 0;
   background: rgba(255, 255, 255, 0.026);
 }
 
@@ -790,7 +790,7 @@
 .neverCard {
   padding: 1.1rem;
   border: 1px solid var(--line);
-  border-radius: var(--radius);
+  border-radius: 0;
   background: var(--card);
   box-shadow: var(--card-shadow);
 }
@@ -859,7 +859,7 @@
   min-height: 4rem;
   padding: 0.85rem;
   border: 1px solid var(--line-soft);
-  border-radius: 0.5rem;
+  border-radius: 0;
   background: rgba(255, 255, 255, 0.026);
   color: var(--text);
   font-size: 0.9rem;
@@ -921,7 +921,7 @@
 .agentCard {
   padding: 1.1rem;
   border: 1px solid var(--line);
-  border-radius: var(--radius);
+  border-radius: 0;
   background: var(--card);
   box-shadow: var(--card-shadow);
 }
@@ -931,7 +931,7 @@
   padding: 0.42rem 0.68rem;
   margin-bottom: 0.4rem;
   border: 1px solid var(--line);
-  border-radius: 999px;
+  border-radius: 0;
   color: var(--accent-dim);
   font-family: var(--font-jetbrains-mono), ui-monospace, monospace;
   font-size: 0.72rem;
@@ -984,10 +984,10 @@
   text-align: center;
   padding: clamp(2.5rem, 6vw, 4.5rem) 1.5rem;
   border: 1px solid var(--line);
-  border-radius: 0.5rem;
+  border-radius: 0;
   background:
-    linear-gradient(135deg, rgba(204, 248, 63, 0.13), transparent 54%),
-    linear-gradient(225deg, rgba(204, 248, 63, 0.09), transparent 54%),
+    transparent,
+    transparent,
     var(--card);
   box-shadow: var(--card-shadow);
 }
@@ -1171,28 +1171,17 @@
   45% { opacity: 1; }
 }
 
-@keyframes auroraDrift {
-  from { transform: translate3d(-2.5%, -1.5%, 0); }
-  to { transform: translate3d(2.5%, 2%, 0); }
-}
-
 .hero {
   position: relative;
   isolation: isolate;
 }
 
-.hero::before {
-  content: "";
-  position: absolute;
-  inset: -18% -8%;
-  z-index: -1;
-  background:
-    radial-gradient(36% 42% at 24% 30%, rgba(204, 248, 63, 0.15), transparent 70%),
-    radial-gradient(32% 40% at 78% 64%, rgba(204, 248, 63, 0.09), transparent 70%);
-  filter: blur(42px);
-  animation: auroraDrift 16s ease-in-out infinite alternate;
-  pointer-events: none;
-}
+/* The hero sits on the page's own ruled ground.
+   What was here — two blurred radial blooms drifting on a 16s loop behind the
+   headline — is the aurora idiom this identity is defined against. Recolouring
+   it to the accent kept the shape of the old design under the new palette, and
+   a 42px blur animating forever is the single most expensive thing that was
+   painting above the fold. */
 
 .heroCopy > * { animation: riseIn 0.7s cubic-bezier(0.22, 1, 0.36, 1) both; }
 .heroCopy > *:nth-child(1) { animation-delay: 0.05s; }
@@ -1353,7 +1342,7 @@
 .faq {
   padding: 1.1rem 1.3rem;
   border: 1px solid var(--line);
-  border-radius: 0.5rem;
+  border-radius: 0;
   background: var(--card);
 }
 
@@ -1424,11 +1413,7 @@
 .route i {
   width: 1.6rem;
   height: 1px;
-  background: repeating-linear-gradient(
-    90deg,
-    rgba(204, 248, 63, 0.9) 0 4px,
-    transparent 4px 10px
-  );
+  background: repeating-transparent;
   background-size: 20px 1px;
   animation: routeFlow 900ms linear infinite;
 }
@@ -1468,7 +1453,7 @@
   z-index: 0;
   padding: 1px;
   content: "";
-  border-radius: inherit;
+  border-radius: 0;
   background: conic-gradient(
     from var(--angle),
     rgba(204, 248, 63, 0.55),
