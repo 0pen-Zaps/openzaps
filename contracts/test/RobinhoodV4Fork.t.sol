@@ -23,7 +23,12 @@ contract RobinhoodV4ForkTest is Test {
     address internal constant HOOK = 0x48B8F6AD3A1b4aA477314c9a23035b8F84dDe8cc;
 
     function test_livePoolSwapsBothDirections() public {
-        if (!vm.envOr("RUN_ROBINHOOD_FORK", false)) return;
+        // Report a SKIP, never a PASS: an opt-in test that returns early looks identical to one
+        // that ran, which is how a suite ends up green on coverage it never had.
+        if (!vm.envOr("RUN_ROBINHOOD_FORK", false)) {
+            vm.skip(true);
+            return;
+        }
         vm.createSelectFork(vm.envOr("ROBINHOOD_RPC_URL", string("https://rpc.mainnet.chain.robinhood.com")));
 
         RobinhoodV4SwapAdapter adapter =

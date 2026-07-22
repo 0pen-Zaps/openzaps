@@ -38,7 +38,26 @@ abstract contract BaseTest is Test {
     uint256 internal constant AMOUNT_IN = 100e18;
     uint256 internal constant FEE_CAP = 5e18;
 
+    /// @dev Base mainnet, and the block every fork suite in this repo pins.
+    uint256 internal constant BASE_CHAIN_ID = 8453;
+    uint256 internal constant BASE_FORK_BLOCK = 48_900_000;
+
     function setUp() public virtual {
+        // These suites are mock-only and need no chain state — but `forge test --fork-url <base>`
+        // drops EVERY suite onto the ambient forked backend, where each address they touch
+        // (`vm.prank`, `vm.deal`, a fresh EOA) becomes a remote account lookup. An ambient fork is
+        // unpinned, Foundry writes no RPC disk cache for an unpinned fork, and so the same handful of
+        // lookups is re-fetched on every run until a public endpoint answers HTTP 429 — which forge
+        // reports as "failed to get account for 0x…", a fake failure with nothing to do with the code
+        // under test. Re-pinning that ambient fork to the block the rest of the suite already caches
+        // makes those lookups local and deterministic.
+        //
+        // Deliberately conditional: with no `--fork-url` the chain id is Foundry's local 31337, this
+        // does nothing, and the unit suites stay entirely offline.
+        if (block.chainid == BASE_CHAIN_ID) {
+            vm.createSelectFork(vm.envOr("BASE_RPC_URL", string("https://mainnet.base.org")), BASE_FORK_BLOCK);
+        }
+
         owner = vm.addr(OWNER_PK);
 
         registry = new AdapterRegistry(address(this));
@@ -103,9 +122,8 @@ abstract contract BaseTest is Test {
     }
 
     function _digest(OpenZapIntent memory it, address verifyingZap) internal view returns (bytes32) {
-        bytes32 domain = keccak256(
-            abi.encode(DOMAIN_TYPEHASH, keccak256("OpenZap"), keccak256("1"), block.chainid, verifyingZap)
-        );
+        bytes32 domain =
+            keccak256(abi.encode(DOMAIN_TYPEHASH, keccak256("OpenZap"), keccak256("1"), block.chainid, verifyingZap));
         bytes32 structHash = keccak256(
             abi.encode(
                 INTENT_TYPEHASH,
