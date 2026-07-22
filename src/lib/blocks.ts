@@ -608,6 +608,65 @@ export function decodeChain(token: string): ChainNode[] | null {
   return nodes;
 }
 
+/**
+ * Read a design back from whatever a user has on their clipboard.
+ *
+ * The builder hands out two representations — a `?d=` share link and the
+ * "Copy design JSON" export — and until now accepted only the first, and only
+ * by being navigated to. A design mailed to a colleague as JSON had no way
+ * back in. This takes either, plus the bare token and the bare `chain` array,
+ * because someone pasting from a chat window will have grabbed whichever part
+ * looked like the answer.
+ *
+ * Everything lands in the same catalog validation `decodeChain` uses: this
+ * text is no more trusted for arriving through a paste than through a URL.
+ */
+export function decodeDesign(text: string): ChainNode[] | null {
+  const trimmed = typeof text === "string" ? text.trim() : "";
+  if (!trimmed) return null;
+
+  // A share link, or anything else carrying the query key. Parsed as a URL
+  // when it is one so that a trailing `#anchor` or extra params cannot end up
+  // inside the token, and by hand when it is a bare `?d=…` fragment.
+  const fromQuery = trimmed.match(/[?&]d=([A-Za-z0-9_-]+)/);
+  if (fromQuery) return nonEmpty(decodeChain(fromQuery[1]));
+
+  if (trimmed.startsWith("{") || trimmed.startsWith("[")) {
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(trimmed);
+    } catch {
+      return null;
+    }
+    const chain = Array.isArray(parsed) ? parsed : (parsed as { chain?: unknown } | null)?.chain;
+    return nonEmpty(nodesFromExport(chain));
+  }
+
+  return nonEmpty(decodeChain(trimmed));
+}
+
+/** The `chain` array of a design export, validated back into placements. */
+function nodesFromExport(raw: unknown): ChainNode[] | null {
+  if (!Array.isArray(raw)) return null;
+  const nodes: ChainNode[] = [];
+  for (const [index, entry] of raw.slice(0, MAX_SHARED_NODES).entries()) {
+    if (entry === null || typeof entry !== "object" || Array.isArray(entry)) continue;
+    const { block: blockId, params } = entry as { block?: unknown; params?: unknown };
+    if (typeof blockId !== "string") continue;
+    const block = getBlock(blockId);
+    if (!block) continue;
+    // The export carries no uids — it is a description of a design, not of a
+    // canvas — so every placement is renamed here rather than risking a
+    // collision with whatever is already on the board.
+    nodes.push({ uid: `i${index}`, blockId, params: { ...defaultParams(block), ...sharedParams(block, params) } });
+  }
+  return nodes;
+}
+
+function nonEmpty(nodes: ChainNode[] | null): ChainNode[] | null {
+  return nodes && nodes.length > 0 ? nodes : null;
+}
+
 function sharedParams(block: LegoBlock, raw: unknown): Record<string, ParamValue> {
   if (raw === null || typeof raw !== "object" || Array.isArray(raw)) return {};
   const params: Record<string, ParamValue> = {};
@@ -683,9 +742,13 @@ export function shapeBefore(chain: readonly ChainNode[], index: number): FlowSha
  */
 export function canInsert(chain: readonly ChainNode[], block: LegoBlock, index: number): boolean {
   const incoming = shapeBefore(chain, index);
-  // Guards constrain rather than transform, so they seat anywhere except above
-  // an empty canvas, where there is nothing to constrain yet.
-  if (block.kind === "guard") return chain.length > 0;
+  // Guards constrain rather than transform, so they seat at any point where
+  // value is actually flowing — but only there. Above the source, or below the
+  // sink that ends the chain, nothing is passing for a guard to bind, and
+  // `compileChain` says so: it calls that placement orphaned and warns that the
+  // guard has nothing to guard yet. Letting it seat anyway is how a one-tap
+  // "add the missing guard" ends up parking a red card under the settlement.
+  if (block.kind === "guard") return incoming !== null;
   if (block.kind === "source" && (incoming !== null || hasSource(chain))) return false;
   if (block.kind !== "source" && block.accepts !== incoming) return false;
 
@@ -734,6 +797,8 @@ export type CompiledZap = {
   gas: number;
   /** 0-100; how much of the chain's risk surface is covered by guards. */
   guardScore: number;
+  /** The guards that risk surface asks for and the chain does not have. */
+  missingGuards: GuardDemand[];
   steps: string[];
   outputShape: FlowShape | null;
 };
@@ -849,8 +914,8 @@ export function compileChain(chain: readonly ChainNode[]): CompiledZap {
     issues.push({ level: "warn", message: "Empty canvas. Drop a source to start." });
   }
 
-  const guardScore = scoreGuardCoverage(placed);
-  const checks = buildChecks(placed, chain, guardScore, issues);
+  const guards = auditGuardCoverage(placed);
+  const checks = buildChecks(placed, chain, guards, issues);
   const status = checks.some((check) => check.status === "block")
     ? "block"
     : checks.some((check) => check.status === "warn")
@@ -864,41 +929,88 @@ export function compileChain(chain: readonly ChainNode[]): CompiledZap {
     checks,
     hash: policyHash(chain.map((node) => ({ block: node.blockId, params: node.params }))),
     gas,
-    guardScore,
+    guardScore: guards.score,
+    missingGuards: guards.missing,
     steps,
     outputShape: shape,
   };
 }
 
+/** A guard this chain's risk surface asks for, and the risk that asks for it. */
+export type GuardDemand = {
+  /** Catalog id of the guard that answers this risk. */
+  guardId: string;
+  /** What the placed blocks introduced, in the user's terms. */
+  risk: string;
+};
+
+export type GuardAudit = {
+  /** 0-100; the share of demanded guards actually present. */
+  score: number;
+  /** Demanded guards that are not in the chain, in catalog order. */
+  missing: GuardDemand[];
+};
+
 /**
- * How well guarded a chain is, as a percentage.
+ * Which guards this chain's risk surface asks for, and which are absent.
  *
  * This is the builder's editorial opinion, not a contract rule: each risk the
- * placed blocks introduce demands a specific guard, and the score is the share
- * of demanded guards actually present. A chain with no risk surface scores 100.
+ * placed blocks introduce demands a specific guard. A chain with no risk
+ * surface demands nothing and scores 100.
+ *
+ * The unmet demands are returned rather than folded away into the percentage
+ * because "50% guarded" is not actionable — the number tells someone they are
+ * exposed without telling them to what, or which piece closes it.
  */
-export function scoreGuardCoverage(placed: readonly LegoBlock[]): number {
+export function auditGuardCoverage(placed: readonly LegoBlock[]): GuardAudit {
   const has = (id: string): boolean => placed.some((block) => block.id === id);
-  const demands: Array<{ needed: boolean; met: boolean }> = [
-    // Anything priced can be filled badly.
-    { needed: placed.some((block) => block.category === "swap" || block.category === "liquidity"), met: has("guard-slippage") },
-    // Anything that pulls repeatedly can drain.
-    { needed: placed.some((block) => block.id === "recurring-stream" || block.id === "loop"), met: has("guard-spend") },
-    // Anything leveraged can be liquidated on a wick.
-    { needed: placed.some((block) => block.category === "lend"), met: has("guard-oracle") },
-    // Any standing authority should expire.
-    { needed: placed.some((block) => block.kind === "source"), met: has("guard-window") },
+  const demands: Array<GuardDemand & { needed: boolean }> = [
+    {
+      // Anything priced can be filled badly.
+      needed: placed.some((block) => block.category === "swap" || block.category === "liquidity"),
+      guardId: "guard-slippage",
+      risk: "this chain prices a trade, so it can be filled worse than quoted",
+    },
+    {
+      // Anything that pulls repeatedly can drain.
+      needed: placed.some((block) => block.id === "recurring-stream" || block.id === "loop"),
+      guardId: "guard-spend",
+      risk: "this chain draws more than once, so its total outflow is unbounded",
+    },
+    {
+      // Anything leveraged can be liquidated on a wick.
+      needed: placed.some((block) => block.category === "lend"),
+      guardId: "guard-oracle",
+      risk: "this chain takes on leverage, so a price wick can liquidate it",
+    },
+    {
+      // Any standing authority should expire.
+      needed: placed.some((block) => block.kind === "source"),
+      guardId: "guard-window",
+      risk: "this chain signs a standing authority, so it never expires on its own",
+    },
   ];
 
   const active = demands.filter((demand) => demand.needed);
-  if (active.length === 0) return 100;
-  return Math.round((active.filter((demand) => demand.met).length / active.length) * 100);
+  if (active.length === 0) return { score: 100, missing: [] };
+  const met = active.filter((demand) => has(demand.guardId));
+  return {
+    score: Math.round((met.length / active.length) * 100),
+    missing: active
+      .filter((demand) => !has(demand.guardId))
+      .map(({ guardId, risk }) => ({ guardId, risk })),
+  };
+}
+
+/** How well guarded a chain is, as a percentage. */
+export function scoreGuardCoverage(placed: readonly LegoBlock[]): number {
+  return auditGuardCoverage(placed).score;
 }
 
 function buildChecks(
   placed: readonly LegoBlock[],
   chain: readonly ChainNode[],
-  guardScore: number,
+  guards: GuardAudit,
   issues: readonly ChainIssue[],
 ): SimulationCheck[] {
   const checks: SimulationCheck[] = [];
@@ -965,10 +1077,15 @@ function buildChecks(
   checks.push({
     label: "Guard coverage",
     detail:
-      guardScore === 100
+      guards.missing.length === 0
         ? "Every risk this chain introduces has a matching guard."
-        : `${guardScore}% of the risks this chain introduces are guarded. Drop the missing guards anywhere below the source.`,
-    status: guardScore === 100 ? "pass" : "warn",
+        : // Named, not counted. A bare percentage tells someone they are
+          // exposed without telling them to what — and the missing piece is
+          // the only part of this sentence they can act on.
+          `${guards.score}% guarded. Missing: ${guards.missing
+            .map((demand) => getBlock(demand.guardId)?.name ?? demand.guardId)
+            .join(", ")}. Drop them anywhere below the source.`,
+    status: guards.missing.length === 0 ? "pass" : "warn",
   });
 
   const loop = chain.find((node) => node.blockId === "loop");
@@ -1021,6 +1138,28 @@ export type ZapRecipe = {
 };
 
 export const RECIPES: readonly ZapRecipe[] = [
+  {
+    // First, and the chain the builder opens on, because it is the only one of
+    // these that the deployed contracts can actually carry. Every other
+    // blueprint here is a design; a user who loaded one and read the rejection
+    // list had to reverse-engineer this shape from a list of things it is not.
+    //
+    // Its exact contents are the reduction rules in `deployable.ts` read
+    // forwards — WETH in, 0xZAPS out, Uniswap v4, settled to the owner wallet,
+    // an amount the router's own parser accepts. A test holds the two together,
+    // because a catalog edit that quietly drops this off the live route would
+    // otherwise leave the front door pointing nowhere.
+    id: "live-route",
+    name: "Live route",
+    tagline: "The one chain today's contracts can carry: aeWETH into 0xZAPS.",
+    accent: "token",
+    blocks: [
+      ["wallet-balance", { asset: "WETH", amount: "0.05" }],
+      ["guard-slippage", { bps: 50 }],
+      ["swap", { into: "0xZAPS", venue: "Uniswap v4" }],
+      ["send", { recipient: "owner wallet" }],
+    ],
+  },
   {
     id: "dca",
     name: "Recurring DCA",

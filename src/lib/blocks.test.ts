@@ -6,6 +6,7 @@ import {
   canInsert,
   compileChain,
   decodeChain,
+  decodeDesign,
   encodeChain,
   getBlock,
   makeNode,
@@ -108,11 +109,19 @@ describe("canInsert", () => {
     expect(canInsert(built, block("swap"), 1)).toBe(true);
   });
 
-  it("lets guards sit anywhere downstream of a source", () => {
+  it("lets guards sit anywhere value is flowing", () => {
     const built = chain("wallet-balance", "swap", "send");
-    for (let i = 1; i <= built.length; i++) {
-      expect(canInsert(built, block("guard-slippage"), i)).toBe(true);
-    }
+    // Between the source and the sink, a guard binds whatever passes.
+    expect(canInsert(built, block("guard-slippage"), 1)).toBe(true);
+    expect(canInsert(built, block("guard-slippage"), 2)).toBe(true);
+  });
+
+  it("refuses a guard where nothing is flowing to guard", () => {
+    const built = chain("wallet-balance", "swap", "send");
+    // Above the source nothing has been drawn yet, and below the sink the
+    // chain has already settled — `compileChain` calls both orphaned.
+    expect(canInsert(built, block("guard-slippage"), 0)).toBe(false);
+    expect(canInsert(built, block("guard-slippage"), built.length)).toBe(false);
     expect(canInsert([], block("guard-slippage"), 0)).toBe(false);
   });
 });
@@ -221,26 +230,47 @@ describe("canInsert agrees with compileChain", () => {
   // The canvas, the arrow buttons, and the palette dimming all trust canInsert.
   // If it ever green-lights a drop the compiler then rejects, the UI would
   // invite the user to build something it immediately calls broken.
-  it("never accepts an insertion the compiler blocks", () => {
-    const bases: ChainNode[][] = [
-      [],
-      chain("wallet-balance"),
-      chain("wallet-balance", "swap", "send"),
-      chain("wallet-balance", "add-liquidity", "stake", "hold"),
-      chain("pending-rewards", "harvest", "send"),
-      chain("wallet-balance", "supply", "borrow", "draw-debt", "send"),
-    ];
+  const BASES: ChainNode[][] = [
+    [],
+    chain("wallet-balance"),
+    chain("wallet-balance", "swap", "send"),
+    chain("wallet-balance", "add-liquidity", "stake", "hold"),
+    chain("pending-rewards", "harvest", "send"),
+    chain("wallet-balance", "supply", "borrow", "draw-debt", "send"),
+    chain("wallet-balance", "guard-slippage", "swap", "send"),
+  ];
 
-    for (const base of bases) {
+  /** Every insertion `canInsert` green-lights, with the probe's uid. */
+  function* accepted(): Generator<{ next: ChainNode[]; uid: string; where: string }> {
+    for (const base of BASES) {
       for (const candidate of BLOCKS) {
         for (let index = 0; index <= base.length; index++) {
           if (!canInsert(base, candidate, index)) continue;
+          const uid = `probe-${candidate.id}-${index}`;
           const next = [...base];
-          next.splice(index, 0, makeNode(candidate.id, `probe-${candidate.id}-${index}`));
-          const blocked = compileChain(next).issues.filter((issue) => issue.level === "block");
-          expect(blocked, `${candidate.id} at ${index} of [${base.map((n) => n.blockId).join(",")}]`).toEqual([]);
+          next.splice(index, 0, makeNode(candidate.id, uid));
+          yield { next, uid, where: `${candidate.id} at ${index} of [${base.map((n) => n.blockId).join(",")}]` };
         }
       }
+    }
+  }
+
+  it("never accepts an insertion the compiler blocks", () => {
+    for (const { next, where } of accepted()) {
+      const blocked = compileChain(next).issues.filter((issue) => issue.level === "block");
+      expect(blocked, where).toEqual([]);
+    }
+  });
+
+  // Blocking issues were never the whole agreement. A guard dropped below the
+  // sink used to pass the check above — the compiler only *warns* that it has
+  // nothing to guard — while rendering a red card the user never asked for.
+  // Nothing the seating rule accepts may leave the piece it just placed
+  // complained about, at any level.
+  it("never accepts an insertion that faults the block it places", () => {
+    for (const { next, uid, where } of accepted()) {
+      const own = compileChain(next).issues.filter((issue) => issue.uid === uid);
+      expect(own, where).toEqual([]);
     }
   });
 });
@@ -357,5 +387,78 @@ describe("sharing", () => {
     const token = encodeChain([makeNode("wallet-balance", "same"), makeNode("swap", "same")]);
     const decoded = decodeChain(token);
     expect(new Set(decoded?.map((node) => node.uid)).size).toBe(2);
+  });
+});
+
+describe("decodeDesign", () => {
+  const design = chain("wallet-balance", "guard-slippage", "swap", "send");
+
+  /** Exactly what the readout's "Copy design JSON" button puts on the clipboard. */
+  function exportJson(nodes: ChainNode[]): string {
+    return JSON.stringify(
+      {
+        version: 1,
+        designFingerprint: compileChain(nodes).hash,
+        status: compileChain(nodes).status,
+        chain: nodes.map((node) => ({ block: node.blockId, params: node.params })),
+      },
+      null,
+      2,
+    );
+  }
+
+  it("reads back a share link, a bare token, and the raw JSON export", () => {
+    const ids = design.map((node) => node.blockId);
+    const token = encodeChain(design);
+
+    for (const text of [
+      `https://www.0xzaps.com/build?d=${token}`,
+      `?d=${token}`,
+      token,
+      exportJson(design),
+      // Someone who grabbed only the interesting half of the export.
+      JSON.stringify(design.map((node) => ({ block: node.blockId, params: node.params }))),
+    ]) {
+      expect(decodeDesign(text)?.map((node) => node.blockId), text.slice(0, 40)).toEqual(ids);
+    }
+  });
+
+  it("survives the trimming and decoration a paste picks up", () => {
+    const token = encodeChain(design);
+    expect(decodeDesign(`  \n https://www.0xzaps.com/build?d=${token}#chain \n `)?.length).toBe(design.length);
+    expect(decodeDesign(`https://www.0xzaps.com/build?utm=x&d=${token}`)?.length).toBe(design.length);
+  });
+
+  it("keeps the params the design was carrying", () => {
+    const nodes = chain("wallet-balance", "guard-slippage", "swap", "send");
+    nodes[0].params.amount = "1.25";
+    nodes[1].params.bps = 35;
+    const back = decodeDesign(exportJson(nodes));
+    expect(back?.[0].params.amount).toBe("1.25");
+    expect(back?.[1].params.bps).toBe(35);
+  });
+
+  it("refuses anything that is not a design", () => {
+    for (const text of ["", "   ", "hello world", "{", "{}", "[]", '{"chain":[]}', '{"chain":"nope"}', "null"]) {
+      expect(decodeDesign(text), JSON.stringify(text)).toBeNull();
+    }
+  });
+
+  it("drops blocks this build does not ship rather than importing a hole", () => {
+    const back = decodeDesign(
+      JSON.stringify({ chain: [{ block: "wallet-balance" }, { block: "flash-loan-9000" }, { block: "send" }] }),
+    );
+    expect(back?.map((node) => node.blockId)).toEqual(["wallet-balance", "send"]);
+  });
+
+  it("gives every imported placement its own id", () => {
+    const back = decodeDesign(exportJson(chain("wallet-balance", "guard-slippage", "guard-slippage", "swap", "send")));
+    expect(new Set(back?.map((node) => node.uid)).size).toBe(back?.length);
+  });
+
+  it("refuses a value outside the catalog's domain, as a link would", () => {
+    // The same rule `decodeChain` applies: a select only carries its options.
+    const back = decodeDesign(JSON.stringify({ chain: [{ block: "swap", params: { venue: "MyOwnRouter" } }] }));
+    expect(back?.[0].params.venue).toBe("Uniswap v4");
   });
 });

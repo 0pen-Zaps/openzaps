@@ -14,6 +14,7 @@ import {
   canInsert,
   compileChain,
   decodeChain,
+  decodeDesign,
   encodeChain,
   getBlock,
   makeNode,
@@ -26,6 +27,7 @@ import {
   type ZapRecipe,
 } from "@/lib/blocks";
 import { reduceChainToLiveRoute } from "@/lib/deployable";
+import { edgeScrollDelta } from "@/lib/drag";
 import { BlockGlyph } from "./BlockGlyph";
 import styles from "./build.module.css";
 
@@ -34,6 +36,16 @@ const STORAGE_KEY = "openzaps:zap-builder:v1";
 const SHARE_PARAM = "d";
 /** Pointer travel before a press becomes a drag, so taps still register. */
 const DRAG_THRESHOLD = 6;
+/**
+ * How many steps back the canvas remembers.
+ *
+ * Deep enough that "undo until it looks right again" always works on a real
+ * session, bounded so a long slider drag cannot grow the tab's memory without
+ * limit. Only the chain is held, never a DOM snapshot.
+ */
+const HISTORY_LIMIT = 60;
+/** How long a jumped-to block stays visibly flagged. */
+const FLAG_MS = 2200;
 /**
  * Said out loud wherever the gas figure appears. It is a sum of hand-written
  * per-block constants from the catalog, not a simulation against a node, and
@@ -87,6 +99,19 @@ function nodesFromRecipe(recipe: ZapRecipe): ChainNode[] {
 type Draft = { chain: ChainNode[]; recipeId: string };
 
 const DEFAULT_DRAFT: Draft = { chain: nodesFromRecipe(RECIPES[0]), recipeId: RECIPES[0].id };
+
+/**
+ * Which blueprints reduce to the live route, asked of the same function the
+ * deploy panel asks.
+ *
+ * Derived rather than declared on the recipe, so the badge cannot drift from
+ * the verdict: the day a catalog edit knocks a blueprint off the live route,
+ * its badge goes with it in the same render. `RECIPES` is static, so this is
+ * computed once for the module rather than once per keystroke.
+ */
+const DEPLOYABLE_RECIPES: ReadonlySet<string> = new Set(
+  RECIPES.filter((recipe) => reduceChainToLiveRoute(nodesFromRecipe(recipe)).deployable).map((recipe) => recipe.id),
+);
 
 /**
  * The chain this page opens with, resolved exactly once per page load.
@@ -224,18 +249,36 @@ export function ZapBuilder(): React.JSX.Element {
   // itself the moment the design changes.
   const [savedChain, setSavedChain] = useState<readonly ChainNode[] | null>(null);
   const [openUid, setOpenUid] = useState<string | null>(null);
+  // The block a problem was just jumped to, held only long enough to point at.
+  const [flaggedUid, setFlaggedUid] = useState<string | null>(null);
   const [category, setCategory] = useState<BlockCategory | "all">("all");
+  const [query, setQuery] = useState("");
+  const [importing, setImporting] = useState(false);
+  const [importText, setImportText] = useState("");
   const [drag, setDrag] = useState<DragState | null>(null);
   const [dropIndex, setDropIndex] = useState<number | null>(null);
   const [dropValid, setDropValid] = useState(false);
   const [runIndex, setRunIndex] = useState(-1);
   const [hint, setHint] = useState("");
+  const [narration, setNarration] = useState("");
+  // Whole drafts, oldest first. Storing the design rather than a diff is what
+  // keeps undo trivially correct: every entry is a state the canvas already
+  // rendered once, so restoring one cannot produce a chain that never existed.
+  const [past, setPast] = useState<readonly Draft[]>([]);
+  const [future, setFuture] = useState<readonly Draft[]>([]);
 
   const cardRefs = useRef(new Map<string, HTMLElement>());
   const dragRef = useRef<DragState | null>(null);
   const canvasRef = useRef<HTMLDivElement>(null);
   const hintTimer = useRef<number | undefined>(undefined);
   const runTimer = useRef<number | undefined>(undefined);
+  const flagTimer = useRef<number | undefined>(undefined);
+  /**
+   * Which control the last edit came from, so a run of edits to that same
+   * control collapses into one undo step. A slider dragged across forty pixels
+   * fires forty changes and must still cost exactly one press of ⌘Z.
+   */
+  const coalesceRef = useRef<string | undefined>(undefined);
 
   const compiled = useMemo(() => compileChain(chain), [chain]);
 
@@ -254,12 +297,28 @@ export function ZapBuilder(): React.JSX.Element {
   useEffect(() => () => {
     window.clearTimeout(hintTimer.current);
     window.clearInterval(runTimer.current);
+    window.clearTimeout(flagTimer.current);
   }, []);
 
   const flash = useCallback((message: string): void => {
     setHint(message);
     window.clearTimeout(hintTimer.current);
     hintTimer.current = window.setTimeout(() => setHint(""), 2600);
+  }, []);
+
+  /**
+   * Say what just happened to the chain, for anyone not watching it.
+   *
+   * Every structural edit — add, remove, move, duplicate, load, import, undo —
+   * is visible as a card appearing or sliding, and audible as nothing at all.
+   * The arrow buttons were the worst of it: pressing "Move Swap up" left a
+   * screen reader with no way to know whether it had moved, or how far it could
+   * still go. Each message carries the resulting count or position, which is
+   * also what keeps two consecutive edits from producing identical text that a
+   * live region would decline to read out twice.
+   */
+  const announce = useCallback((message: string): void => {
+    setNarration(message);
   }, []);
 
   const stopRun = useCallback((): void => {
@@ -271,16 +330,77 @@ export function ZapBuilder(): React.JSX.Element {
   /**
    * Replace the chain. Any edit detaches the draft from its blueprint, so the
    * blueprint row stops claiming credit for a chain the user has changed.
+   *
+   * This is the only route to a new chain, which is what makes the history
+   * exhaustive: there is no mutation that can slip past the undo stack.
+   * `coalesceKey` names the control an edit came from — consecutive edits
+   * carrying the same key extend the current step instead of adding one.
    */
   const commit = useCallback(
-    (next: ChainNode[], recipe = ""): void => {
+    (next: ChainNode[], recipe = "", coalesceKey?: string): void => {
       stopRun();
+      if (coalesceKey === undefined || coalesceRef.current !== coalesceKey) {
+        setPast((entries) => [...entries, draft].slice(-HISTORY_LIMIT));
+        // A fresh edit is a new branch: whatever was redoable belonged to a
+        // future this design no longer has.
+        setFuture([]);
+      }
+      coalesceRef.current = coalesceKey;
       setEdited({ chain: next, recipeId: recipe });
     },
-    [stopRun],
+    [draft, stopRun],
   );
 
-  /** The lowest legal seat for a block, or null when it does not fit at all. */
+  const undo = useCallback((): void => {
+    if (past.length === 0) return;
+    stopRun();
+    setPast((entries) => entries.slice(0, -1));
+    setFuture((entries) => [draft, ...entries].slice(0, HISTORY_LIMIT));
+    // Never merge an edit into a step that was just travelled through.
+    coalesceRef.current = undefined;
+    setEdited(past[past.length - 1]);
+    announce(`Undone. ${past[past.length - 1].chain.length} blocks. ${past.length - 1} steps left to undo.`);
+  }, [announce, draft, past, stopRun]);
+
+  const redo = useCallback((): void => {
+    if (future.length === 0) return;
+    stopRun();
+    setFuture((entries) => entries.slice(1));
+    setPast((entries) => [...entries, draft].slice(-HISTORY_LIMIT));
+    coalesceRef.current = undefined;
+    setEdited(future[0]);
+    announce(`Redone. ${future[0].chain.length} blocks. ${future.length - 1} steps left to redo.`);
+  }, [announce, draft, future, stopRun]);
+
+  /**
+   * ⌘Z / ⌘⇧Z, and their Windows spellings.
+   *
+   * Bound on the window rather than the canvas because the thing a user wants
+   * undone is usually the edit they made from the readout or the palette, and
+   * focus is wherever they left it. A text field keeps its own native undo —
+   * taking that over would make retyping an amount impossible.
+   */
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent): void => {
+      if (!(event.metaKey || event.ctrlKey) || event.altKey) return;
+      const key = event.key.toLowerCase();
+      if (key !== "z" && key !== "y") return;
+      if (isTextEntry(event.target)) return;
+      event.preventDefault();
+      if (key === "y" || event.shiftKey) redo();
+      else undo();
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [redo, undo]);
+
+  /**
+   * The deepest legal seat for a block, or null when it does not fit at all.
+   *
+   * Searched from the bottom up so a tap appends rather than splices: dropping
+   * a swap into the middle of a finished chain would silently rewrite what the
+   * blocks below it receive, where adding to the end only ever extends.
+   */
   const bestIndexFor = useCallback(
     (block: LegoBlock): number | null => {
       for (let index = chain.length; index >= 0; index--) {
@@ -291,6 +411,21 @@ export function ZapBuilder(): React.JSX.Element {
     [chain],
   );
 
+  /**
+   * Which palette blocks seat anywhere in the current chain, worked out once.
+   *
+   * This drives the dimming on all two dozen chips, and it only depends on the
+   * chain — but it used to be recomputed inline during render, and a drag
+   * re-renders on every single `pointermove`. That meant two dozen seating
+   * searches, each scanning every position in the chain, for every pixel the
+   * pointer travelled, to arrive at exactly the answer from the frame before.
+   * Keyed on the chain, so it recomputes when the answer can actually change.
+   */
+  const fitsById = useMemo(
+    () => new Map(BLOCKS.map((block) => [block.id, bestIndexFor(block) !== null])),
+    [bestIndexFor],
+  );
+
   const insertBlock = useCallback(
     (blockId: string, index: number): void => {
       const uid = nextUid();
@@ -298,9 +433,10 @@ export function ZapBuilder(): React.JSX.Element {
       next.splice(index, 0, makeNode(blockId, uid));
       commit(next);
       setOpenUid(uid);
+      announce(`${getBlock(blockId)?.name ?? blockId} added at position ${index + 1} of ${next.length}.`);
       trackEvent("builder_block_added", { block: blockId });
     },
-    [chain, commit],
+    [announce, chain, commit],
   );
 
   const addBlock = useCallback(
@@ -321,10 +457,13 @@ export function ZapBuilder(): React.JSX.Element {
 
   const removeNode = useCallback(
     (uid: string): void => {
-      commit(chain.filter((node) => node.uid !== uid));
+      const next = chain.filter((node) => node.uid !== uid);
+      const name = getBlock(chain.find((node) => node.uid === uid)?.blockId ?? "")?.name ?? "Block";
+      commit(next);
       setOpenUid((current) => (current === uid ? null : current));
+      announce(next.length ? `${name} removed. ${next.length} blocks left.` : `${name} removed. The canvas is empty.`);
     },
-    [chain, commit],
+    [announce, chain, commit],
   );
 
   /**
@@ -358,26 +497,75 @@ export function ZapBuilder(): React.JSX.Element {
       const [node] = next.splice(from, 1);
       next.splice(from + delta, 0, node);
       commit(next);
+      announce(
+        `${getBlock(node.blockId)?.name ?? "Block"} moved ${delta < 0 ? "up" : "down"} to position ${
+          from + delta + 1
+        } of ${next.length}.`,
+      );
     },
-    [canMove, chain, commit],
+    [announce, canMove, chain, commit],
   );
 
   const setParam = useCallback(
     (uid: string, key: string, value: ParamValue): void => {
       commit(
         chain.map((node) => (node.uid === uid ? { ...node, params: { ...node.params, [key]: value } } : node)),
+        "",
+        `param:${uid}:${key}`,
       );
     },
     [chain, commit],
   );
 
+  /**
+   * Copy a placed block, settings and all, directly below itself.
+   *
+   * Routed through `canInsert` like every other placement: a second source, or
+   * a second copy of a block whose shape only seats once, would otherwise be
+   * the one way to assemble a chain the compiler rejects.
+   */
+  const duplicateNode = useCallback(
+    (uid: string): void => {
+      const index = chain.findIndex((node) => node.uid === uid);
+      if (index < 0) return;
+      const node = chain[index];
+      const block = getBlock(node.blockId);
+      if (!block) return;
+      if (!canInsert(chain, block, index + 1)) {
+        flash(`A second ${block.name} does not seat below this one.`);
+        return;
+      }
+      const copy = makeNode(node.blockId, nextUid(), node.params);
+      const next = [...chain];
+      next.splice(index + 1, 0, copy);
+      commit(next);
+      setOpenUid(copy.uid);
+      announce(`${block.name} duplicated at position ${index + 2} of ${next.length}.`);
+      trackEvent("builder_block_duplicated", { block: block.id });
+    },
+    [announce, chain, commit, flash],
+  );
+
+  /** Scroll a block into view, open it, and flag it briefly. */
+  const revealNode = useCallback((uid: string): void => {
+    setOpenUid(uid);
+    setFlaggedUid(uid);
+    cardRefs.current.get(uid)?.scrollIntoView({
+      behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth",
+      block: "center",
+    });
+    window.clearTimeout(flagTimer.current);
+    flagTimer.current = window.setTimeout(() => setFlaggedUid(null), FLAG_MS);
+  }, []);
+
   const loadRecipe = useCallback(
     (recipe: ZapRecipe): void => {
       commit(nodesFromRecipe(recipe), recipe.id);
       setOpenUid(null);
+      announce(`Loaded the ${recipe.name} blueprint: ${recipe.blocks.length} blocks.`);
       trackEvent("builder_recipe_loaded", { recipe: recipe.id });
     },
-    [commit],
+    [announce, commit],
   );
 
   // ---- drag and drop -------------------------------------------------------
@@ -412,6 +600,42 @@ export function ZapBuilder(): React.JSX.Element {
     },
     [chain],
   );
+
+  const dragActive = drag?.active === true;
+
+  /**
+   * Scroll the page while a block is held against a viewport edge.
+   *
+   * Driven by animation frames rather than by pointer movement, because the
+   * gesture that needs this most is a finger parked at the bottom of the screen
+   * — which emits no `pointermove` at all. Each frame that actually scrolls
+   * re-resolves the drop: the pointer has not moved, but every card under it
+   * has. The pointer position is read from the ref rather than from `drag`, so
+   * the loop is set up once per gesture instead of once per pixel travelled.
+   */
+  useEffect(() => {
+    if (!dragActive) return;
+    let frame = window.requestAnimationFrame(function step(): void {
+      const state = dragRef.current;
+      if (state?.active) {
+        const delta = edgeScrollDelta(state.y, window.innerHeight);
+        if (delta !== 0) {
+          const before = window.scrollY;
+          window.scrollBy(0, delta);
+          // At either end of the document `scrollBy` is a no-op, and
+          // re-resolving a drop that cannot have moved would churn state
+          // every frame for as long as the block is held there.
+          if (window.scrollY !== before) {
+            const drop = resolveDrop(state, state.y);
+            setDropIndex(drop.index);
+            setDropValid(drop.valid);
+          }
+        }
+      }
+      frame = window.requestAnimationFrame(step);
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [dragActive, resolveDrop]);
 
   const beginDrag = useCallback(
     (event: React.PointerEvent<HTMLElement>, origin: DragOrigin): void => {
@@ -536,13 +760,40 @@ export function ZapBuilder(): React.JSX.Element {
       }
       setRunIndex(step);
     }, 380);
+    announce(`Previewing ${chain.length} step${chain.length === 1 ? "" : "s"} in order.`);
     trackEvent("builder_preview_run", { blocks: chain.length });
-  }, [chain.length, compiled.status]);
+  }, [announce, chain.length, compiled.status]);
 
-  const visibleBlocks = useMemo(
-    () => (category === "all" ? BLOCKS : BLOCKS.filter((block) => block.category === category)),
-    [category],
-  );
+  /**
+   * The block the preview highlight is currently on.
+   *
+   * Read off the chain rather than out of `compiled.steps`, which only holds
+   * entries for blocks the catalog still knows — one unrecognised placement and
+   * every index after it would name the wrong card.
+   */
+  const runStep = useMemo(() => {
+    const node = runIndex >= 0 ? chain[runIndex] : undefined;
+    const block = node ? getBlock(node.blockId) : undefined;
+    if (!node || !block) return null;
+    return { position: runIndex + 1, name: block.name, summary: summarise(block, node) };
+  }, [chain, runIndex]);
+
+  /**
+   * The palette, narrowed by tab and by search.
+   *
+   * The search reads the blurb and the category label as well as the name,
+   * because the word someone reaches for is rarely the block's title: "dca"
+   * finds the recurring deposit through its blurb, "borrow" finds the whole
+   * lending group through its category.
+   */
+  const visibleBlocks = useMemo(() => {
+    const byCategory = category === "all" ? BLOCKS : BLOCKS.filter((block) => block.category === category);
+    const needle = query.trim().toLowerCase();
+    if (!needle) return byCategory;
+    return byCategory.filter((block) =>
+      `${block.name} ${block.blurb} ${CATEGORY_LABEL[block.category]}`.toLowerCase().includes(needle),
+    );
+  }, [category, query]);
 
   const exportPayload = useMemo(
     () =>
@@ -573,6 +824,30 @@ export function ZapBuilder(): React.JSX.Element {
     ? `/app?src=build&dir=${deployment.direction}&amount=${encodeURIComponent(deployment.amountIn)}&bps=${deployment.slippageBps}`
     : null;
 
+  /**
+   * Load a design pasted as a share link or a copied JSON export.
+   *
+   * Importing goes through `commit`, so it lands on the undo stack like any
+   * other edit — pasting the wrong thing over a chain you were working on is
+   * one press of ⌘Z, not a lost afternoon.
+   */
+  const importDesign = useCallback((): void => {
+    const nodes = decodeDesign(importText);
+    if (!nodes) {
+      flash("That is not a design. Paste a /build share link or the JSON from “Copy design JSON”.");
+      return;
+    }
+    advancePlacementCounter(nodes);
+    commit(nodes);
+    setOpenUid(null);
+    setImportText("");
+    setImporting(false);
+    const loaded = `Loaded ${nodes.length} block${nodes.length === 1 ? "" : "s"}. ⌘Z puts your previous chain back.`;
+    flash(loaded);
+    announce(loaded);
+    trackEvent("builder_design_imported", { blocks: nodes.length });
+  }, [announce, commit, flash, importText]);
+
   const saveDesign = useCallback((): void => {
     // The draft already persists on every edit; this is the explicit route for
     // a chain that arrived from a share link or a blueprint and has not been
@@ -589,7 +864,12 @@ export function ZapBuilder(): React.JSX.Element {
       <section className={styles.recipes} aria-label="Zap blueprints">
         <div className={styles.recipeHead}>
           <h2>Start from a blueprint</h2>
-          <p>Six kinds of zap, each a different DeFi activity. Load one, then rebuild it piece by piece.</p>
+          {/* No count in the copy: it went stale the first time a blueprint was
+              added, and the row is right there to be counted. */}
+          <p>
+            One kind of zap each. The one marked <em>deployable</em> is the only shape today’s contracts can carry —
+            load any of them, then rebuild piece by piece.
+          </p>
         </div>
         <div className={styles.recipeRow}>
           {RECIPES.map((recipe) => (
@@ -603,7 +883,10 @@ export function ZapBuilder(): React.JSX.Element {
             >
               <strong>{recipe.name}</strong>
               <span>{recipe.tagline}</span>
-              <em>{recipe.blocks.length} blocks</em>
+              <em>
+                {recipe.blocks.length} blocks
+                {DEPLOYABLE_RECIPES.has(recipe.id) ? <i className={styles.recipeLive}>deployable</i> : null}
+              </em>
             </button>
           ))}
         </div>
@@ -615,6 +898,18 @@ export function ZapBuilder(): React.JSX.Element {
           <div className={styles.paletteHead}>
             <h2>Blocks</h2>
             <p className={styles.paletteHint}>Drag into the chain, or tap to drop it in the first slot that fits.</p>
+          </div>
+          <div className={styles.search}>
+            <input
+              type="search"
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Escape") setQuery("");
+              }}
+              placeholder="Search blocks"
+              aria-label="Search blocks by name, description, or category"
+            />
           </div>
           <div className={styles.tabs} role="tablist" aria-label="Block categories">
             {CATEGORIES.map((entry) => (
@@ -631,8 +926,14 @@ export function ZapBuilder(): React.JSX.Element {
             ))}
           </div>
           <div className={styles.paletteList}>
+            {visibleBlocks.length === 0 ? (
+              <p className={styles.noMatch} role="status">
+                No block matches “{query.trim()}”
+                {category === "all" ? "." : ` in ${CATEGORY_LABEL[category]}. Try All.`}
+              </p>
+            ) : null}
             {visibleBlocks.map((block) => {
-              const fits = bestIndexFor(block) !== null;
+              const fits = fitsById.get(block.id) ?? false;
               const accent = SHAPE_COLOR[block.emits ?? block.accepts ?? "token"];
               return (
                 <button
@@ -681,6 +982,28 @@ export function ZapBuilder(): React.JSX.Element {
               </p>
             </div>
             <div className={styles.canvasActions}>
+              <button
+                type="button"
+                className={`${styles.ghostBtn} ${styles.iconBtn}`}
+                onClick={undo}
+                disabled={past.length === 0}
+                aria-label="Undo"
+                aria-keyshortcuts="Control+Z Meta+Z"
+                title="Undo (⌘Z)"
+              >
+                ↶
+              </button>
+              <button
+                type="button"
+                className={`${styles.ghostBtn} ${styles.iconBtn}`}
+                onClick={redo}
+                disabled={future.length === 0}
+                aria-label="Redo"
+                aria-keyshortcuts="Control+Shift+Z Meta+Shift+Z"
+                title="Redo (⇧⌘Z)"
+              >
+                ↷
+              </button>
               <button type="button" className={styles.ghostBtn} onClick={previewRun} disabled={compiled.status === "block" || !chain.length}>
                 Preview run
               </button>
@@ -690,8 +1013,10 @@ export function ZapBuilder(): React.JSX.Element {
                 onClick={() => {
                   commit([]);
                   setOpenUid(null);
+                  announce("Canvas cleared. Undo puts it back.");
                 }}
                 disabled={!chain.length}
+                title="Clear the canvas — ⌘Z brings it back"
               >
                 Clear
               </button>
@@ -762,6 +1087,7 @@ export function ZapBuilder(): React.JSX.Element {
                     data-lifted={lifted}
                     data-broken={joint?.status === "mismatch" || joint?.status === "orphan"}
                     data-running={runIndex === index}
+                    data-flagged={flaggedUid === node.uid}
                     style={{ ["--accent" as string]: accent }}
                   >
                     <div className={styles.cardMain}>
@@ -809,6 +1135,15 @@ export function ZapBuilder(): React.JSX.Element {
                           aria-label={`Move ${block.name} down`}
                         >
                           ↓
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => duplicateNode(node.uid)}
+                          disabled={!canInsert(chain, block, index + 1)}
+                          aria-label={`Duplicate ${block.name}`}
+                          title={`Duplicate ${block.name} with these settings`}
+                        >
+                          ⧉
                         </button>
                         <button type="button" onClick={() => removeNode(node.uid)} aria-label={`Remove ${block.name}`}>
                           ✕
@@ -904,11 +1239,33 @@ export function ZapBuilder(): React.JSX.Element {
             </div>
           </div>
 
+          {/* What the highlight travelling down the chain is actually on.
+              Without this, "Preview run" lit each card in turn and said
+              nothing — the animation showed the order, which the vertical
+              layout already showed, and the settings it would execute with
+              stayed inside whichever card happened to be open. */}
+          {runStep ? (
+            <p className={styles.runStep}>
+              <span>
+                Step {runStep.position} of {chain.length}
+              </span>
+              <strong>{runStep.name}</strong>
+              <em>{runStep.summary}</em>
+            </p>
+          ) : null}
+
           {hint ? (
             <p className={styles.hint} role="status">
               {hint}
             </p>
           ) : null}
+
+          {/* Structural edits are visible as a card moving and audible as
+              nothing. Polite, so it waits its turn rather than cutting across
+              whatever the reader is already saying. */}
+          <p className={styles.srStatus} role="status" aria-live="polite">
+            {narration}
+          </p>
         </section>
 
         {/* ---- readout ---- */}
@@ -926,6 +1283,28 @@ export function ZapBuilder(): React.JSX.Element {
             </div>
           </div>
 
+          {/* Every issue the compiler raised, not the first one. The "Connector
+              fit" check below can only ever quote a single message, so a chain
+              with three broken joints used to report one and leave the other
+              two to be found by eye. Each one that names a block is a button
+              that goes there. */}
+          {compiled.issues.length > 0 ? (
+            <ul className={styles.issues} aria-label={`${compiled.issues.length} problems in this design`}>
+              {compiled.issues.map((issue, index) => (
+                <li key={`${issue.code ?? "chain"}-${issue.uid ?? index}`} data-level={issue.level}>
+                  {issue.uid ? (
+                    <button type="button" onClick={() => revealNode(issue.uid as string)}>
+                      <span>{issue.message}</span>
+                      <em aria-hidden>Show</em>
+                    </button>
+                  ) : (
+                    <span>{issue.message}</span>
+                  )}
+                </li>
+              ))}
+            </ul>
+          ) : null}
+
           <div className={styles.meter}>
             <div className={styles.meterHead}>
               <span>Guard coverage</span>
@@ -934,6 +1313,33 @@ export function ZapBuilder(): React.JSX.Element {
             <div className={styles.meterTrack}>
               <span style={{ width: `${compiled.guardScore}%` }} data-level={compiled.guardScore === 100 ? "full" : compiled.guardScore >= 50 ? "part" : "low"} />
             </div>
+            {/* Each gap names the risk that opened it and adds the piece that
+                closes it. The percentage alone was a grade, not a next step. */}
+            {compiled.missingGuards.length > 0 ? (
+              <ul className={styles.gaps}>
+                {compiled.missingGuards.map((demand) => {
+                  const guard = getBlock(demand.guardId);
+                  if (!guard) return null;
+                  return (
+                    <li key={demand.guardId}>
+                      <span>
+                        No <strong>{guard.name}</strong> — {demand.risk}.
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          addBlock(guard);
+                          trackEvent("builder_guard_gap_filled", { guard: guard.id });
+                        }}
+                        aria-label={`Add ${guard.name} to close this gap`}
+                      >
+                        Add
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+            ) : null}
           </div>
 
           <ul className={styles.checks}>
@@ -1023,6 +1429,40 @@ export function ZapBuilder(): React.JSX.Element {
               title="Copy a link that reopens this exact design"
             />
             <CopyButton className={styles.exportBtn} value={exportPayload} label="Copy design JSON" title="Copy the compiled chain" />
+
+            {/* The other half of those two buttons. A design copied out as JSON
+                had no way back in except by hand. */}
+            <button
+              type="button"
+              className={styles.importToggle}
+              aria-expanded={importing}
+              onClick={() => setImporting((open) => !open)}
+            >
+              {importing ? "Cancel import" : "Paste a design"}
+            </button>
+            {importing ? (
+              <div className={styles.import}>
+                <label htmlFor="import-design">Paste a share link or a copied design JSON.</label>
+                <textarea
+                  id="import-design"
+                  value={importText}
+                  rows={3}
+                  spellCheck={false}
+                  placeholder="https://www.0xzaps.com/build?d=… or { &quot;chain&quot;: [ … ] }"
+                  onChange={(event) => setImportText(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Escape") setImporting(false);
+                    // Enter alone would fight the textarea; the modifier is the
+                    // usual "send this" gesture and the button is right there.
+                    if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) importDesign();
+                  }}
+                />
+                <button type="button" onClick={importDesign} disabled={!importText.trim()}>
+                  Load design
+                </button>
+              </div>
+            ) : null}
+
             <Link className={styles.openApp} href="/app">
               Open the live app →
             </Link>
@@ -1052,6 +1492,18 @@ export function ZapBuilder(): React.JSX.Element {
       ) : null}
     </div>
   );
+}
+
+/**
+ * Whether a keystroke landed somewhere the browser's own undo already works.
+ *
+ * A range input is deliberately not one: dragging a slider leaves nothing for
+ * the native stack to restore, so ⌘Z there has to mean the canvas's undo.
+ */
+function isTextEntry(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return false;
+  if (target.isContentEditable || target instanceof HTMLTextAreaElement) return true;
+  return target instanceof HTMLInputElement && target.type !== "range";
 }
 
 /** One-line description of a placed block's current settings. */
