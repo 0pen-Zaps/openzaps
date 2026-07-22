@@ -25,10 +25,6 @@ const pending = new Map<Element, Entry>();
 /**
  * Give up on scroll-reveal entirely and show everything still waiting.
  *
- * An IntersectionObserver always delivers an initial entry for each observed
- * target. If none has arrived shortly after the first observe, the API is not
- * functioning in this environment (throttled, polyfilled badly, or a headless
- * renderer) — and content must never be the casualty of a broken animation.
  * From then on Reveal is a no-op and every element renders plainly.
  */
 function abandon(): void {
@@ -37,6 +33,24 @@ function abandon(): void {
   pending.clear();
   observer?.disconnect();
   observer = null;
+  window.removeEventListener("scroll", markLive);
+}
+
+/**
+ * Record proof that this is a live, scrolling session.
+ *
+ * Deliberately NOT called for a merely-delivered observer entry: an
+ * IntersectionObserver emits an initial record for *every* observed target,
+ * including non-intersecting ones, so treating any delivery as proof would
+ * disarm the watchdog instantly and strand everything below the fold. Only an
+ * element actually coming into view, or a real scroll, counts.
+ */
+function markLive(): void {
+  if (verified) return;
+  verified = true;
+  window.clearTimeout(watchdog);
+  watchdog = undefined;
+  window.removeEventListener("scroll", markLive);
 }
 
 /**
@@ -52,10 +66,9 @@ function watch(el: Element, reveal: () => void): () => void {
 
   observer ??= new IntersectionObserver(
     (entries) => {
-      verified = true;
-      window.clearTimeout(watchdog);
       for (const entry of entries) {
         if (!entry.isIntersecting) continue;
+        markLive();
         pending.get(entry.target)?.reveal();
         pending.delete(entry.target);
         observer?.unobserve(entry.target);
@@ -69,10 +82,18 @@ function watch(el: Element, reveal: () => void): () => void {
   pending.set(el, { el, reveal });
   observer.observe(el);
 
+  // Arm a wall-clock ceiling on how long anything may stay hidden. A renderer
+  // that executes JS but never scrolls — an OG screenshot service, a Lighthouse
+  // visual audit, a prerenderer, Google's rendered-page capture — would
+  // otherwise hold every below-fold element at opacity 0 indefinitely. A real
+  // visitor cancels it the moment they scroll, keeping the full effect; one who
+  // never scrolls only "loses" an animation on content they cannot see anyway.
   if (!verified && watchdog === undefined) {
+    window.addEventListener("scroll", markLive, { passive: true, once: true });
     watchdog = window.setTimeout(() => {
+      watchdog = undefined; // cleared so a later route change can re-arm
       if (!verified) abandon();
-    }, 1000);
+    }, 5000);
   }
 
   return () => {

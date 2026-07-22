@@ -1043,3 +1043,19 @@
 .receipts a:hover {
   transform: translateX(2px);
 }
+
+/* Local copies — CSS Modules scope animation-name; see status.module.css. */
+@keyframes ripple {
+  from { box-shadow: 0 0 0 0 rgba(55, 240, 154, 0.5); }
+  to { box-shadow: 0 0 0 12px rgba(55, 240, 154, 0); }
+}
+
+@keyframes blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
+
+@keyframes popIn {
+  from { opacity: 0; transform: scale(0.94); }
+  to { opacity: 1; transform: none; }
+}

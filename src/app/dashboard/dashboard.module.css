@@ -445,3 +445,15 @@
 .updatedSpinner {
   color: var(--indigo);
 }
+
+/* Local copies — CSS Modules scope animation-name, so globals.css keyframes
+   are unreachable from this file. See the note in status.module.css. */
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(var(--reveal-shift)); }
+  to { opacity: 1; transform: none; }
+}
+
+@keyframes flashIn {
+  0% { background-color: rgba(107, 92, 255, 0.22); }
+  100% { background-color: transparent; }
+}

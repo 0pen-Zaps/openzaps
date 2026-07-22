@@ -158,3 +158,17 @@
   0%, 100% { transform: scaleY(0.35); opacity: 0.4; }
   50% { transform: scaleY(1); opacity: 1; }
 }
+
+/* Local copies of the shared keyframes.
+   CSS Modules scope every animation-name in this file, so a reference to a
+   @keyframes declared in globals.css resolves to nothing and the animation is
+   silently dropped. Each module that animates must define its own. */
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(var(--reveal-shift)); }
+  to { opacity: 1; transform: none; }
+}
+
+@keyframes shift {
+  0%, 100% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+}

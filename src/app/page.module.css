@@ -1082,3 +1082,9 @@
 .stat:hover {
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.06), rgba(8, 9, 10, 0.6));
 }
+
+/* Local copy — CSS Modules scope animation-name; see status.module.css. */
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(var(--reveal-shift)); }
+  to { opacity: 1; transform: none; }
+}

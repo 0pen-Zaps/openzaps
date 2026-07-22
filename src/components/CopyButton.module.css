@@ -67,3 +67,9 @@
   clip-path: inset(50%);
   white-space: nowrap;
 }
+
+/* Local copy — CSS Modules scope animation-name; see status.module.css. */
+@keyframes ripple {
+  from { box-shadow: 0 0 0 0 rgba(55, 240, 154, 0.5); }
+  to { box-shadow: 0 0 0 12px rgba(55, 240, 154, 0); }
+}

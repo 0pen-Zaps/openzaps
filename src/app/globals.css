@@ -420,12 +420,17 @@ a {
   will-change: opacity, transform;
 }
 
-[data-reveal="hidden"] {
+/* The attribute is doubled to reach specificity (0,2,0). A revealed element is
+   usually also a CSS-Module class that declares its own `transition` (cards
+   animate transform/box-shadow on hover), and that class ships in a chunk
+   loaded AFTER globals — at equal specificity it would win and silently
+   replace the reveal's transition, making every entrance snap instead of fade. */
+[data-reveal][data-reveal="hidden"] {
   opacity: 0;
   transform: translateY(var(--reveal-shift));
 }
 
-[data-reveal="shown"] {
+[data-reveal][data-reveal="shown"] {
   opacity: 1;
   transform: none;
   transition:
@@ -504,6 +509,13 @@ a {
     animation-iteration-count: 1 !important;
     transition-duration: 0.001ms !important;
     scroll-behavior: auto !important;
+    /* Delays must be neutralised too. With `animation-fill-mode: both` an
+       element holds its FIRST keyframe — opacity 0 for every entrance here —
+       for the whole delay. Zeroing only the duration would still leave
+       staggered content blank and then popping in, which is precisely the
+       effect this media query exists to remove. */
+    animation-delay: -1ms !important;
+    transition-delay: 0s !important;
   }
 
   /* Spinners are the one exception: they are the only signal that async work is
@@ -514,7 +526,7 @@ a {
     animation-iteration-count: infinite !important;
   }
 
-  [data-reveal="hidden"] {
+  [data-reveal][data-reveal="hidden"] {
     opacity: 1;
     transform: none;
   }

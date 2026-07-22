@@ -50,6 +50,12 @@ export function CountUp({
   const [display, setDisplay] = useState<string | null>(null);
   const [tracked, setTracked] = useState(value);
   const ref = useRef<HTMLSpanElement>(null);
+  // The roll-up from zero is an entrance flourish, so it belongs to the first
+  // time this number is seen and nothing else. The dashboard re-polls onchain
+  // stats every 30s and feeds the result straight back in; without this latch
+  // each poll would restart the animation and a live counter would visibly
+  // read 63 -> 0 -> 64, which looks like the protocol resetting.
+  const played = useRef(false);
 
   // Adjusting state during render is the sanctioned way to react to a changed
   // prop; it re-renders before commit rather than cascading after one.
@@ -66,7 +72,7 @@ export function CountUp({
     NUMERIC_RUN.lastIndex = 0; // the /g regex is stateful across .test() calls
     const hasDigits = NUMERIC_RUN.test(value);
     NUMERIC_RUN.lastIndex = 0;
-    if (reduced || !hasDigits || typeof IntersectionObserver === "undefined") return;
+    if (reduced || !hasDigits || played.current || typeof IntersectionObserver === "undefined") return;
 
     let frame = 0;
     let start = 0;
@@ -85,6 +91,7 @@ export function CountUp({
       (entries) => {
         if (!entries.some((entry) => entry.isIntersecting)) return;
         observer.disconnect();
+        played.current = true;
         setDisplay(interpolate(value, 0));
         run();
       },
