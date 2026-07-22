@@ -15,10 +15,10 @@ export const metadata = pageMetadata({
 
 const feeRows = [
   ["Simulation", "Free", "Local and API simulation should stay free so users can inspect policies before wallet review."],
-  ["Policy creation", "Gas only during gated beta", "Users pay chain gas. No protocol fee until external audit and governance activation."],
-  ["Hermes execution", "Relayer fee cap", "Every policy binds a max relayer fee before signing; Hermes cannot charge outside the cap."],
+  ["Policy creation", "Gas only (pre-audit)", "Users pay chain gas. No protocol fee until external audit and governance activation."],
+  ["Hermes execution", "Relayer fee cap", "Planned: policies bind a max relayer fee before signing, so an automated submitter can never charge outside the cap. The live route sets the cap to zero and is self-submitted."],
   ["Protocol fee", "Governance-disabled v1", "A future fee may apply to successful executions, but only after disclosure and wallet-level review."],
-  ["Enterprise operators", "Custom", "Dedicated relayer lanes, compliance logs, policy review, and monitored revoke drills."],
+  ["Enterprise operators", "Custom", "Roadmap: dedicated relayer lanes, compliance logs, policy review, and monitored revoke drills."],
 ] as const;
 
 const tiers = [
@@ -30,7 +30,7 @@ const tiers = [
   {
     name: "Operator",
     price: "Relayer fee cap",
-    body: "Run monitored policies through Hermes with bounded submitters, private submission, alerts, and audit logs.",
+    body: "Planned tier: Hermes-assisted submission within owner-signed caps. Today every transaction is submitted and confirmed from your own wallet.",
   },
   {
     name: "Protocol",
@@ -106,8 +106,8 @@ export default function PricingPage(): React.JSX.Element {
           <span>Token disclosure</span>
           <strong>{TOKEN.symbol} is not a fee claim, yield promise, equity claim, or guarantee of access.</strong>
           <p>
-            Token utility should grow through governance, operator alignment, and ecosystem coordination, but the product
-            must remain usable and reviewable without implying financial returns.
+            {TOKEN.symbol} is the ERC-20 paired with aeWETH in the first bounded live route. It grants no governance,
+            staking, revenue share, or privileged access, and the product stays fully usable without it.
           </p>
         </section>
       </section>

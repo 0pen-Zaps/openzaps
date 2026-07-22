@@ -54,7 +54,7 @@
 
 .facts {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 1px;
   width: 100%;
   margin-top: 2.6rem;
@@ -92,15 +92,20 @@
 }
 
 .address {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
-  justify-content: space-between;
-  gap: 0.75rem;
+  gap: 1rem;
   padding: 1rem 1.25rem;
   border: 1px solid var(--line);
   border-radius: 0.5rem;
   background: var(--card);
+}
+
+.addressIdentity {
+  min-width: 0;
+  display: grid;
+  gap: 0.35rem;
 }
 
 .addressLabel {
@@ -380,6 +385,10 @@
   }
 
   .dist {
+    grid-template-columns: 1fr;
+  }
+
+  .address {
     grid-template-columns: 1fr;
   }
 }

@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "updatedAt": "2026-07-22T03:58:20Z",
+  "updatedAt": "2026-07-22T08:05:39Z",
   "project": {
     "name": "OpenZaps",
     "website": "https://www.0xzaps.com",
@@ -30,7 +30,7 @@
     "explorer": "https://robinhoodchain.blockscout.com/token/0xDd90bFa4adC7F4401E611AbaC692D939F9F4CB07"
   },
   "disclosures": {
-    "category": "community and operator coordination token",
+    "category": "ERC-20 paired with aeWETH in OpenZaps' first bounded live route",
     "noClaims": [
       "revenue",
       "yield",

@@ -80,7 +80,7 @@ const faqs = [
   },
   {
     q: `Do I need ${TOKEN.symbol} to use the protocol?`,
-    a: "No — nothing is token-gated. The token aligns the community and operators around the execution layer. Robinhood mainnet actions remain wallet-confirmed and the v1.1 contracts are pre-external-audit.",
+    a: "No — nothing is token-gated. 0xZAPS is the asset paired with aeWETH in the first bounded live route. Robinhood mainnet actions remain wallet-confirmed and the v1.1 contracts are pre-external-audit.",
   },
   {
     q: "Are the contracts audited?",
@@ -105,7 +105,7 @@ const agentLoop = [
   "Discover registry events",
   "Verify signatures + bytecode",
   "Simulate latest state",
-  "Submit privately when sensitive",
+  "Submit within owner-signed limits",
   "Monitor receipts + approvals",
   "Revoke or escalate anomalies",
 ] as const;
@@ -149,7 +149,7 @@ export default function Home(): React.JSX.Element {
             <span>EIP-712 intents</span>
             <span>ERC-1271 ready</span>
             <span>Revocable policies</span>
-            <span>Private orderflow</span>
+            <span>RPC-verified receipts</span>
           </div>
         </div>
 
@@ -234,8 +234,8 @@ export default function Home(): React.JSX.Element {
         <div>
           <p className={styles.tokenLead}>
             ${TOKEN.symbol} is live through a creator-verified Clanker V4 market on {TOKEN_LAUNCH.network}. It is the
-            community and operator coordination token for OpenZaps; the protocol remains usable without treating the
-            token as yield, equity, or a fee claim.
+            ERC-20 paired with aeWETH in the protocol&apos;s first bounded live route; OpenZaps is usable without it,
+            and the token is not yield, equity, or a fee claim.
           </p>
           <div className={styles.tokenActions}>
             <BuyButton />
@@ -395,7 +395,7 @@ export default function Home(): React.JSX.Element {
             </Link>
           </div>
           <p className={styles.ctaNote}>
-            Not financial advice. {TOKEN.symbol} is a community token with no claim on revenue, yield, or
+            Not financial advice. {TOKEN.symbol} is an ERC-20 with no claim on revenue, yield, or
             assets; onchain actions are irreversible and the protocol is pre-external-audit.
           </p>
         </div>

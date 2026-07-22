@@ -19,7 +19,7 @@ export const TOKEN_LAUNCH = {
   chainId: 4663,
   nativeCurrency: "ETH",
   contract: tokenContract,
-  pair: `${TOKEN.symbol}/WETH`,
+  pair: `${TOKEN.symbol}/aeWETH`,
   primaryPair,
   onchainImageUri:
     "ipfs://bafkreidndqit6ydpkivgmm4qdukh7sgv6uexjp3rc76iyvx22zd425ae7i",
