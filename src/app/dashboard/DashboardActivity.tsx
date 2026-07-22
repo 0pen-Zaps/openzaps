@@ -124,11 +124,19 @@ export function DashboardActivity({ initial }: { initial: ActivityPayload | null
           </div>
           <p className={styles.updated}>
             {refreshing && <span aria-hidden className={`spinner ${styles.updatedSpinner}`} />}
-            {state.status === "ready"
-              ? `Head block ${Number(state.data.headBlock).toLocaleString()} · refreshed ${new Date(state.data.updatedAt).toLocaleTimeString("en-US")}`
-              : state.status === "loading"
-                ? "Reading Robinhood Chain logs…"
-                : ""}
+            {state.status === "ready" ? (
+              // The clock time is rendered in the server's timezone (UTC on
+              // Vercel) and re-rendered in the visitor's, so the text legitimately
+              // differs across hydration. Without this React treats it as a
+              // mismatch, throws #418, and discards the whole server tree.
+              <span suppressHydrationWarning>
+                {`Head block ${Number(state.data.headBlock).toLocaleString()} · refreshed ${new Date(state.data.updatedAt).toLocaleTimeString("en-US")}`}
+              </span>
+            ) : state.status === "loading" ? (
+              "Reading Robinhood Chain logs…"
+            ) : (
+              ""
+            )}
           </p>
         </div>
 
@@ -202,7 +210,12 @@ export function DashboardActivity({ initial }: { initial: ActivityPayload | null
                 </span>
                 <code className={styles.feedZap}>{shortAddress(entry.zap)}</code>
                 <span className={styles.feedTime}>
-                  {entry.timestamp ? timeAgo(entry.timestamp) : `block ${Number(entry.blockNumber).toLocaleString()}`}
+                  {/* Relative to Date.now(), so the server's value and the
+                      client's can land in different buckets between render and
+                      hydration ("4h ago" vs "5h ago"). Same reasoning as above. */}
+                  <span suppressHydrationWarning>
+                    {entry.timestamp ? timeAgo(entry.timestamp) : `block ${Number(entry.blockNumber).toLocaleString()}`}
+                  </span>
                   {" "}
                   <span aria-label="opens transaction on Blockscout in a new tab">↗</span>
                 </span>
