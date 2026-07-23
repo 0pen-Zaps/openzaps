@@ -38,7 +38,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: foundry-rs/foundry-toolchain@v1
-      - run: forge install foundry-rs/forge-std --no-commit
+      - run: forge install foundry-rs/forge-std
       - run: forge build --sizes
 
   secrets:
@@ -52,4 +52,4 @@ jobs:
         run: |
           VERSION=8.21.2
           curl -sSL "https://github.com/gitleaks/gitleaks/releases/download/v${VERSION}/gitleaks_${VERSION}_linux_x64.tar.gz" | tar -xz gitleaks
-          ./gitleaks detect --source . --redact --verbose --exit-code 1
+          ./gitleaks detect --source . --config .gitleaks.toml --redact --verbose --exit-code 1
