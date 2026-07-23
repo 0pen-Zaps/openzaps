@@ -204,7 +204,7 @@ contract DeployEverything is Script {
     // Entry point — chain-aware dispatch                                                           //
     // =========================================================================================== //
 
-    function run() external {
+    function run() public virtual {
         uint256 id = block.chainid;
         if (id == ROBINHOOD_CHAIN_ID) {
             _runRobinhood();
@@ -213,6 +213,14 @@ contract DeployEverything is Script {
         } else {
             revert UnsupportedChain(id);
         }
+    }
+
+    /// @notice Governance override for pinned subclasses (e.g. the nodar.eth scripts).
+    /// @dev Default `address(0)` means "no override": the base script keeps reading `GOVERNANCE`
+    ///      from the environment, so DeployEverything behaves exactly as before. A subclass returns
+    ///      a concrete address to bake governance in and remove the env var from the command.
+    function _governance() internal view virtual returns (address) {
+        return address(0);
     }
 
     // =========================================================================================== //
@@ -299,7 +307,9 @@ contract DeployEverything is Script {
 
     function _rhConfig() internal view returns (RhConfig memory cfg) {
         cfg.deployer = msg.sender; // from --sender; never a key in here
-        cfg.governance = vm.envOr("GOVERNANCE", AdapterRegistry(RH_ADAPTER_REGISTRY).owner());
+        cfg.governance = _governance() != address(0)
+            ? _governance()
+            : vm.envOr("GOVERNANCE", AdapterRegistry(RH_ADAPTER_REGISTRY).owner());
         if (cfg.governance == address(0)) revert ZeroGovernance();
         cfg.seedAssets = vm.envOr("VAULT_SEED_ASSETS", RH_DEFAULT_SEED_ASSETS);
         cfg.seedRecipient = vm.envOr("VAULT_SEED_RECIPIENT", DEAD);
@@ -574,7 +584,7 @@ contract DeployEverything is Script {
         if (routerFactory != BASE_V3_FACTORY) revert UnexpectedRouterFactory(routerFactory);
 
         address deployer = msg.sender; // from --sender; never a key in here
-        address governance = vm.envOr("GOVERNANCE", deployer);
+        address governance = _governance() != address(0) ? _governance() : vm.envOr("GOVERNANCE", deployer);
         if (governance == address(0)) revert ZeroGovernance();
         bool deployV2Candidate = vm.envOr("DEPLOY_V2_CANDIDATE", false);
 
