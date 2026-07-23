@@ -9,6 +9,8 @@ import { SHAPE_COLOR, SHAPE_LABEL, type FlowShape } from "@/lib/blocks";
 import { explorerAddress, explorerTransaction } from "@/lib/robinhood";
 import type { ZapDetailPayload, ZapPolicyView } from "@/lib/zap";
 import { BlockGlyph } from "@/app/use/BlockGlyph";
+import { ProtocolStack } from "@/components/ProtocolLogo";
+import { protocolsForRouteKind, type ProtocolInfo } from "@/lib/protocols";
 import styles from "../zaps.module.css";
 
 type LiveState =
@@ -217,7 +219,15 @@ export function ZapLive({
                     <BlockGlyph name={node.glyph} className={styles.glyph} />
                   </span>
                   <div className={styles.cardText}>
-                    <strong>{node.title}</strong>
+                    <strong>
+                      {node.title}
+                      {node.protocols && node.protocols.length > 0 ? (
+                        <>
+                          {" "}
+                          <ProtocolStack protocols={node.protocols} size={14} />
+                        </>
+                      ) : null}
+                    </strong>
                     <span>{node.detail}</span>
                   </div>
                   {node.link && (
@@ -518,6 +528,8 @@ type PolicyNode = {
   accent: FlowShape;
   /** Shape flowing into this node; null when the snapshot cannot name it. */
   incoming: FlowShape | null;
+  /** Marks of the protocols this node's adapter actually calls. */
+  protocols?: ProtocolInfo[];
   link: Address | null;
 };
 
@@ -540,27 +552,31 @@ function policyChain(policy: ZapPolicyView): PolicyNode[] | null {
   // treat it as a human amount. Say which it is.
   const amountText = amount.rawUnits ? `${amount.text} raw units of` : amount.text;
 
+  // The action card, by the route KIND the read layer resolved — a stitched
+  // route or an LP leg drawn as a generic "Swap" would be a false statement
+  // about what the adapter does with the funds.
+  const action = actionForRouteKind(policy.routeKind, input, output, step.data === "0x");
+
   return [
     {
       key: "source",
       kind: "source",
-      glyph: "wallet",
+      glyph: policy.routeKind === "lp-withdraw" || policy.routeKind === "vault-redeem" ? "pool" : "wallet",
       title: "Bound input",
       detail: `${amountText} ${input} — the exact amount the policy hash commits to.`,
-      accent: "token",
+      accent: policy.routeKind === "lp-withdraw" ? "lp" : "token",
       incoming: null,
       link: step.tokenIn,
     },
     {
-      key: "swap",
+      key: "action",
       kind: "action",
-      glyph: "swap",
-      title: "Swap",
-      detail: output
-        ? `${input} → ${output} through the allowlisted adapter, with ${step.data === "0x" ? "no adapter calldata" : "adapter calldata attached"}.`
-        : `${input} into an output this snapshot cannot name — the input asset is outside the live route.`,
-      accent: "token",
-      incoming: "token",
+      glyph: action.glyph,
+      title: action.title,
+      detail: action.detail,
+      accent: action.accent,
+      incoming: policy.routeKind === "lp-withdraw" ? "lp" : "token",
+      protocols: policy.routeKind ? protocolsForRouteKind(policy.routeKind) : [],
       link: step.adapter,
     },
     {
@@ -571,13 +587,86 @@ function policyChain(policy: ZapPolicyView): PolicyNode[] | null {
       detail: output
         ? `${output} to ${shortAddress(policy.recipient)}.`
         : `Proceeds to ${shortAddress(policy.recipient)}.`,
-      accent: "token",
-      // Without a resolved direction the output asset is genuinely unknown, so
-      // this connector is drawn unresolved rather than assumed to be an ERC-20.
-      incoming: output ? "token" : null,
+      accent: action.emits ?? "token",
+      // Without a resolved output the asset is genuinely unknown, so this
+      // connector is drawn unresolved rather than assumed to be an ERC-20.
+      incoming: output ? (action.emits ?? "token") : null,
       link: policy.recipient,
     },
   ];
+}
+
+/**
+ * Title, glyph, accent and copy for the capsule's one action, per deployed
+ * route kind. `null` (an unrecognized step) keeps the cautious legacy copy.
+ */
+function actionForRouteKind(
+  routeKind: ZapPolicyView["routeKind"],
+  input: string,
+  output: string | null,
+  emptyData: boolean,
+): { title: string; glyph: string; accent: FlowShape; emits: FlowShape | null; detail: string } {
+  const calldata = emptyData ? "no adapter calldata" : "adapter calldata attached";
+  switch (routeKind) {
+    case "swap":
+      return {
+        title: "Swap",
+        glyph: "swap",
+        accent: "token",
+        emits: "token",
+        detail: `${input} → ${output} through the allowlisted adapter, with ${calldata}.`,
+      };
+    case "swap-route":
+      return {
+        title: "Stitched swap",
+        glyph: "swap",
+        accent: "token",
+        emits: "token",
+        detail: `${input} → ${output} through TWO pools in one signed step — the route adapter sizes each hop from the measured output of the last, with ${calldata}.`,
+      };
+    case "lp-deposit":
+      return {
+        title: "Provide liquidity",
+        glyph: "pool",
+        accent: "lp",
+        emits: "lp",
+        detail: `Half the ${input} swaps in-pool, both legs enter the full-range aeWETH/USDG vault, and ${output} shares mint straight to the capsule.`,
+      };
+    case "lp-withdraw":
+      return {
+        title: "Withdraw liquidity",
+        glyph: "poolOut",
+        accent: "lp",
+        emits: "token",
+        detail: `${input} shares burn for both pool currencies plus accrued fees; the off-target leg swaps in-pool so the capsule settles in ${output}.`,
+      };
+    case "vault-deposit":
+      return {
+        title: "Supply",
+        glyph: "vault",
+        accent: "receipt",
+        emits: "receipt",
+        detail: `${input} into the ozUSDG receipt vault for ${output} — a wrapper, it earns nothing.`,
+      };
+    case "vault-redeem":
+      return {
+        title: "Redeem",
+        glyph: "vault",
+        accent: "receipt",
+        emits: "token",
+        detail: `${input} shares burn back to ${output} from the receipt vault.`,
+      };
+    default:
+      return {
+        title: "Swap",
+        glyph: "swap",
+        accent: "token",
+        emits: output ? "token" : null,
+        detail: output
+          ? `${input} → ${output} through the allowlisted adapter, with ${calldata}.`
+          : `${input} into an output this snapshot cannot name — the input asset is outside the live route.`,
+      };
+  }
 }
 
 /* -------------------------------------------------------------- fragments */

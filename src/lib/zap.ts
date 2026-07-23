@@ -92,6 +92,13 @@ export type ZapPolicyView = {
   policyHash: Hex;
   /** null when the input asset is outside the live aeWETH/0xZAPS route. */
   direction: ZapDirection | null;
+  /**
+   * Which deployed route KIND this capsule implements — swap, stitched
+   * multi-pool route, vault leg, or LP provide/withdraw — or null when the
+   * step matches no deployed route. This is what lets the capsule page draw
+   * "Provide liquidity" instead of mislabeling every action a swap.
+   */
+  routeKind: Route["kind"] | null;
   inputSymbol: string | null;
   outputSymbol: string | null;
   /** Hash of the policy the clone exposes === the policyHash it committed to. */
@@ -438,10 +445,11 @@ function buildPolicyView(
     }).toLowerCase() === policy.policyHash.toLowerCase();
 
   // Resolve the deployed route the step implements (adapter + tokens + tracked
-  // assets + data shape). When it is a recognized route — the bounded swap, the
-  // USDG pool, or a vault leg — report deviations against THAT route so a
-  // legitimate USDG/vault capsule is not branded "does not match the live route".
-  // An unrecognized step falls through to the bounded-route deviation list.
+  // assets + data shape). When it is a recognized route — a swap, the stitched
+  // multi-pool route, a vault leg, or an LP provide/withdraw — report
+  // deviations against THAT route so a legitimate capsule is not branded
+  // "does not match the live route". An unrecognized step falls through to the
+  // bounded-route deviation list.
   const route = step
     ? resolveRouteFromStep(step.adapter, step.tokenIn, policy.trackedAssets, step.data)
     : null;
@@ -521,6 +529,7 @@ function buildPolicyView(
       : null,
     policyHash: policy.policyHash,
     direction,
+    routeKind: null,
     inputSymbol: step ? assetSymbolForDisplay(step.tokenIn) : null,
     outputSymbol: direction ? assetsForDirection(direction).outputSymbol : null,
     hashMatches,
@@ -592,6 +601,7 @@ function recognizedRouteView(
     },
     policyHash: policy.policyHash,
     direction: route.direction,
+    routeKind: route.kind,
     inputSymbol: route.tokenIn.symbol,
     outputSymbol: route.tokenOut.symbol,
     hashMatches,

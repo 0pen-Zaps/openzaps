@@ -81,7 +81,7 @@ export function UseSurface(): React.JSX.Element {
     <div>
       <div className="container" style={{ paddingTop: "1.1rem" }}>
         <div
-          className={appStyles.segment}
+          className={`${appStyles.segment} ${buildStyles.useTabs}`}
           role="tablist"
           aria-label="Use OpenZaps"
           onKeyDown={onTablistKeyDown}
