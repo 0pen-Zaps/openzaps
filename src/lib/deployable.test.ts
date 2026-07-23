@@ -48,6 +48,7 @@ describe("accepts the live route", () => {
     const mapping = reduceChainToLiveRoute(buyChain());
     expect(mapping).toEqual({
       deployable: true,
+      routeId: "robinhood-v4-weth-zaps",
       direction: "buy",
       amountIn: "0.05",
       slippageBps: 50,
@@ -365,9 +366,11 @@ describe("unenforced guards", () => {
 
 describe("rejections", () => {
   it("rejects an empty design", () => {
+    // With more than the bounded swap deployed, the multi-step vocabulary is
+    // active, so the no-action message is the general one.
     expect(reasonsOf([])).toEqual([
       "A live route starts from exactly one wallet balance; this design has no source.",
-      "A live route is exactly one swap; this design has no action to deploy.",
+      "A deployable policy needs at least one action; this design has none.",
     ]);
   });
 
@@ -398,23 +401,26 @@ describe("rejections", () => {
 
   it("rejects a design with no action", () => {
     const reasons = reasonsOf(chain(["wallet-balance", { asset: "WETH", amount: "0.05" }]));
-    expect(reasons).toEqual(["A live route is exactly one swap; this design has no action to deploy."]);
+    expect(reasons).toEqual(["A deployable policy needs at least one action; this design has none."]);
   });
 
-  it("rejects more than one action", () => {
+  it("rejects an action with no deployed adapter", () => {
+    // The step budget is now MAX (a non-bounded adapter is deployed), so what
+    // rejects this is the missing `unwrap` adapter, not a one-step limit.
     const nodes = chain(
       ["wallet-balance", { asset: "WETH", amount: "0.05" }],
       ["unwrap", { mode: "wrap" }],
       ["swap", { into: "0xZAPS", venue: "Uniswap v4" }],
     );
     const reasons = reasonsOf(nodes);
-    expect(reasons[0]).toContain("exactly one step; this design has 2 actions");
-    expect(reasons[1]).toContain("Wrap / unwrap has no adapter");
+    expect(reasons.some((reason) => reason.includes("Wrap / unwrap has no adapter"))).toBe(true);
   });
 
-  it("rejects an action that is not a swap", () => {
+  it("rejects a supply into a protocol no deployed adapter is welded to", () => {
     const nodes = chain(["wallet-balance", { asset: "WETH", amount: "0.05" }], ["supply", { market: "Morpho" }]);
-    expect(reasonsOf(nodes).some((reason) => reason.startsWith("Supply has no adapter"))).toBe(true);
+    // The vault adapter takes USDG, not WETH, so this supply is handed an asset
+    // no deployed adapter accepts.
+    expect(reasonsOf(nodes).some((reason) => reason.includes("Supply is handed WETH, and no adapter here takes that"))).toBe(true);
   });
 
   it("rejects a venue with no adapter", () => {
@@ -499,10 +505,12 @@ describe("reason collection", () => {
       ["hold"],
     );
     const reasons = reasonsOf(nodes);
-    expect(reasons).toHaveLength(3);
+    // The recurring source cannot open a route, so the asset flowing into Supply
+    // is unknown and that step is skipped silently (a rejection derived from an
+    // asset nobody knows would be noise). Source and sink are the two reasons.
+    expect(reasons).toHaveLength(2);
     expect(reasons[0]).toContain("cadence");
-    expect(reasons[1]).toContain("Supply");
-    expect(reasons[2]).toContain("Hold in zap");
+    expect(reasons[1]).toContain("Hold in zap");
   });
 });
 
@@ -613,11 +621,12 @@ describe("the Live route blueprint", () => {
 // ---------------------------------------------------------------------------
 // The deployed-adapter registry, and what it is allowed to change.
 //
-// `chains.ts` is the only thing that decides what this build offers. The rule
-// it exists to enforce: nothing is offered as deployable unless an adapter
-// address is configured for it. So these tests pin both halves — that the
-// unconfigured world is exactly the one-route world the app already signs, and
-// that configuring an address is what, and all that, widens it.
+// `chains.ts` is the only thing that decides what this build offers. The four
+// expansion adapters (USDG swap both sides, vault deposit, vault redeem) now
+// carry baked addresses because they are deployed and allowlisted on chain 4663,
+// so the default deployed set is the full six. The env var still overrides the
+// baked address, and a MALFORMED env value fails closed by dropping that one
+// route — never by widening what is offered.
 // ---------------------------------------------------------------------------
 
 /** Any well-formed address; the registry only cares that one is configured. */
@@ -647,48 +656,56 @@ function policyReasons(nodes: ChainNode[], adapters?: AdapterSet): string[] {
 }
 
 describe("the deployed-adapter registry", () => {
-  it("deploys nothing but the bounded swap when no adapter env is set", () => {
-    expect(deployedAdapters().map((adapter) => adapter.id)).toEqual([...BOUNDED_SWAP_IDS]);
-    expect(onlyBoundedSwapIsDeployed()).toBe(true);
+  it("deploys the full baked adapter set — bounded swap, USDG swap, and both vault legs", () => {
+    expect(deployedAdapters().map((adapter) => adapter.id)).toEqual([
+      "robinhood-v4-weth-zaps",
+      "robinhood-v4-zaps-weth",
+      "robinhood-v4-weth-usdg",
+      "robinhood-v4-usdg-weth",
+      "robinhood-zap-vault-deposit",
+      "robinhood-zap-vault-redeem",
+    ]);
+    // A non-bounded, reachable adapter is deployed, so the one-route world is over.
+    expect(onlyBoundedSwapIsDeployed()).toBe(false);
   });
 
-  it("treats an entry with no baked address as NOT DEPLOYED", () => {
+  it("treats every baked expansion adapter as deployed", () => {
     for (const spec of ROBINHOOD_ADAPTERS) {
-      if (spec.deployedAddress) continue;
-      expect(isAdapterDeployed(spec), spec.id).toBe(false);
-      expect(adapterAddress(spec), spec.id).toBeNull();
+      expect(isAdapterDeployed(spec), spec.id).toBe(true);
+      expect(adapterAddress(spec), spec.id).not.toBeNull();
     }
   });
 
-  it("counts a configured address, and only then", () => {
+  it("uses the baked address, and lets an env var override it", () => {
     const vault = ROBINHOOD_ADAPTERS.find((spec) => spec.id === "robinhood-zap-vault-deposit");
     expect(vault).toBeDefined();
     if (!vault) return;
 
-    expect(isAdapterDeployed(vault)).toBe(false);
+    const baked = adapterAddress(vault);
+    expect(isAdapterDeployed(vault)).toBe(true);
+    expect(baked).not.toBeNull();
     configureVaultDeposit();
     expect(adapterAddress(vault)).toBe(VAULT_DEPOSIT_ADDRESS);
-    expect(onlyBoundedSwapIsDeployed()).toBe(false);
-    expect(deployedAdapters().map((adapter) => adapter.id)).toContain("robinhood-zap-vault-deposit");
+    expect(adapterAddress(vault)).not.toBe(baked);
   });
 
   // A malformed value must never widen what the builder claims. Being wrongly
   // rejected costs a user one env fix; being wrongly offered costs them a
-  // capsule that reverts, or worse, one that does something else.
-  it("fails closed on a value that is not a live address", () => {
+  // capsule that reverts, or worse, one that does something else. A malformed
+  // env now DROPS the route (its baked address is overridden by the bad value).
+  it("fails closed on a value that is not a live address, dropping that route", () => {
     for (const bad of ["", "0x0", "not-an-address", "0x0000000000000000000000000000000000000000", "0x1234"]) {
       configureVaultDeposit(bad);
       expect(
         deployedAdapters().map((adapter) => adapter.id),
         bad || "<empty>",
-      ).toEqual([...BOUNDED_SWAP_IDS]);
-      expect(onlyBoundedSwapIsDeployed(), bad || "<empty>").toBe(true);
+      ).not.toContain("robinhood-zap-vault-deposit");
     }
   });
 
-  it("finds no deployed adapter for a vault deposit until one is configured", () => {
+  it("finds the baked vault-deposit adapter, and honours an env override", () => {
     const query = { blockId: "supply", tokenIn: "USDG", params: { market: "ZapVault" } };
-    expect(findDeployedAdapter(query)).toBeNull();
+    expect(findDeployedAdapter(query)?.id).toBe("robinhood-zap-vault-deposit");
     configureVaultDeposit();
     expect(findDeployedAdapter(query)?.address).toBe(VAULT_DEPOSIT_ADDRESS);
   });
@@ -737,8 +754,8 @@ describe("the deployed-adapter registry", () => {
   });
 });
 
-describe("with nothing new deployed, the mapper is exactly the one-route mapper", () => {
-  it("rejects a swap-then-supply design in the same words it always did", () => {
+describe("with the expansion adapters deployed, the mapper still refuses the impossible", () => {
+  it("rejects a swap-then-supply design because the vault takes USDG, not 0xZAPS", () => {
     const reasons = reasonsOf(
       chain(
         ["wallet-balance", { asset: "WETH", amount: "0.05" }],
@@ -746,13 +763,12 @@ describe("with nothing new deployed, the mapper is exactly the one-route mapper"
         ["supply", { market: "ZapVault", amount: "100" }],
       ),
     );
-    expect(reasons[0]).toContain("exactly one step; this design has 2 actions");
-    expect(reasons[1]).toBe(
-      "Supply has no adapter on the live route — the only step the v1.1 capsule can execute is a single aeWETH ↔ 0xZAPS swap.",
-    );
+    expect(reasons).toHaveLength(1);
+    expect(reasons[0]).toContain("Supply is handed 0xZAPS, and no adapter here takes that");
+    expect(reasons[0]).toContain("OpenZap USDG Vault deposit (takes USDG, welded to market ZapVault)");
   });
 
-  it("rejects a second swap step, because one adapter is welded to one pool", () => {
+  it("rejects a round-trip swap that spends the asset it settles in", () => {
     const reasons = reasonsOf(
       chain(
         ["wallet-balance", { asset: "WETH", amount: "0.05" }],
@@ -760,7 +776,8 @@ describe("with nothing new deployed, the mapper is exactly the one-route mapper"
         ["swap", { into: "WETH", venue: "Uniswap v4", amount: "100" }],
       ),
     );
-    expect(reasons[0]).toContain("exactly one step; this design has 2 actions");
+    expect(reasons).toHaveLength(1);
+    expect(reasons[0]).toContain("Step 1 (Swap) spends WETH, and WETH is also what this design settles in");
   });
 
   it("emits a single-step policy for the live route, with the deployed adapter on it", () => {
@@ -845,12 +862,12 @@ describe("with the real vault adapter configured", () => {
     expect(reasons[0]).toContain("reverts unless the round trip comes back profitable");
   });
 
-  it("maps a single vault deposit, and refuses to hand it to the deploy page", () => {
+  it("maps a single vault deposit, and hands it to the deploy page by route id", () => {
     configureVaultDeposit();
-    // Not a chain anyone can draw today — no source offers USDG — so it is
-    // built directly. It is here because it is the first policy shape with no
-    // swap in it, and the handoff has to refuse it rather than send `/app` a
-    // direction it has no way to sign.
+    // A `[wallet-balance USDG] → [supply ZapVault]` chain IS drawable now (the
+    // catalog names both), and with the adapter deployed it reduces to a single
+    // vault-deposit step. The deploy page signs single-step capsules by route
+    // id, so it is handed off — /app applies the vault seeding gate on import.
     const nodes = chain(
       ["wallet-balance", { asset: "USDG", amount: "500" }],
       ["supply", { market: "ZapVault", amount: "500" }],
@@ -872,16 +889,22 @@ describe("with the real vault adapter configured", () => {
     expect(policy.outAsset).toBe("ozUSDG");
 
     const route = reduceChainToLiveRoute(nodes);
-    expect(route.deployable).toBe(false);
-    expect(route.deployable || route.reasons[0]).toContain("The deploy page signs one aeWETH ↔ 0xZAPS swap");
+    expect(route.deployable).toBe(true);
+    expect(route.deployable && route.routeId).toBe("robinhood-zap-vault-deposit");
+    // No single buy/sell direction for a vault route — /app resolves it by id.
+    expect(route.deployable && route.direction).toBeNull();
+    // The CTA carries the seeding disclosure verbatim — deployable.ts cannot read
+    // the vault, so it must not read as a promise the /app seed gate will refuse.
+    expect(route.deployable && route.unenforcedGuards[0]).toContain("deploys only while the vault is seeded");
   });
 
   it("leaves the live route, and every guard disclosure on it, untouched", () => {
     configureVaultDeposit();
-    // Deploying a vault adapter must not change one thing about the route the
-    // app already signs.
+    // The route the app already signs must be byte-identical, now with its
+    // route id carried alongside the legacy direction.
     expect(reduceChainToLiveRoute(buyChain())).toEqual({
       deployable: true,
+      routeId: "robinhood-v4-weth-zaps",
       direction: "buy",
       amountIn: "0.05",
       slippageBps: 50,

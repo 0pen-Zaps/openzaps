@@ -107,7 +107,20 @@ export type LivePolicyMapping =
   | { deployable: false; reasons: string[] };
 
 export type LiveRouteMapping =
-  | { deployable: true; direction: ZapDirection; amountIn: string; slippageBps: number; unenforcedGuards: string[] }
+  | {
+      deployable: true;
+      /**
+       * The deployed route `/app` will sign — a `chains.ts` adapter id. This is
+       * the route identity the handoff carries; `direction` is a legacy hint
+       * that is non-null ONLY for the bounded aeWETH↔0xZAPS pair, because a
+       * buy/sell bit is ambiguous once a second pool shares an input token.
+       */
+      routeId: string;
+      direction: ZapDirection | null;
+      amountIn: string;
+      slippageBps: number;
+      unenforcedGuards: string[];
+    }
   | { deployable: false; reasons: string[] };
 
 type Placed = { node: ChainNode; block: LegoBlock };
@@ -622,13 +635,18 @@ function strandingNotices(steps: readonly LiveStep[]): string[] {
 }
 
 /**
- * Reduce a builder chain to the one route the deploy handoff can sign.
+ * Reduce a builder chain to the one deployed route the deploy handoff can sign.
  *
- * `/app` builds its policy with `buildRobinhoodPolicy`, which emits exactly one
- * step through the bounded aeWETH ↔ 0xZAPS adapter. So a policy this narrowing
- * cannot express is NOT offered a Deploy button, however deployable the
- * capsule itself would find it: an enabled CTA that creates a different capsule
- * from the one on the canvas is the same broken promise as an unenforced guard.
+ * `/app` signs SINGLE-STEP capsules — one adapter call — resolved by route id.
+ * So this accepts any single-step policy whose one step runs through a deployed
+ * adapter (the bounded swap, the USDG pool, or a vault deposit) and hands `/app`
+ * the `routeId` to sign. A MULTI-STEP capsule is still refused: `/app` has no
+ * way to sign it, and an enabled CTA that creates a different capsule from the
+ * one on the canvas is the same broken promise as an unenforced guard.
+ *
+ * The vault seeding gate is NOT applied here (this reducer is pure — no RPC):
+ * `/app` reads `vault.totalSupply() > 0` on import and refuses an unseeded vault
+ * route exactly as it refuses any invalid import.
  */
 export function reduceChainToLiveRoute(
   chain: readonly ChainNode[],
@@ -643,24 +661,28 @@ export function reduceChainToLiveRoute(
     return {
       deployable: false,
       reasons: [
-        `This design reduces to a ${policy.steps.length}-step capsule, and the deploy page signs single-step capsules only — one adapter call, aeWETH ↔ 0xZAPS. ${rest.length === 1 ? "Step" : "Steps"} ${named} would have nowhere to be signed, so no Deploy button is offered rather than one that creates a capsule this design did not describe.`,
+        `This design reduces to a ${policy.steps.length}-step capsule, and the deploy page signs single-step capsules only — one adapter call. ${rest.length === 1 ? "Step" : "Steps"} ${named} would have nowhere to be signed, so no Deploy button is offered rather than one that creates a capsule this design did not describe.`,
         ...policy.notices,
       ],
     };
   }
 
-  if (policy.direction === null) {
-    const [step] = policy.steps;
-    return {
-      deployable: false,
-      reasons: [
-        `The deploy page signs one aeWETH ↔ 0xZAPS swap; this design's only step is ${step.label} through ${step.adapterId}, which that page cannot build a policy for.`,
-      ],
-    };
-  }
-
+  const [step] = policy.steps;
+  // This reducer cannot read the chain, so it cannot know if a vault is seeded.
+  // A vault route deploys only while the vault holds shares; say so verbatim so
+  // the CTA does not read as a promise the /app seed gate will then refuse.
+  const seedNote =
+    step.kind === "vault-deposit" || step.kind === "vault-redeem"
+      ? [
+          "This vault route deploys only while the vault is seeded (totalSupply > 0). An unseeded ERC-4626 is grief-able, so the live app refuses one — the capsule may not be creatable yet.",
+        ]
+      : [];
   return {
     deployable: true,
+    // The route identity is the adapter id: `/app` resolves the pool/vault, the
+    // tokens and their decimals, and the Step.data encoding from it — never from
+    // `direction`, which is null for everything but the bounded pair.
+    routeId: step.adapterId,
     direction: policy.direction,
     amountIn: policy.amountIn,
     slippageBps: policy.slippageBps,
@@ -668,7 +690,7 @@ export function reduceChainToLiveRoute(
     // than dropped: this is the array the CTA renders verbatim, and anything
     // material about the policy has to reach it even if it arrives from a
     // later rule than the one this list was built for.
-    unenforcedGuards: [...policy.notices, ...policy.unenforcedGuards],
+    unenforcedGuards: [...seedNote, ...policy.notices, ...policy.unenforcedGuards],
   };
 }
 

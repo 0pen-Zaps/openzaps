@@ -1,6 +1,6 @@
 import { getAddress, isAddressEqual, type Address, type Hex } from "viem";
 
-import { ROBINHOOD_ASSETS } from "@/lib/robinhood";
+import { ROBINHOOD_ASSETS, ROBINHOOD_TOKENS } from "@/lib/robinhood";
 
 /** First ZapCreated is at block 15,971,673; scan from a safe floor below it. */
 export const ACTIVITY_FROM_BLOCK = 15_900_000n;
@@ -99,7 +99,22 @@ export interface ProtocolActivity {
 export function assetSymbolFor(asset: Address): string {
   if (isAddressEqual(asset, ROBINHOOD_ASSETS.weth)) return "aeWETH";
   if (isAddressEqual(asset, ROBINHOOD_ASSETS.zaps)) return "0xZAPS";
+  if (isAddressEqual(asset, ROBINHOOD_ASSETS.usdg)) return "USDG";
+  if (isAddressEqual(asset, ROBINHOOD_ASSETS.ozusdg)) return "ozUSDG";
   return `${asset.slice(0, 6)}…${asset.slice(-4)}`;
+}
+
+/**
+ * The real decimals for a tracked asset, so an amount is formatted at 6 (USDG),
+ * 9 (ozUSDG) or 18 (aeWETH/0xZAPS) rather than a hardcoded 18. Unknown assets
+ * fall back to 18. `null` for the zero address (native ETH) is handled by the
+ * caller, which already special-cases ETH; ETH is 18.
+ */
+export function assetDecimalsFor(asset: Address): number {
+  for (const token of Object.values(ROBINHOOD_TOKENS)) {
+    if (isAddressEqual(asset, token.address)) return token.decimals;
+  }
+  return 18;
 }
 
 /**

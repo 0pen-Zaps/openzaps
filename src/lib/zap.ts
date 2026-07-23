@@ -8,6 +8,7 @@ import {
   hashRobinhoodPolicy,
   type ZapDirection,
 } from "@/lib/openzap";
+import { resolveRouteFromStep, type Route } from "@/lib/routes";
 import { OPENZAP_CONTRACTS, ROBINHOOD_ASSETS } from "@/lib/robinhood";
 
 /**
@@ -423,7 +424,6 @@ function buildPolicyView(
   factoryImplementation: Address,
 ): ZapPolicyView {
   const step = policy.steps[0] ?? null;
-  const direction = directionOrNull(step?.tokenIn ?? null);
   const canonicalClone = assertCanonicalClone(runtime, factoryImplementation);
   const stepsComplete = BigInt(policy.steps.length) === policy.stepCount;
   const hashMatches =
@@ -437,6 +437,19 @@ function buildPolicyView(
       steps: policy.steps,
     }).toLowerCase() === policy.policyHash.toLowerCase();
 
+  // Resolve the deployed route the step implements (adapter + tokens + tracked
+  // assets + data shape). When it is a recognized route — the bounded swap, the
+  // USDG pool, or a vault leg — report deviations against THAT route so a
+  // legitimate USDG/vault capsule is not branded "does not match the live route".
+  // An unrecognized step falls through to the bounded-route deviation list.
+  const route = step
+    ? resolveRouteFromStep(step.adapter, step.tokenIn, policy.trackedAssets, step.data)
+    : null;
+  if (route && step) {
+    return recognizedRouteView(policy, step, route, canonicalClone, stepsComplete, hashMatches);
+  }
+
+  const direction = directionOrNull(step?.tokenIn ?? null);
   const deviations: string[] = [];
   if (!canonicalClone) {
     deviations.push("Runtime bytecode is not an EIP-1167 clone of the canonical implementation.");
@@ -510,6 +523,77 @@ function buildPolicyView(
     direction,
     inputSymbol: step ? assetSymbolForDisplay(step.tokenIn) : null,
     outputSymbol: direction ? assetsForDirection(direction).outputSymbol : null,
+    hashMatches,
+    canonicalClone,
+    matchesLiveRoute: deviations.length === 0,
+    deviations,
+  };
+}
+
+/**
+ * A ZapPolicyView for a capsule whose step implements a recognized DEPLOYED
+ * route (bounded swap, USDG pool, or a vault leg). `resolveRouteFromStep` has
+ * already pinned the adapter, tracked-asset pair, input token and Step.data
+ * shape — those cannot deviate here — so only the route-independent invariants
+ * are checked, and the route's own tokens name the symbols.
+ */
+function recognizedRouteView(
+  policy: ZapPolicyRead,
+  step: ZapStepRead,
+  route: Route,
+  canonicalClone: boolean,
+  stepsComplete: boolean,
+  hashMatches: boolean,
+): ZapPolicyView {
+  const deviations: string[] = [];
+  if (!canonicalClone) {
+    deviations.push("Runtime bytecode is not an EIP-1167 clone of the canonical implementation.");
+  }
+  if (!isAddressEqual(policy.recipient, policy.owner)) {
+    deviations.push(`Recipient ${policy.recipient} is not the owner ${policy.owner}.`);
+  }
+  if (policy.maxRelayerFeeCap !== 0n) {
+    deviations.push(`maxRelayerFeeCap is ${policy.maxRelayerFeeCap}; the live route requires 0.`);
+  }
+  if (!policy.optimization) {
+    deviations.push("Optimization is disabled; the live route requires it enabled.");
+  }
+  if (policy.stepCount !== 1n) {
+    deviations.push(`Step count is ${policy.stepCount}; the live route allows exactly one step.`);
+  }
+  if (!stepsComplete) {
+    deviations.push(
+      `Only ${policy.steps.length} of ${policy.stepCount} steps were read; the policy hash could not be recomputed.`,
+    );
+  }
+  if (!isAddressEqual(step.spender, route.adapter)) {
+    deviations.push(`Step spender ${step.spender} is not the route adapter ${route.adapter}.`);
+  }
+  if (step.amountIn <= 0n || step.amountIn > MAX_ROUTER_AMOUNT) {
+    deviations.push(`Step amountIn ${step.amountIn} is outside the router's uint128 range.`);
+  }
+  if (stepsComplete && !hashMatches) {
+    deviations.push("Policy hash does not match the policy this zap exposes.");
+  }
+
+  return {
+    owner: getAddress(policy.owner),
+    recipient: getAddress(policy.recipient),
+    maxRelayerFeeCap: policy.maxRelayerFeeCap.toString(),
+    optimization: policy.optimization,
+    trackedAssets: policy.trackedAssets.map((asset) => getAddress(asset)),
+    stepCount: policy.stepCount.toString(),
+    step: {
+      adapter: getAddress(step.adapter),
+      tokenIn: getAddress(step.tokenIn),
+      spender: getAddress(step.spender),
+      amountIn: step.amountIn.toString(),
+      data: step.data,
+    },
+    policyHash: policy.policyHash,
+    direction: route.direction,
+    inputSymbol: route.tokenIn.symbol,
+    outputSymbol: route.tokenOut.symbol,
     hashMatches,
     canonicalClone,
     matchesLiveRoute: deviations.length === 0,

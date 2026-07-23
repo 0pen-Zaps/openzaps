@@ -106,6 +106,23 @@ describe("parseRouterAmount", () => {
     expect(parseRouterAmount("340282366920938463463.374607431768211455")).toBe(max);
     expect(() => parseRouterAmount("340282366920938463463.374607431768211456")).toThrow(/uint128/);
   });
+
+  // Per-token decimals are the #1 money trap: USDG is 6, ozUSDG is 9. A 6-dp
+  // amount parsed at the default 18 would be 10^12x too large.
+  it("parses at the token's real decimals when given", () => {
+    expect(parseRouterAmount("1", 6)).toBe(1_000_000n); // 1 USDG
+    expect(parseRouterAmount("1.5", 6)).toBe(1_500_000n);
+    expect(parseRouterAmount("0.000001", 6)).toBe(1n);
+    expect(parseRouterAmount("1", 9)).toBe(1_000_000_000n); // 1 ozUSDG
+    expect(parseRouterAmount("2.5", 9)).toBe(2_500_000_000n);
+  });
+
+  it("rejects more fractional places than the token has decimals", () => {
+    expect(() => parseRouterAmount("1.0000001", 6)).toThrow(/6 decimal/);
+    expect(() => parseRouterAmount("1.0000000001", 9)).toThrow(/9 decimal/);
+    // A 6-dp value is fine at 18 dp; the default still behaves as before.
+    expect(parseRouterAmount("1.0000001")).toBe(1_000_000_100_000_000_000n);
+  });
 });
 
 describe("assetsForDirection and pool ordering", () => {

@@ -820,8 +820,13 @@ export function ZapBuilder(): React.JSX.Element {
 
   /** What, if anything, of this design the live v1.1 contracts can carry. */
   const deployment = useMemo(() => reduceChainToLiveRoute(chain), [chain]);
+  // `route` is the route identity `/app` resolves and signs; `dir` is kept only
+  // for backward-compatibility with the bounded pair (older links carry it and
+  // no route id). Amount is the decimal string in the token's own units.
   const deployHref = deployment.deployable
-    ? `/app?src=build&dir=${deployment.direction}&amount=${encodeURIComponent(deployment.amountIn)}&bps=${deployment.slippageBps}`
+    ? `/app?src=build&route=${encodeURIComponent(deployment.routeId)}${
+        deployment.direction ? `&dir=${deployment.direction}` : ""
+      }&amount=${encodeURIComponent(deployment.amountIn)}&bps=${deployment.slippageBps}`
     : null;
 
   /**
