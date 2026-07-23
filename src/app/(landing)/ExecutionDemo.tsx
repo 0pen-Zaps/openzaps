@@ -19,7 +19,7 @@ import styles from "./landing.module.css";
  * assembled from the real block catalog and compiled by the same
  * `compileChain` the builder uses, in the browser. What it deliberately does
  * NOT do is invent numbers — quotes and output amounts exist only at sign
- * time on /use, so the preview shows structure, checks, and constraints, and
+ * time on /zap, so the preview shows structure, checks, and constraints, and
  * hands off to the real surface.
  */
 
@@ -58,7 +58,7 @@ export function ExecutionDemo(): React.JSX.Element {
   // so no manual useMemo bookkeeping here.
   const chain = recipe && amountValid ? buildChain(recipe.id, amount.trim()) : null;
   const compiled = chain ? compileChain(chain) : null;
-  const shareHref = chain ? `/use?d=${encodeChain(chain)}` : "/use";
+  const shareHref = chain ? `/zap?d=${encodeChain(chain)}` : "/zap";
 
   const clearTimers = () => {
     timers.current.forEach((t) => window.clearTimeout(t));
@@ -238,7 +238,7 @@ export function ExecutionDemo(): React.JSX.Element {
                 <Link href={shareHref} className="btn btnGhost" data-magnetic>
                   <span>Open in builder</span>
                 </Link>
-                <Link href="/use?view=sign" className="btn btnPrimary" data-magnetic>
+                <Link href="/zap?view=sign" className="btn btnPrimary" data-magnetic>
                   <span>Sign &amp; run</span>
                 </Link>
               </div>

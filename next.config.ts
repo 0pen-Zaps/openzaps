@@ -1,30 +1,28 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  // Three routes were removed or folded together. These 308s keep every inbound
-  // link — a shared URL, a search result, a bookmark — landing on the page that
-  // now holds what it used to, rather than on a 404.
-  //   /dashboard  merged into the Zaps Feed at /zaps
-  //   /security   folded into the docs, at the #security anchor
-  //   /pricing    removed; the docs are the surviving product reference
-  // A destination hash is served in the Location header and honoured by the
-  // browser, so /security lands on the security cluster, not just the docs top.
+  // 308s keep every inbound link — a shared URL, a search result, a bookmark, an
+  // onchain-minted capsule link — landing on the page that now holds what it
+  // used to, rather than on a 404. Next.js forwards the incoming query string,
+  // so /use?d=… and /use?view=sign carry through to /zap intact.
+  //   /use            → /zap               the action surface was renamed
+  //   /zaps           → /explore           the feed was renamed
+  //   /zaps/<address> → /explore/<address> per-capsule pages moved with it
+  //   /dashboard      → /explore           older fold into the feed
+  //   /app            → /zap?view=sign     the signing console, now a /zap view
+  //   /build          → /zap               the visual builder, now a /zap view
+  //   /security       → /docs#security     folded into the docs
+  //   /pricing        → /docs              removed; docs are the surviving reference
   async redirects() {
     return [
-      { source: "/dashboard", destination: "/zaps", permanent: true },
+      { source: "/use", destination: "/zap", permanent: true },
+      { source: "/zaps", destination: "/explore", permanent: true },
+      { source: "/zaps/:address", destination: "/explore/:address", permanent: true },
+      { source: "/dashboard", destination: "/explore", permanent: true },
+      { source: "/app", destination: "/zap?view=sign", permanent: true },
+      { source: "/build", destination: "/zap", permanent: true },
       { source: "/security", destination: "/docs#security", permanent: true },
       { source: "/pricing", destination: "/docs", permanent: true },
-      // The signing console moved from /app into /use's "Sign & run" view. A
-      // bare /app bookmark always meant the console, so it lands on that view,
-      // not the Design canvas. The 308 preserves the query string, so a
-      // builder handoff link minted before the rename still lands with its
-      // route/amount/bps intact (and its src=build implies the sign view on
-      // its own).
-      { source: "/app", destination: "/use?view=sign", permanent: true },
-      // The visual builder merged into /use as its "Design" view. The 308
-      // preserves the query string, so a shared /build?d=… design link keeps
-      // decoding — /use opens the design view whenever ?d= is present.
-      { source: "/build", destination: "/use", permanent: true },
     ];
   },
 };

@@ -10,8 +10,8 @@ import { TOKEN } from "@/lib/config";
 import styles from "./SiteNav.module.css";
 
 const LINKS = [
-  { href: "/use", label: "Use" },
-  { href: "/zaps", label: "Zaps Feed" },
+  { href: "/zap", label: "Zap" },
+  { href: "/explore", label: "Explore" },
   { href: "/docs", label: "Docs" },
   { href: "/token", label: TOKEN.symbol },
 ] as const;

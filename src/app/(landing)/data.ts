@@ -90,7 +90,7 @@ export function recipeCard(recipe: ZapRecipe): RecipeCard {
     guardScore: compiled.guardScore,
     status: compiled.status,
     deployable: live.deployable,
-    builderHref: `/use?d=${token}`,
+    builderHref: `/zap?d=${token}`,
     shareToken: token,
   };
 }

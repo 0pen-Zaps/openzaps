@@ -1422,7 +1422,7 @@ export default function AppPage(): React.JSX.Element {
             {" "}
             {/* Global `a` inherits its colour, so the underline is what separates
                 the link from the notice text it sits inside. */}
-            <Link href={`/zaps/${zap.address}`} style={{ textDecoration: "underline" }}>
+            <Link href={`/explore/${zap.address}`} style={{ textDecoration: "underline" }}>
               Open this zap&apos;s onchain page →
             </Link>
           </>
@@ -1553,7 +1553,7 @@ export default function AppPage(): React.JSX.Element {
                 <a href={explorerAddress(zap.address)} target="_blank" rel="noreferrer">{zap.address}</a>
                 {/* Direct child of .currentZap so it picks up the same block
                     treatment as the explorer link above it. */}
-                <Link href={`/zaps/${zap.address}`}>Onchain zap page: policy, executions, recoveries →</Link>
+                <Link href={`/explore/${zap.address}`}>Onchain zap page: policy, executions, recoveries →</Link>
                 <div><small>Required</small><strong>{formatToken(requiredAmount, inDecimals)} {inputSymbol}</strong></div>
                 <div><small>Zap {inputSymbol}</small><strong>{formatToken(zapInBalance, inDecimals)} {inputSymbol}</strong></div>
                 <div><small>Zap {outputSymbol}</small><strong>{formatToken(zapOutBalance, outDecimals)} {outputSymbol}</strong></div>
@@ -1617,7 +1617,7 @@ export default function AppPage(): React.JSX.Element {
                     <Link
                       aria-label={`Open the onchain page for zap ${record.address}`}
                       className="btn btnGhost"
-                      href={`/zaps/${record.address}`}
+                      href={`/explore/${record.address}`}
                     >
                       ↗
                     </Link>
@@ -1642,7 +1642,7 @@ export default function AppPage(): React.JSX.Element {
             >
               Export receipts (JSON)
             </button>
-            <Link href="/zaps">Protocol-wide activity →</Link>
+            <Link href="/explore">Protocol-wide activity →</Link>
             <a href={ROBINHOOD_EXPLORER_URL} target="_blank" rel="noreferrer">Open Robinhood Blockscout ↗</a>
           </div>
         </div>

@@ -121,7 +121,7 @@ export default function LandingPage(): React.JSX.Element {
               className={`${styles.heroActions} ${styles.heroEnter}`}
               style={{ "--enter-delay": "460ms" } as React.CSSProperties}
             >
-              <Link href="/use" className="btn btnPrimary btnLg" data-magnetic>
+              <Link href="/zap" className="btn btnPrimary btnLg" data-magnetic>
                 <span>Launch OpenZaps</span>
               </Link>
               <a href="#zaps" className="btn btnGhost btnLg" data-magnetic>
@@ -404,10 +404,10 @@ export default function LandingPage(): React.JSX.Element {
               Execute across DeFi without navigating every layer beneath it.
             </p>
             <div className={styles.finalActions}>
-              <Link href="/use?view=sign" className="btn btnPrimary btnLg" data-magnetic>
+              <Link href="/zap?view=sign" className="btn btnPrimary btnLg" data-magnetic>
                 <span>Launch OpenZaps</span>
               </Link>
-              <Link href="/use" className="btn btnGhost btnLg" data-magnetic>
+              <Link href="/zap" className="btn btnGhost btnLg" data-magnetic>
                 <span>Build a Zap</span>
               </Link>
             </div>
@@ -436,7 +436,7 @@ const WHY = [
   },
   {
     title: "Transparent",
-    detail: "Every capsule's policy, provenance, and executions are public and re-verifiable on /zaps.",
+    detail: "Every capsule's policy, provenance, and executions are public and re-verifiable on /explore.",
   },
   {
     title: "Bounded",

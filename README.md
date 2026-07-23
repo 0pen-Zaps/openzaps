@@ -37,7 +37,7 @@ This is a monorepo. The web app and the Solidity protocol live together.
 
 | Path | What |
 | --- | --- |
-| [`src/app/`](src/app) | The Next.js 16 site: landing page, live policy console (`/app`), Zaps Feed (`/zaps`), docs, token, and API routes. |
+| [`src/app/`](src/app) | The Next.js 16 site: landing page, live policy console (`/zap`), Explore feed (`/explore`), docs, token, and API routes. |
 | [`src/lib/`](src/lib) | Chain definitions, protocol addresses and ABIs, the block catalog behind the visual builder, and the deterministic policy simulator. |
 | [`contracts/`](contracts/README.md) | The live v1.1 Solidity protocol, bounded adapters, deploy/smoke scripts, and the Foundry unit / fuzz / invariant / fork suite. **Pre-external-audit.** |
 | [`docs/`](docs) | Architecture Decision Records, the testable invariant catalog, and product/security research the design derives from. |

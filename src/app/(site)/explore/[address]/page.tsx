@@ -11,7 +11,7 @@ import { breadcrumbJsonLd, pageMetadata } from "@/lib/seo";
 import { fetchZapDetail } from "@/lib/zap-server";
 import { isZapNotFound, type ZapDetailPayload } from "@/lib/zap";
 import { ZapLive } from "./ZapLive";
-import styles from "../zaps.module.css";
+import styles from "../explore.module.css";
 
 type Params = { params: Promise<{ address: string }> };
 
@@ -145,7 +145,7 @@ export async function generateMetadata({ params }: Params): Promise<Metadata> {
       `${shortAddress(zap)} is ${route} deployed by the OpenZaps factory on Robinhood Chain, owned by ` +
       `${shortAddress(provenance.owner)} and created in block ${Number(provenance.createdBlock).toLocaleString("en-US")}. ` +
       `${stats.executionCount === 1 ? "1 execution" : `${stats.executionCount} executions`} read from its own onchain logs.`,
-    path: `/zaps/${zap}`,
+    path: `/explore/${zap}`,
     keywords: [
       "OpenZaps zap",
       "policy capsule onchain",
@@ -178,14 +178,14 @@ export default async function ZapDetailPage({ params }: Params): Promise<React.J
       <JsonLd
         data={{
           "@context": "https://schema.org",
-          ...breadcrumbJsonLd(`/zaps/${zap}`, verified ? `Zap ${shortAddress(zap)}` : shortAddress(zap)),
+          ...breadcrumbJsonLd(`/explore/${zap}`, verified ? `Zap ${shortAddress(zap)}` : shortAddress(zap)),
         }}
       />
 
       <section className={`container ${styles.detailHero}`}>
         <div>
           <span className="eyebrow">
-            <Link className={styles.crumb} href="/zaps">
+            <Link className={styles.crumb} href="/explore">
               Deployed zaps
             </Link>
             {verified ? null : <> · unverified address</>}
@@ -210,7 +210,7 @@ export default async function ZapDetailPage({ params }: Params): Promise<React.J
             <a className="btn btnGhost" href={explorerAddress(zap)} target="_blank" rel="noreferrer">
               <span>View on Blockscout ↗</span>
             </a>
-            <Link className="btn btnGhost" href="/use">
+            <Link className="btn btnGhost" href="/zap">
               <span>Design a chain</span>
             </Link>
           </div>

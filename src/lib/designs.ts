@@ -18,7 +18,7 @@ export type SavedDesign = {
   /** Stable identity across renames. */
   id: string;
   name: string;
-  /** `encodeChain` token — decode with `decodeChain`, share as `/use?d=`. */
+  /** `encodeChain` token — decode with `decodeChain`, share as `/zap?d=`. */
   token: string;
   /** Denormalised for display; the token is the source of truth. */
   blocks: number;

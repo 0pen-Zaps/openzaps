@@ -96,7 +96,7 @@ export function LandingNav({ githubUrl }: { githubUrl: string }): React.JSX.Elem
             GitHub<span className={styles.navExt}>↗</span>
           </a>
         </nav>
-        <Link href="/use" className={styles.navCta} data-magnetic>
+        <Link href="/zap" className={styles.navCta} data-magnetic>
           <span>Launch App</span>
         </Link>
       </div>
