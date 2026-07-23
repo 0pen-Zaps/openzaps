@@ -1,0 +1,21 @@
+{
+  "kind": "recurring",
+  "comment": "Example only — every numeric field is a decimal string; drop real signed intents (exported from the app) into ~/.openzaps/executor/intents/. This one executes the zap's frozen policy every 24h, 30 times.",
+  "intent": {
+    "zap": "0x0000000000000000000000000000000000000000",
+    "chainId": "4663",
+    "seriesId": "1",
+    "validAfter": "0",
+    "deadline": "1793750400",
+    "interval": "86400",
+    "maxRuns": "30",
+    "recipient": "0x0000000000000000000000000000000000000000",
+    "executor": "0x0000000000000000000000000000000000000000",
+    "maxGas": "1500000",
+    "maxFeePerGas": "2000000000",
+    "policyHash": "0x0000000000000000000000000000000000000000000000000000000000000000",
+    "outAsset": "0x0000000000000000000000000000000000000000",
+    "minOutPerRun": "0"
+  },
+  "signature": "0x0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+}

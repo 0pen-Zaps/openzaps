@@ -127,6 +127,34 @@ ids, vault welds, allowlist state).
   with more moving parts than anything before it. See `contracts/USE_EXPANSION.md` §6 before
   advertising LP deposits to third parties.
 
+### The v3 execution stack — live (broadcast at block 17,601,632, 2026-07-23)
+
+Deployed from [`contracts/script/DeployV3Robinhood.s.sol`](../contracts/script/DeployV3Robinhood.s.sol)
+by `0x5a52D4B820Ae7F02880d270562950918ACb14aA2` (governance for the pot and the price-source
+registry; two-step transferable). All 6 transactions succeeded; every wire below was verified
+onchain post-broadcast (factory↔pot binding, price-source allowlisting, live pool read,
+`implCodeHash` match against the local build). Canonical record: this table plus
+`contracts/broadcast/DeployV3Robinhood.s.sol/4663/run-latest.json`.
+
+| Contract | Address |
+|---|---|
+| OpenZapFactoryV3 (`3.0.0-candidate`) | [`0x70FCFD3615eA6651a670B6c4CD6B8bA1506717e9`](https://robinhoodchain.blockscout.com/address/0x70FCFD3615eA6651a670B6c4CD6B8bA1506717e9) |
+| OpenZapV3 implementation | [`0x0309E72Ffd1c6855FF519d9E923AEFc0C52bFdb5`](https://robinhoodchain.blockscout.com/address/0x0309E72Ffd1c6855FF519d9E923AEFc0C52bFdb5) |
+| ZapLotteryPot | [`0xeB7a15CE1c969efBA43ecfc1A63960Ad0042CFe3`](https://robinhoodchain.blockscout.com/address/0xeB7a15CE1c969efBA43ecfc1A63960Ad0042CFe3) |
+| Price-source registry (AdapterRegistry) | [`0xd83a2dedb6185395A1Ac1d0abb9F98472feAd574`](https://robinhoodchain.blockscout.com/address/0xd83a2dedb6185395A1Ac1d0abb9F98472feAd574) |
+| V4PoolPriceSource (aeWETH/0xZAPS pool) | [`0x60C310586541763D7f4dcc777F495f0627Bb098f`](https://robinhoodchain.blockscout.com/address/0x60C310586541763D7f4dcc777F495f0627Bb098f) |
+
+- `implCodeHash` `0x99c49515bd0a7038c216a0d710676c4c63bb7dd09108de5fddca885542057149`.
+- The factory REUSES the live v1.1 `AdapterRegistry` and `TokenAllowlist` — one governance surface
+  for adapters/tokens; the new registry instance governs trigger price sources only.
+- v3 capsules add the recurring + price-triggered execution types and the executor economy (1%
+  output fee: 80% submitter / 20% pot → 0xZAPS lottery). See
+  [`contracts/src/v3/README.md`](../contracts/src/v3/README.md). Domain version `"3"`.
+- The reference executor daemon ([`executor/`](../executor/README.md)) runs as LaunchAgent
+  `com.openzaps.executor`, watch-only until a gas key is configured.
+- **Pre-external-audit**, like everything on this chain. No v3 capsule has been created yet;
+  the app still deploys against the v1.1 factory.
+
 ## Base mainnet (chainId 8453)
 
 ### Live v1.1 core (2026-07-23)
