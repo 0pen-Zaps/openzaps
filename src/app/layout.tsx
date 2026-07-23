@@ -88,6 +88,9 @@ export const metadata: Metadata = {
 
 export const viewport: Viewport = {
   colorScheme: "dark",
+  // Ink, matching the manifest. Colours the mobile browser chrome so the
+  // address bar blends into the dark site rather than the old violet.
+  themeColor: "#060807",
 };
 
 const siteGraph = {
