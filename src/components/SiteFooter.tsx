@@ -43,7 +43,7 @@ export function SiteFooter(): React.JSX.Element {
               X @0xzaps
             </a>
             <Link href="/docs#security">Security</Link>
-            <Link href="/build">Visual builder</Link>
+            <Link href="/use">Visual builder</Link>
           </div>
           <div className={styles.col}>
             <h3>Token</h3>

@@ -210,7 +210,7 @@ export default async function ZapDetailPage({ params }: Params): Promise<React.J
             <a className="btn btnGhost" href={explorerAddress(zap)} target="_blank" rel="noreferrer">
               <span>View on Blockscout ↗</span>
             </a>
-            <Link className="btn btnGhost" href="/build">
+            <Link className="btn btnGhost" href="/use">
               <span>Design a chain</span>
             </Link>
           </div>

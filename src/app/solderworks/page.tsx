@@ -238,7 +238,7 @@ export default function SolderworksPage(): React.JSX.Element {
           assets. Onchain actions are irreversible, and the OpenZap contracts have not been externally audited.
         </p>
         <div className={styles.actions}>
-          <Link className="btn btnGhost btnLg" href="/build">
+          <Link className="btn btnGhost btnLg" href="/use">
             Open the builder
           </Link>
           <Link className="btn btnGhost btnLg" href="/roadmap">

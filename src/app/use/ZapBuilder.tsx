@@ -28,6 +28,9 @@ import {
 } from "@/lib/blocks";
 import { reduceChainToLiveRoute } from "@/lib/deployable";
 import { edgeScrollDelta } from "@/lib/drag";
+import { protocolsForAction } from "@/lib/protocols";
+import { resolveRouteById } from "@/lib/routes";
+import { ProtocolStack } from "@/components/ProtocolLogo";
 import { BlockGlyph } from "./BlockGlyph";
 import styles from "./build.module.css";
 
@@ -816,18 +819,65 @@ export function ZapBuilder(): React.JSX.Element {
     [chain, compiled],
   );
 
-  const shareUrl = useMemo(() => `${origin}/build?${SHARE_PARAM}=${encodeChain(chain)}`, [chain, origin]);
+  const shareUrl = useMemo(() => `${origin}/use?${SHARE_PARAM}=${encodeChain(chain)}`, [chain, origin]);
 
   /** What, if anything, of this design the live v1.1 contracts can carry. */
   const deployment = useMemo(() => reduceChainToLiveRoute(chain), [chain]);
   // `route` is the route identity `/app` resolves and signs; `dir` is kept only
   // for backward-compatibility with the bounded pair (older links carry it and
   // no route id). Amount is the decimal string in the token's own units.
+  // `view=sign` flips the surface to the console in place; the rest of the
+  // query is byte-identical to the old cross-page handoff, so the console's
+  // importer and pre-merge bookmarks both keep working.
   const deployHref = deployment.deployable
-    ? `/use?src=build&route=${encodeURIComponent(deployment.routeId)}${
+    ? `/use?view=sign&src=build&route=${encodeURIComponent(deployment.routeId)}${
         deployment.direction ? `&dir=${deployment.direction}` : ""
       }&amount=${encodeURIComponent(deployment.amountIn)}&bps=${deployment.slippageBps}`
     : null;
+  /** The resolved route the handoff would sign, for naming its tokens honestly. */
+  const deployRoute = deployment.deployable ? resolveRouteById(deployment.routeId) : null;
+
+  /**
+   * The settings panel's view of the chain: the source block's amount and the
+   * first slippage guard's cap, flattened so the inputs can bind to them
+   * directly. Derived from the chain and written back with `setParam`, so
+   * there is exactly one copy of every number.
+   */
+  const settingsAmount = useMemo(() => {
+    for (const node of chain) {
+      const block = getBlock(node.blockId);
+      if (block?.kind !== "source") continue;
+      const param = block.params.find((candidate) => candidate.key === "amount");
+      // A source without an amount (pending rewards draws whatever accrued) is
+      // still a source — say that, never "no source".
+      if (!param) return { kind: "unparameterised" as const, name: block.name };
+      return {
+        kind: "amount" as const,
+        uid: node.uid,
+        label: param.label,
+        asset: String(node.params.asset ?? ""),
+        value: String(node.params.amount ?? param.value),
+      };
+    }
+    return null;
+  }, [chain]);
+
+  const settingsSlippage = useMemo(() => {
+    // The TIGHTEST cap governs the deploy reduction, so that is the guard the
+    // panel must edit — pointing the slider at whichever guard happened to be
+    // first would show a number that never reaches the signed policy.
+    let tightest: { uid: string; bps: number; min?: number; max?: number; step?: number } | null = null;
+    for (const node of chain) {
+      if (node.blockId !== "guard-slippage") continue;
+      const param = getBlock(node.blockId)?.params.find((candidate) => candidate.key === "bps");
+      if (!param || param.type !== "number") continue;
+      const bps = Number(node.params.bps ?? param.value);
+      if (!tightest || bps < tightest.bps) {
+        tightest = { uid: node.uid, bps, min: param.min, max: param.max, step: param.step };
+      }
+    }
+    return tightest;
+  }, [chain]);
 
   /**
    * Load a design pasted as a share link or a copied JSON export.
@@ -839,7 +889,7 @@ export function ZapBuilder(): React.JSX.Element {
   const importDesign = useCallback((): void => {
     const nodes = decodeDesign(importText);
     if (!nodes) {
-      flash("That is not a design. Paste a /build share link or the JSON from “Copy design JSON”.");
+      flash("That is not a design. Paste a /use share link (old /build links work too) or the JSON from “Copy design JSON”.");
       return;
     }
     advancePlacementCounter(nodes);
@@ -940,6 +990,13 @@ export function ZapBuilder(): React.JSX.Element {
             {visibleBlocks.map((block) => {
               const fits = fitsById.get(block.id) ?? false;
               const accent = SHAPE_COLOR[block.emits ?? block.accepts ?? "token"];
+              // The chip button's aria-label REPLACES its contents in the
+              // accessible name, so the venue marks must be said here or a
+              // screen reader never hears them.
+              const chipProtocols = protocolsForAction(block.id, defaultParams(block));
+              const chipVia = chipProtocols.length
+                ? ` Routes through ${chipProtocols.map((protocol) => protocol.name).join(" and ")}.`
+                : "";
               return (
                 <button
                   key={block.id}
@@ -958,13 +1015,16 @@ export function ZapBuilder(): React.JSX.Element {
                     event.preventDefault();
                     addBlock(block);
                   }}
-                  aria-label={`${block.name}. ${block.blurb} ${fits ? "Fits the current chain." : "Does not fit the current chain yet."}`}
+                  aria-label={`${block.name}. ${block.blurb}${chipVia} ${fits ? "Fits the current chain." : "Does not fit the current chain yet."}`}
                 >
                   <span className={styles.chipIcon}>
                     <BlockGlyph name={block.glyph} className={styles.glyph} />
                   </span>
                   <span className={styles.chipText}>
-                    <strong>{block.name}</strong>
+                    <strong>
+                      {block.name}
+                      <ProtocolStack protocols={protocolsForAction(block.id, defaultParams(block))} size={13} />
+                    </strong>
                     <span>{block.blurb}</span>
                   </span>
                   <span className={styles.chipPorts} aria-hidden>
@@ -1123,6 +1183,14 @@ export function ZapBuilder(): React.JSX.Element {
                       </button>
 
                       <span className={styles.cardTools}>
+                        {/* The protocols this block actually calls under the
+                            hood, with the block's CURRENT params — flip the
+                            swap venue and the mark flips with it. Inside the
+                            tools cluster so .cardMain keeps its three grid
+                            columns. */}
+                        <span className={styles.cardProtocols}>
+                          <ProtocolStack protocols={protocolsForAction(block.id, node.params)} size={17} />
+                        </span>
                         <span className={styles.maturity} data-level={block.maturity}>
                           {block.maturity}
                         </span>
@@ -1289,6 +1357,84 @@ export function ZapBuilder(): React.JSX.Element {
             </div>
           </div>
 
+          {/* ---- zap settings ----
+              The two numbers every zap needs, surfaced without opening a card.
+              These inputs edit the CHAIN — the source block's amount and the
+              slippage guard's cap — never a parallel copy, so the compiler,
+              the deploy reduction, and the cards all stay in agreement, and
+              every change lands on the undo stack like any other edit. */}
+          <div className={styles.meter} aria-label="Zap settings">
+            <div className={styles.meterHead}>
+              <span>Zap settings</span>
+              <strong>
+                {settingsAmount === null
+                  ? "no source"
+                  : settingsAmount.kind === "amount"
+                    ? settingsAmount.asset
+                    : settingsAmount.name}
+              </strong>
+            </div>
+            <div className={styles.params}>
+              {settingsAmount === null ? (
+                <p className={styles.hashNote}>Add a source block and its amount appears here.</p>
+              ) : settingsAmount.kind === "unparameterised" ? (
+                <p className={styles.hashNote}>
+                  {settingsAmount.name} draws whatever has accrued — it has no amount to set.
+                </p>
+              ) : (
+                <label className={styles.param} htmlFor="zap-settings-amount">
+                  <span className={styles.paramLabel}>
+                    {settingsAmount.label} ({settingsAmount.asset})
+                  </span>
+                  <input
+                    id="zap-settings-amount"
+                    type="text"
+                    inputMode="decimal"
+                    spellCheck={false}
+                    value={settingsAmount.value}
+                    onChange={(event) => setParam(settingsAmount.uid, "amount", event.target.value)}
+                  />
+                </label>
+              )}
+              {settingsSlippage ? (
+                <label className={styles.param} htmlFor="zap-settings-slippage">
+                  <span className={styles.paramLabel}>
+                    Slippage cap
+                    <em>{settingsSlippage.bps} bps</em>
+                  </span>
+                  <input
+                    id="zap-settings-slippage"
+                    type="range"
+                    min={settingsSlippage.min}
+                    max={settingsSlippage.max}
+                    step={settingsSlippage.step}
+                    value={settingsSlippage.bps}
+                    aria-valuetext={`${settingsSlippage.bps} basis points (${(settingsSlippage.bps / 100).toFixed(2)}%)`}
+                    onChange={(event) => setParam(settingsSlippage.uid, "bps", Number(event.target.value))}
+                  />
+                </label>
+              ) : (
+                <button
+                  type="button"
+                  className={styles.ghostBtn}
+                  onClick={() => {
+                    const guard = getBlock("guard-slippage");
+                    if (guard) {
+                      addBlock(guard);
+                      trackEvent("builder_settings_slippage_added", {});
+                    }
+                  }}
+                >
+                  Add a slippage cap
+                </button>
+              )}
+            </div>
+            <p className={styles.hashNote}>
+              Not settings: the recipient is always the owner wallet, the relayer fee cap is 0, and the chain is
+              Robinhood (4663) — all frozen into the signed policy, on purpose.
+            </p>
+          </div>
+
           {/* Every issue the compiler raised, not the first one. The "Connector
               fit" check below can only ever quote a single message, so a chain
               with three broken joints used to report one and leave the other
@@ -1376,16 +1522,18 @@ export function ZapBuilder(): React.JSX.Element {
               <Link
                 className={styles.deployBtn}
                 href={deployHref}
-                onClick={() => trackEvent("builder_deploy_handoff", { direction: deployment.direction })}
+                onClick={() => trackEvent("builder_deploy_handoff", { route: deployment.routeId })}
               >
-                Deploy on Robinhood Chain →
+                Sign &amp; run on Robinhood Chain →
               </Link>
               <p className={styles.deployNote}>
-                This design reduces to the live route. The app page opens with{" "}
-                {deployment.direction === "buy" ? "aeWETH → 0xZAPS" : "0xZAPS → aeWETH"}, {deployment.amountIn}{" "}
-                {deployment.direction === "buy" ? "aeWETH" : "0xZAPS"}, and a{" "}
+                This design reduces to a live route. <strong>Sign &amp; run</strong> opens with{" "}
+                {deployRoute
+                  ? `${deployRoute.tokenIn.symbol} → ${deployRoute.tokenOut.symbol}`
+                  : "the matching route"}
+                , {deployment.amountIn} {deployRoute ? deployRoute.tokenIn.symbol : ""}, and a{" "}
                 {(deployment.slippageBps / 100).toFixed(2)}% signed slippage cap filled in. You create, fund, and
-                sign there. Nothing is submitted from here.
+                sign there — same page, one tab over. Nothing is submitted from here.
               </p>
               {deployment.unenforcedGuards.length > 0 ? (
                 // Rendered in full, in the CTA's own line of sight. Summarising
@@ -1454,7 +1602,7 @@ export function ZapBuilder(): React.JSX.Element {
                   value={importText}
                   rows={3}
                   spellCheck={false}
-                  placeholder="https://www.0xzaps.com/build?d=… or { &quot;chain&quot;: [ … ] }"
+                  placeholder="https://www.0xzaps.com/use?d=… or { &quot;chain&quot;: [ … ] }"
                   onChange={(event) => setImportText(event.target.value)}
                   onKeyDown={(event) => {
                     if (event.key === "Escape") setImporting(false);
@@ -1469,14 +1617,15 @@ export function ZapBuilder(): React.JSX.Element {
               </div>
             ) : null}
 
-            <Link className={styles.openApp} href="/use">
-              Open the live app →
+            <Link className={styles.openApp} href="/use?view=sign">
+              Open Sign &amp; run →
             </Link>
           </div>
 
           <p className={styles.disclaimer}>
-            The builder compiles and simulates. It cannot sign, fund, or submit a transaction. The routes the app
-            page can deploy are the bounded aeWETH ↔ 0xZAPS and aeWETH ↔ USDG capsules.
+            The canvas compiles and simulates. It cannot sign, fund, or submit a transaction — that happens one
+            tab over, in <strong>Sign &amp; run</strong>, against whichever deployed routes your design reduces
+            to: swaps, stitched multi-pool routes, and aeWETH/USDG liquidity provide/withdraw.
           </p>
         </aside>
       </div>
@@ -1510,6 +1659,11 @@ function isTextEntry(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false;
   if (target.isContentEditable || target instanceof HTMLTextAreaElement) return true;
   return target instanceof HTMLInputElement && target.type !== "range";
+}
+
+/** A block's params at their catalogue defaults, for palette-time protocol badges. */
+function defaultParams(block: LegoBlock): Record<string, ParamValue> {
+  return Object.fromEntries(block.params.map((param) => [param.key, param.value]));
 }
 
 /** One-line description of a placed block's current settings. */

@@ -1547,3 +1547,20 @@
     animation: none;
   }
 }
+
+/* ---- protocol badges ---------------------------------------------------- */
+/* The marks for whatever a block calls under the hood: pinned beside the
+   card's tools so they read at a glance, and inline after a palette chip's
+   name. Purely informative — never interactive. */
+.cardProtocols {
+  display: inline-flex;
+  align-items: center;
+  flex: none;
+  margin-right: 0.45rem;
+}
+
+.chipText strong {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}

@@ -117,11 +117,13 @@ export default function DocsPage(): React.JSX.Element {
           <section className={styles.section} id="quickstart">
             <h2>Quickstart</h2>
             <p>
-              The visual builder is at /build. It compiles a design and names every guard the live policy does not
-              bind. A design that reduces to the live route hands /app a prefilled direction, amount, and slippage cap.
-              Anything else saves as a design and cannot be deployed today. An agent, a backend, or a Mini App can call
-              the simulation API instead. Simulation never broadcasts a transaction and never asks for wallet
-              authority.
+              The product lives at /use: the Design view is the visual builder, Sign &amp; run is the console that
+              creates, funds, and executes capsules — one page, two tabs. The builder compiles a design and names
+              every guard the live policy does not bind; a design that reduces to a deployed route (swaps, the
+              stitched USDG ↔ 0xZAPS route, aeWETH/USDG liquidity provide/withdraw) hands Sign &amp; run a prefilled
+              route, amount, and slippage cap. Anything else saves as a design and cannot be deployed today. An
+              agent, a backend, or a Mini App can call the simulation API instead. Simulation never broadcasts a
+              transaction and never asks for wallet authority.
             </p>
             <div className={styles.codeBlock}>
               <pre>{`curl -X POST ${SITE_URL}/api/policies/simulate \\

@@ -14,11 +14,17 @@ const nextConfig: NextConfig = {
       { source: "/dashboard", destination: "/zaps", permanent: true },
       { source: "/security", destination: "/docs#security", permanent: true },
       { source: "/pricing", destination: "/docs", permanent: true },
-      // The signing console moved from /app to /use — the product surface is
-      // "Use", a verb, next to Build. The 308 preserves the query string, so a
+      // The signing console moved from /app into /use's "Sign & run" view. A
+      // bare /app bookmark always meant the console, so it lands on that view,
+      // not the Design canvas. The 308 preserves the query string, so a
       // builder handoff link minted before the rename still lands with its
-      // route/amount/bps intact.
-      { source: "/app", destination: "/use", permanent: true },
+      // route/amount/bps intact (and its src=build implies the sign view on
+      // its own).
+      { source: "/app", destination: "/use?view=sign", permanent: true },
+      // The visual builder merged into /use as its "Design" view. The 308
+      // preserves the query string, so a shared /build?d=… design link keeps
+      // decoding — /use opens the design view whenever ?d= is present.
+      { source: "/build", destination: "/use", permanent: true },
     ];
   },
 };
