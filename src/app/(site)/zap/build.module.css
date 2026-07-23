@@ -1565,7 +1565,7 @@
   gap: 0.35rem;
 }
 
-/* ---- /use tab switcher (mobile) ----------------------------------------- */
+/* ---- /zap tab switcher (mobile) ----------------------------------------- */
 /* The Design / Sign & run tabs reuse the console's segment styling, which
    stacks its buttons into full-width cards below 640px — the right call for
    route choices, but the view switcher was eating half the first screen. Two

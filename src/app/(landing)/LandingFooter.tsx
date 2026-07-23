@@ -22,8 +22,8 @@ export function LandingFooter({ githubUrl }: { githubUrl: string }): React.JSX.E
         <nav className={styles.footerNav} aria-label="Footer">
           <div className={styles.footerCol}>
             <h3 className={`${styles.footerColTitle} mono`}>Product</h3>
-            <Link href="/use">Use OpenZaps</Link>
-            <Link href="/zaps">Zaps Feed</Link>
+            <Link href="/zap">Zap</Link>
+            <Link href="/explore">Explore</Link>
             <Link href="/token">{TOKEN.symbol} token</Link>
             <Link href="/roadmap">Roadmap</Link>
           </div>

@@ -14,13 +14,13 @@ import { breadcrumbJsonLd, pageMetadata } from "@/lib/seo";
 import { fetchRangeVaultPulse, fetchZapVaultPulse, formatPulseAmount } from "@/lib/vault-server";
 import { fetchZapSummaries } from "@/lib/zap-server";
 import feed from "./feed.module.css";
-import styles from "./zaps.module.css";
+import styles from "./explore.module.css";
 
 export const metadata = pageMetadata({
-  title: "Zaps Feed — live activity and every deployed capsule",
+  title: "Explore — live activity and every deployed capsule",
   description:
     "The live OpenZaps feed on Robinhood Chain: creations, executions, and recoveries read straight from onchain logs, every policy capsule the canonical factory deployed, and the verified contract set — one page, no indexer, no estimates.",
-  path: "/zaps",
+  path: "/explore",
   keywords: [
     "OpenZaps feed",
     "Robinhood Chain activity",
@@ -61,11 +61,11 @@ export default async function ZapsFeedPage(): Promise<React.JSX.Element> {
 
   return (
     <main className={feed.page} id="main">
-      <JsonLd data={{ "@context": "https://schema.org", ...breadcrumbJsonLd("/zaps", "Zaps Feed") }} />
+      <JsonLd data={{ "@context": "https://schema.org", ...breadcrumbJsonLd("/explore", "Explore") }} />
 
       <section className={`container ${feed.hero}`}>
         <div>
-          <span className="eyebrow">Zaps Feed</span>
+          <span className="eyebrow">Explore</span>
           <h1>Every zap, straight from the chain.</h1>
           <p>
             Creations, executions, and recoveries are read directly from Robinhood Chain logs — and an execution row
@@ -73,7 +73,7 @@ export default async function ZapsFeedPage(): Promise<React.JSX.Element> {
             capsule the factory created, and the verified contract set behind them. No indexer, no estimates.
           </p>
           <div className={feed.heroActions}>
-            <Link className="btn btnPrimary btnLg" href="/use">
+            <Link className="btn btnPrimary btnLg" href="/zap">
               Design a chain
             </Link>
             <a
@@ -210,7 +210,7 @@ export default async function ZapsFeedPage(): Promise<React.JSX.Element> {
           <ol className={styles.list}>
             {page.rows.map((zap, i) => (
               <li className={styles.listItem} key={zap.address} style={{ "--row-delay": `${Math.min(i, 10) * 45}ms` } as React.CSSProperties}>
-                <Link className={styles.listLink} href={`/zaps/${zap.address}`}>
+                <Link className={styles.listLink} href={`/explore/${zap.address}`}>
                   <code className={styles.listAddress}>{shortAddress(zap.address)}</code>
                   <span className={styles.listOwner}>owner {shortAddress(zap.owner)}</span>
                   <span className={styles.listPolicy}>policy {shortHex(zap.policyHash)}</span>

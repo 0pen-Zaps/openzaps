@@ -4,7 +4,7 @@ import buildStyles from "./build.module.css";
 const SHAPES: FlowShape[] = ["token", "lp", "receipt", "yield", "debt"];
 
 /**
- * The Design view's intro. A separate, server-renderable component so the /use
+ * The Design view's intro. A separate, server-renderable component so the /zap
  * page can prerender it as the Suspense fallback: without it the static shell
  * for the whole surface was literally empty (the client wrapper reads
  * useSearchParams), which is a blank first paint and nothing for crawlers.

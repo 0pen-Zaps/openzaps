@@ -28,7 +28,7 @@ const lifecycle = [
   ["2", "Simulate", "Deterministic checks run before any wallet prompt. A blocked policy does not proceed. A warned policy proceeds only after review."],
   ["3", "Review signature", "The typed intent binds chain, owner, recipient, nonce, deadline, policy hash, min-out, relayer fee cap, and gas price. None of them can change after signing."],
   ["4", "Submit", "The owner submits from their own wallet. The v1.1 policy cannot bind a submitter, so whoever executes chooses the mempool path."],
-  ["5", "Monitor and revoke", "Receipts, allowance checks, balance deltas, alerts, and the owner's revoke and exit paths stay attached to the capsule. Its page at /zaps/<address> reports what the contract stores and what its own logs say, and nothing else."],
+  ["5", "Monitor and revoke", "Receipts, allowance checks, balance deltas, alerts, and the owner's revoke and exit paths stay attached to the capsule. Its page at /explore/<address> reports what the contract stores and what its own logs say, and nothing else."],
 ] as const;
 
 // The security model used to be its own page; it now lives here as the last
@@ -73,8 +73,8 @@ export default function DocsPage(): React.JSX.Element {
             audited. Onchain actions are irreversible, so deposit only what you can afford to lose.
           </p>
           <div className={styles.heroActions}>
-            <Link className="btn btnPrimary btnLg" href="/use">
-              Use OpenZaps
+            <Link className="btn btnPrimary btnLg" href="/zap">
+              Launch OpenZaps
             </Link>
             <a className="btn btnGhost btnLg" href={LINKS.contractSource} target="_blank" rel="noreferrer">
               Contract source
@@ -117,7 +117,7 @@ export default function DocsPage(): React.JSX.Element {
           <section className={styles.section} id="quickstart">
             <h2>Quickstart</h2>
             <p>
-              The product lives at /use: the Design view is the visual builder, Sign &amp; run is the console that
+              The product lives at /zap: the Design view is the visual builder, Sign &amp; run is the console that
               creates, funds, and executes capsules — one page, two tabs. The builder compiles a design and names
               every guard the live policy does not bind; a design that reduces to a deployed route (swaps, the
               stitched USDG ↔ 0xZAPS route, aeWETH/USDG liquidity provide/withdraw) hands Sign &amp; run a prefilled

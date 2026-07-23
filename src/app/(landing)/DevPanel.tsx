@@ -83,7 +83,7 @@ const CODE_LINES: Line[] = [
   [
     { text: "const", kind: "kw" },
     { text: " link = " },
-    { text: "`/use?d=${", kind: "str" },
+    { text: "`/zap?d=${", kind: "str" },
     { text: "encodeChain", kind: "fn" },
     { text: "(chain)}`", kind: "str" },
     { text: ";" },
@@ -103,7 +103,7 @@ const chain = [
 ];
 
 const verdict = compileChain(chain);
-const link = \`/use?d=\${encodeChain(chain)}\`;
+const link = \`/zap?d=\${encodeChain(chain)}\`;
 // every chain is a shareable, executable link`;
 
 export type DevVerdict = {

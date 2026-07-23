@@ -37,7 +37,7 @@ export function ShareLinks({ cards }: { cards: RecipeCard[] }): React.JSX.Elemen
               </span>
             </div>
             <span className={`${styles.shareChipToken} mono`}>
-              /use?d={card.shareToken.slice(0, 18)}…
+              /zap?d={card.shareToken.slice(0, 18)}…
             </span>
             <div className={styles.shareChipActions}>
               <CopyButton

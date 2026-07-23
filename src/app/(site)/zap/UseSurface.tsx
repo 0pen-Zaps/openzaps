@@ -22,7 +22,7 @@ import appStyles from "./app.module.css";
  *
  * The URL is the single source of truth for the visible view. Tab clicks
  * `router.replace` the `view` param (no history entry per click — Back leaves
- * /use, it does not replay tab flips), while the builder's handoff `Link`
+ * /zap, it does not replay tab flips), while the builder's handoff `Link`
  * pushes, so Back from a handoff returns to the Design canvas.
  *
  * Both tabpanel wrappers stay in the DOM (so each tab's `aria-controls` always
@@ -86,7 +86,7 @@ export function UseSurface(): React.JSX.Element {
         <div
           className={`${appStyles.segment} ${buildStyles.useTabs}`}
           role="tablist"
-          aria-label="Use OpenZaps"
+          aria-label="Zap workspace"
           onKeyDown={onTablistKeyDown}
         >
           <button

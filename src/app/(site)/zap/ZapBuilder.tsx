@@ -136,7 +136,7 @@ const DEPLOYABLE_RECIPES: ReadonlySet<string> = new Set(
  * render would be wrong — the builder writes to storage constantly, so a live
  * read would just echo the component's own state back at it. But the token CAN
  * change under this mounted page now that the landing page renders in-app
- * `<Link href="/use?d=…">`s, so the cache is keyed by the token it consumed
+ * `<Link href="/zap?d=…">`s, so the cache is keyed by the token it consumed
  * (`consumedToken`) and re-resolves when a client-side navigation brings a
  * different one.
  */
@@ -258,7 +258,7 @@ function subscribeNever(): () => void {
 export function ZapBuilder({
   shareToken = null,
 }: {
-  /** The `?d=` token, from UseSurface's searchParams; null on a bare /use. */
+  /** The `?d=` token, from UseSurface's searchParams; null on a bare /zap. */
   shareToken?: string | null;
 }): React.JSX.Element {
   // The chain is whatever the user has edited this session, falling back to the
@@ -845,7 +845,7 @@ export function ZapBuilder({
     [chain, compiled],
   );
 
-  const shareUrl = useMemo(() => `${origin}/use?${SHARE_PARAM}=${encodeChain(chain)}`, [chain, origin]);
+  const shareUrl = useMemo(() => `${origin}/zap?${SHARE_PARAM}=${encodeChain(chain)}`, [chain, origin]);
 
   /** What, if anything, of this design the live v1.1 contracts can carry. */
   const deployment = useMemo(() => reduceChainToLiveRoute(chain), [chain]);
@@ -856,7 +856,7 @@ export function ZapBuilder({
   // query is byte-identical to the old cross-page handoff, so the console's
   // importer and pre-merge bookmarks both keep working.
   const deployHref = deployment.deployable
-    ? `/use?view=sign&src=build&route=${encodeURIComponent(deployment.routeId)}${
+    ? `/zap?view=sign&src=build&route=${encodeURIComponent(deployment.routeId)}${
         deployment.direction ? `&dir=${deployment.direction}` : ""
       }&amount=${encodeURIComponent(deployment.amountIn)}&bps=${deployment.slippageBps}`
     : null;
@@ -915,7 +915,7 @@ export function ZapBuilder({
   const importDesign = useCallback((): void => {
     const nodes = decodeDesign(importText);
     if (!nodes) {
-      flash("That is not a design. Paste a /use share link (old /build links work too) or the JSON from “Copy design JSON”.");
+      flash("That is not a design. Paste a /zap share link (old /build links work too) or the JSON from “Copy design JSON”.");
       return;
     }
     advancePlacementCounter(nodes);
@@ -1129,7 +1129,7 @@ export function ZapBuilder({
                     Rename
                   </button>
                   <CopyButton
-                    value={`${origin}/use?${SHARE_PARAM}=${design.token}`}
+                    value={`${origin}/zap?${SHARE_PARAM}=${design.token}`}
                     label="Link"
                     className={styles.savedCopy}
                     title={`Copy a share link that reopens “${design.name}”`}
@@ -1844,7 +1844,7 @@ export function ZapBuilder({
                   value={importText}
                   rows={3}
                   spellCheck={false}
-                  placeholder="https://www.0xzaps.com/use?d=… or { &quot;chain&quot;: [ … ] }"
+                  placeholder="https://www.0xzaps.com/zap?d=… or { &quot;chain&quot;: [ … ] }"
                   onChange={(event) => setImportText(event.target.value)}
                   onKeyDown={(event) => {
                     if (event.key === "Escape") setImporting(false);
@@ -1859,7 +1859,7 @@ export function ZapBuilder({
               </div>
             ) : null}
 
-            <Link className={styles.openApp} href="/use?view=sign">
+            <Link className={styles.openApp} href="/zap?view=sign">
               Open Sign &amp; run →
             </Link>
           </div>

@@ -67,7 +67,7 @@ export function SecurityPanel(): React.JSX.Element {
       <aside className={styles.securityAside}>
         <div className={styles.securityInspect}>
           <span className={`${styles.demoRouteKicker} mono`}>
-            what /zaps verifies per capsule
+            what /explore verifies per capsule
           </span>
           <ol className={styles.securityInspectList}>
             {INSPECTIONS.map((item, i) => (

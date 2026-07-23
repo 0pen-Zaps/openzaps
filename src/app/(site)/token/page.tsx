@@ -271,8 +271,8 @@ export default function TokenPage(): React.JSX.Element {
           </h2>
           <div className={styles.heroActions}>
             <BuyButton size="lg" />
-            <Link className="btn btnGhost btnLg" href="/use">
-              Use OpenZaps
+            <Link className="btn btnGhost btnLg" href="/zap">
+              Launch OpenZaps
             </Link>
           </div>
           <p className={styles.disclaimer}>
