@@ -1,41 +1,58 @@
+import type { CSSProperties } from "react";
+import { BOLT, BOLT_BOX, scanlines } from "@/lib/scanlines";
+
+/**
+ * The OpenZaps mark: a lightning bolt with no fill, drawn as a stack of
+ * horizontal rules.
+ *
+ * The silhouette is never painted. What you see are the shape's own
+ * cross-sections — each rule exactly as long as the bolt is wide at that
+ * height — which is what lets the mark hold together at favicon size and gives
+ * it something to animate at hero size. The geometry is computed rather than
+ * clipped, so there is no `<clipPath id>` to collide with the other copies of
+ * the mark on the same page, and the component stays server-renderable.
+ *
+ * The 512×512 box is inherited from the previous mark on purpose. Every call
+ * site already sizes this component through CSS that assumes a square, so
+ * keeping the aspect ratio means the identity could change without touching
+ * nine layouts and a favicon pipeline.
+ */
+
+/** Rules the mark is sliced into. */
+const LINES = 22;
+
+/** Bolt height inside the 512 box, leaving even margins top and bottom. */
+const DRAWN_H = 404;
+
+const SCALE = DRAWN_H / BOLT_BOX.h;
+const OFFSET_X = (512 - BOLT_BOX.w * SCALE) / 2;
+const OFFSET_Y = (512 - DRAWN_H) / 2;
+
 export function OpenZapMark({ className }: { className?: string }): React.JSX.Element {
+  const { pitch, spans } = scanlines(BOLT, LINES);
+  const bar = pitch * 0.6;
+
   return (
-    <svg className={className} viewBox="0 0 512 512" aria-hidden="true">
-      <defs>
-        <linearGradient id="openzap-ring" x1="96" y1="64" x2="416" y2="448" gradientUnits="userSpaceOnUse">
-          <stop stopColor="#8EA0FF" />
-          <stop offset="0.5" stopColor="#6B5CFF" />
-          <stop offset="1" stopColor="#21D07A" />
-        </linearGradient>
-        <linearGradient id="openzap-bolt" x1="305" y1="108" x2="188" y2="410" gradientUnits="userSpaceOnUse">
-          <stop stopColor="#F7F8F8" />
-          <stop offset="0.48" stopColor="#C8D0FF" />
-          <stop offset="1" stopColor="#37F09A" />
-        </linearGradient>
-      </defs>
-      <rect width="512" height="512" rx="112" fill="#08090A" />
-      <path
-        d="M257 74C357.516 74 439 155.484 439 256C439 356.516 357.516 438 257 438C156.484 438 75 356.516 75 256C75 175.835 126.851 107.779 198.866 83.521"
-        stroke="url(#openzap-ring)"
-        strokeWidth="38"
-        strokeLinecap="round"
-      />
-      <path d="M342 68L407 111" stroke="#08090A" strokeWidth="54" strokeLinecap="round" />
-      <path
-        d="M302 104L169 277H244L207 410L346 223H265L302 104Z"
-        fill="url(#openzap-bolt)"
-        stroke="#08090A"
-        strokeWidth="18"
-        strokeLinejoin="round"
-      />
-      <path
-        d="M302 104L169 277H244L207 410L346 223H265L302 104Z"
-        stroke="rgba(255,255,255,0.72)"
-        strokeWidth="4"
-        strokeLinejoin="round"
-      />
-      <circle cx="141" cy="142" r="10" fill="#37F09A" />
-      <circle cx="374" cy="365" r="7" fill="#8EA0FF" />
+    // No background plate. An opaque full-bleed rect would give every caller's
+    // `filter: drop-shadow(...)` a square to trace instead of the bolt, which
+    // is how a soft glow became a hard green box behind the mark on the token
+    // and status pages. The favicon file keeps its tile — a favicon needs one,
+    // an inline mark on a dark page does not.
+    <svg className={className} viewBox="0 0 512 512" aria-hidden="true" fill="none">
+      <g transform={`translate(${OFFSET_X} ${OFFSET_Y}) scale(${SCALE})`}>
+        {spans.map((span) => (
+          <rect
+            key={`${span.i}-${span.x1}`}
+            x={span.x1}
+            y={span.y - bar / 2}
+            width={span.x2 - span.x1}
+            height={bar}
+            rx={Math.min(0.9, bar / 3)}
+            fill="#ccf83f"
+            style={{ "--i": span.i } as CSSProperties}
+          />
+        ))}
+      </g>
     </svg>
   );
 }

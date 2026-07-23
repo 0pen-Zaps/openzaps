@@ -1,28 +1,27 @@
-<svg width="512" height="512" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="title desc">
-  <title id="title">OpenZap mark</title>
-  <desc id="desc">An open capsule ring with a lightning-bolt execution path through the center.</desc>
-  <defs>
-    <linearGradient id="ring" x1="96" y1="64" x2="416" y2="448" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#8EA0FF"/>
-      <stop offset="0.48" stop-color="#6B5CFF"/>
-      <stop offset="1" stop-color="#21D07A"/>
-    </linearGradient>
-    <linearGradient id="bolt" x1="305" y1="108" x2="188" y2="410" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#F7F8F8"/>
-      <stop offset="0.44" stop-color="#C8D0FF"/>
-      <stop offset="1" stop-color="#37F09A"/>
-    </linearGradient>
-    <filter id="glow" x="44" y="44" width="424" height="424" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
-      <feGaussianBlur stdDeviation="18" result="blur"/>
-      <feColorMatrix in="blur" type="matrix" values="0 0 0 0 0.38 0 0 0 0 0.42 0 0 0 0 1 0 0 0 0.55 0"/>
-      <feBlend in="SourceGraphic"/>
-    </filter>
-  </defs>
-  <rect width="512" height="512" rx="112" fill="#08090A"/>
-  <path d="M257 74C357.516 74 439 155.484 439 256C439 356.516 357.516 438 257 438C156.484 438 75 356.516 75 256C75 175.835 126.851 107.779 198.866 83.521" stroke="url(#ring)" stroke-width="38" stroke-linecap="round" filter="url(#glow)"/>
-  <path d="M342 68L407 111" stroke="#08090A" stroke-width="54" stroke-linecap="round"/>
-  <path d="M302 104L169 277H244L207 410L346 223H265L302 104Z" fill="url(#bolt)" stroke="#08090A" stroke-width="18" stroke-linejoin="round"/>
-  <path d="M302 104L169 277H244L207 410L346 223H265L302 104Z" stroke="rgba(255,255,255,0.72)" stroke-width="4" stroke-linejoin="round"/>
-  <circle cx="141" cy="142" r="10" fill="#37F09A"/>
-  <circle cx="374" cy="365" r="7" fill="#8EA0FF"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="OpenZaps">
+  <rect width="512" height="512" fill="#060807"/>
+  <g transform="translate(121.333 54.000) scale(2.69333)" fill="#ccf83f">
+    <rect x="62.345" y="5.291" width="1.010" height="3.873" rx="0.900"/>
+    <rect x="59.035" y="11.745" width="3.029" height="3.873" rx="0.900"/>
+    <rect x="55.725" y="18.200" width="5.048" height="3.873" rx="0.900"/>
+    <rect x="52.415" y="24.655" width="7.067" height="3.873" rx="0.900"/>
+    <rect x="49.105" y="31.109" width="9.086" height="3.873" rx="0.900"/>
+    <rect x="45.795" y="37.564" width="11.105" height="3.873" rx="0.900"/>
+    <rect x="42.485" y="44.018" width="13.124" height="3.873" rx="0.900"/>
+    <rect x="39.175" y="50.473" width="15.143" height="3.873" rx="0.900"/>
+    <rect x="35.865" y="56.927" width="17.162" height="3.873" rx="0.900"/>
+    <rect x="32.555" y="63.382" width="44.867" height="3.873" rx="0.900"/>
+    <rect x="29.245" y="69.836" width="45.343" height="3.873" rx="0.900"/>
+    <rect x="25.935" y="76.291" width="45.819" height="3.873" rx="0.900"/>
+    <rect x="49.665" y="82.745" width="19.255" height="3.873" rx="0.900"/>
+    <rect x="48.858" y="89.200" width="17.229" height="3.873" rx="0.900"/>
+    <rect x="48.051" y="95.655" width="15.202" height="3.873" rx="0.900"/>
+    <rect x="47.244" y="102.109" width="13.175" height="3.873" rx="0.900"/>
+    <rect x="46.438" y="108.564" width="11.148" height="3.873" rx="0.900"/>
+    <rect x="45.631" y="115.018" width="9.121" height="3.873" rx="0.900"/>
+    <rect x="44.824" y="121.473" width="7.094" height="3.873" rx="0.900"/>
+    <rect x="44.017" y="127.927" width="5.067" height="3.873" rx="0.900"/>
+    <rect x="43.210" y="134.382" width="3.040" height="3.873" rx="0.900"/>
+    <rect x="42.403" y="140.836" width="1.013" height="3.873" rx="0.900"/>
+  </g>
 </svg>

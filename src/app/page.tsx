@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { OpenZapMark } from "@/components/OpenZapMark";
+import { BoltIntro } from "@/components/BoltIntro";
 import { BuyButton } from "@/components/BuyButton";
 import { JsonLd } from "@/components/JsonLd";
 import { Reveal } from "@/components/Reveal";
@@ -205,7 +206,11 @@ const agentLoop = [
 
 export default function Home(): React.JSX.Element {
   return (
-    <main className={styles.page} id="main">
+    <>
+      {/* The entrance runs only here. The guard script in the root layout
+          keys on the "/" pathname for exactly that reason. */}
+      <BoltIntro />
+      <main className={styles.page} id="main">
       {/* ---------------- hero ---------------- */}
       <section className={`container ${styles.hero}`} id="top">
         <div className={styles.heroCopy}>
@@ -613,8 +618,8 @@ export default function Home(): React.JSX.Element {
             Read the verified contract source ↗
           </a>
           <br />
-          <Link className={styles.repoLink} href="/security">
-            Security architecture →
+          <Link className={styles.repoLink} href="/docs#security">
+            Security model →
           </Link>
           {contractsLive() && (
             <p className={styles.deployed}>
@@ -681,5 +686,6 @@ export default function Home(): React.JSX.Element {
         </div>
       </section>
     </main>
+    </>
   );
 }

@@ -41,7 +41,7 @@
   gap: 0.45rem;
   padding: 1rem;
   border: 1px solid var(--line);
-  border-radius: 0.5rem;
+  border-radius: 0;
   background: rgba(255, 255, 255, 0.035);
   box-shadow: var(--card-shadow);
 }
@@ -57,7 +57,7 @@
 }
 
 .heroCard code {
-  color: var(--indigo);
+  color: var(--accent-dim);
   font-size: 0.72rem;
   overflow-wrap: anywhere;
 }
@@ -67,7 +67,7 @@
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 1px;
   border: 1px solid var(--line);
-  border-radius: 0.55rem;
+  border-radius: 0;
   overflow: hidden;
   background: var(--line);
 }
@@ -95,7 +95,7 @@
   margin-top: clamp(2rem, 4vw, 3rem);
   padding: clamp(1.25rem, 2.5vw, 1.75rem);
   border: 1px solid var(--line);
-  border-radius: 0.65rem;
+  border-radius: 0;
   background: var(--card);
   box-shadow: var(--card-shadow);
 }
@@ -133,7 +133,7 @@
   gap: 0.9rem;
   padding: 0.7rem 0.85rem;
   border: 1px solid var(--line-soft);
-  border-radius: 0.45rem;
+  border-radius: 0;
   background: rgba(255, 255, 255, 0.018);
   color: var(--text);
   text-decoration: none;
@@ -141,7 +141,7 @@
 }
 
 .feedRow:hover {
-  border-color: rgba(55, 240, 154, 0.3);
+  border-color: rgba(204, 248, 63, 0.3);
   background: rgba(255, 255, 255, 0.03);
 }
 
@@ -153,11 +153,11 @@
 }
 
 .feedType[data-type="created"] {
-  color: var(--indigo);
+  color: var(--accent-dim);
 }
 
 .feedType[data-type="executed"] {
-  color: var(--mint-2);
+  color: var(--accent-bright);
 }
 
 .feedType[data-type="recovered"] {
@@ -193,7 +193,7 @@
   margin-bottom: 0.9rem;
   padding: 0.7rem 0.9rem;
   border: 1px solid rgba(255, 194, 107, 0.34);
-  border-radius: 0.5rem;
+  border-radius: 0;
   color: #ffd398;
   background: rgba(255, 194, 107, 0.07);
   font-size: 0.84rem;
@@ -206,7 +206,7 @@
   gap: 0.7rem;
   padding: 0.9rem 1rem;
   border: 1px solid rgba(255, 110, 110, 0.32);
-  border-radius: 0.5rem;
+  border-radius: 0;
   background: rgba(255, 78, 78, 0.06);
 }
 
@@ -225,7 +225,15 @@
 }
 
 .feedNote a {
-  color: var(--indigo);
+    color: var(--accent-dim);
+  /* Underlined, not just tinted. These sit inside muted prose, and colour
+     alone does not carry a link: --accent-dim against --muted is about 1.5:1,
+     well under the 3:1 that colour-as-sole-cue needs, and it fails outright
+     for anyone who cannot separate the two hues. The underline is the cue;
+     the tint is reinforcement. */
+  text-decoration: underline;
+  text-underline-offset: 0.18em;
+  text-decoration-thickness: 1px;
 }
 
 .section {
@@ -258,7 +266,7 @@
   gap: 0.9rem;
   padding: 0.75rem 0.9rem;
   border: 1px solid var(--line-soft);
-  border-radius: 0.45rem;
+  border-radius: 0;
   background: rgba(255, 255, 255, 0.018);
   color: var(--text);
   text-decoration: none;
@@ -266,7 +274,7 @@
 }
 
 .contractRow:hover {
-  border-color: rgba(142, 160, 255, 0.4);
+  border-color: rgba(204, 248, 63, 0.4);
 }
 
 .contractRow span {
@@ -275,7 +283,7 @@
 }
 
 .contractRow code {
-  color: var(--indigo);
+  color: var(--accent-dim);
   font-size: 0.78rem;
   overflow-wrap: anywhere;
 }
@@ -288,7 +296,15 @@
 }
 
 .note a {
-  color: var(--indigo);
+    color: var(--accent-dim);
+  /* Underlined, not just tinted. These sit inside muted prose, and colour
+     alone does not carry a link: --accent-dim against --muted is about 1.5:1,
+     well under the 3:1 that colour-as-sole-cue needs, and it fails outright
+     for anyone who cannot separate the two hues. The underline is the cue;
+     the tint is reinforcement. */
+  text-decoration: underline;
+  text-underline-offset: 0.18em;
+  text-decoration-thickness: 1px;
 }
 
 @media (max-width: 980px) {
@@ -344,7 +360,7 @@
 
 .heroCard:hover {
   transform: translateY(-3px);
-  border-color: rgba(142, 160, 255, 0.42);
+  border-color: rgba(204, 248, 63, 0.42);
 }
 
 .contractRow {
@@ -419,7 +435,7 @@
   gap: 0.9rem;
   padding: 0.7rem 0.85rem;
   border: 1px solid var(--line-soft);
-  border-radius: 0.45rem;
+  border-radius: 0;
   background: rgba(255, 255, 255, 0.018);
 }
 
@@ -443,7 +459,7 @@
 }
 
 .updatedSpinner {
-  color: var(--indigo);
+  color: var(--accent-dim);
 }
 
 /* Local copies — CSS Modules scope animation-name, so globals.css keyframes
@@ -454,6 +470,6 @@
 }
 
 @keyframes flashIn {
-  0% { background-color: rgba(107, 92, 255, 0.22); }
+  0% { background-color: rgba(204, 248, 63, 0.22); }
   100% { background-color: transparent; }
 }

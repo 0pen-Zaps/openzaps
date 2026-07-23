@@ -79,10 +79,24 @@ export const SHAPE_LABEL: Record<FlowShape, string> = {
 };
 
 /** Connector colours double as the legend for the whole canvas. */
+/**
+ * Colour per connector shape.
+ *
+ * Deliberately NOT the theme accent, and deliberately five different hues.
+ * These are the only colours on the site that carry information rather than
+ * identity: they are how someone reading a chain sees that what leaves this
+ * block is a vault share and not an ERC-20. Collapsing them into the one
+ * accent the rest of the design uses would look tidier and would delete the
+ * distinction the builder exists to show.
+ *
+ * They are tuned to sit in the LINES palette — `token`, far the most common
+ * shape, takes the sodium accent, and the other four span the wheel away from
+ * it so no two adjacent shapes read alike on a near-black ground.
+ */
 export const SHAPE_COLOR: Record<FlowShape, string> = {
-  token: "#37f09a",
-  lp: "#8ea0ff",
-  receipt: "#6b5cff",
+  token: "#ccf83f",
+  lp: "#5fd8e8",
+  receipt: "#a89bff",
   yield: "#ffc26b",
   debt: "#ff7a90",
 };

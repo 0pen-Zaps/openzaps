@@ -65,7 +65,7 @@ export default function RoadmapPage(): React.JSX.Element {
             <Link className="btn btnPrimary btnLg" href="/docs">
               Read docs
             </Link>
-            <Link className="btn btnGhost btnLg" href="/security">
+            <Link className="btn btnGhost btnLg" href="/docs#security">
               Security gates
             </Link>
           </div>

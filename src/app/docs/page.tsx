@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { CHAIN, CONTRACTS, LINKS, TOKEN } from "@/lib/config";
+import { CHAIN, CONTRACTS, LINKS, STATUS, TOKEN, explorer } from "@/lib/config";
 import { POLICY_TEMPLATES } from "@/lib/policy";
 import { JsonLd } from "@/components/JsonLd";
 import { pageMetadata, breadcrumbJsonLd, SITE_URL } from "@/lib/seo";
@@ -7,12 +7,20 @@ import { Reveal } from "@/components/Reveal";
 import styles from "./docs.module.css";
 
 export const metadata = pageMetadata({
-  title: "Developer docs",
+  title: "Developer docs & security",
   description:
-    "How an OpenZaps policy capsule is drafted, simulated, signed as an EIP-712 intent, submitted, and revoked. One bounded route is live on Robinhood Chain. The contracts are not externally audited.",
+    "How an OpenZaps policy capsule is drafted, simulated, signed as an EIP-712 intent, submitted, and revoked — and what the capsule refuses to do, what an executor could still try, and what has not been reviewed. One bounded route is live on Robinhood Chain. The contracts are not externally audited.",
   path: "/docs",
   ogImage: "/og/docs.png",
-  keywords: ["OpenZaps docs", "policy capsule docs", "simulation API", "EIP-712 intent docs"],
+  keywords: [
+    "OpenZaps docs",
+    "policy capsule docs",
+    "simulation API",
+    "EIP-712 intent docs",
+    "OpenZaps security",
+    "DeFi threat model",
+    "smart contract security architecture",
+  ],
 });
 
 const lifecycle = [
@@ -21,6 +29,34 @@ const lifecycle = [
   ["3", "Review signature", "The typed intent binds chain, owner, recipient, nonce, deadline, policy hash, min-out, relayer fee cap, and gas price. None of them can change after signing."],
   ["4", "Submit", "The owner submits from their own wallet. The v1.1 policy cannot bind a submitter, so whoever executes chooses the mempool path."],
   ["5", "Monitor and revoke", "Receipts, allowance checks, balance deltas, alerts, and the owner's revoke and exit paths stay attached to the capsule. Its page at /zaps/<address> reports what the contract stores and what its own logs say, and nothing else."],
+] as const;
+
+// The security model used to be its own page; it now lives here as the last
+// cluster of sections. The arrays below are lifted verbatim from it so the
+// text a reader saw at /security is unchanged, only relocated.
+const controls = [
+  ["No arbitrary calls", "The capsule calls an allowlisted adapter with the selector the policy names. There is no field for an arbitrary target plus calldata, so there is nothing to point at one."],
+  ["Nonce consumed first", "The authorization is consumed before any external call. A reentrant call back into the capsule finds the nonce already spent."],
+  ["Exact approvals", "The approval is the exact step amount, and it is reset to zero on the success path and the revert path. No standing allowance is left for anyone to draw on later."],
+  ["Balance-delta checks", "After the adapter returns, the capsule asserts the tracked output asset, the recipient, the minimum output, and that no allowance remains. A failed assertion reverts the whole execution."],
+  ["Submitter is not bound", "The v1.1 policy has no submitter field, so whoever executes the capsule chooses the mempool path. The live bounded route is submitted from the owner's own wallet."],
+  ["Owner revoke", "The owner can pause, invalidate nonce space, or emergency-exit without an agent. The withdraw and revoke path is unconditional and needs no one else's cooperation."],
+] as const;
+
+const threats = [
+  ["MEV / sandwiching", "A searcher who sees the pending execution can move the pool price against it. The signed minimum output and the ten-minute intent deadline bound what that is worth; the capsule cannot hide the transaction, because the policy cannot bind a submitter."],
+  ["Approval leakage", "An adapter that kept an allowance could spend from the capsule again later. The approval is the exact step amount and is reset to zero on both paths, and a residual allowance fails the postcondition."],
+  ["Scope drift", "A submitter who edits a policy field before broadcasting produces a different policy hash, and the capsule rejects the intent. A chain-aware nonce and the typed-data domain make an intent signed elsewhere useless here."],
+  ["Relayer optionality", "A relayer can delay, censor, or pick a bad moment inside the signed limits. It cannot take a fee on the live route: the policy commits a relayer fee cap of zero. The owner can always submit the transaction themselves."],
+  ["Oracle manipulation", "The v1.1 policy has no oracle precondition, so a design that depends on a price band is not enforced by it. Protective exits stay blocked in v1 for that reason."],
+] as const;
+
+const gates = [
+  ["External audit", "Independent review of factory, clone init, EIP-712/1271 verification, approval reset, and adapter boundaries."],
+  ["Formal checks", "A prover run over the authorization, approval-reset, call-surface, recipient, isolation, and token-allowlist invariants."],
+  ["Adapter governance", "Safe plus timelock ownership, adapter bytecode manifests, and a rollback process."],
+  ["Testnet soak", "Public testnet with real wallet review, alerts, receipts, and revoke drills."],
+  ["Incident runbook", "Emergency pause, disclosure process, chain-monitor alerts, and postmortem template."],
 ] as const;
 
 export default function DocsPage(): React.JSX.Element {
@@ -59,6 +95,10 @@ export default function DocsPage(): React.JSX.Element {
           <a href="#templates">Templates</a>
           <a href="#lifecycle">Execution lifecycle</a>
           <a href="#sdk">SDK surface</a>
+          <a href="#security">Security model</a>
+          <a href="#controls">Controls</a>
+          <a href="#threats">Threat model</a>
+          <a href="#gates">Production gates</a>
         </nav>
 
         <div className={styles.content}>
@@ -208,6 +248,101 @@ if (review.status === "block") throw new Error("policy blocked")`}</pre>
               <a href={LINKS.contractSource}>the verified source</a> before signing anything. {TOKEN.symbol} is not
               required to simulate or inspect a policy.
             </p>
+          </section>
+
+          {/* ---- Security model (folded in from the former /security page) ---- */}
+          <section className={styles.section} id="security">
+            <h2>Security model</h2>
+            <p>
+              A capsule holds funds and accepts owner-signed intents that rehash to the policy frozen at creation. The
+              adapter, the spender, the recipient, the input token, and the exact amount are fixed at that moment. An
+              executor picks the moment and nothing else. The status card below is read from config: the contracts are{" "}
+              <strong>{STATUS.preAudit ? "live and not externally audited" : "externally audited"}</strong>.
+            </p>
+            <p>
+              Bounded aeWETH ↔ 0xZAPS creation is open on {CHAIN.name}, and the funds a capsule holds are real.
+              Production use still needs external audit, formal verification, adapter governance, and a monitored
+              launch path. Onchain actions are irreversible: once an execution lands, nothing here can undo it. The
+              owner keeps an unconditional withdraw and revoke path. Deposit only what you can afford to lose.
+            </p>
+            <div className={styles.codeBlock}>
+              <pre>{`User / Safe
+  -> OpenZapFactory
+  -> OpenZap clone with frozen policy
+  -> allowlisted adapter
+  -> recipient-bound postcondition
+
+Hermes:
+  simulate -> submit -> monitor -> alert -> revoke escalation
+  no discretionary custody
+  no arbitrary calldata`}</pre>
+            </div>
+          </section>
+
+          <section className={styles.section} id="controls">
+            <h2>Controls</h2>
+            <div className={styles.table}>
+              {controls.map(([name, detail], i) => (
+                <Reveal className={styles.row} delay={i * 45} key={name}>
+                  <strong>{name}</strong>
+                  <p>{detail}</p>
+                </Reveal>
+              ))}
+            </div>
+          </section>
+
+          <section className={styles.section} id="threats">
+            <h2>Threat model</h2>
+            <div className={styles.table}>
+              {threats.map(([name, detail], i) => (
+                <Reveal className={styles.row} delay={i * 45} key={name}>
+                  <strong>{name}</strong>
+                  <p>{detail}</p>
+                </Reveal>
+              ))}
+            </div>
+          </section>
+
+          <section className={styles.section} id="gates">
+            <h2>Production gates</h2>
+            <p>
+              None of the following has completed. Each one is a precondition for calling the contracts
+              production-cleared. Until they have, the only thing standing behind a failure in the contract, the
+              interface, the relayer path, or the adapter registry is the owner&apos;s exit.
+            </p>
+            <div className={styles.timeline}>
+              {gates.map(([name, body], index) => (
+                <Reveal className={styles.phase} delay={index * 45} key={name}>
+                  <span>P{index}</span>
+                  <div>
+                    <h3>{name}</h3>
+                    <p>{body}</p>
+                  </div>
+                </Reveal>
+              ))}
+            </div>
+            <div className={styles.metrics}>
+              <div className={styles.metric}>
+                <span>Factory</span>
+                <strong>{CONTRACTS.factory.slice(0, 8)}...</strong>
+              </div>
+              <div className={styles.metric}>
+                <span>Adapter registry</span>
+                <strong>{CONTRACTS.adapterRegistry.slice(0, 8)}...</strong>
+              </div>
+              <div className={styles.metric}>
+                <span>Token allowlist</span>
+                <strong>{CONTRACTS.tokenAllowlist.slice(0, 8)}...</strong>
+              </div>
+            </div>
+            <div className={styles.heroActions}>
+              <a className="btn btnGhost" href={explorer(CONTRACTS.factory)} target="_blank" rel="noreferrer">
+                View factory
+              </a>
+              <a className="btn btnGhost" href={LINKS.contractSource} target="_blank" rel="noreferrer">
+                Contract source
+              </a>
+            </div>
           </section>
         </div>
       </section>

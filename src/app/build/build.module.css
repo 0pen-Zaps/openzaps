@@ -43,7 +43,7 @@
   gap: 0.45rem;
   padding: 0.3rem 0.65rem;
   border: 1px solid var(--line);
-  border-radius: var(--pill);
+  border-radius: 0;
   color: var(--muted-2);
   font-size: 0.76rem;
 }
@@ -51,7 +51,7 @@
 .legendItem i {
   width: 0.5rem;
   height: 0.5rem;
-  border-radius: 2px;
+  border-radius: 0;
 }
 
 /* ---------------------------------------------------------------- builder */
@@ -101,7 +101,7 @@
   gap: 0.3rem;
   padding: 0.9rem 1rem;
   border: 1px solid var(--line);
-  border-radius: 0.7rem;
+  border-radius: 0;
   background: var(--card);
   color: inherit;
   text-align: left;
@@ -117,7 +117,7 @@
   width: 1.8rem;
   height: 0.22rem;
   content: "";
-  border-radius: var(--pill);
+  border-radius: 0;
   background: var(--accent);
 }
 
@@ -144,9 +144,9 @@
 .recipeLive {
   margin-left: 0.4rem;
   padding: 0.1rem 0.4rem;
-  border-radius: var(--pill);
-  color: var(--mint-2);
-  background: rgba(33, 208, 122, 0.12);
+  border-radius: 0;
+  color: var(--accent-bright);
+  background: rgba(204, 248, 63, 0.12);
   font-style: normal;
   letter-spacing: 0.02em;
 }
@@ -177,7 +177,7 @@
   gap: 0.7rem;
   padding: 0.95rem;
   border: 1px solid var(--line);
-  border-radius: 0.85rem;
+  border-radius: 0;
   background: var(--card);
   box-shadow: var(--card-shadow);
 }
@@ -198,7 +198,7 @@
   width: 100%;
   padding: 0.4rem 0.6rem;
   border: 1px solid var(--line-soft);
-  border-radius: 0.5rem;
+  border-radius: 0;
   background: rgba(0, 0, 0, 0.24);
   color: var(--fg);
   font-family: inherit;
@@ -210,7 +210,7 @@
 }
 
 .search input:focus-visible {
-  border-color: rgba(142, 160, 255, 0.5);
+  border-color: rgba(204, 248, 63, 0.5);
   outline: none;
 }
 
@@ -236,7 +236,7 @@
 .tab {
   padding: 0.3rem 0.6rem;
   border: 1px solid var(--line-soft);
-  border-radius: var(--pill);
+  border-radius: 0;
   background: transparent;
   color: var(--muted);
   font-size: 0.74rem;
@@ -250,9 +250,9 @@
 }
 
 .tab[aria-selected="true"] {
-  border-color: rgba(142, 160, 255, 0.45);
+  border-color: rgba(204, 248, 63, 0.45);
   color: var(--fg);
-  background: rgba(107, 92, 255, 0.14);
+  background: rgba(204, 248, 63, 0.14);
 }
 
 .paletteList {
@@ -272,7 +272,7 @@
   gap: 0.6rem;
   padding: 0.55rem 0.6rem;
   border: 1px solid var(--line-soft);
-  border-radius: 0.6rem;
+  border-radius: 0;
   background: rgba(255, 255, 255, 0.022);
   color: inherit;
   text-align: left;
@@ -306,7 +306,7 @@
   place-items: center;
   width: 1.85rem;
   height: 1.85rem;
-  border-radius: 0.45rem;
+  border-radius: 0;
   color: var(--accent);
   background: color-mix(in oklab, var(--accent) 14%, transparent);
 }
@@ -345,7 +345,7 @@
   display: block;
   width: 0.42rem;
   height: 0.42rem;
-  border-radius: 1px;
+  border-radius: 0;
 }
 
 /* ---- canvas ---- */
@@ -394,7 +394,7 @@
 .ghostBtn {
   padding: 0.42rem 0.8rem;
   border: 1px solid var(--line);
-  border-radius: var(--pill);
+  border-radius: 0;
   background: rgba(255, 255, 255, 0.03);
   color: var(--text);
   font-size: 0.8rem;
@@ -403,8 +403,8 @@
 }
 
 .ghostBtn:hover:not(:disabled) {
-  border-color: rgba(55, 240, 154, 0.4);
-  color: var(--mint-2);
+  border-color: rgba(204, 248, 63, 0.4);
+  color: var(--accent-bright);
 }
 
 .ghostBtn:disabled {
@@ -417,10 +417,10 @@
 .scopeBanner {
   padding: 0.6rem 0.8rem;
   border: 1px solid var(--line-soft);
-  border-left: 2px solid rgba(142, 160, 255, 0.5);
-  border-radius: 0 0.55rem 0.55rem 0;
+  border-left: 2px solid rgba(204, 248, 63, 0.5);
+  border-radius: 0;
   color: var(--muted);
-  background: rgba(142, 160, 255, 0.06);
+  background: rgba(204, 248, 63, 0.06);
   font-size: 0.79rem;
   line-height: 1.55;
 }
@@ -434,9 +434,9 @@
   display: grid;
   padding: clamp(0.7rem, 1.6vw, 1.1rem);
   border: 1px solid var(--line);
-  border-radius: 0.85rem;
+  border-radius: 0;
   background:
-    radial-gradient(120% 60% at 50% 0%, rgba(107, 92, 255, 0.08), transparent 70%),
+    radial-gradient(120% 60% at 50% 0%, rgba(204, 248, 63, 0.08), transparent 70%),
     var(--card);
   box-shadow: var(--card-shadow);
 }
@@ -451,14 +451,14 @@
   gap: 0.35rem;
   padding: 2.6rem 1.2rem;
   border: 1px dashed var(--line);
-  border-radius: 0.7rem;
+  border-radius: 0;
   text-align: center;
   transition: border-color var(--dur-2) var(--ease-standard), background var(--dur-2) var(--ease-standard);
 }
 
 .empty[data-over="true"] {
-  border-color: rgba(55, 240, 154, 0.5);
-  background: rgba(33, 208, 122, 0.06);
+  border-color: rgba(204, 248, 63, 0.5);
+  background: rgba(204, 248, 63, 0.06);
 }
 
 .emptyGlyph {
@@ -496,13 +496,13 @@
   display: block;
   height: 100%;
   border: 1px dashed rgba(255, 122, 144, 0.55);
-  border-radius: 0.55rem;
+  border-radius: 0;
   background: rgba(255, 122, 144, 0.08);
 }
 
 .slot[data-valid="true"] > span {
-  border-color: rgba(55, 240, 154, 0.6);
-  background: rgba(33, 208, 122, 0.1);
+  border-color: rgba(204, 248, 63, 0.6);
+  background: rgba(204, 248, 63, 0.1);
   animation: slotPulse 1.1s var(--ease-standard) infinite;
 }
 
@@ -520,7 +520,7 @@
   top: 0;
   bottom: 0;
   width: 2px;
-  border-radius: 2px;
+  border-radius: 0;
   background: color-mix(in oklab, var(--accent) 55%, transparent);
 }
 
@@ -542,7 +542,7 @@
   position: relative;
   padding: 0.12rem 0.5rem;
   border: 1px solid color-mix(in oklab, var(--accent) 40%, transparent);
-  border-radius: var(--pill);
+  border-radius: 0;
   color: color-mix(in oklab, var(--accent) 80%, white);
   background: var(--bg-2);
   font-family: var(--font-jetbrains-mono), ui-monospace, monospace;
@@ -561,7 +561,7 @@
 .card {
   position: relative;
   border: 1px solid var(--line);
-  border-radius: 0.7rem;
+  border-radius: 0;
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.055), rgba(255, 255, 255, 0.014));
   transition:
     border-color var(--dur-2) var(--ease-standard),
@@ -581,7 +581,7 @@
   height: 0.3rem;
   margin-left: -0.75rem;
   content: "";
-  border-radius: 0 0 0.3rem 0.3rem;
+  border-radius: 0;
   background: color-mix(in oklab, var(--accent) 70%, transparent);
 }
 
@@ -611,8 +611,8 @@
    moment later — a permanent marker here would compete with data-broken, which
    is the one that means something is actually wrong. */
 .card[data-flagged="true"] {
-  border-color: rgba(142, 160, 255, 0.7);
-  box-shadow: 0 0 0 1px rgba(142, 160, 255, 0.4), 0 0 34px rgba(107, 92, 255, 0.28);
+  border-color: rgba(204, 248, 63, 0.7);
+  box-shadow: 0 0 0 1px rgba(204, 248, 63, 0.4), 0 0 34px rgba(204, 248, 63, 0.28);
   animation: flagPulse 1.1s var(--ease-standard) 2;
 }
 
@@ -635,7 +635,7 @@
   place-items: center;
   width: 2.1rem;
   height: 2.1rem;
-  border-radius: 0.5rem;
+  border-radius: 0;
   color: var(--accent);
   background: color-mix(in oklab, var(--accent) 15%, transparent);
   touch-action: none;
@@ -688,7 +688,7 @@
   width: 1.65rem;
   height: 1.65rem;
   border: 1px solid var(--line-soft);
-  border-radius: 0.4rem;
+  border-radius: 0;
   background: transparent;
   color: var(--muted);
   font-size: 0.75rem;
@@ -708,20 +708,20 @@
 
 .maturity {
   padding: 0.14rem 0.42rem;
-  border-radius: var(--pill);
+  border-radius: 0;
   font-family: var(--font-jetbrains-mono), ui-monospace, monospace;
   font-size: 0.6rem;
   letter-spacing: 0.03em;
 }
 
 .maturity[data-level="live"] {
-  color: var(--mint-2);
-  background: rgba(33, 208, 122, 0.12);
+  color: var(--accent-bright);
+  background: rgba(204, 248, 63, 0.12);
 }
 
 .maturity[data-level="preview"] {
-  color: var(--indigo);
-  background: rgba(107, 92, 255, 0.16);
+  color: var(--accent-dim);
+  background: rgba(204, 248, 63, 0.16);
 }
 
 .maturity[data-level="review"] {
@@ -757,7 +757,7 @@
   gap: 0.28rem;
   padding: 0.5rem 0.6rem;
   border: 1px solid var(--line-soft);
-  border-radius: 0.5rem;
+  border-radius: 0;
   background: rgba(0, 0, 0, 0.2);
 }
 
@@ -781,7 +781,7 @@
 .param input[type="range"] {
   width: 100%;
   height: 1.15rem;
-  accent-color: var(--mint);
+  accent-color: var(--accent);
   cursor: pointer;
 }
 
@@ -790,7 +790,7 @@
   width: 100%;
   padding: 0.4rem 0.5rem;
   border: 1px solid var(--line);
-  border-radius: 0.4rem;
+  border-radius: 0;
   background: var(--bg-2);
   color: var(--fg);
   font-family: inherit;
@@ -805,15 +805,15 @@
   flex-wrap: wrap;
   gap: 0.5rem;
   padding: 0.5rem 0.8rem;
-  border: 1px solid rgba(55, 240, 154, 0.28);
-  border-radius: 0.55rem;
-  background: rgba(33, 208, 122, 0.06);
+  border: 1px solid rgba(204, 248, 63, 0.28);
+  border-radius: 0;
+  background: rgba(204, 248, 63, 0.06);
   font-size: 0.8rem;
   animation: bodyIn var(--dur-2) var(--ease-emphasis);
 }
 
 .runStep > span {
-  color: var(--mint-2);
+  color: var(--accent-bright);
   font-family: var(--font-jetbrains-mono), ui-monospace, monospace;
   font-size: 0.7rem;
   letter-spacing: 0.02em;
@@ -849,7 +849,7 @@
 .hint {
   padding: 0.55rem 0.8rem;
   border: 1px solid rgba(255, 194, 107, 0.34);
-  border-radius: 0.55rem;
+  border-radius: 0;
   color: #ffc26b;
   background: rgba(255, 194, 107, 0.07);
   font-size: 0.82rem;
@@ -873,7 +873,7 @@
   max-height: calc(100vh - var(--nav-h) - 2rem);
   padding: 0.95rem;
   border: 1px solid var(--line);
-  border-radius: 0.85rem;
+  border-radius: 0;
   background: var(--card);
   box-shadow: var(--card-shadow);
   /* Default overscroll on purpose: scrolling past the end of this panel should
@@ -905,8 +905,8 @@
   height: 0.6rem;
   flex: 0 0 auto;
   border-radius: 50%;
-  background: var(--mint-2);
-  box-shadow: 0 0 0 4px rgba(33, 208, 122, 0.14);
+  background: var(--accent-bright);
+  box-shadow: 0 0 0 4px rgba(204, 248, 63, 0.14);
 }
 
 .verdict[data-status="warn"] .verdictDot {
@@ -940,7 +940,7 @@
 
 .meterTrack {
   height: 0.4rem;
-  border-radius: var(--pill);
+  border-radius: 0;
   background: rgba(255, 255, 255, 0.07);
   overflow: hidden;
 }
@@ -948,7 +948,7 @@
 .meterTrack span {
   display: block;
   height: 100%;
-  border-radius: var(--pill);
+  border-radius: 0;
   background: var(--grad-brand);
   transition: width var(--dur-3) var(--ease-emphasis);
 }
@@ -989,7 +989,7 @@
   flex: 0 0 auto;
   padding: 0.16rem 0.5rem;
   border: 1px solid var(--line);
-  border-radius: var(--pill);
+  border-radius: 0;
   background: transparent;
   color: var(--muted-2);
   font-family: inherit;
@@ -999,8 +999,8 @@
 }
 
 .gaps li button:hover {
-  border-color: rgba(55, 240, 154, 0.4);
-  color: var(--mint-2);
+  border-color: rgba(204, 248, 63, 0.4);
+  color: var(--accent-bright);
 }
 
 /* ---- problems ---- */
@@ -1013,7 +1013,7 @@
 
 .issues li {
   border-left: 2px solid #ffc26b;
-  border-radius: 0 0.45rem 0.45rem 0;
+  border-radius: 0;
   background: rgba(255, 194, 107, 0.07);
 }
 
@@ -1057,7 +1057,7 @@
 }
 
 .issues li > button:hover em {
-  color: var(--indigo);
+  color: var(--accent-dim);
 }
 
 .checks {
@@ -1070,8 +1070,8 @@
   display: grid;
   gap: 0.15rem;
   padding: 0.5rem 0.6rem 0.5rem 0.75rem;
-  border-left: 2px solid var(--mint);
-  border-radius: 0 0.45rem 0.45rem 0;
+  border-left: 2px solid var(--accent);
+  border-radius: 0;
   background: rgba(255, 255, 255, 0.028);
 }
 
@@ -1127,8 +1127,8 @@
 .deployBtn {
   display: block;
   padding: 0.62rem 0.8rem;
-  border: 1px solid rgba(55, 240, 154, 0.42);
-  border-radius: 0.55rem;
+  border: 1px solid rgba(204, 248, 63, 0.42);
+  border-radius: 0;
   color: var(--bg);
   background: var(--grad-brand);
   text-align: center;
@@ -1139,13 +1139,13 @@
 
 .deployBtn:hover {
   transform: translateY(-1px);
-  box-shadow: 0 12px 30px rgba(33, 208, 122, 0.22);
+  box-shadow: 0 12px 30px rgba(204, 248, 63, 0.22);
 }
 
 .saveBtn {
   padding: 0.62rem 0.8rem;
   border: 1px solid var(--line);
-  border-radius: 0.55rem;
+  border-radius: 0;
   color: var(--text);
   background: rgba(255, 255, 255, 0.03);
   font-family: inherit;
@@ -1156,7 +1156,7 @@
 }
 
 .saveBtn:hover {
-  border-color: rgba(142, 160, 255, 0.45);
+  border-color: rgba(204, 248, 63, 0.45);
   color: var(--fg);
 }
 
@@ -1175,7 +1175,7 @@
   gap: 0.35rem;
   padding: 0.6rem 0.7rem;
   border: 1px solid rgba(255, 194, 107, 0.34);
-  border-radius: 0.55rem;
+  border-radius: 0;
   background: rgba(255, 194, 107, 0.07);
 }
 
@@ -1242,7 +1242,7 @@
   width: 100%;
   padding: 0.34rem 0.6rem;
   border: 1px solid var(--line);
-  border-radius: 0.45rem;
+  border-radius: 0;
   background: rgba(255, 255, 255, 0.035);
   color: var(--text);
   font-family: var(--font-jetbrains-mono), ui-monospace, monospace;
@@ -1271,7 +1271,7 @@
   gap: 0.4rem;
   padding: 0.6rem;
   border: 1px solid var(--line-soft);
-  border-radius: 0.55rem;
+  border-radius: 0;
   background: rgba(0, 0, 0, 0.22);
   animation: bodyIn var(--dur-3) var(--ease-emphasis);
 }
@@ -1286,7 +1286,7 @@
   width: 100%;
   padding: 0.45rem 0.5rem;
   border: 1px solid var(--line);
-  border-radius: 0.4rem;
+  border-radius: 0;
   background: var(--bg-2);
   color: var(--fg);
   font-family: var(--font-jetbrains-mono), ui-monospace, monospace;
@@ -1303,7 +1303,7 @@
   justify-self: start;
   padding: 0.34rem 0.7rem;
   border: 1px solid var(--line);
-  border-radius: var(--pill);
+  border-radius: 0;
   background: transparent;
   color: var(--text);
   font-family: inherit;
@@ -1313,8 +1313,8 @@
 }
 
 .import button:hover:not(:disabled) {
-  border-color: rgba(55, 240, 154, 0.4);
-  color: var(--mint-2);
+  border-color: rgba(204, 248, 63, 0.4);
+  color: var(--accent-bright);
 }
 
 .import button:disabled {
@@ -1324,16 +1324,16 @@
 
 .openApp {
   padding: 0.5rem 0.8rem;
-  border: 1px solid rgba(55, 240, 154, 0.32);
-  border-radius: 0.5rem;
-  color: var(--mint-2);
+  border: 1px solid rgba(204, 248, 63, 0.32);
+  border-radius: 0;
+  color: var(--accent-bright);
   text-align: center;
   font-size: 0.82rem;
   transition: background var(--dur-2) var(--ease-standard);
 }
 
 .openApp:hover {
-  background: rgba(33, 208, 122, 0.09);
+  background: rgba(204, 248, 63, 0.09);
 }
 
 .disclaimer {
@@ -1354,9 +1354,9 @@
   gap: 0.55rem;
   padding: 0.6rem 0.75rem;
   border: 1px solid color-mix(in oklab, var(--accent) 55%, transparent);
-  border-radius: 0.6rem;
+  border-radius: 0;
   color: var(--fg);
-  background: rgba(11, 13, 15, 0.96);
+  background: rgba(6, 8, 7, 0.96);
   box-shadow: 0 22px 60px rgba(0, 0, 0, 0.55);
   pointer-events: none;
   rotate: -1.4deg;
@@ -1514,8 +1514,8 @@
 }
 
 @keyframes flagPulse {
-  0%, 100% { box-shadow: 0 0 0 1px rgba(142, 160, 255, 0.4), 0 0 34px rgba(107, 92, 255, 0.28); }
-  50% { box-shadow: 0 0 0 1px rgba(142, 160, 255, 0.7), 0 0 46px rgba(107, 92, 255, 0.45); }
+  0%, 100% { box-shadow: 0 0 0 1px rgba(204, 248, 63, 0.4), 0 0 34px rgba(204, 248, 63, 0.28); }
+  50% { box-shadow: 0 0 0 1px rgba(204, 248, 63, 0.7), 0 0 46px rgba(204, 248, 63, 0.45); }
 }
 
 @keyframes bodyIn {

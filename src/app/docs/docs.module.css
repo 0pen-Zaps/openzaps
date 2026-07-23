@@ -31,7 +31,7 @@
 
 .heroCard {
   border: 1px solid var(--line);
-  border-radius: 0.5rem;
+  border-radius: 0;
   background: rgba(255, 255, 255, 0.035);
   box-shadow: var(--card-shadow);
   padding: 1rem;
@@ -73,7 +73,7 @@
   gap: 0.35rem;
   padding: 1rem;
   border: 1px solid var(--line);
-  border-radius: 0.5rem;
+  border-radius: 0;
   background: rgba(255, 255, 255, 0.035);
 }
 
@@ -82,7 +82,7 @@
   display: flex;
   align-items: center;
   padding: 0 0.65rem;
-  border-radius: 0.4rem;
+  border-radius: 0;
   color: var(--text);
   font-size: 0.86rem;
 }
@@ -104,7 +104,7 @@
 .timeline,
 .twoCol > article {
   border: 1px solid var(--line);
-  border-radius: 0.5rem;
+  border-radius: 0;
   background: rgba(255, 255, 255, 0.035);
 }
 
@@ -250,7 +250,7 @@
 }
 
 .phase span {
-  color: var(--mint-2);
+  color: var(--accent-bright);
   font-family: var(--font-jetbrains-mono), ui-monospace, monospace;
   font-size: 0.8rem;
 }
@@ -297,7 +297,7 @@
 
 .heroCard:hover {
   transform: translateY(-4px);
-  border-color: rgba(142, 160, 255, 0.42);
+  border-color: rgba(204, 248, 63, 0.42);
   box-shadow: 0 20px 46px rgba(0, 0, 0, 0.45);
 }
 
@@ -314,7 +314,7 @@
   width: 3px;
   height: 1.05em;
   content: "";
-  border-radius: 2px;
+  border-radius: 0;
   background: var(--grad-brand);
   transform: translateY(-50%) scaleY(0);
   transform-origin: 50% 50%;
@@ -349,12 +349,12 @@
 
 .twoCol > article:hover {
   transform: translateY(-4px);
-  border-color: rgba(142, 160, 255, 0.38);
+  border-color: rgba(204, 248, 63, 0.38);
 }
 
 .callout:hover,
 .codeBlock:hover {
-  border-color: rgba(142, 160, 255, 0.32);
+  border-color: rgba(204, 248, 63, 0.32);
 }
 
 /* Rows nudge rather than lift — they sit in a bordered stack where a Y-shift
@@ -378,7 +378,7 @@
 
 .metric:hover {
   transform: translateY(-3px);
-  border-color: rgba(55, 240, 154, 0.4);
+  border-color: rgba(204, 248, 63, 0.4);
 }
 
 /* Timeline: the step number becomes the focal point on hover, and a connecting
@@ -402,7 +402,7 @@
 }
 
 .phase:hover span {
-  color: var(--mint-2);
+  color: var(--accent-bright);
   transform: scale(1.08);
 }
 
@@ -419,7 +419,7 @@
   left: 0;
   height: 24%;
   content: "";
-  background: linear-gradient(180deg, transparent, rgba(107, 92, 255, 0.07), transparent);
+  background: linear-gradient(180deg, transparent, rgba(204, 248, 63, 0.07), transparent);
   animation: docScan 7.5s var(--ease-standard) infinite;
   animation-delay: var(--scan-delay, 0s);
   pointer-events: none;

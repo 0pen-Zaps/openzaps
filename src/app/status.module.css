@@ -20,14 +20,7 @@
   width: 4.5rem;
   height: 4.5rem;
   margin-bottom: 1.5rem;
-  filter: drop-shadow(0 0 46px rgba(107, 92, 255, 0.5));
-  animation: statusMark 5.5s var(--ease-standard) infinite;
-}
-
-/* A slow tilt-and-settle so the mark reads as idle-but-alive rather than static. */
-@keyframes statusMark {
-  0%, 100% { transform: translateY(0) rotate(0deg); }
-  50% { transform: translateY(-8px) rotate(-4deg); }
+  filter: drop-shadow(0 0 32px rgba(204, 248, 63, 0.28));
 }
 
 .code {
@@ -36,12 +29,7 @@
   font-weight: 600;
   line-height: 1;
   letter-spacing: -0.02em;
-  background: var(--grad-brand);
-  background-size: 240% 100%;
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
-  animation: shift 7s ease infinite;
+  color: var(--accent);
 }
 
 .title {
@@ -67,7 +55,7 @@
   padding: 0.7rem 0.9rem;
   overflow-wrap: anywhere;
   border: 1px solid rgba(255, 138, 138, 0.28);
-  border-radius: 0.5rem;
+  border-radius: 0;
   background: rgba(255, 90, 90, 0.07);
   color: #ffb4b4;
   font-family: var(--font-jetbrains-mono), ui-monospace, monospace;
@@ -97,7 +85,7 @@
 .suggest a {
   padding: 0.44rem 0.75rem;
   border: 1px solid var(--line);
-  border-radius: var(--pill);
+  border-radius: 0;
   background: rgba(255, 255, 255, 0.03);
   color: var(--muted);
   font-family: var(--font-jetbrains-mono), ui-monospace, monospace;
@@ -110,8 +98,8 @@
 }
 
 .suggest a:hover {
-  border-color: rgba(142, 160, 255, 0.42);
-  background: rgba(142, 160, 255, 0.1);
+  border-color: rgba(204, 248, 63, 0.42);
+  background: rgba(204, 248, 63, 0.1);
   color: var(--fg);
   transform: translateY(-2px);
 }
@@ -140,7 +128,7 @@
 .loadBars i {
   width: 0.34rem;
   height: 2.2rem;
-  border-radius: var(--pill);
+  border-radius: 0;
   background: var(--grad-brand);
   transform-origin: 50% 100%;
   animation: loadBar 1.05s var(--ease-standard) infinite;

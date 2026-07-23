@@ -10,7 +10,7 @@
   gap: 0.9rem;
   padding: 0.85rem 1rem;
   border: 1px solid var(--line);
-  border-radius: 0.65rem;
+  border-radius: 0;
   background: rgba(255, 255, 255, 0.035);
 }
 
@@ -23,7 +23,7 @@
 .statusBar a,
 .receipts a,
 .review a {
-  color: var(--mint-2);
+  color: var(--accent-bright);
   text-decoration: underline;
   text-underline-offset: 3px;
 }
@@ -33,15 +33,15 @@
   display: inline-flex;
   min-width: max-content;
   padding: 0.33rem 0.62rem;
-  border-radius: 999px;
+  border-radius: 0;
   font-family: var(--font-jetbrains-mono), ui-monospace, monospace;
   font-size: 0.72rem;
 }
 
 .statusLive {
-  border: 1px solid rgba(55, 240, 154, 0.34);
-  color: var(--mint-2);
-  background: rgba(33, 208, 122, 0.08);
+  border: 1px solid rgba(204, 248, 63, 0.34);
+  color: var(--accent-bright);
+  background: rgba(204, 248, 63, 0.08);
 }
 
 .statusPreview {
@@ -69,7 +69,7 @@
   width: 3rem;
   height: 3rem;
   flex: 0 0 auto;
-  filter: drop-shadow(0 0 22px rgba(107, 92, 255, 0.36));
+  filter: drop-shadow(0 0 22px rgba(204, 248, 63, 0.36));
 }
 
 .titleRow h1 {
@@ -101,10 +101,10 @@
   display: inline-flex;
   align-items: center;
   padding: 0 0.75rem;
-  border: 1px solid rgba(55, 240, 154, 0.3);
-  border-radius: 999px;
-  background: rgba(33, 208, 122, 0.08);
-  color: var(--mint-2);
+  border: 1px solid rgba(204, 248, 63, 0.3);
+  border-radius: 0;
+  background: rgba(204, 248, 63, 0.08);
+  color: var(--accent-bright);
   font-family: var(--font-jetbrains-mono), ui-monospace, monospace;
   font-size: 0.78rem;
   text-decoration: none;
@@ -114,15 +114,15 @@
 .error {
   margin-bottom: 1rem;
   padding: 0.85rem 1rem;
-  border-radius: 0.55rem;
+  border-radius: 0;
   font-size: 0.9rem;
   line-height: 1.5;
 }
 
 .notice {
-  border: 1px solid rgba(55, 240, 154, 0.28);
-  color: var(--mint-2);
-  background: rgba(33, 208, 122, 0.08);
+  border: 1px solid rgba(204, 248, 63, 0.28);
+  color: var(--accent-bright);
+  background: rgba(204, 248, 63, 0.08);
 }
 
 /* The notice live region stays mounted so screen readers announce updates;
@@ -151,7 +151,7 @@
   gap: 1px;
   overflow: hidden;
   border: 1px solid var(--line);
-  border-radius: 0.65rem;
+  border-radius: 0;
   background: var(--line);
 }
 
@@ -186,7 +186,7 @@
   margin-top: 1rem;
   padding: 0.9rem 1rem;
   border: 1px solid var(--line);
-  border-radius: 0.65rem;
+  border-radius: 0;
   background: rgba(255, 255, 255, 0.025);
 }
 
@@ -211,7 +211,7 @@
 
 .tokenTools code {
   min-width: 0;
-  color: var(--mint-2);
+  color: var(--accent-bright);
   font-size: 0.72rem;
   overflow-wrap: anywhere;
 }
@@ -236,7 +236,7 @@
 .review,
 .receipts {
   border: 1px solid var(--line);
-  border-radius: 0.65rem;
+  border-radius: 0;
   background: rgba(255, 255, 255, 0.035);
   box-shadow: var(--card-shadow);
 }
@@ -270,27 +270,6 @@
   line-height: 1.55;
 }
 
-.auditWarning {
-  display: grid;
-  gap: 0.3rem;
-  margin-bottom: 1rem;
-  padding: 0.8rem 0.9rem;
-  border: 1px solid rgba(255, 194, 107, 0.34);
-  border-radius: 0.55rem;
-  color: #ffd398;
-  background: rgba(255, 194, 107, 0.075);
-}
-
-.auditWarning strong {
-  font-size: 0.84rem;
-}
-
-.auditWarning span {
-  color: #e0c5a1;
-  font-size: 0.78rem;
-  line-height: 1.45;
-}
-
 .cardHead,
 .liveBadge {
   display: inline-flex;
@@ -299,8 +278,8 @@
   padding: 0 0.58rem;
   margin-bottom: 0.85rem;
   border: 1px solid var(--line);
-  border-radius: 999px;
-  color: var(--indigo);
+  border-radius: 0;
+  color: var(--accent-dim);
   font-family: var(--font-jetbrains-mono), ui-monospace, monospace;
   font-size: 0.7rem;
   text-transform: uppercase;
@@ -308,9 +287,9 @@
 
 .liveBadge {
   min-width: max-content;
-  border-color: rgba(55, 240, 154, 0.26);
-  color: var(--mint-2);
-  background: rgba(33, 208, 122, 0.07);
+  border-color: rgba(204, 248, 63, 0.26);
+  color: var(--accent-bright);
+  background: rgba(204, 248, 63, 0.07);
 }
 
 .segment {
@@ -328,7 +307,7 @@
   gap: 0.25rem;
   padding: 0.8rem;
   border: 1px solid var(--line);
-  border-radius: 0.55rem;
+  border-radius: 0;
   background: rgba(255, 255, 255, 0.024);
   color: var(--text);
   font-size: 0.9rem;
@@ -338,8 +317,8 @@
 }
 
 .segOn {
-  border-color: rgba(142, 160, 255, 0.48);
-  background: rgba(142, 160, 255, 0.12);
+  border-color: rgba(204, 248, 63, 0.48);
+  background: rgba(204, 248, 63, 0.12);
   color: var(--fg);
 }
 
@@ -382,7 +361,7 @@
   height: 3rem;
   padding: 0 0.82rem;
   border: 1px solid var(--line);
-  border-radius: 0.55rem;
+  border-radius: 0;
   background: rgba(255, 255, 255, 0.03);
   color: var(--fg);
   font-family: inherit;
@@ -390,8 +369,8 @@
 }
 
 .input:focus {
-  border-color: rgba(142, 160, 255, 0.62);
-  outline: 2px solid rgba(142, 160, 255, 0.12);
+  border-color: rgba(204, 248, 63, 0.62);
+  outline: 2px solid rgba(204, 248, 63, 0.12);
 }
 
 .input:disabled {
@@ -401,7 +380,7 @@
 .range {
   width: 100%;
   height: 3rem;
-  accent-color: var(--mint-2);
+  accent-color: var(--accent-bright);
 }
 
 .quoteBox {
@@ -411,9 +390,9 @@
   align-items: end;
   margin-top: 1rem;
   padding: 0.9rem;
-  border: 1px solid rgba(142, 160, 255, 0.22);
-  border-radius: 0.55rem;
-  background: rgba(142, 160, 255, 0.055);
+  border: 1px solid rgba(204, 248, 63, 0.22);
+  border-radius: 0;
+  background: rgba(204, 248, 63, 0.055);
 }
 
 .quoteBox div {
@@ -448,7 +427,7 @@
   gap: 0.75rem;
   padding: 0.9rem;
   border: 1px solid var(--line-soft);
-  border-radius: 0.55rem;
+  border-radius: 0;
   background: rgba(255, 255, 255, 0.018);
 }
 
@@ -457,17 +436,17 @@
   height: 2rem;
   display: grid;
   place-items: center;
-  border: 1px solid rgba(142, 160, 255, 0.32);
+  border: 1px solid rgba(204, 248, 63, 0.32);
   border-radius: 50%;
-  color: var(--indigo);
+  color: var(--accent-dim);
   font-family: var(--font-jetbrains-mono), ui-monospace, monospace;
   font-size: 0.78rem;
 }
 
 .flowStep[data-done="true"] > span {
-  border-color: rgba(55, 240, 154, 0.34);
-  color: var(--mint-2);
-  background: rgba(33, 208, 122, 0.08);
+  border-color: rgba(204, 248, 63, 0.34);
+  color: var(--accent-bright);
+  background: rgba(204, 248, 63, 0.08);
 }
 
 .flowStep strong {
@@ -505,7 +484,7 @@
   align-items: center;
   padding: 0.65rem;
   border: 1px solid var(--line-soft);
-  border-radius: 0.45rem;
+  border-radius: 0;
 }
 
 .verifyRow > span {
@@ -514,8 +493,8 @@
   display: grid;
   place-items: center;
   border-radius: 50%;
-  color: var(--mint-2);
-  background: rgba(33, 208, 122, 0.08);
+  color: var(--accent-bright);
+  background: rgba(204, 248, 63, 0.08);
   font-size: 0.72rem;
 }
 
@@ -597,7 +576,7 @@
   gap: 0.65rem;
   padding: 0.65rem 0.7rem;
   border: 1px solid var(--line-soft);
-  border-radius: 0.45rem;
+  border-radius: 0;
   color: var(--text);
   background: rgba(255, 255, 255, 0.018);
   cursor: pointer;
@@ -605,8 +584,8 @@
 }
 
 .savedZapActive {
-  border-color: rgba(55, 240, 154, 0.35);
-  background: rgba(33, 208, 122, 0.06);
+  border-color: rgba(204, 248, 63, 0.35);
+  background: rgba(204, 248, 63, 0.06);
 }
 
 .savedZap strong,
@@ -644,10 +623,10 @@
   align-items: center;
   min-height: 44px;
   padding: 0 0.75rem;
-  border: 1px solid rgba(142, 160, 255, 0.42);
-  border-radius: 999px;
-  background: rgba(107, 92, 255, 0.12);
-  color: var(--indigo);
+  border: 1px solid rgba(204, 248, 63, 0.42);
+  border-radius: 0;
+  background: rgba(204, 248, 63, 0.12);
+  color: var(--accent-bright);
   font-family: var(--font-jetbrains-mono), ui-monospace, monospace;
   font-size: 0.72rem;
 }
@@ -660,7 +639,7 @@
 }
 
 .utilStatus a {
-  color: var(--indigo);
+  color: var(--accent-dim);
   text-decoration: underline;
   text-underline-offset: 2px;
 }
@@ -690,7 +669,7 @@
 }
 
 .zapHistory a {
-  color: var(--mint-2);
+  color: var(--accent-bright);
   font-size: 0.78rem;
 }
 
@@ -702,7 +681,7 @@
   margin-top: 1rem;
   padding: 1.2rem;
   border: 1px dashed var(--line);
-  border-radius: 0.55rem;
+  border-radius: 0;
   color: var(--muted);
   font-size: 0.86rem;
   text-align: center;
@@ -721,16 +700,16 @@
   align-items: center;
   padding: 0.75rem;
   border: 1px solid var(--line-soft);
-  border-radius: 0.5rem;
+  border-radius: 0;
   color: inherit;
   text-decoration: none;
 }
 
 .txList span {
   padding: 0.2rem 0.45rem;
-  border-radius: 999px;
-  color: var(--mint-2);
-  background: rgba(33, 208, 122, 0.08);
+  border-radius: 0;
+  color: var(--accent-bright);
+  background: rgba(204, 248, 63, 0.08);
   font-family: var(--font-jetbrains-mono), ui-monospace, monospace;
   font-size: 0.65rem;
 }
@@ -907,8 +886,8 @@
 
 /* A completed step confirms itself with a single expanding ring. */
 .flowStep[data-done="true"] {
-  border-color: rgba(55, 240, 154, 0.24);
-  background: rgba(33, 208, 122, 0.035);
+  border-color: rgba(204, 248, 63, 0.24);
+  background: rgba(204, 248, 63, 0.035);
 }
 
 .flowStep[data-done="true"] > span {
@@ -920,7 +899,7 @@
    without having to re-read the whole column. */
 .flowStep:not([data-done="true"]):focus-within,
 .flowStep:not([data-done="true"]):hover {
-  border-color: rgba(142, 160, 255, 0.34);
+  border-color: rgba(204, 248, 63, 0.34);
   background: rgba(255, 255, 255, 0.03);
 }
 
@@ -935,7 +914,7 @@
 }
 
 .input:focus {
-  box-shadow: 0 0 0 3px rgba(107, 92, 255, 0.18);
+  box-shadow: 0 0 0 3px rgba(204, 248, 63, 0.18);
 }
 
 .input:disabled {
@@ -1046,8 +1025,8 @@
 
 /* Local copies — CSS Modules scope animation-name; see status.module.css. */
 @keyframes ripple {
-  from { box-shadow: 0 0 0 0 rgba(55, 240, 154, 0.5); }
-  to { box-shadow: 0 0 0 12px rgba(55, 240, 154, 0); }
+  from { box-shadow: 0 0 0 0 rgba(204, 248, 63, 0.5); }
+  to { box-shadow: 0 0 0 12px rgba(204, 248, 63, 0); }
 }
 
 @keyframes blink {
