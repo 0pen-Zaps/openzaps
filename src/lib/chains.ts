@@ -156,12 +156,12 @@ export const ROBINHOOD_ADAPTERS: readonly AdapterSpec[] = [
       "Refuses any pool but the one welded into its constructor, any calldata beyond a bounded minimum-out, and any chain but 4663.",
   },
 
-  // The aeWETH/USDG pool `RobinhoodV4PoolAdapter` defaults to (fee 450,
-  // tickSpacing 9, hookless) — the deepest hookless pool on that pair. Not
-  // deployed: these carry no `deployedAddress`, so the mapper treats the step
-  // as undeployed until the env var is set. Registering the pair is what makes
-  // a swap-then-deposit chain expressible at all, since the vault takes USDG
-  // and no other swap adapter produces it.
+  // The aeWETH/USDG pool `RobinhoodV4PoolAdapter` executes (fee 450,
+  // tickSpacing 9, hookless) — the deepest hookless pool on that pair. Deployed
+  // and allowlisted now, with the address baked below, so the builder offers a
+  // USDG swap and the /app signing path can build a policy for it. Registering
+  // the pair is also what makes a swap-then-deposit chain expressible at all,
+  // since the vault takes USDG and no other swap adapter produces it.
   {
     id: "robinhood-v4-weth-usdg",
     chainId: ROBINHOOD_CHAIN_ID,
@@ -171,8 +171,16 @@ export const ROBINHOOD_ADAPTERS: readonly AdapterSpec[] = [
     weldedParams: { venue: "Uniswap v4" },
     tokenIn: "WETH",
     tokenOut: "USDG",
-    direction: "buy",
+    // `direction` is the bounded aeWETH↔0xZAPS buy/sell bit and NOTHING else.
+    // aeWETH is the input of both the 0xZAPS buy and this USDG buy, so a
+    // non-null value here would let the app resolve this route as the 0xZAPS
+    // one. Route identity keys on the adapter id, never on direction.
+    direction: null,
     envVar: "NEXT_PUBLIC_OPENZAP_ROBINHOOD_V4_USDG_ADAPTER",
+    // Deployed and allowlisted on chain 4663 (RobinhoodV4PoolAdapter, aeWETH/USDG
+    // pool fee 450 / tickSpacing 9 / hookless). Baked so the route is live without
+    // Vercel env; the env var still overrides for a redeploy.
+    deployedAddress: "0x714E48930d1d9a53149AA7B92cD88C9E172d1942",
     refuses:
       "Refuses any pool but the one welded into its constructor, any calldata beyond a bounded minimum-out, and any chain but 4663.",
   },
@@ -185,18 +193,24 @@ export const ROBINHOOD_ADAPTERS: readonly AdapterSpec[] = [
     weldedParams: { venue: "Uniswap v4" },
     tokenIn: "USDG",
     tokenOut: "WETH",
-    direction: "sell",
+    direction: null,
     envVar: "NEXT_PUBLIC_OPENZAP_ROBINHOOD_V4_USDG_ADAPTER",
+    deployedAddress: "0x714E48930d1d9a53149AA7B92cD88C9E172d1942",
     refuses:
       "Refuses any pool but the one welded into its constructor, any calldata beyond a bounded minimum-out, and any chain but 4663.",
   },
 
-  // ---- NOT DEPLOYED --------------------------------------------------------
-  // `deployedAddress` is absent on purpose. `ZapVault` exists as a primitive
-  // but nothing can reach it from a zap step, because no adapter calls it.
-  // These two entries describe the adapters that close that gap; until one is
-  // deployed, allowlisted, and its env var set, the mapper rejects every
-  // design that needs it — and it does, by name.
+  // ---- DEPLOYED, BUT FAIL-CLOSED ON SEEDING --------------------------------
+  // `ZapVault` (ozUSDG) exists as a primitive, and these two adapters are the
+  // only way a zap step can reach it — deposit (asset → shares) and redeem
+  // (shares → asset). Both are deployed and allowlisted now, with addresses
+  // baked below, so the registry reports them deployed. That is NOT the same as
+  // offering them: the vault is unseeded (totalSupply 0), and an unseeded
+  // ERC-4626 is inflation/donation grief-able, so the RPC-holding caller (/app)
+  // must read `totalSupply() > 0` before offering, funding, or verifying a vault
+  // route. `chains.ts`/`deployable.ts` cannot do that read (pure, sync, no RPC),
+  // so the seed gate lives on /app; here the address is baked and the reachability
+  // is what it is.
   //
   // The tokens come from `contracts/script/DeployRobinhoodExpansion.s.sol`,
   // which deploys the vault as `OpenZap USDG Vault` / `ozUSDG` against
@@ -204,14 +218,12 @@ export const ROBINHOOD_ADAPTERS: readonly AdapterSpec[] = [
   // if the vault ships against anything else these two rows are wrong the
   // moment an address is configured: edit them in the same change.
   //
-  // TWO THINGS ARE UNREACHABLE HERE, BOTH DELIBERATELY. The catalog offers no
-  // USDG asset and no "ZapVault" market, so even with an address configured no
-  // drawn chain selects these — and no adapter produces USDG, so nothing feeds
-  // one either. Setting the env var alone does NOT put a vault step in front
-  // of a user; teaching the catalog those names is a separate, deliberate
-  // change, and it is the one that has to carry the copy for what a vault
-  // deposit does. Rejecting "Supply into Morpho" is the point: a design that
-  // names a protocol must never be deployed as a different one.
+  // The catalog now names both USDG (as a wallet-balance asset) and "ZapVault"
+  // (as a supply venue), so a `[wallet-balance USDG] → [supply ZapVault]` chain
+  // IS drawable and, with the address baked, deployable — which is exactly why
+  // the /app seed gate is load-bearing rather than theoretical. Rejecting
+  // "Supply into Morpho" is still the point: a design that names a protocol must
+  // never be deployed as a different one, so the weld stays immutable.
   {
     id: "robinhood-zap-vault-deposit",
     chainId: ROBINHOOD_CHAIN_ID,
@@ -223,6 +235,13 @@ export const ROBINHOOD_ADAPTERS: readonly AdapterSpec[] = [
     tokenOut: "ozUSDG",
     direction: null,
     envVar: "NEXT_PUBLIC_OPENZAP_ZAP_VAULT_DEPOSIT_ADAPTER",
+    // Deployed and allowlisted (ZapVaultDepositAdapter, ozUSDG vault). The
+    // address being configured is NOT sufficient to offer this route: the vault
+    // is unseeded (totalSupply 0) right now, and an unseeded ERC-4626 is
+    // grief-able, so the RPC-holding caller (/app) must gate on totalSupply > 0
+    // before offering, funding, or verifying it. Baked here so that gate — not a
+    // missing address — is the only thing standing between the deposit and a user.
+    deployedAddress: "0x1b289fD37Ff4497531a953aa922ab258F5e81164",
     refuses:
       "Refuses any vault or asset but the ones welded into its constructor, refuses to hold shares between calls, and refuses to report anything but the measured share delta.",
   },
@@ -243,6 +262,11 @@ export const ROBINHOOD_ADAPTERS: readonly AdapterSpec[] = [
     tokenOut: "USDG",
     direction: null,
     envVar: "NEXT_PUBLIC_OPENZAP_ZAP_VAULT_REDEEM_ADAPTER",
+    // Deployed and allowlisted (ZapVaultRedeemAdapter). `blockId` stays null: no
+    // catalog block turns a share back into tokens, so a drawn chain can never
+    // select this — it is offered on /app only, and only while the vault holds
+    // shares to redeem (totalSupply > 0).
+    deployedAddress: "0x16eD4f04657c7a965aef333F5Cf0c9d745e0c8cE",
     refuses:
       "Refuses any vault or asset but the ones welded into its constructor, and refuses to redeem to anyone but its caller.",
   },

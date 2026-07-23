@@ -27,7 +27,36 @@ export const robinhoodChain = defineChain({
 export const ROBINHOOD_ASSETS = {
   weth: getAddress("0x0Bd7D308f8E1639FAb988df18A8011f41EAcAD73"),
   zaps: getAddress("0xDd90bFa4adC7F4401E611AbaC692D939F9F4CB07"),
+  // USDG has SIX decimals and ozUSDG has NINE. These are load-bearing money
+  // facts: parsing/formatting a USDG amount at 18 decimals is off by 10^12.
+  usdg: getAddress("0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168"),
+  // The ZapVault share token IS the vault contract; this address is both the
+  // ozUSDG ERC-20 and the ERC-4626 vault previewDeposit/previewRedeem/totalSupply
+  // are read from.
+  ozusdg: getAddress("0xeAD10C998c59745a030FfAc9209b294C14C7D325"),
 } as const;
+
+export type TokenInfo = { readonly symbol: string; readonly address: Address; readonly decimals: number };
+
+/**
+ * Catalog symbol (the vocabulary `chains.ts` speaks) → the token's real onchain
+ * identity. "WETH" is the catalog name for aeWETH; the UI symbol is "aeWETH".
+ *
+ * DECIMALS ARE PER TOKEN and every amount parse/format/quote/preview on the
+ * signing path must use the route token's real decimals from here — never a
+ * hardcoded 18. USDG is 6, ozUSDG is 9.
+ */
+export const ROBINHOOD_TOKENS: Record<string, TokenInfo> = {
+  WETH: { symbol: "aeWETH", address: ROBINHOOD_ASSETS.weth, decimals: 18 },
+  "0xZAPS": { symbol: "0xZAPS", address: ROBINHOOD_ASSETS.zaps, decimals: 18 },
+  USDG: { symbol: "USDG", address: ROBINHOOD_ASSETS.usdg, decimals: 6 },
+  ozUSDG: { symbol: "ozUSDG", address: ROBINHOOD_ASSETS.ozusdg, decimals: 9 },
+};
+
+/** The token identity for a catalog symbol, or `null` when the symbol is unknown. */
+export function tokenBySymbol(symbol: string): TokenInfo | null {
+  return ROBINHOOD_TOKENS[symbol] ?? null;
+}
 
 export const ROBINHOOD_LIQUIDITY = {
   permit2: getAddress("0x000000000022D473030F116dDEE9F6B43aC78BA3"),
@@ -37,6 +66,18 @@ export const ROBINHOOD_LIQUIDITY = {
   poolId: "0xb040f18affd851c6ea02b896b2f846cb77edbb33cc5361f7f8c6d14b87c01573" as Hex,
   dynamicFeeFlag: 0x800000,
   tickSpacing: 200,
+} as const;
+
+/**
+ * The aeWETH/USDG pool the `RobinhoodV4PoolAdapter` (0x714E…) is welded to — a
+ * DIFFERENT PoolKey from the aeWETH/0xZAPS one above: static fee 450, tickSpacing
+ * 9, hookless. Quoting a USDG swap against `robinhoodPoolKey` would silently
+ * quote the wrong pool. Source of truth: `contracts/script/DeployRobinhoodExpansion.s.sol`.
+ */
+export const ROBINHOOD_USDG_POOL = {
+  poolId: "0x6ba18d461bfe3df70a80b50a4700e330e49efdaf597901b931f210554a5035d2" as Hex,
+  fee: 450,
+  tickSpacing: 9,
 } as const;
 
 export const OPENZAP_CONTRACTS = {
@@ -133,6 +174,57 @@ export const robinhoodPoolKey = {
   tickSpacing: ROBINHOOD_LIQUIDITY.tickSpacing,
   hooks: ROBINHOOD_LIQUIDITY.hook,
 } as const;
+
+/**
+ * The PoolKey for the aeWETH/USDG pool. `currency0 < currency1` by address, so
+ * aeWETH (0x0Bd7…) is currency0 and USDG (0x5fc5…) is currency1; a buy
+ * (aeWETH→USDG) is therefore `zeroForOne = true`. Hookless, so `hooks` is the
+ * zero address.
+ */
+export const usdgPoolKey = {
+  currency0: ROBINHOOD_ASSETS.weth,
+  currency1: ROBINHOOD_ASSETS.usdg,
+  fee: ROBINHOOD_USDG_POOL.fee,
+  tickSpacing: ROBINHOOD_USDG_POOL.tickSpacing,
+  hooks: zeroAddress,
+} as const;
+
+/**
+ * The read surface of `ZapVault` the signing path needs. A vault deposit has NO
+ * market price: `previewDeposit(assets)→shares` and `previewRedeem(shares)→assets`
+ * are the only quote sources, and `totalSupply()` is the fail-closed seeding
+ * gate — an unseeded vault (totalSupply 0) is grief-able and must never be offered.
+ */
+export const zapVaultAbi = [
+  {
+    type: "function",
+    name: "previewDeposit",
+    inputs: [{ name: "assets", type: "uint256" }],
+    outputs: [{ name: "", type: "uint256" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "previewRedeem",
+    inputs: [{ name: "shares", type: "uint256" }],
+    outputs: [{ name: "", type: "uint256" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "totalSupply",
+    inputs: [],
+    outputs: [{ name: "", type: "uint256" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "asset",
+    inputs: [],
+    outputs: [{ name: "", type: "address" }],
+    stateMutability: "view",
+  },
+] as const;
 
 export const erc20Abi = [
   {
