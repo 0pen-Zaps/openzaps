@@ -14,6 +14,11 @@ const nextConfig: NextConfig = {
       { source: "/dashboard", destination: "/zaps", permanent: true },
       { source: "/security", destination: "/docs#security", permanent: true },
       { source: "/pricing", destination: "/docs", permanent: true },
+      // The signing console moved from /app to /use — the product surface is
+      // "Use", a verb, next to Build. The 308 preserves the query string, so a
+      // builder handoff link minted before the rename still lands with its
+      // route/amount/bps intact.
+      { source: "/app", destination: "/use", permanent: true },
     ];
   },
 };

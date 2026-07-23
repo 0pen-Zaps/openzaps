@@ -636,6 +636,11 @@ const ADAPTER_ENV = [
   "NEXT_PUBLIC_OPENZAP_ROBINHOOD_V4_ADAPTER",
   "NEXT_PUBLIC_OPENZAP_ZAP_VAULT_DEPOSIT_ADAPTER",
   "NEXT_PUBLIC_OPENZAP_ZAP_VAULT_REDEEM_ADAPTER",
+  "NEXT_PUBLIC_OPENZAP_ROUTE_USDG_ZAPS_ADAPTER",
+  "NEXT_PUBLIC_OPENZAP_ROUTE_ZAPS_USDG_ADAPTER",
+  "NEXT_PUBLIC_OPENZAP_RANGE_DEPOSIT_ADAPTER",
+  "NEXT_PUBLIC_OPENZAP_RANGE_WITHDRAW_USDG_ADAPTER",
+  "NEXT_PUBLIC_OPENZAP_RANGE_WITHDRAW_WETH_ADAPTER",
 ] as const;
 
 afterEach(() => {
@@ -669,10 +674,19 @@ describe("the deployed-adapter registry", () => {
     expect(onlyBoundedSwapIsDeployed()).toBe(false);
   });
 
-  it("treats every baked expansion adapter as deployed", () => {
+  it("treats baked adapters as deployed and unbaked ones as fail-closed", () => {
     for (const spec of ROBINHOOD_ADAPTERS) {
-      expect(isAdapterDeployed(spec), spec.id).toBe(true);
-      expect(adapterAddress(spec), spec.id).not.toBeNull();
+      if (spec.deployedAddress !== undefined) {
+        expect(isAdapterDeployed(spec), spec.id).toBe(true);
+        expect(adapterAddress(spec), spec.id).not.toBeNull();
+      } else {
+        // The "Use" expansion set (stitched routes, range-vault LP) ships as
+        // registry entries with NO baked address: contracts exist and are
+        // fork-tested, but until the broadcast address lands in the env var
+        // each one must read as NOT deployed.
+        expect(isAdapterDeployed(spec), spec.id).toBe(false);
+        expect(adapterAddress(spec), spec.id).toBeNull();
+      }
     }
   });
 

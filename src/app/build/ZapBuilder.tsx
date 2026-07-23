@@ -824,7 +824,7 @@ export function ZapBuilder(): React.JSX.Element {
   // for backward-compatibility with the bounded pair (older links carry it and
   // no route id). Amount is the decimal string in the token's own units.
   const deployHref = deployment.deployable
-    ? `/app?src=build&route=${encodeURIComponent(deployment.routeId)}${
+    ? `/use?src=build&route=${encodeURIComponent(deployment.routeId)}${
         deployment.direction ? `&dir=${deployment.direction}` : ""
       }&amount=${encodeURIComponent(deployment.amountIn)}&bps=${deployment.slippageBps}`
     : null;
@@ -1469,7 +1469,7 @@ export function ZapBuilder(): React.JSX.Element {
               </div>
             ) : null}
 
-            <Link className={styles.openApp} href="/app">
+            <Link className={styles.openApp} href="/use">
               Open the live app →
             </Link>
           </div>

@@ -1,5 +1,5 @@
 import { encodeAbiParameters, getAddress, type PublicClient } from "viem";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 
 import {
   buildRobinhoodPolicy,
@@ -249,5 +249,63 @@ describe("resolveOfferedRoutes — fail-closed vault seeding gate", () => {
     expect(ids).not.toContain("robinhood-zap-vault-deposit");
     // Swaps need no read and are still offered.
     expect(ids).toContain("robinhood-v4-weth-zaps");
+  });
+});
+
+describe("the Use expansion routes — stitched swaps and range LP", () => {
+  const ROUTE_ENV = [
+    "NEXT_PUBLIC_OPENZAP_ROUTE_USDG_ZAPS_ADAPTER",
+    "NEXT_PUBLIC_OPENZAP_ROUTE_ZAPS_USDG_ADAPTER",
+    "NEXT_PUBLIC_OPENZAP_RANGE_DEPOSIT_ADAPTER",
+  ] as const;
+  const ROUTE_ADAPTER = "0x2222222222222222222222222222222222222222";
+
+  afterEach(() => {
+    for (const key of ROUTE_ENV) delete process.env[key];
+  });
+
+  it("fails closed while no address is configured", () => {
+    expect(resolveRouteById("robinhood-v4-route-usdg-zaps")).toBeNull();
+    expect(resolveRouteById("robinhood-v4-route-zaps-usdg")).toBeNull();
+    expect(resolveRouteById("robinhood-range-deposit-weth")).toBeNull();
+    expect(resolveRouteById("robinhood-range-withdraw-usdg")).toBeNull();
+  });
+
+  it("resolves the stitched USDG → 0xZAPS route with per-hop directions derived from the path", () => {
+    process.env.NEXT_PUBLIC_OPENZAP_ROUTE_USDG_ZAPS_ADAPTER = ROUTE_ADAPTER;
+    const stitched = route("robinhood-v4-route-usdg-zaps");
+    expect(stitched.kind).toBe("swap-route");
+    expect(stitched.data).toBe("min-amount-out");
+    expect(stitched.tokenIn.symbol).toBe("USDG");
+    expect(stitched.tokenOut.symbol).toBe("0xZAPS");
+    // Endpoints only: the intermediate aeWETH never rests in the capsule.
+    expect(stitched.trackedAssets).toEqual([ROBINHOOD_ASSETS.usdg, ROBINHOOD_ASSETS.zaps]);
+    if (stitched.quote.source !== "v4-route") throw new Error("expected a v4-route quote");
+    expect(stitched.quote.hops).toHaveLength(2);
+    // Hop 1: USDG into the aeWETH/USDG pool — USDG is currency1, so NOT zeroForOne.
+    expect(stitched.quote.hops[0].poolKey).toEqual(usdgPoolKey);
+    expect(stitched.quote.hops[0].zeroForOne).toBe(false);
+    // Hop 2: aeWETH into the aeWETH/0xZAPS pool — aeWETH is currency0.
+    expect(stitched.quote.hops[1].poolKey).toEqual(robinhoodPoolKey);
+    expect(stitched.quote.hops[1].zeroForOne).toBe(true);
+  });
+
+  it("resolves the reverse route with mirrored hops", () => {
+    process.env.NEXT_PUBLIC_OPENZAP_ROUTE_ZAPS_USDG_ADAPTER = ROUTE_ADAPTER;
+    const stitched = route("robinhood-v4-route-zaps-usdg");
+    if (stitched.quote.source !== "v4-route") throw new Error("expected a v4-route quote");
+    expect(stitched.quote.hops[0].poolKey).toEqual(robinhoodPoolKey);
+    expect(stitched.quote.hops[0].zeroForOne).toBe(false); // 0xZAPS is currency1
+    expect(stitched.quote.hops[1].poolKey).toEqual(usdgPoolKey);
+    expect(stitched.quote.hops[1].zeroForOne).toBe(true); // aeWETH is currency0
+  });
+
+  it("keeps LP routes fail-closed while the ozRANGE vault address is unset, even with the adapter configured", () => {
+    // The ozRANGE token only exists once NEXT_PUBLIC_OPENZAP_RANGE_VAULT is set
+    // at build time; without it the symbol is unknown and the route must not
+    // resolve — an LP step against an unknown share token is unsignable.
+    process.env.NEXT_PUBLIC_OPENZAP_RANGE_DEPOSIT_ADAPTER = ROUTE_ADAPTER;
+    expect(resolveRouteById("robinhood-range-deposit-weth")).toBeNull();
+    expect(resolveRouteById("robinhood-range-deposit-usdg")).toBeNull();
   });
 });

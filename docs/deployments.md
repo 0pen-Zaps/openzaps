@@ -25,11 +25,14 @@ The canonical record is this file plus `contracts/broadcast/DeployRobinhood.s.so
 
 ### Governance and activation
 
-- Current Registry/Allowlist owner: `0xe17f5150A2954889988e63C49d41cc321c35B986` (dedicated deployment signer).
-- Pending owner on both contracts: `0x5a52D4B820Ae7F02880d270562950918ACb14aA2` (verified 0xZAPS token admin).
+- Current Registry/Allowlist owner: `0x5a52D4B820Ae7F02880d270562950918ACb14aA2` (verified 0xZAPS
+  token admin). The two-step handoff from the deployment signer `0xe17f5150…` has been **accepted**
+  on both contracts (`pendingOwner()` is zero on each, read live 2026-07-23).
+- The owner is an EOA; the Safe + timelock posture both contracts' NatSpec assumes is still open.
 - The production adapter is allowlisted.
-- Pool WETH and 0xZAPS are allowlisted.
-- Ownership acceptance is pending; this does not block zap creation or execution.
+- Pool WETH, 0xZAPS and USDG are allowlisted. The ozUSDG share token (`0xeAD10C99…D325`) is **not**
+  yet allowlisted, so the deployed ZapVault adapters cannot execute until governance sends
+  `setToken(ozUSDG, true)` — see `contracts/USE_EXPANSION.md` §3.
 
 ### Verification and live smoke
 

@@ -135,6 +135,24 @@ export const BLOCKS: readonly LegoBlock[] = [
     ],
   },
   {
+    id: "lp-position",
+    name: "Position balance",
+    kind: "source",
+    category: "source",
+    blurb: "Start from LP shares you already hold.",
+    detail:
+      "Pulls an exact amount of an ERC-20 LP share (ozRANGE) from the owner wallet — the starting point for a withdraw-liquidity chain. The share count is bound into the policy hash, exactly like a token amount.",
+    accepts: null,
+    emits: "lp",
+    glyph: "pool",
+    gas: 46_000,
+    maturity: "preview",
+    params: [
+      { key: "asset", label: "Position", type: "select", value: "ozRANGE", options: ["ozRANGE"] },
+      { key: "amount", label: "Shares", type: "amount", value: "1", placeholder: "1" },
+    ],
+  },
+  {
     id: "recurring-stream",
     name: "Recurring deposit",
     kind: "source",
@@ -288,17 +306,19 @@ export const BLOCKS: readonly LegoBlock[] = [
     name: "Add liquidity",
     kind: "action",
     category: "liquidity",
-    blurb: "Deposit into a pool and take the position.",
+    blurb: "Provide one token; take the LP position as an ERC-20.",
     detail:
-      "Provisions both sides of a range and mints the position. The range bounds are signed, so an executor cannot quietly widen your exposure.",
+      "Swaps half the incoming token inside the pool itself and deposits both legs into a full-range position, minting an ERC-20 share (ozRANGE) of it. Trading fees compound to the shares. Full range means no bounds to manage — and no protection from impermanent loss versus holding. The vault behind this block custodies real funds and is unaudited; whatever the pool ratio cannot absorb is refunded to the capsule, where it strands until you recover it.",
     accepts: "token",
     emits: "lp",
     glyph: "pool",
-    gas: 214_000,
+    gas: 620_000,
     maturity: "preview",
     params: [
-      { key: "pool", label: "Pool", type: "select", value: "WETH/USDC", options: ["WETH/USDC", "cbBTC/USDC", "0xZAPS/WETH"] },
-      { key: "width", label: "Range width", type: "number", value: 20, min: 2, max: 100, step: 2, suffix: "%" },
+      { key: "pool", label: "Pool", type: "select", value: "WETH/USDG", options: ["WETH/USDG", "WETH/USDC", "cbBTC/USDC", "0xZAPS/WETH"] },
+      { key: "range", label: "Range", type: "select", value: "Full range", options: ["Full range"] },
+      // Same rule as `swap`: blank means "first action only".
+      { key: "amount", label: "Amount (later steps)", type: "amount", value: "", placeholder: "leave blank if first" },
     ],
   },
   {
@@ -306,15 +326,18 @@ export const BLOCKS: readonly LegoBlock[] = [
     name: "Remove liquidity",
     kind: "action",
     category: "liquidity",
-    blurb: "Burn the position back into tokens.",
-    detail: "Withdraws the position and its accrued fees. Used to close a chain, or to rebalance into a fresh range.",
+    blurb: "Burn LP shares back into one token.",
+    detail:
+      "Redeems the ERC-20 LP shares for both pool currencies plus the position's accrued fees, then swaps the off-target leg in the same pool so the step settles in exactly one token. The share count is frozen into the policy at signing.",
     accepts: "lp",
     emits: "token",
     glyph: "poolOut",
-    gas: 176_000,
+    gas: 560_000,
     maturity: "preview",
     params: [
+      { key: "settle", label: "Settle in", type: "select", value: "USDG", options: ["USDG", "WETH"] },
       { key: "portion", label: "Withdraw", type: "number", value: 100, min: 5, max: 100, step: 5, suffix: "%" },
+      { key: "amount", label: "Shares (later steps)", type: "amount", value: "", placeholder: "leave blank if first" },
     ],
   },
   {

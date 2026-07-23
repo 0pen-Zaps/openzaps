@@ -39,6 +39,18 @@ export const ROBINHOOD_ASSETS = {
 export type TokenInfo = { readonly symbol: string; readonly address: Address; readonly decimals: number };
 
 /**
+ * The ZapRangeVault share token (ozRANGE) IS the vault contract — a full-range
+ * Uniswap v4 LP position on the hookless aeWETH/USDG pool, wrapped as an
+ * ERC-20. No address is baked because the vault is not deployed yet: until the
+ * env var carries a real address, the token does not exist for the app and
+ * every LP route fails closed.
+ */
+export const RANGE_VAULT_ADDRESS: Address = optionalAddress(
+  process.env.NEXT_PUBLIC_OPENZAP_RANGE_VAULT,
+  zeroAddress,
+);
+
+/**
  * Catalog symbol (the vocabulary `chains.ts` speaks) → the token's real onchain
  * identity. "WETH" is the catalog name for aeWETH; the UI symbol is "aeWETH".
  *
@@ -51,6 +63,12 @@ export const ROBINHOOD_TOKENS: Record<string, TokenInfo> = {
   "0xZAPS": { symbol: "0xZAPS", address: ROBINHOOD_ASSETS.zaps, decimals: 18 },
   USDG: { symbol: "USDG", address: ROBINHOOD_ASSETS.usdg, decimals: 6 },
   ozUSDG: { symbol: "ozUSDG", address: ROBINHOOD_ASSETS.ozusdg, decimals: 9 },
+  // ozRANGE exists only once its vault is deployed and configured; an unset or
+  // malformed env var means the symbol is unknown and every route naming it
+  // resolves to null (fail closed).
+  ...(RANGE_VAULT_ADDRESS !== zeroAddress
+    ? { ozRANGE: { symbol: "ozRANGE", address: RANGE_VAULT_ADDRESS, decimals: 18 } }
+    : {}),
 };
 
 /** The token identity for a catalog symbol, or `null` when the symbol is unknown. */
@@ -222,6 +240,52 @@ export const zapVaultAbi = [
     name: "asset",
     inputs: [],
     outputs: [{ name: "", type: "address" }],
+    stateMutability: "view",
+  },
+] as const;
+
+/**
+ * The read surface of `ZapRangeVault` the signing path needs. Like the ERC-4626
+ * vault, an LP deposit has no market price: `previewDeposit(amount0, amount1)`
+ * and `previewRedeem(shares)` price against the live pool + position state, and
+ * `totalSupply()` is the same fail-closed seeding gate.
+ */
+export const rangeVaultAbi = [
+  {
+    type: "function",
+    name: "previewDeposit",
+    inputs: [
+      { name: "amount0", type: "uint256" },
+      { name: "amount1", type: "uint256" },
+    ],
+    outputs: [
+      { name: "shares", type: "uint256" },
+      { name: "liquidityAdded", type: "uint128" },
+    ],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "previewRedeem",
+    inputs: [{ name: "shares", type: "uint256" }],
+    outputs: [
+      { name: "amount0", type: "uint256" },
+      { name: "amount1", type: "uint256" },
+    ],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "totalSupply",
+    inputs: [],
+    outputs: [{ name: "", type: "uint256" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "positionLiquidity",
+    inputs: [],
+    outputs: [{ name: "", type: "uint128" }],
     stateMutability: "view",
   },
 ] as const;
