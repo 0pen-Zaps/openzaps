@@ -128,7 +128,7 @@ export interface ExecutorFeeSplit {
   fee: bigint;
   /** 80% of the fee — paid to whichever executor submitted the run. */
   executorCut: bigint;
-  /** 20% of the fee — sent to the ZapLotteryPot and converted to 0xZAPS. */
+  /** 20% of the fee — sent to the ZapLotteryPot, converted to 0xZAPS by a later permissionless `buyZaps` call. */
   potCut: bigint;
   /** What the recipient receives; the signed `minOut`/`minOutPerRun` floors THIS value. */
   net: bigint;

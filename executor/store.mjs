@@ -7,7 +7,9 @@ import { join, basename } from "node:path";
 
 const HEX_ADDR = /^0x[0-9a-fA-F]{40}$/;
 const HEX_32 = /^0x[0-9a-fA-F]{64}$/;
-const HEX_SIG = /^0x[0-9a-fA-F]{130}$/;
+// >= 65 bytes of even-length hex: a 65-byte ECDSA signature, or the longer wrapped signatures
+// ERC-1271 contract wallets (Safe, Coinbase Smart Wallet) produce — the capsule verifies both.
+const HEX_SIG = /^0x(?:[0-9a-fA-F]{2}){65,}$/;
 
 const COMMON_FIELDS = [
   ["zap", HEX_ADDR],

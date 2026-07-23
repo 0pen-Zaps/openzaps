@@ -125,6 +125,41 @@ export function openZapProtocolConfigured(): boolean {
   return Object.values(OPENZAP_CONTRACTS).every((address) => address !== zeroAddress);
 }
 
+/**
+ * The v3 execution stack (recurring + price-triggered capsules, executor economy). Deployed on
+ * Robinhood Chain at block 17,601,632 — see docs/deployments.md. A SEPARATE lineage from the live
+ * v1.1 factory above: v3 capsules sign under EIP-712 domain version "3" and pay the 1% executor
+ * fee on the two standing-authorization paths. Same fail-closed pattern: a malformed env override
+ * collapses to the zero address and `openZapV3Configured()` refuses the surface.
+ */
+export const OPENZAP_V3_CONTRACTS = {
+  implementation: optionalAddress(
+    process.env.NEXT_PUBLIC_OPENZAP_V3_IMPLEMENTATION,
+    "0x0309E72Ffd1c6855FF519d9E923AEFc0C52bFdb5",
+  ),
+  factory: optionalAddress(
+    process.env.NEXT_PUBLIC_OPENZAP_V3_FACTORY,
+    "0x70FCFD3615eA6651a670B6c4CD6B8bA1506717e9",
+  ),
+  lotteryPot: optionalAddress(
+    process.env.NEXT_PUBLIC_OPENZAP_V3_LOTTERY_POT,
+    "0xeB7a15CE1c969efBA43ecfc1A63960Ad0042CFe3",
+  ),
+  priceSourceRegistry: optionalAddress(
+    process.env.NEXT_PUBLIC_OPENZAP_V3_PRICE_SOURCE_REGISTRY,
+    "0xd83a2dedb6185395A1Ac1d0abb9F98472feAd574",
+  ),
+  /** IPriceSource pinned to the live aeWETH/0xZAPS v4 pool — the trigger oracle. */
+  poolPriceSource: optionalAddress(
+    process.env.NEXT_PUBLIC_OPENZAP_V3_POOL_PRICE_SOURCE,
+    "0x60C310586541763D7f4dcc777F495f0627Bb098f",
+  ),
+} as const;
+
+export function openZapV3Configured(): boolean {
+  return Object.values(OPENZAP_V3_CONTRACTS).every((address) => address !== zeroAddress);
+}
+
 export function explorerAddress(address: Address): string {
   return `${ROBINHOOD_EXPLORER_URL}/address/${address}`;
 }
@@ -551,6 +586,232 @@ export const v4QuoterAbi = [
       { name: "gasEstimate", type: "uint256" },
     ],
     stateMutability: "nonpayable",
+  },
+] as const;
+
+/** Mirrors `RecurringIntent` in contracts/src/v3 — field order is signature-bearing. */
+const recurringIntentComponents = [
+  { name: "zap", type: "address" },
+  { name: "chainId", type: "uint256" },
+  { name: "seriesId", type: "uint256" },
+  { name: "validAfter", type: "uint64" },
+  { name: "deadline", type: "uint64" },
+  { name: "interval", type: "uint64" },
+  { name: "maxRuns", type: "uint32" },
+  { name: "recipient", type: "address" },
+  { name: "executor", type: "address" },
+  { name: "maxGas", type: "uint256" },
+  { name: "maxFeePerGas", type: "uint256" },
+  { name: "policyHash", type: "bytes32" },
+  { name: "outAsset", type: "address" },
+  { name: "minOutPerRun", type: "uint256" },
+] as const;
+
+/** Mirrors `TriggerIntent` in contracts/src/v3. */
+const triggerIntentComponents = [
+  { name: "zap", type: "address" },
+  { name: "chainId", type: "uint256" },
+  { name: "nonce", type: "uint256" },
+  { name: "validAfter", type: "uint64" },
+  { name: "deadline", type: "uint64" },
+  { name: "priceSource", type: "address" },
+  { name: "baselinePriceX96", type: "uint256" },
+  { name: "thresholdBps", type: "uint32" },
+  { name: "above", type: "bool" },
+  { name: "recipient", type: "address" },
+  { name: "executor", type: "address" },
+  { name: "maxGas", type: "uint256" },
+  { name: "maxFeePerGas", type: "uint256" },
+  { name: "policyHash", type: "bytes32" },
+  { name: "outAsset", type: "address" },
+  { name: "minOut", type: "uint256" },
+] as const;
+
+export const openZapFactoryV3Abi = [
+  {
+    type: "function",
+    name: "implementation",
+    inputs: [],
+    outputs: [{ name: "", type: "address" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "implCodeHash",
+    inputs: [],
+    outputs: [{ name: "", type: "bytes32" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "VERSION",
+    inputs: [],
+    outputs: [{ name: "", type: "string" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "createZap",
+    inputs: [
+      { name: "p", type: "tuple", components: policyComponents },
+      { name: "salt", type: "bytes32" },
+    ],
+    outputs: [{ name: "zap", type: "address" }],
+    stateMutability: "nonpayable",
+  },
+  {
+    type: "function",
+    name: "predict",
+    inputs: [
+      { name: "p", type: "tuple", components: policyComponents },
+      { name: "salt", type: "bytes32" },
+    ],
+    outputs: [{ name: "", type: "address" }],
+    stateMutability: "view",
+  },
+  {
+    type: "event",
+    name: "ZapCreated",
+    inputs: [
+      { name: "zap", type: "address", indexed: true },
+      { name: "owner", type: "address", indexed: true },
+      { name: "policyHash", type: "bytes32", indexed: false },
+      { name: "implCodeHash", type: "bytes32", indexed: false },
+      { name: "salt", type: "bytes32", indexed: false },
+    ],
+  },
+] as const;
+
+export const openZapV3Abi = [
+  {
+    type: "function",
+    name: "owner",
+    inputs: [],
+    outputs: [{ name: "", type: "address" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "recipient",
+    inputs: [],
+    outputs: [{ name: "", type: "address" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "policyHash",
+    inputs: [],
+    outputs: [{ name: "", type: "bytes32" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "stepCount",
+    inputs: [],
+    outputs: [{ name: "", type: "uint256" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "trackedAssets",
+    inputs: [],
+    outputs: [{ name: "", type: "address[]" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "nonceUsed",
+    inputs: [{ name: "", type: "uint256" }],
+    outputs: [{ name: "", type: "bool" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "series",
+    inputs: [{ name: "seriesId", type: "uint256" }],
+    outputs: [
+      { name: "runs", type: "uint32" },
+      { name: "lastRun", type: "uint64" },
+    ],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "executeRecurring",
+    inputs: [
+      { name: "intent", type: "tuple", components: recurringIntentComponents },
+      { name: "sig", type: "bytes" },
+    ],
+    outputs: [],
+    stateMutability: "nonpayable",
+  },
+  {
+    type: "function",
+    name: "executeTrigger",
+    inputs: [
+      { name: "intent", type: "tuple", components: triggerIntentComponents },
+      { name: "sig", type: "bytes" },
+    ],
+    outputs: [],
+    stateMutability: "nonpayable",
+  },
+  {
+    type: "function",
+    name: "invalidateNonce",
+    inputs: [{ name: "nonce", type: "uint256" }],
+    outputs: [],
+    stateMutability: "nonpayable",
+  },
+  {
+    type: "function",
+    name: "emergencyExit",
+    inputs: [{ name: "assets", type: "address[]" }],
+    outputs: [],
+    stateMutability: "nonpayable",
+  },
+] as const;
+
+export const lotteryPotAbi = [
+  {
+    type: "function",
+    name: "currentRound",
+    inputs: [],
+    outputs: [{ name: "", type: "uint256" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "roundPrize",
+    inputs: [{ name: "", type: "uint256" }],
+    outputs: [{ name: "", type: "uint256" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "tickets",
+    inputs: [
+      { name: "", type: "uint256" },
+      { name: "", type: "address" },
+    ],
+    outputs: [{ name: "", type: "uint256" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "totalTickets",
+    inputs: [{ name: "", type: "uint256" }],
+    outputs: [{ name: "", type: "uint256" }],
+    stateMutability: "view",
+  },
+] as const;
+
+export const priceSourceAbi = [
+  {
+    type: "function",
+    name: "priceX96",
+    inputs: [],
+    outputs: [{ name: "", type: "uint256" }],
+    stateMutability: "view",
   },
 ] as const;
 

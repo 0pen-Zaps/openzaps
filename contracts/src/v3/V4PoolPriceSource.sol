@@ -12,7 +12,14 @@ interface IV4StateReader {
 /// @notice An `IPriceSource` pinned to ONE Uniswap-v4-style pool on ONE PoolManager — the price
 ///         oracle for trigger zaps on the live aeWETH ↔ 0xZAPS route. Reads `Pool.State.slot0`
 ///         directly via `extsload`, exactly as `ZapRangeVault` does, and converts the sqrt price to
-///         a Q96 price of currency1 in currency0.
+///         Q96.
+///
+///         DIRECTION — READ THIS BEFORE SIGNING A TRIGGER AGAINST IT. `priceX96` is the Uniswap
+///         orientation: units of currency1 per one unit of currency0 (on the live pool: 0xZAPS per
+///         aeWETH). That means the feed FALLS when currency1 (0xZAPS) GAINS value. Any UI phrasing
+///         a condition as a move of the TOKEN's price must invert the direction and use the
+///         reciprocal magnitude (a +x token move is a x/(1+x) feed drop) — see
+///         `feedConditionForZapsMove` in `src/lib/automate.ts`, which exists solely to do this.
 /// @dev A spot pool price IS manipulable within a block; a trigger built on it must treat the
 ///      threshold as an ARMING condition, not a fair-value oracle. What keeps the funds safe is
 ///      that arming only unlocks the policy the owner already signed — fixed route, fixed amounts,
