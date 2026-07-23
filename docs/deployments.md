@@ -61,6 +61,35 @@ The canonical record is this file plus `contracts/broadcast/DeployRobinhood.s.so
 
 > **Pre-external-audit.** The suite is live and internally/fork/mainnet tested, but has not had a professional third-party audit. Keep user deposits scoped and recoverable with `emergencyExit` until that review is complete.
 
+### The "Use" expansion — live (broadcast at blocks 17,228,330–332, 2026-07-23)
+
+Deployed from [`contracts/script/DeployRobinhoodUse.s.sol`](../contracts/script/DeployRobinhoodUse.s.sol)
+by the governance owner, so every allowlisting call executed in the same run. Canonical record:
+this table plus `contracts/broadcast/DeployRobinhoodUse.s.sol/4663/run-latest.json`. All 17
+transactions succeeded; every address below was verified onchain post-broadcast (route paths, pool
+ids, vault welds, allowlist state).
+
+| Contract | Address |
+|---|---|
+| RobinhoodV4RouteAdapter USDG→aeWETH→0xZAPS | [`0x132e65D4A28ec1687D3B2b2a6e2DfD75afCf4900`](https://robinhoodchain.blockscout.com/address/0x132e65D4A28ec1687D3B2b2a6e2DfD75afCf4900) |
+| RobinhoodV4RouteAdapter 0xZAPS→aeWETH→USDG | [`0x9C3F7F057aC3d2828C7271ba73538B33E32E7a59`](https://robinhoodchain.blockscout.com/address/0x9C3F7F057aC3d2828C7271ba73538B33E32E7a59) |
+| ZapRangeVault (ozRANGE) | [`0x9FE852CE89c5920a87F8465C91B9e691f37BeD5B`](https://robinhoodchain.blockscout.com/address/0x9FE852CE89c5920a87F8465C91B9e691f37BeD5B) |
+| ZapRangeDepositAdapter | [`0xaB2e75fdb8f108c0589048c8cc0F3ce5Fb8b7896`](https://robinhoodchain.blockscout.com/address/0xaB2e75fdb8f108c0589048c8cc0F3ce5Fb8b7896) |
+| ZapRangeWithdrawAdapter (settles USDG) | [`0xDeaC50A0fD41e66900E8a4ab721ce8A43129aE1C`](https://robinhoodchain.blockscout.com/address/0xDeaC50A0fD41e66900E8a4ab721ce8A43129aE1C) |
+| ZapRangeWithdrawAdapter (settles aeWETH) | [`0x5a7F5e5D5Ef503300E04Ab91145CDA2F1c7289B8`](https://robinhoodchain.blockscout.com/address/0x5a7F5e5D5Ef503300E04Ab91145CDA2F1c7289B8) |
+
+- Both route adapters resolve to the pinned pools (hookless `0x6ba18d46…5d2`, hooked
+  `0xb040f18a…573`) and refuse everything else.
+- The vault is seeded with 0.0005 aeWETH + 1 USDG → position liquidity `21,951,737,506`, total
+  supply `21,951,737,506,000` shares (exactly 1000×), **all held by `0x…dEaD`** — the first-depositor
+  price floor is permanent. Seed deposit: [`0x13f18286…4f2e`](https://robinhoodchain.blockscout.com/tx/0x13f18286b774b4194120553781c805f90be51669e116feb20f7a3357ef4e4f2e).
+- All five adapters are allowlisted in the AdapterRegistry; the ozRANGE share token (the vault
+  address) is allowlisted in the TokenAllowlist. The previously-missing ozUSDG allowlist entry is
+  also now in place, unblocking the older ZapVault adapters.
+- **Pre-external-audit**, like everything on this chain — and `ZapRangeVault` custodies real funds
+  with more moving parts than anything before it. See `contracts/USE_EXPANSION.md` §6 before
+  advertising LP deposits to third parties.
+
 ## Base mainnet (chainId 8453)
 
 The OpenZap v1 protocol contracts are **live on Base mainnet**. Deployed from

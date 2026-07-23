@@ -661,7 +661,7 @@ function policyReasons(nodes: ChainNode[], adapters?: AdapterSet): string[] {
 }
 
 describe("the deployed-adapter registry", () => {
-  it("deploys the full baked adapter set — bounded swap, USDG swap, and both vault legs", () => {
+  it("deploys the full baked adapter set — swaps, vault legs, stitched routes, and range LP", () => {
     expect(deployedAdapters().map((adapter) => adapter.id)).toEqual([
       "robinhood-v4-weth-zaps",
       "robinhood-v4-zaps-weth",
@@ -669,6 +669,12 @@ describe("the deployed-adapter registry", () => {
       "robinhood-v4-usdg-weth",
       "robinhood-zap-vault-deposit",
       "robinhood-zap-vault-redeem",
+      "robinhood-v4-route-usdg-zaps",
+      "robinhood-v4-route-zaps-usdg",
+      "robinhood-range-deposit-weth",
+      "robinhood-range-deposit-usdg",
+      "robinhood-range-withdraw-usdg",
+      "robinhood-range-withdraw-weth",
     ]);
     // A non-bounded, reachable adapter is deployed, so the one-route world is over.
     expect(onlyBoundedSwapIsDeployed()).toBe(false);

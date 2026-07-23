@@ -282,14 +282,13 @@ export const ROBINHOOD_ADAPTERS: readonly AdapterSpec[] = [
       "Refuses any vault or asset but the ones welded into its constructor, and refuses to redeem to anyone but its caller.",
   },
 
-  // ---- NOT DEPLOYED YET: the "Use" expansion set ---------------------------
-  // Contracts exist in `contracts/src` (RobinhoodV4RouteAdapter, ZapRangeVault,
-  // ZapRangeDepositAdapter, ZapRangeWithdrawAdapter), fork-tested against live
-  // chain state, with `contracts/script/DeployRobinhoodUse.s.sol` as the
-  // deploy path. NO address is baked: every entry below fails closed until its
-  // env var carries the broadcast address AND governance has allowlisted the
-  // adapter (and, for LP, the ozRANGE share token). Setting the env var is the
-  // LAST step of that rollout, never the first.
+  // ---- the "Use" expansion set: DEPLOYED and allowlisted -------------------
+  // Broadcast via `contracts/script/DeployRobinhoodUse.s.sol` and verified
+  // onchain 2026-07-23: all five adapters allowlisted in the AdapterRegistry,
+  // the ozRANGE share token (the ZapRangeVault at 0x9FE8…D5B) allowlisted, and
+  // the vault seeded with its seed shares burned to 0xdead. Addresses are baked
+  // below per the registry rule: an address is baked ONLY once the adapter is
+  // deployed and allowlisted, which these now are.
 
   // Multi-swap stitching: one frozen two-hop route per adapter, executed as ONE
   // step — hop 2 spends the measured output of hop 1 at runtime, so USDG and
@@ -308,6 +307,10 @@ export const ROBINHOOD_ADAPTERS: readonly AdapterSpec[] = [
     tokenOut: "0xZAPS",
     direction: null,
     envVar: "NEXT_PUBLIC_OPENZAP_ROUTE_USDG_ZAPS_ADAPTER",
+    // Broadcast and allowlisted on chain 4663 (verified onchain 2026-07-23; see
+    // docs/deployments.md). Baked so the route is live without Vercel env; the env
+    // var still overrides for a redeploy.
+    deployedAddress: "0x132e65D4A28ec1687D3B2b2a6e2DfD75afCf4900",
     refuses:
       "Refuses any pools but the two welded into its constructor, any route input but USDG, any calldata beyond a bounded final minimum-out, and any chain but 4663.",
   },
@@ -322,6 +325,10 @@ export const ROBINHOOD_ADAPTERS: readonly AdapterSpec[] = [
     tokenOut: "USDG",
     direction: null,
     envVar: "NEXT_PUBLIC_OPENZAP_ROUTE_ZAPS_USDG_ADAPTER",
+    // Broadcast and allowlisted on chain 4663 (verified onchain 2026-07-23; see
+    // docs/deployments.md). Baked so the route is live without Vercel env; the env
+    // var still overrides for a redeploy.
+    deployedAddress: "0x9C3F7F057aC3d2828C7271ba73538B33E32E7a59",
     refuses:
       "Refuses any pools but the two welded into its constructor, any route input but 0xZAPS, any calldata beyond a bounded final minimum-out, and any chain but 4663.",
   },
@@ -343,6 +350,10 @@ export const ROBINHOOD_ADAPTERS: readonly AdapterSpec[] = [
     tokenOut: "ozRANGE",
     direction: null,
     envVar: "NEXT_PUBLIC_OPENZAP_RANGE_DEPOSIT_ADAPTER",
+    // Broadcast and allowlisted on chain 4663 (verified onchain 2026-07-23; see
+    // docs/deployments.md). Baked so the route is live without Vercel env; the env
+    // var still overrides for a redeploy.
+    deployedAddress: "0xaB2e75fdb8f108c0589048c8cc0F3ce5Fb8b7896",
     refuses:
       "Refuses any pool or vault but the ones welded into its constructor, refuses to hold shares or tokens between calls, and refuses to mint shares to anyone but its caller.",
   },
@@ -357,6 +368,10 @@ export const ROBINHOOD_ADAPTERS: readonly AdapterSpec[] = [
     tokenOut: "ozRANGE",
     direction: null,
     envVar: "NEXT_PUBLIC_OPENZAP_RANGE_DEPOSIT_ADAPTER",
+    // Broadcast and allowlisted on chain 4663 (verified onchain 2026-07-23; see
+    // docs/deployments.md). Baked so the route is live without Vercel env; the env
+    // var still overrides for a redeploy.
+    deployedAddress: "0xaB2e75fdb8f108c0589048c8cc0F3ce5Fb8b7896",
     refuses:
       "Refuses any pool or vault but the ones welded into its constructor, refuses to hold shares or tokens between calls, and refuses to mint shares to anyone but its caller.",
   },
@@ -375,6 +390,10 @@ export const ROBINHOOD_ADAPTERS: readonly AdapterSpec[] = [
     tokenOut: "USDG",
     direction: null,
     envVar: "NEXT_PUBLIC_OPENZAP_RANGE_WITHDRAW_USDG_ADAPTER",
+    // Broadcast and allowlisted on chain 4663 (verified onchain 2026-07-23; see
+    // docs/deployments.md). Baked so the route is live without Vercel env; the env
+    // var still overrides for a redeploy.
+    deployedAddress: "0xDeaC50A0fD41e66900E8a4ab721ce8A43129aE1C",
     refuses:
       "Refuses any vault but the one welded into its constructor, any settlement asset but USDG, and refuses to burn more shares than the step names.",
   },
@@ -389,6 +408,10 @@ export const ROBINHOOD_ADAPTERS: readonly AdapterSpec[] = [
     tokenOut: "WETH",
     direction: null,
     envVar: "NEXT_PUBLIC_OPENZAP_RANGE_WITHDRAW_WETH_ADAPTER",
+    // Broadcast and allowlisted on chain 4663 (verified onchain 2026-07-23; see
+    // docs/deployments.md). Baked so the route is live without Vercel env; the env
+    // var still overrides for a redeploy.
+    deployedAddress: "0x5a7F5e5D5Ef503300E04Ab91145CDA2F1c7289B8",
     refuses:
       "Refuses any vault but the one welded into its constructor, any settlement asset but aeWETH, and refuses to burn more shares than the step names.",
   },

@@ -3,7 +3,12 @@
 What was built to turn the console from one bounded swap into a set of real DeFi actions on
 Robinhood Chain (4663), what is proven, what is NOT yet live, and the exact runbook. Everything here
 is grounded in a fork test pinned at block 16,728,000, a no-broadcast simulation against live
-mainnet state, or a raw RPC read. **Nothing in this work has been broadcast.**
+mainnet state, or a raw RPC read.
+
+> **UPDATE 2026-07-23: BROADCAST COMPLETE.** All six contracts are live at blocks
+> 17,228,330–332, every governance call executed in the same run, and the vault is seeded with its
+> shares burned. Live addresses and verification are recorded in `docs/deployments.md`; §5's
+> runbook is now historical. The review gate in §6 still stands.
 
 ---
 

@@ -41,13 +41,13 @@ export type TokenInfo = { readonly symbol: string; readonly address: Address; re
 /**
  * The ZapRangeVault share token (ozRANGE) IS the vault contract — a full-range
  * Uniswap v4 LP position on the hookless aeWETH/USDG pool, wrapped as an
- * ERC-20. No address is baked because the vault is not deployed yet: until the
- * env var carries a real address, the token does not exist for the app and
- * every LP route fails closed.
+ * ERC-20. Deployed, seeded (seed shares burned to 0xdead) and allowlisted on
+ * chain 4663; verified onchain 2026-07-23. The env var still overrides for a
+ * redeploy, and a malformed value fails closed to "the token does not exist".
  */
 export const RANGE_VAULT_ADDRESS: Address = optionalAddress(
   process.env.NEXT_PUBLIC_OPENZAP_RANGE_VAULT,
-  zeroAddress,
+  "0x9FE852CE89c5920a87F8465C91B9e691f37BeD5B",
 );
 
 /**
