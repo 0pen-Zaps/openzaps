@@ -11,6 +11,7 @@ import {
   explorerTransaction,
 } from "@/lib/robinhood";
 import { breadcrumbJsonLd, pageMetadata } from "@/lib/seo";
+import { fetchRangeVaultPulse, fetchZapVaultPulse, formatPulseAmount } from "@/lib/vault-server";
 import { fetchZapSummaries } from "@/lib/zap-server";
 import feed from "./feed.module.css";
 import styles from "./zaps.module.css";
@@ -51,9 +52,11 @@ export default async function ZapsFeedPage(): Promise<React.JSX.Element> {
   // become an empty list or a zeroed feed, because either would be a claim —
   // "the factory has deployed nothing", "nothing has happened onchain" — and
   // both would be false. Run them together; the slower one sets the wall time.
-  const [activity, page] = await Promise.all([
+  const [activity, page, rangeVault, zapVault] = await Promise.all([
     fetchProtocolActivity().catch(() => null),
     fetchZapSummaries().catch(() => null),
+    fetchRangeVaultPulse().catch(() => null),
+    fetchZapVaultPulse().catch(() => null),
   ]);
 
   return (
@@ -92,6 +95,74 @@ export default async function ZapsFeedPage(): Promise<React.JSX.Element> {
 
       {/* Live totals + the polling activity feed. */}
       <ActivityFeed initial={activity} />
+
+      {/* Vault pulse: measured onchain state of the two vaults, server-read
+          inside this page's ISR window. Each card fails closed to an explicit
+          "unavailable" — a zero here would be a claim, and a false one. No
+          yield, APR, or USD figures on purpose: the range vault earns pool
+          fees it does not project, and the ozUSDG vault earns nothing. */}
+      <section className={`container ${feed.metrics}`} aria-label="Vault pulse, read onchain">
+        <div className={feed.metric}>
+          {rangeVault === null ? (
+            <>
+              <strong>unavailable</strong>
+              <span>ozRANGE position — RPC read failed</span>
+            </>
+          ) : (
+            <>
+              <strong>
+                {formatPulseAmount(rangeVault.holdings[0], 18)} aeWETH · {formatPulseAmount(rangeVault.holdings[1], 6)}{" "}
+                USDG
+              </strong>
+              <span>what all ozRANGE shares redeem for at the current pool price</span>
+            </>
+          )}
+        </div>
+        <div className={feed.metric}>
+          {rangeVault === null ? (
+            <>
+              <strong>unavailable</strong>
+              <span>ozRANGE shares — RPC read failed</span>
+            </>
+          ) : (
+            <>
+              <strong>
+                {formatPulseAmount(rangeVault.totalShares, 18)}
+                {rangeVault.totalShares > 0n
+                  ? ` · ${Number((rangeVault.burnedShares * 1000n) / rangeVault.totalShares) / 10}% burned`
+                  : ""}
+              </strong>
+              <span>ozRANGE shares · burned share is the permanent seed</span>
+            </>
+          )}
+        </div>
+        <div className={feed.metric}>
+          {rangeVault === null ? (
+            <>
+              <strong>unavailable</strong>
+              <span>position liquidity — RPC read failed</span>
+            </>
+          ) : (
+            <>
+              <strong>{rangeVault.positionLiquidity.toLocaleString("en-US")}</strong>
+              <span>full-range position liquidity (pool L units)</span>
+            </>
+          )}
+        </div>
+        <div className={feed.metric}>
+          {zapVault === null ? (
+            <>
+              <strong>unavailable</strong>
+              <span>ozUSDG vault — RPC read failed</span>
+            </>
+          ) : (
+            <>
+              <strong>{formatPulseAmount(zapVault.totalAssets, 6)} USDG</strong>
+              <span>ozUSDG receipt vault · a wrapper, it earns nothing</span>
+            </>
+          )}
+        </div>
+      </section>
 
       {/* Every capsule the factory deployed, newest first. */}
       <section className={`container ${styles.panel}`} aria-label="Deployed capsules">
