@@ -50,8 +50,8 @@ const steps = [
 
 const utility = [
   {
-    title: "The asset in the one live route",
-    body: "The live v1.1 adapter is bound to a single pinned Robinhood v4 pool: aeWETH ↔ 0xZAPS. It cannot route to another token, spender, hook, or DEX. Every capsule the app deploys is built around that one pool.",
+    title: "The asset in the first live route",
+    body: "The first live v1.1 adapter is bound to a single pinned Robinhood v4 pool: aeWETH ↔ 0xZAPS. It cannot route to another token, spender, hook, or DEX. A second pinned pool (aeWETH ↔ USDG) is live and does not involve 0xZAPS — each adapter is welded to exactly one pool.",
   },
   {
     title: "App conveniences at a balance threshold",
@@ -125,9 +125,9 @@ export default function TokenPage(): React.JSX.Element {
           <span className="gradientText">{TOKEN.symbol}</span>
         </h1>
         <p className={styles.lead}>
-          An ERC-20 with no claim on revenue, yield, or assets. It is the asset paired with aeWETH in the one route the
-          live contracts can execute. Verify the exact contract on <strong>{TOKEN_LAUNCH.network}</strong> before you
-          trade it or add it to a wallet.
+          An ERC-20 with no claim on revenue, yield, or assets. It is the asset paired with aeWETH in the first route
+          the live contracts could execute. Verify the exact contract on <strong>{TOKEN_LAUNCH.network}</strong> before
+          you trade it or add it to a wallet.
         </p>
         <div className={styles.heroActions}>
           <BuyButton size="lg" />

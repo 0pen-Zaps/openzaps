@@ -17,7 +17,7 @@ const phases = [
   [
     "Now",
     "Live v1.1 on Robinhood Chain",
-    "Wallet connection, live v4 quotes, deterministic clones, EIP-712 execution, receipts, owner recovery, the activity dashboard, the visual builder, per-capsule onchain pages, and 0xZAPS holder utilities in the app. One route is deployable: a single-step aeWETH ↔ 0xZAPS swap. Everything else in the builder saves as a design.",
+    "Wallet connection, live v4 quotes, deterministic clones, EIP-712 execution, receipts, owner recovery, the activity dashboard, the visual builder, per-capsule onchain pages, and 0xZAPS holder utilities in the app. Two pools are deployable, each as a bounded single-step swap: aeWETH ↔ 0xZAPS and aeWETH ↔ USDG. Everything else in the builder saves as a design.",
   ],
   [
     "Next",
