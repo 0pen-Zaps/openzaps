@@ -427,6 +427,10 @@ describe("decodeDesign", () => {
 
   it("survives the trimming and decoration a paste picks up", () => {
     const token = encodeChain(design);
+    // The canonical share link is /use; retired /build links must keep decoding
+    // forever — they are in the wild.
+    expect(decodeDesign(`https://www.0xzaps.com/use?d=${token}`)?.length).toBe(design.length);
+    expect(decodeDesign(`https://www.0xzaps.com/use?view=design&d=${token}`)?.length).toBe(design.length);
     expect(decodeDesign(`  \n https://www.0xzaps.com/build?d=${token}#chain \n `)?.length).toBe(design.length);
     expect(decodeDesign(`https://www.0xzaps.com/build?utm=x&d=${token}`)?.length).toBe(design.length);
   });

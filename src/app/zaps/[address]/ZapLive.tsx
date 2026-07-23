@@ -8,7 +8,7 @@ import { CopyButton } from "@/components/CopyButton";
 import { SHAPE_COLOR, SHAPE_LABEL, type FlowShape } from "@/lib/blocks";
 import { explorerAddress, explorerTransaction } from "@/lib/robinhood";
 import type { ZapDetailPayload, ZapPolicyView } from "@/lib/zap";
-import { BlockGlyph } from "@/app/build/BlockGlyph";
+import { BlockGlyph } from "@/app/use/BlockGlyph";
 import styles from "../zaps.module.css";
 
 type LiveState =
@@ -175,7 +175,7 @@ export function ZapLive({
           <span className="eyebrow">What this zap does</span>
           <h2 id="what-this-does">The deployed chain.</h2>
           <p>
-            The same block vocabulary the <Link href="/build">builder</Link>{" "}
+            The same block vocabulary the <Link href="/use">builder</Link>{" "}
             uses, drawn from this capsule&apos;s own policy fields rather than from a template. Connectors are
             coloured by the shape of value moving along them.
           </p>

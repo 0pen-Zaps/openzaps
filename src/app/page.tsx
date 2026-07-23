@@ -125,9 +125,9 @@ const flow = [
   },
   {
     label: "03 / Deploy",
-    title: "Only the bounded route leaves the canvas",
-    body: "A design that reduces to a route the live contracts implement hands the app a prefilled direction, amount, and slippage cap. You create, fund, and sign it there. Every other design stays a design and cannot be deployed today.",
-    grade: "aeWETH ↔ 0xZAPS · aeWETH ↔ USDG",
+    title: "Only deployed routes leave the canvas",
+    body: "A design that reduces to a route the live contracts implement hands Sign & run a prefilled route, amount, and slippage cap. You create, fund, and sign it there. Every other design stays a design and cannot be deployed today.",
+    grade: "swaps · stitched routes · aeWETH/USDG LP",
   },
   {
     label: "04 / Verify",
@@ -166,7 +166,7 @@ const faqs = [
   },
   {
     q: "Can a chain I design in the builder actually be deployed?",
-    a: "Only if the design reduces to the single bounded route the live v1.1 contracts implement: a one-step aeWETH ↔ 0xZAPS swap on Robinhood Chain, with the recipient forced to the capsule owner and the relayer fee cap at zero. Such a design hands the app a prefilled direction, amount, and slippage cap. You still create, fund, and sign the capsule yourself; nothing is auto-submitted. Multi-step routes, lending, liquidity, bridges, and loops compile, simulate, and save as designs, but cannot be deployed today. The canvas says which one you have.",
+    a: "If it reduces to one of the deployed routes, yes — the aeWETH ↔ 0xZAPS and aeWETH ↔ USDG swaps, the stitched USDG ↔ 0xZAPS route (two pools, one signed step), and aeWETH/USDG liquidity provide/withdraw through the range vault, always with the recipient forced to the capsule owner and the relayer fee cap at zero. Such a design hands Sign & run a prefilled route, amount, and slippage cap. You still create, fund, and sign the capsule yourself; nothing is auto-submitted. Lending, bridges, and loops compile, simulate, and save as designs, but cannot be deployed today. The canvas says which one you have.",
   },
   {
     q: `Is the ${TOKEN.symbol} token live?`,
@@ -230,11 +230,11 @@ export default function Home(): React.JSX.Element {
               — it is one tap away in the nav — to keep this at four controls
               that wrap cleanly on a 375px screen. */}
           <div className={styles.actions}>
-            <Link href="/build" className="btn btnPrimary btnLg">
-              Open the builder
+            <Link href="/use" className="btn btnPrimary btnLg">
+              Design a zap
             </Link>
-            <Link href="/use" className="btn btnGhost btnLg">
-              Use OpenZaps
+            <Link href="/use?view=sign" className="btn btnGhost btnLg">
+              Sign &amp; run
             </Link>
             <Link href="/docs" className="btn btnGhost btnLg">
               Read docs
@@ -382,7 +382,7 @@ export default function Home(): React.JSX.Element {
             </div>
 
             <div className={styles.builderActions}>
-              <Link href="/build" className="btn btnPrimary btnLg">
+              <Link href="/use" className="btn btnPrimary btnLg">
                 Open the builder
               </Link>
             </div>
@@ -442,7 +442,8 @@ export default function Home(): React.JSX.Element {
         </div>
         <div>
           <p className={styles.tokenLead}>
-            ${TOKEN.symbol} is the ERC-20 paired with aeWETH in the one bounded route the live contracts carry. It
+            ${TOKEN.symbol} is the ERC-20 paired with aeWETH in the protocol&apos;s first live route, and the endpoint
+            of the stitched USDG route. It
             trades through a creator-verified {TOKEN_LAUNCH.venue} {TOKEN_LAUNCH.version} market on{" "}
             {TOKEN_LAUNCH.network}. It has no claim on revenue, yield, or assets, it is not equity, and every core
             OpenZaps workflow runs without holding it.

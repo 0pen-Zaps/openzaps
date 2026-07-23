@@ -70,7 +70,7 @@ export default async function ZapsFeedPage(): Promise<React.JSX.Element> {
             capsule the factory created, and the verified contract set behind them. No indexer, no estimates.
           </p>
           <div className={feed.heroActions}>
-            <Link className="btn btnPrimary btnLg" href="/build">
+            <Link className="btn btnPrimary btnLg" href="/use">
               Design a chain
             </Link>
             <a

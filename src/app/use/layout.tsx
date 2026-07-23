@@ -1,10 +1,10 @@
 import { JsonLd } from "@/components/JsonLd";
-import { TOKEN, CHAIN } from "@/lib/config";
+import { CHAIN } from "@/lib/config";
 import { pageMetadata, absoluteUrl, SITE_URL, SITE_NAME } from "@/lib/seo";
 
 export const metadata = pageMetadata({
-  title: "Use — create, fund, and execute onchain zaps",
-  description: `Connect a wallet on ${CHAIN.name} to quote, create, fund, execute, and recover a bounded aeWETH ↔ ${TOKEN.symbol} policy capsule. The contracts have not been externally audited. Deposited funds are at risk.`,
+  title: "Use — design, sign, and run onchain zaps",
+  description: `Design a zap from typed DeFi blocks, then create, fund, sign, execute, and recover it on ${CHAIN.name} — swaps, stitched multi-pool routes, and aeWETH/USDG liquidity. The contracts have not been externally audited. Deposited funds are at risk.`,
   path: "/use",
   ogImage: "/og/app.png",
   keywords: ["use OpenZaps", "policy capsule builder", "simulate DeFi policy", "DeFi automation app", "EIP-712 policy review"],
@@ -22,7 +22,7 @@ const appJsonLd = {
       operatingSystem: "Web",
       offers: { "@type": "Offer", price: "0", priceCurrency: "USD" },
       publisher: { "@id": `${SITE_URL}/#organization` },
-      description: `Create, fund, execute, and recover bounded aeWETH ↔ ${TOKEN.symbol} OpenZap policy capsules on ${CHAIN.name}. The recipient is fixed to the capsule owner and the relayer fee cap is zero.`,
+      description: `Design zaps from typed DeFi blocks, then create, fund, execute, and recover OpenZap policy capsules on ${CHAIN.name} — swaps, stitched multi-pool routes, and aeWETH/USDG liquidity. The recipient is fixed to the capsule owner and the relayer fee cap is zero.`,
     },
     {
       "@type": "BreadcrumbList",
