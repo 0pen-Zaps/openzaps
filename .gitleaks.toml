@@ -1,0 +1,21 @@
+# gitleaks configuration for OpenZaps.
+#
+# The full default ruleset is kept (PEM private keys, cloud tokens, GitHub/npm
+# tokens, JWTs, and the rest). We silence exactly one class of false positive.
+#
+# A 20-byte EVM address (0x + 40 hex) is public onchain data and can NEVER be a
+# private key: a secp256k1 key is 32 bytes (0x + 64 hex). Allowlisting 40-hex
+# therefore removes the noise without weakening key detection at all — a real
+# 64-hex key would still trip the generic-api-key rule, and none exists in this
+# repository's history (verified by an independent address-derivation sweep).
+title = "OpenZaps gitleaks config"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "EVM addresses (0x + 40 hex) are public and are never private keys"
+regexTarget = "match"
+regexes = [
+  '''0x[a-fA-F0-9]{40}\b''',
+]

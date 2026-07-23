@@ -1,70 +1,95 @@
+<div align="center">
+
+<img src="./public/openzap-mark.svg" alt="OpenZaps" width="88" height="88" />
+
 # OpenZaps
 
-Immutable intent lockers for Hermes-triggered DeFi.
+**A zap cannot do anything it was not signed to do.**
 
-Website: [www.0xzaps.com](https://www.0xzaps.com) · Token: [0xZAPS](https://www.0xzaps.com/token)
+Bounded policy capsules for agent-triggered DeFi. A capsule fixes the target, the recipient, the asset, and the calldata *before* it is signed — and nothing that executes it can change them.
 
-OpenZaps are narrow, ERC-20-first policy capsules for pre-authorized DeFi workflows. The core product stance is explicit: OpenZaps are not approval-free and not a universal router. They are pre-committed, tightly bounded authority for fixed action graphs that a Hermes agent can simulate, submit, monitor, and revoke without receiving discretionary wallet power.
+[![CI](https://github.com/0pen-Zaps/openzaps/actions/workflows/ci.yml/badge.svg)](https://github.com/0pen-Zaps/openzaps/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-ccf83f.svg)](./LICENSE)
+[![Site](https://img.shields.io/badge/live-0xzaps.com-060807.svg)](https://www.0xzaps.com)
 
-## Product thesis
+[Website](https://www.0xzaps.com) · [App](https://www.0xzaps.com/app) · [Docs](https://www.0xzaps.com/docs) · [Token](https://www.0xzaps.com/token) · [X](https://x.com/0xzaps)
 
-- Creation authority stays with the user wallet or Safe.
-- Execution authority lives inside an immutable zap policy or signed typed intent.
-- Submission authority belongs to Hermes or a relayer, constrained by policy.
-- v1 scope should favor immutable clones, fixed adapters/selectors, EIP-712 intents, ERC-1271 compatibility, exact approval reset, private submission for price-sensitive routes, and balance-delta postconditions.
+</div>
 
-## Product surfaces
+---
 
-- `/` — production landing page for the OpenZaps thesis and launch status.
-- `/app` — live Robinhood Chain console for wallet connection, chain switching, v4 quotes, deterministic zap creation, funding, EIP-712 execution, receipts, and owner recovery.
-- `/docs` — developer docs for policy schema, simulation API, SDK surface, and lifecycle.
-- `/security` — threat model, contract controls, audit status, and production-readiness gates.
-- `/pricing` — protocol fee and relayer fee model.
-- `/roadmap` — staged path from review console to audited relayer network.
-- `/token` — live 0xZAPS contract, Clanker market, and Robinhood Chain verification links.
-- `/legal` — risk disclosures.
+> [!WARNING]
+> **The contracts have not been externally audited.** One bounded aeWETH ↔ 0xZAPS route is live on Robinhood Chain, and the funds a capsule holds are real. Onchain actions are irreversible. Deposit only what you can afford to lose. See [SECURITY.md](./SECURITY.md).
 
-## 0xZAPS identity and metadata
+## What this is
 
-- Network: Robinhood Chain mainnet (`4663`)
-- Contract: [`0xDd90bFa4adC7F4401E611AbaC692D939F9F4CB07`](https://robinhoodchain.blockscout.com/token/0xDd90bFa4adC7F4401E611AbaC692D939F9F4CB07)
-- Official market: [Clanker V4](https://www.clanker.world/clanker/0xDd90bFa4adC7F4401E611AbaC692D939F9F4CB07)
-- Onchain image: [`ipfs://bafkreidndqit6ydpkivgmm4qdukh7sgv6uexjp3rc76iyvx22zd425ae7i`](https://turquoise-blank-swallow-685.mypinata.cloud/ipfs/bafkreidndqit6ydpkivgmm4qdukh7sgv6uexjp3rc76iyvx22zd425ae7i)
-- Token list: [`/tokenlist.json`](https://www.0xzaps.com/tokenlist.json)
-- Canonical metadata: [`/token-metadata.json`](https://www.0xzaps.com/token-metadata.json)
-- Well-known identity: [`/.well-known/openzaps-token.json`](https://www.0xzaps.com/.well-known/openzaps-token.json)
+An **OpenZap** is a contract that holds funds and executes exactly one policy its owner signed. The policy names the adapter, the spender, the recipient, the input token, and the exact amount, and freezes them behind a hash at creation. An agent — or a relayer, or the owner — can submit an execution, but it can only submit *the* execution: any substitution changes the hash and the capsule rejects it.
 
-Verify the network and full contract address before trading. Clanker is the launch and trading venue; Robinhood
-Chain is the blockchain. The live token is separate from the pre-audit OpenZaps reference protocol contracts.
+- **Creation authority** stays with the user wallet or Safe.
+- **Execution authority** lives inside the immutable policy, or a one-shot EIP-712 typed intent.
+- **Submission authority** is a courier — it picks the moment and nothing else. On the live route the owner submits from their own wallet.
 
-## API routes
-
-- `GET /api/health` — returns deployment, chain, contract, token, and pre-audit status.
-- `POST /api/policies/simulate` — normalizes a policy draft and returns deterministic checks, policy hash, estimated output, fee cap, gas envelope, and `broadcast:false`.
+The result is pre-committed, tightly bounded authority for a fixed action graph, with an unconditional owner withdraw and revoke path. Not approval-free, and not a universal router — that is the point.
 
 ## Repository layout
 
-- [`src/app/`](src/app) — the Next.js app, public pages, policy console, and API routes.
-- [`src/lib/robinhood.ts`](src/lib/robinhood.ts) — live Robinhood chain definition, protocol addresses, pool route, and production ABIs.
-- [`src/lib/policy.ts`](src/lib/policy.ts) — legacy/general policy template and deterministic simulation helpers used by the API.
-- [`contracts/`](contracts/README.md) — the live v1.1 Solidity protocol, bounded Robinhood v4 adapter, deployment/smoke scripts, and Foundry unit/fuzz/invariant/fork suite. **Pre-external-audit** — see its security notice.
-- [`docs/adr/`](docs/adr/README.md) — accepted Architecture Decision Records (authority model, deployment isolation, submission privacy, protective-vs-optimization scope).
-- [`docs/invariant-spec.md`](docs/invariant-spec.md) — the testable invariant catalog + production-readiness gate.
-- [`docs/research-report.md`](docs/research-report.md) — product/security research the design derives from.
+This is a monorepo. The web app and the Solidity protocol live together.
 
-## Local development
+| Path | What |
+| --- | --- |
+| [`src/app/`](src/app) | The Next.js 16 site: landing page, live policy console (`/app`), Zaps Feed (`/zaps`), docs, token, and API routes. |
+| [`src/lib/`](src/lib) | Chain definitions, protocol addresses and ABIs, the block catalog behind the visual builder, and the deterministic policy simulator. |
+| [`contracts/`](contracts/README.md) | The live v1.1 Solidity protocol, bounded adapters, deploy/smoke scripts, and the Foundry unit / fuzz / invariant / fork suite. **Pre-external-audit.** |
+| [`docs/`](docs) | Architecture Decision Records, the testable invariant catalog, and product/security research the design derives from. |
+
+## Quickstart
+
+Requires **Node 20+**.
+
+```bash
+npm ci
+npm run dev        # http://localhost:3000
+```
+
+Gates the CI runs on every push and pull request:
 
 ```bash
 npm run lint
-npx tsc --noEmit --incremental false
+npx tsc --noEmit
+npm test
 npm run build
-npm run dev
 ```
 
-## Source research
+Contracts (from `contracts/`, requires [Foundry](https://book.getfoundry.sh/)):
 
-The landing page was derived from the local research report at:
+```bash
+forge install
+forge build
+forge test               # fork tests need a Robinhood Chain RPC in your env
+```
 
-`/Users/nodes/Downloads/deep-research-report (1).md`
+## Configuration
 
-A copy is kept in `docs/research-report.md` for product context.
+All runtime configuration is **public** `NEXT_PUBLIC_*` values (chain id, contract addresses, the public RPC URL, the site URL) with safe hardcoded defaults — see [`.env.example`](./.env.example). Copy it to `.env.local` to override for a preview.
+
+The **only** secret this project uses is `DEPLOYER_PRIVATE_KEY`, read by Foundry deploy scripts from your shell (or a `--ledger` hardware wallet). It is never read by the web app, and it is never committed — `.env*` and keystores are gitignored, and CI fails any change that introduces a secret. **Never paste a private key into a tracked file.**
+
+## The 0xZAPS token
+
+`0xZAPS` is the ERC-20 paired with aeWETH in the one live route. It confers no yield, equity, revenue claim, governance, or protocol access — core workflows are never token-gated.
+
+- **Network:** Robinhood Chain mainnet (`4663`)
+- **Contract:** [`0xDd90bFa4adC7F4401E611AbaC692D939F9F4CB07`](https://robinhoodchain.blockscout.com/token/0xDd90bFa4adC7F4401E611AbaC692D939F9F4CB07)
+- **Market:** [Clanker V4](https://www.clanker.world/clanker/0xDd90bFa4adC7F4401E611AbaC692D939F9F4CB07)
+
+Always verify the network and the full contract address on the site before trading. The live token is separate from the pre-audit reference protocol contracts.
+
+## Contributing
+
+Issues and pull requests are welcome. Read [CONTRIBUTING.md](./CONTRIBUTING.md) for the setup and the gates, and [CODE_OF_CONDUCT.md](./CODE_OF_CONDUCT.md). To report a vulnerability, follow [SECURITY.md](./SECURITY.md) — please do not open a public issue for one.
+
+## License
+
+[MIT](./LICENSE) © OpenZaps.
+
+*Not financial advice. No TVL, yield, or return is implied.*

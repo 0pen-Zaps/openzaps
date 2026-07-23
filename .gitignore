@@ -24,8 +24,20 @@
 
 # misc
 .DS_Store
-*.pem
 .claude/
+
+# secrets — NEVER commit. this repo is public; a leaked key drains funds.
+# (the only secret the project uses is DEPLOYER_PRIVATE_KEY, read from the shell)
+*.pem
+*.key
+*.keystore
+*.p12
+*.pfx
+id_rsa*
+keystore/
+.deployer/
+secrets.json
+*.secret
 
 # debug
 npm-debug.log*
