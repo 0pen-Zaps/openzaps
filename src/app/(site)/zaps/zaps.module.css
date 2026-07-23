@@ -119,9 +119,9 @@
 }
 
 .badge[data-verified="true"] {
-  border-color: rgba(204, 248, 63, 0.42);
+  border-color: rgba(255, 252, 0, 0.42);
   color: var(--accent-bright);
-  background: rgba(204, 248, 63, 0.11);
+  background: rgba(255, 252, 0, 0.11);
 }
 
 .verifyFacts {
@@ -570,7 +570,7 @@
 
 .row:hover {
   transform: translateX(3px);
-  border-color: rgba(204, 248, 63, 0.3);
+  border-color: rgba(255, 252, 0, 0.3);
   background: rgba(255, 255, 255, 0.03);
 }
 
@@ -660,7 +660,7 @@
 
 .listLink:hover {
   transform: translateX(3px);
-  border-color: rgba(204, 248, 63, 0.42);
+  border-color: rgba(255, 252, 0, 0.42);
   background: rgba(255, 255, 255, 0.03);
 }
 

@@ -141,7 +141,7 @@
 }
 
 .feedRow:hover {
-  border-color: rgba(204, 248, 63, 0.3);
+  border-color: rgba(255, 252, 0, 0.3);
   background: rgba(255, 255, 255, 0.03);
 }
 
@@ -274,7 +274,7 @@
 }
 
 .contractRow:hover {
-  border-color: rgba(204, 248, 63, 0.4);
+  border-color: rgba(255, 252, 0, 0.4);
 }
 
 .contractRow span {
@@ -360,7 +360,7 @@
 
 .heroCard:hover {
   transform: translateY(-3px);
-  border-color: rgba(204, 248, 63, 0.42);
+  border-color: rgba(255, 252, 0, 0.42);
 }
 
 .contractRow {
@@ -470,6 +470,6 @@
 }
 
 @keyframes flashIn {
-  0% { background-color: rgba(204, 248, 63, 0.22); }
+  0% { background-color: rgba(255, 252, 0, 0.22); }
   100% { background-color: transparent; }
 }

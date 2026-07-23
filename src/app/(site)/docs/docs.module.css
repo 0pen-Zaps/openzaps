@@ -297,7 +297,7 @@
 
 .heroCard:hover {
   transform: translateY(-4px);
-  border-color: rgba(204, 248, 63, 0.42);
+  border-color: rgba(255, 252, 0, 0.42);
   box-shadow: 0 20px 46px rgba(0, 0, 0, 0.45);
 }
 
@@ -349,12 +349,12 @@
 
 .twoCol > article:hover {
   transform: translateY(-4px);
-  border-color: rgba(204, 248, 63, 0.38);
+  border-color: rgba(255, 252, 0, 0.38);
 }
 
 .callout:hover,
 .codeBlock:hover {
-  border-color: rgba(204, 248, 63, 0.32);
+  border-color: rgba(255, 252, 0, 0.32);
 }
 
 /* Rows nudge rather than lift — they sit in a bordered stack where a Y-shift
@@ -378,7 +378,7 @@
 
 .metric:hover {
   transform: translateY(-3px);
-  border-color: rgba(204, 248, 63, 0.4);
+  border-color: rgba(255, 252, 0, 0.4);
 }
 
 /* Timeline: the step number becomes the focal point on hover, and a connecting
@@ -419,7 +419,7 @@
   left: 0;
   height: 24%;
   content: "";
-  background: linear-gradient(180deg, transparent, rgba(204, 248, 63, 0.07), transparent);
+  background: linear-gradient(180deg, transparent, rgba(255, 252, 0, 0.07), transparent);
   animation: docScan 7.5s var(--ease-standard) infinite;
   animation-delay: var(--scan-delay, 0s);
   pointer-events: none;

@@ -1,0 +1,3075 @@
+/* ==========================================================================
+   OpenZaps landing — the yellow scope.
+
+   Every token override lives on .landing, so #FFFC00 owns this route while
+   the interior pages keep the sodium LINES identity. Global primitives
+   (.btn, .eyebrow, .badge, .container, .mono) used inside this subtree pick
+   the overrides up through the cascade.
+
+   Turbopack scopes animation-name per module: every @keyframes used here is
+   declared here. Do not reference globals.css keyframes.
+   ========================================================================== */
+
+.landing {
+  /* Ground */
+  --bg: #050505;
+  --bg-2: #0b0b0b;
+  --bg-3: #151515;
+  --bg-4: #1d1d1d;
+
+  /* Ink */
+  --fg: #f4f4f1;
+  --text: #b9b9b4;
+  --muted: #8f8f8a;
+  --muted-2: #7e7e79; /* 4.9:1 on #050505 — the floor for small mono labels */
+
+  /* The brand: OpenZaps yellow */
+  --accent: #fffc00;
+  --accent-bright: #fffd66;
+  --accent-deep: #cfcc00;
+  --accent-dim: #b9b752;
+  --gold: #f5c84b;
+  --amber: #ffb224;
+  --champagne: #f3e9c8;
+
+  /* Functional accents — used sparingly */
+  --ok: #34d399;
+  --info: #67d8f2;
+  --danger: #ff6b81;
+
+  --line: rgba(244, 244, 241, 0.12);
+  --line-soft: rgba(244, 244, 241, 0.055);
+  --glass: rgba(8, 8, 8, 0.58);
+
+  /* Derived tokens flatten to the accent at :root, which computes against the
+     sodium value there — re-derive them inside the yellow scope. */
+  --grad-brand: var(--accent);
+  --grad-text: var(--accent);
+
+  position: relative;
+  z-index: 0;
+  background:
+    radial-gradient(120% 70% at 70% -10%, rgba(255, 252, 0, 0.05), transparent 55%),
+    radial-gradient(90% 60% at 12% 110%, rgba(255, 178, 36, 0.03), transparent 60%),
+    var(--bg);
+  color: var(--text);
+  overflow: clip;
+}
+
+.landing ::selection {
+  background: var(--accent);
+  color: #050505;
+}
+
+/* Native cursor yields only while the droplet is alive. */
+.landing[data-cursor-active="true"],
+.landing[data-cursor-active="true"] a,
+.landing[data-cursor-active="true"] button,
+.landing[data-cursor-active="true"] summary,
+.landing[data-cursor-active="true"] input,
+.landing[data-cursor-active="true"] select,
+.landing[data-cursor-active="true"] label {
+  cursor: none;
+}
+
+/* Magnetic elements accept the cursor's pull. The `translate` longhand
+   composes with any `transform` the element's own hover/active states set,
+   so the pull never cancels a button's lift or press. */
+.landing :global([data-magnetic]) {
+  translate: var(--mag-x, 0px) var(--mag-y, 0px);
+  transition: translate 80ms linear;
+}
+
+/* ==========================================================================
+   Depth layers
+   ========================================================================== */
+
+.atmosphere {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  width: 100%;
+  height: 100lvh;
+  pointer-events: none;
+}
+
+/* Film grain: static turbulence tile, screen-blended, nearly invisible. */
+.grain {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  pointer-events: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='240' height='240'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.5'/%3E%3C/svg%3E");
+  opacity: 0.045;
+  mix-blend-mode: overlay;
+}
+
+/* Oversized spectral words drifting behind sections. */
+.ghostWord {
+  position: absolute;
+  z-index: -1;
+  font-family: var(--font-display), var(--font-inter), sans-serif;
+  font-weight: 700;
+  font-size: clamp(8rem, 24vw, 22rem);
+  letter-spacing: -0.05em;
+  line-height: 1;
+  color: transparent;
+  -webkit-text-stroke: 1px rgba(255, 252, 0, 0.05);
+  user-select: none;
+  pointer-events: none;
+  white-space: nowrap;
+}
+
+/* ==========================================================================
+   Cursor
+   ========================================================================== */
+
+.cursorDot,
+.cursorDrop,
+.cursorTrail {
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 120;
+  pointer-events: none;
+  opacity: 0;
+  will-change: transform;
+}
+
+.cursorDot::after {
+  content: "";
+  position: absolute;
+  top: -2px;
+  left: -2px;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+
+.cursorDrop {
+  mix-blend-mode: screen;
+}
+
+.cursorDrop::after {
+  content: "";
+  position: absolute;
+  top: -14px;
+  left: -14px;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background:
+    radial-gradient(circle at 34% 30%, rgba(255, 255, 255, 0.85) 0%, rgba(255, 253, 102, 0.35) 18%, rgba(255, 252, 0, 0.12) 45%, rgba(255, 252, 0, 0.03) 70%, transparent 100%);
+  border: 1px solid rgba(255, 252, 0, 0.35);
+  box-shadow:
+    inset 0 -4px 8px rgba(207, 204, 0, 0.25),
+    0 0 18px rgba(255, 252, 0, 0.22);
+  transition: background 200ms cubic-bezier(0.4, 0, 0.2, 1), border-color 200ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.cursorDrop[data-mode="button"]::after {
+  background:
+    radial-gradient(circle at 34% 30%, rgba(255, 255, 255, 0.9) 0%, rgba(255, 252, 0, 0.55) 30%, rgba(255, 252, 0, 0.18) 60%, transparent 100%);
+  border-color: rgba(255, 252, 0, 0.6);
+}
+
+.cursorDrop[data-mode="card"]::after {
+  background: radial-gradient(circle at 40% 35%, rgba(255, 252, 0, 0.16) 0%, rgba(255, 252, 0, 0.05) 55%, transparent 100%);
+  border-color: rgba(255, 252, 0, 0.28);
+}
+
+.cursorTrail::after {
+  content: "";
+  position: absolute;
+  top: -22px;
+  left: -22px;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(255, 252, 0, 0.10) 0%, transparent 65%);
+  filter: blur(6px);
+}
+
+/* ==========================================================================
+   Navigation
+   ========================================================================== */
+
+.nav {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 60;
+  background: transparent;
+  border-bottom: 1px solid transparent;
+  /* background-color deliberately NOT transitioned: a transition that starts
+     in a throttled/hidden tab can freeze at progress 0, leaving the bar
+     transparent over content. The bar must be readable the instant it
+     condenses; only the hairline eases in. */
+  transition: border-color 320ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.nav[data-condensed] {
+  /* Opaque enough to hold without backdrop-filter — the production CSS
+     pipeline strips backdrop-filter, so the blur is enhancement only. */
+  background: rgba(5, 5, 5, 0.88);
+  backdrop-filter: saturate(160%) blur(18px);
+  -webkit-backdrop-filter: saturate(160%) blur(18px);
+  border-bottom-color: rgba(255, 252, 0, 0.14);
+}
+
+.navInner {
+  width: min(1440px, calc(100% - 3rem));
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 2rem;
+  padding: 0.9rem 0;
+  transition: padding 320ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.nav[data-condensed] .navInner {
+  padding: 0.55rem 0;
+}
+
+.navBrand {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.65rem;
+  text-decoration: none;
+  color: var(--fg);
+}
+
+.navMark {
+  width: 1.5rem;
+  height: auto;
+  color: var(--accent);
+  transition: filter 200ms cubic-bezier(0.4, 0, 0.2, 1), transform 320ms cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.navBrand:hover .navMark {
+  filter: drop-shadow(0 0 8px rgba(255, 252, 0, 0.55));
+  transform: scale(1.08);
+}
+
+.navWordmark {
+  font-family: var(--font-display), var(--font-inter), sans-serif;
+  font-weight: 700;
+  font-size: 1.02rem;
+  letter-spacing: -0.01em;
+}
+
+.navLinks {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin-left: auto;
+}
+
+.navLink {
+  position: relative;
+  padding: 0.45rem 0.75rem;
+  font-size: 0.86rem;
+  font-weight: 520;
+  color: var(--muted);
+  text-decoration: none;
+  transition: color 160ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.navLink::after {
+  content: "";
+  position: absolute;
+  left: 0.75rem;
+  right: 0.75rem;
+  bottom: 0.2rem;
+  height: 1px;
+  background: var(--accent);
+  transform: scaleX(0);
+  transform-origin: left;
+  transition: transform 320ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.navLink:hover,
+.navLink[aria-current] {
+  color: var(--fg);
+}
+
+.navLink:hover::after,
+.navLink[aria-current]::after {
+  transform: scaleX(1);
+}
+
+.navExt {
+  margin-left: 0.3rem;
+  font-size: 0.72rem;
+  color: var(--muted-2);
+}
+
+.navCta {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 40px;
+  padding: 0.45rem 1.15rem;
+  background: var(--accent);
+  color: #050505;
+  font-weight: 640;
+  font-size: 0.88rem;
+  letter-spacing: 0.01em;
+  text-decoration: none;
+  overflow: hidden;
+  transition: box-shadow 200ms cubic-bezier(0.4, 0, 0.2, 1), transform 80ms linear;
+}
+
+.navCta::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(115deg, transparent 30%, rgba(255, 255, 255, 0.5) 50%, transparent 70%);
+  transform: translateX(-110%);
+}
+
+.navCta:hover {
+  box-shadow: 0 0 24px rgba(255, 252, 0, 0.35);
+}
+
+.navCta:hover::before {
+  animation: navSweep 640ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@keyframes navSweep {
+  to {
+    transform: translateX(110%);
+  }
+}
+
+@media (max-width: 860px) {
+  .navLinks {
+    display: none;
+  }
+  .navInner {
+    gap: 1rem;
+  }
+  .navCta {
+    margin-left: auto;
+  }
+}
+
+/* ==========================================================================
+   Type system
+   ========================================================================== */
+
+.display {
+  font-family: var(--font-display), var(--font-inter), sans-serif;
+  font-weight: 700;
+  letter-spacing: -0.035em;
+  line-height: 0.96;
+  color: var(--fg);
+}
+
+.kicker {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.7rem;
+  font-family: var(--font-jetbrains-mono), ui-monospace, monospace;
+  font-size: 0.74rem;
+  font-weight: 500;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--accent-dim);
+}
+
+.kicker::before {
+  content: "";
+  width: 1.6rem;
+  height: 1px;
+  background: var(--accent);
+}
+
+.sectionHead {
+  display: grid;
+  gap: 1.1rem;
+  max-width: 56rem;
+  margin-bottom: clamp(2.5rem, 5vw, 4.5rem);
+}
+
+.sectionTitle {
+  composes: display;
+  font-size: clamp(2.1rem, 4.6vw, 4rem);
+  text-wrap: balance;
+}
+
+.sectionLead {
+  font-size: clamp(1rem, 1.4vw, 1.15rem);
+  line-height: 1.65;
+  color: var(--text);
+  max-width: 46rem;
+}
+
+.section {
+  position: relative;
+  padding: clamp(5rem, 11vw, 10rem) 0;
+}
+
+/* ==========================================================================
+   Hero
+   ========================================================================== */
+
+.hero {
+  position: relative;
+  min-height: 100svh;
+  display: grid;
+  grid-template-columns: 1.04fr 0.92fr;
+  align-items: center;
+  gap: clamp(2rem, 4vw, 4rem);
+  padding-top: 6.5rem;
+  padding-bottom: 3.5rem;
+}
+
+.heroCopy {
+  position: relative;
+  z-index: 2;
+  display: grid;
+  gap: 1.6rem;
+  justify-items: start;
+}
+
+.heroTitle {
+  composes: display;
+  font-size: clamp(3.3rem, 8.2vw, 7.4rem);
+  margin: 0;
+}
+
+.heroLine {
+  display: block;
+  overflow: hidden;
+  padding-bottom: 0.06em;
+  margin-bottom: -0.06em;
+}
+
+.heroLine > span {
+  display: block;
+  transform: translateY(112%);
+  filter: blur(6px);
+  opacity: 0;
+  animation: heroRise 0.95s cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation-delay: var(--enter-delay, 0ms);
+}
+
+.heroAccent {
+  color: var(--accent);
+  text-shadow: 0 0 60px rgba(255, 252, 0, 0.16);
+}
+
+@keyframes heroRise {
+  to {
+    transform: translateY(0);
+    filter: blur(0);
+    opacity: 1;
+  }
+}
+
+.heroEnter {
+  opacity: 0;
+  animation: heroFade 0.8s cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation-delay: var(--enter-delay, 0ms);
+}
+
+@keyframes heroFade {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* First visit: the LINES intro overlay owns the first ~2.6s; the hero enters
+   as the bands tear away. Repeat visits (data-intro-seen stamped pre-paint)
+   enter immediately. */
+:global(html:not([data-intro-seen="1"])) .heroLine > span,
+:global(html:not([data-intro-seen="1"])) .heroEnter {
+  /* Timed to the intro's band tear-away (starts ~1780ms); kept on the early
+     side so skipping the intro leaves at most a short gap before the hero. */
+  animation-delay: calc(var(--enter-delay, 0ms) + 1900ms);
+}
+
+.heroLead {
+  max-width: 34rem;
+  font-size: clamp(1.02rem, 1.5vw, 1.18rem);
+  line-height: 1.65;
+  color: var(--text);
+}
+
+.heroActions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.9rem;
+}
+
+.heroMicro {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.6rem 1.4rem;
+  font-family: var(--font-jetbrains-mono), ui-monospace, monospace;
+  font-size: 0.72rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.heroMicroDot {
+  display: inline-block;
+  width: 0.4rem;
+  height: 0.4rem;
+  margin-right: 0.45rem;
+  background: var(--accent);
+  animation: microBlink 2.4s steps(1) infinite;
+}
+
+@keyframes microBlink {
+  50% {
+    opacity: 0.25;
+  }
+}
+
+.heroChip {
+  display: inline-flex;
+  align-items: center;
+}
+
+.heroChipLink {
+  color: var(--muted);
+  text-decoration: none;
+  border-bottom: 1px solid var(--line);
+  transition: color 160ms cubic-bezier(0.4, 0, 0.2, 1), border-color 160ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.heroChipLink:hover {
+  color: var(--accent-dim);
+  border-bottom-color: var(--accent-dim);
+}
+
+.heroVisual {
+  position: relative;
+  z-index: 1;
+  align-self: stretch;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 420px;
+}
+
+.scrollCue {
+  position: absolute;
+  bottom: 1.6rem;
+  left: 50%;
+  transform: translateX(-50%);
+  display: grid;
+  justify-items: center;
+  gap: 0.55rem;
+  font-family: var(--font-jetbrains-mono), ui-monospace, monospace;
+  font-size: 0.66rem;
+  letter-spacing: 0.3em;
+  text-transform: uppercase;
+  color: var(--muted-2);
+}
+
+.scrollCue::after {
+  content: "";
+  width: 1px;
+  height: 2.6rem;
+  background: linear-gradient(to bottom, var(--accent), transparent);
+  animation: cueDrop 2.2s cubic-bezier(0.22, 1, 0.36, 1) infinite;
+  transform-origin: top;
+}
+
+@keyframes cueDrop {
+  0% {
+    transform: scaleY(0);
+  }
+  55% {
+    transform: scaleY(1);
+  }
+  100% {
+    transform: scaleY(1);
+    opacity: 0;
+  }
+}
+
+@media (max-width: 1020px) {
+  .hero {
+    grid-template-columns: 1fr;
+    padding-top: 7.5rem;
+    text-align: left;
+  }
+  .heroVisual {
+    order: -1;
+    min-height: 300px;
+    margin-top: -1.5rem;
+  }
+  .scrollCue {
+    display: none;
+  }
+}
+
+/* ==========================================================================
+   Zap Core
+   ========================================================================== */
+
+.coreStage {
+  width: min(640px, 100%);
+  aspect-ratio: 1;
+  perspective: 1100px;
+}
+
+.coreTilt {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  transform-style: preserve-3d;
+  will-change: transform;
+}
+
+.coreSvg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+
+.coreOrbitGuide {
+  stroke: var(--line-soft);
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+}
+
+.coreRouteTrack {
+  stroke: rgba(255, 252, 0, 0.07);
+  stroke-width: 1;
+}
+
+.coreRoutePulse {
+  stroke: var(--accent);
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-dasharray: 26 640;
+  stroke-dashoffset: 0;
+  opacity: 0.85;
+  animation: routeTravel var(--dur, 6s) linear infinite;
+  animation-delay: var(--delay, 0s);
+}
+
+@keyframes routeTravel {
+  from {
+    stroke-dashoffset: 666;
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+.coreDiscs circle {
+  stroke: var(--line);
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+  transform-origin: 360px 360px;
+  transform-box: view-box;
+}
+
+.coreDiscA {
+  animation: discBreathe 8.5s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+
+.coreDiscB {
+  animation: discBreathe 7s cubic-bezier(0.4, 0, 0.2, 1) infinite reverse;
+}
+
+.coreDiscC {
+  animation: discBreathe 10.5s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+
+@keyframes discBreathe {
+  50% {
+    transform: scale(1.045);
+  }
+}
+
+.coreOrbitSlow,
+.coreOrbitFast {
+  transform-origin: 360px 360px;
+  transform-box: view-box;
+}
+
+.coreOrbitSlow {
+  animation: orbitDrift 160s linear infinite;
+}
+
+.coreOrbitFast {
+  animation: orbitDrift 110s linear infinite reverse;
+}
+
+/* Counter-rotation must pivot on the node point at local (0,0) — view-box
+   resolves origin 0 0 in local user space, which the parent translate places
+   exactly on the node. fill-box would pivot on the label's bbox corner and
+   drift nodes off their rings as the orbit turns. */
+.coreCounterSlow,
+.coreCounterFast {
+  transform-origin: 0 0;
+  transform-box: view-box;
+}
+
+.coreCounterSlow {
+  animation: orbitDrift 160s linear infinite reverse;
+}
+
+.coreCounterFast {
+  animation: orbitDrift 110s linear infinite;
+}
+
+@keyframes orbitDrift {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.coreNodeDim {
+  fill: var(--bg-3);
+  stroke: var(--line);
+  stroke-width: 1;
+}
+
+.coreNodeHalo {
+  fill: rgba(255, 252, 0, 0.12);
+  animation: nodePulse 3.2s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+
+.coreNodeLive {
+  fill: var(--accent);
+  filter: drop-shadow(0 0 6px rgba(255, 252, 0, 0.7));
+}
+
+@keyframes nodePulse {
+  50% {
+    transform: scale(1.6);
+    opacity: 0.4;
+  }
+}
+
+.coreNodeLabel {
+  font-family: var(--font-jetbrains-mono), ui-monospace, monospace;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  fill: var(--muted-2);
+}
+
+.coreNodeLabelLive {
+  fill: var(--accent-dim);
+}
+
+.coreBolt {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 19%;
+  transform: translate(-50%, -52%);
+  color: var(--accent);
+  filter: drop-shadow(0 0 26px rgba(255, 252, 0, 0.5));
+}
+
+.coreChip {
+  position: absolute;
+  padding: 0.3rem 0.55rem;
+  font-size: 0.64rem;
+  letter-spacing: 0.1em;
+  color: var(--muted);
+  background: rgba(10, 10, 10, 0.88);
+  border: 1px solid var(--line);
+  animation: chipBob 6.5s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+
+.coreChipA {
+  top: 16%;
+  right: 4%;
+  animation-delay: -1.4s;
+}
+
+.coreChipB {
+  bottom: 22%;
+  left: 0%;
+  animation-delay: -3.8s;
+}
+
+.coreChipC {
+  bottom: 6%;
+  right: 14%;
+  animation-delay: -5.6s;
+}
+
+@keyframes chipBob {
+  50% {
+    transform: translateY(-7px);
+  }
+}
+
+@media (max-width: 1020px) {
+  .coreStage {
+    width: min(400px, 92%);
+  }
+  .coreChip {
+    display: none;
+  }
+  .coreNodeLabel {
+    font-size: 13px;
+  }
+}
+
+/* ==========================================================================
+   What is a Zap — the collapse
+   ========================================================================== */
+
+.collapseSection {
+  position: relative;
+}
+
+.collapseSection[data-animated] {
+  height: 280vh;
+}
+
+.collapseSticky {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: clamp(5rem, 10vw, 8rem) 0;
+}
+
+.collapseSection[data-animated] .collapseSticky {
+  position: sticky;
+  top: 0;
+  height: 100svh;
+  max-height: 100svh;
+  overflow: hidden;
+  padding: 0;
+}
+
+.collapseInner {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  padding-top: 5.5rem;
+}
+
+.collapseHead {
+  display: grid;
+  gap: 1rem;
+  max-width: 52rem;
+}
+
+.collapseCounter {
+  font-size: 0.78rem;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--accent-dim);
+  min-height: 1.2em;
+}
+
+.collapseStage {
+  display: none;
+  position: relative;
+  flex: 1;
+  min-height: 320px;
+}
+
+.collapseSection[data-animated] .collapseStage {
+  display: block;
+}
+
+/* When the animation stage takes over, the static sequence stays in the
+   accessibility tree (the stage is aria-hidden choreography) but leaves the
+   visual layout. */
+.collapseSection[data-animated] .collapseStatic {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.collapseCard {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  margin: -44px 0 0 -170px;
+  width: 340px;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  grid-template-rows: auto auto;
+  column-gap: 0.8rem;
+  row-gap: 0.15rem;
+  align-items: baseline;
+  padding: 0.95rem 1.15rem;
+  /* Opaque on purpose: five per-frame-transformed backdrop-filter surfaces
+     over a live WebGL canvas is a compositor bill this beat can't afford. */
+  background: rgba(10, 10, 10, 0.92);
+  border: 1px solid var(--line);
+  opacity: 0;
+  will-change: transform, opacity;
+}
+
+.collapseCardIndex {
+  grid-row: span 2;
+  font-size: 0.7rem;
+  color: var(--muted-2);
+}
+
+.collapseCardTitle {
+  font-weight: 560;
+  color: var(--fg);
+  font-size: 0.98rem;
+}
+
+.collapseCardDetail {
+  font-size: 0.68rem;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+}
+
+.collapseCapsule {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%) scale(0.55);
+  display: grid;
+  justify-items: center;
+  gap: 0.4rem;
+  padding: 2rem 3rem;
+  background: rgba(255, 252, 0, 0.06);
+  border: 1px solid rgba(255, 252, 0, 0.45);
+  box-shadow: 0 0 60px rgba(255, 252, 0, 0.12);
+  opacity: 0;
+  will-change: transform, opacity;
+}
+
+.collapseCapsule[data-lit="true"] {
+  box-shadow:
+    0 0 90px rgba(255, 252, 0, 0.22),
+    inset 0 0 30px rgba(255, 252, 0, 0.06);
+}
+
+.collapseCapsuleRing {
+  position: absolute;
+  inset: -1px;
+  border: 1px solid rgba(255, 252, 0, 0.6);
+  opacity: 0;
+}
+
+.collapseCapsule[data-lit="true"] .collapseCapsuleRing {
+  animation: capsuleRipple 1.6s cubic-bezier(0.22, 1, 0.36, 1) infinite;
+}
+
+@keyframes capsuleRipple {
+  from {
+    transform: scale(1);
+    opacity: 0.7;
+  }
+  to {
+    transform: scale(1.28);
+    opacity: 0;
+  }
+}
+
+.collapseCapsuleKicker {
+  font-size: 0.7rem;
+  letter-spacing: 0.28em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+
+.collapseCapsuleTitle {
+  font-family: var(--font-display), var(--font-inter), sans-serif;
+  font-weight: 700;
+  font-size: clamp(1.6rem, 3vw, 2.4rem);
+  letter-spacing: -0.02em;
+  color: var(--fg);
+  white-space: nowrap;
+}
+
+.collapseCapsuleMeta {
+  font-size: 0.72rem;
+  letter-spacing: 0.1em;
+  color: var(--accent-dim);
+}
+
+.collapseStatic {
+  display: grid;
+  gap: 1.6rem;
+  justify-items: start;
+  margin-top: 2.5rem;
+}
+
+.collapseStaticList {
+  display: grid;
+  gap: 0;
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  border: 1px solid var(--line);
+}
+
+.collapseStaticItem {
+  display: flex;
+  gap: 0.9rem;
+  align-items: baseline;
+  padding: 0.8rem 1.1rem;
+  border-bottom: 1px solid var(--line-soft);
+  color: var(--fg);
+  font-size: 0.95rem;
+}
+
+.collapseStaticItem:last-child {
+  border-bottom: none;
+}
+
+.collapseStaticItem span {
+  font-size: 0.7rem;
+  color: var(--muted-2);
+}
+
+.collapseStaticArrow {
+  color: var(--accent);
+  font-size: 1.3rem;
+  padding-left: 1rem;
+}
+
+.collapseStaticCapsule {
+  display: grid;
+  gap: 0.35rem;
+  padding: 1.4rem 2rem;
+  background: rgba(255, 252, 0, 0.06);
+  border: 1px solid rgba(255, 252, 0, 0.45);
+}
+
+/* ==========================================================================
+   The problem — fragments
+   ========================================================================== */
+
+.problem {
+  overflow: clip;
+}
+
+.problemShards {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.problemShard {
+  position: absolute;
+  display: grid;
+  gap: 0.2rem;
+  padding: 0.75rem 1rem;
+  background: rgba(21, 21, 21, 0.72);
+  border: 1px solid rgba(244, 244, 241, 0.08);
+  filter: grayscale(1);
+  opacity: 0.5;
+  animation: shardFloat 9s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+  animation-delay: var(--float-delay, 0s);
+}
+
+/* Longhands, not transform: the shards also carry the [data-depth] parallax
+   as an inline transform, and an animated `transform` would replace it every
+   cycle instead of composing with it. */
+@keyframes shardFloat {
+  50% {
+    translate: 0 -10px;
+    rotate: -0.6deg;
+  }
+}
+
+.problemShardText {
+  font-size: 0.85rem;
+  font-weight: 540;
+  color: var(--muted);
+}
+
+.problemShardSub {
+  font-size: 0.64rem;
+  letter-spacing: 0.08em;
+  color: var(--muted-2);
+}
+
+.problemInner {
+  position: relative;
+  z-index: 1;
+}
+
+.problemList {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 1px;
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  background: var(--line-soft);
+  border: 1px solid var(--line-soft);
+}
+
+.problemItem {
+  display: flex;
+  align-items: baseline;
+  gap: 0.7rem;
+  padding: 1.1rem 1.2rem;
+  background: var(--bg);
+  color: var(--text);
+  font-size: 0.92rem;
+  font-weight: 530;
+}
+
+.problemIndex {
+  font-size: 0.68rem;
+  color: var(--muted-2);
+}
+
+.problemThread {
+  display: grid;
+  justify-items: center;
+  gap: 1.4rem;
+  margin-top: clamp(3rem, 6vw, 5rem);
+  text-align: center;
+}
+
+.problemResolve {
+  font-size: clamp(1.1rem, 2vw, 1.45rem);
+  font-weight: 540;
+  color: var(--fg);
+  max-width: 40rem;
+  text-wrap: balance;
+}
+
+.problemResolveAccent {
+  color: var(--accent);
+}
+
+.problemThreadLine {
+  width: 1px;
+  height: clamp(4rem, 9vw, 8rem);
+  background: linear-gradient(to bottom, transparent, var(--accent));
+}
+
+@media (max-width: 980px) {
+  .problemList {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .problemShard {
+    display: none;
+  }
+}
+
+/* ==========================================================================
+   Route rail — one action, many protocols
+   ========================================================================== */
+
+.rail {
+  display: grid;
+  gap: 2rem;
+}
+
+.railTabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.railTab {
+  padding: 0.6rem 1rem;
+  background: transparent;
+  border: 1px solid var(--line);
+  color: var(--muted);
+  font-family: inherit;
+  font-size: 0.85rem;
+  font-weight: 540;
+  transition:
+    color 160ms cubic-bezier(0.4, 0, 0.2, 1),
+    border-color 160ms cubic-bezier(0.4, 0, 0.2, 1),
+    background-color 160ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.railTab:hover {
+  color: var(--fg);
+  border-color: rgba(255, 252, 0, 0.4);
+}
+
+.railTab[aria-pressed="true"] {
+  color: #050505;
+  background: var(--accent);
+  border-color: var(--accent);
+  font-weight: 640;
+}
+
+.railPanel {
+  display: grid;
+  gap: 2.2rem;
+  animation: railIn 560ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@keyframes railIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.railTrack {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  list-style: none;
+  margin: 0;
+  padding: 2.4rem 1rem;
+  border: 1px solid var(--line);
+  background: rgba(11, 11, 11, 0.5);
+}
+
+.railLine {
+  position: absolute;
+  left: 2rem;
+  right: 2rem;
+  top: 50%;
+  height: 1px;
+  background: rgba(255, 252, 0, 0.15);
+  z-index: 0;
+  overflow: hidden;
+}
+
+.railPulse {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 18%;
+  height: 100%;
+  background: linear-gradient(to right, transparent, var(--accent), transparent);
+  filter: drop-shadow(0 0 6px rgba(255, 252, 0, 0.8));
+  animation: railPulseTravel 3.2s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+
+@keyframes railPulseTravel {
+  from {
+    transform: translateX(-120%);
+  }
+  to {
+    transform: translateX(680%);
+  }
+}
+
+.railAsset,
+.railHop {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  justify-items: center;
+  gap: 0.35rem;
+  text-align: center;
+}
+
+.railAssetDot {
+  width: 0.65rem;
+  height: 0.65rem;
+  background: var(--accent);
+  box-shadow: 0 0 12px rgba(255, 252, 0, 0.6);
+}
+
+.railAssetLabel {
+  font-family: var(--font-display), var(--font-inter), sans-serif;
+  font-weight: 700;
+  font-size: 0.95rem;
+  letter-spacing: -0.01em;
+  color: var(--fg);
+  white-space: nowrap;
+}
+
+.railHop {
+  padding: 0.5rem 0.8rem;
+  background: var(--bg-2);
+  border: 1px solid var(--line);
+}
+
+.railHopLabel {
+  font-size: 0.8rem;
+  font-weight: 560;
+  color: var(--text);
+  white-space: nowrap;
+}
+
+.railHopSub {
+  font-size: 0.62rem;
+  letter-spacing: 0.06em;
+  color: var(--muted-2);
+  white-space: nowrap;
+}
+
+.railMeta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1px;
+  margin: 0;
+  background: var(--line-soft);
+  border: 1px solid var(--line-soft);
+}
+
+.railMeta > div {
+  flex: 1 1 140px;
+  display: grid;
+  gap: 0.3rem;
+  padding: 1rem 1.2rem;
+  background: var(--bg);
+}
+
+.railMeta dt {
+  font-size: 0.64rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--muted-2);
+}
+
+.railMeta dd {
+  margin: 0;
+  font-size: 1.15rem;
+  color: var(--accent);
+}
+
+@media (max-width: 900px) {
+  .railTrack {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 1rem;
+    padding: 1.6rem;
+  }
+  .railAsset,
+  .railHop {
+    justify-items: start;
+    text-align: left;
+  }
+  .railLine {
+    left: 1.15rem;
+    right: auto;
+    top: 2rem;
+    bottom: 2rem;
+    width: 1px;
+    height: auto;
+  }
+  .railPulse {
+    width: 100%;
+    height: 18%;
+    background: linear-gradient(to bottom, transparent, var(--accent), transparent);
+    animation-name: railPulseTravelY;
+  }
+  @keyframes railPulseTravelY {
+    from {
+      transform: translateY(-120%);
+    }
+    to {
+      transform: translateY(680%);
+    }
+  }
+}
+
+/* ==========================================================================
+   Zap cards
+   ========================================================================== */
+
+.cardGrid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1.1rem;
+}
+
+.cardShell {
+  display: grid;
+}
+
+.card {
+  position: relative;
+  display: block;
+  min-height: 260px;
+  padding: 1.5rem;
+  background: rgba(11, 11, 11, 0.62);
+  border: 1px solid var(--line);
+  text-decoration: none;
+  overflow: hidden;
+  transition:
+    border-color 320ms cubic-bezier(0.22, 1, 0.36, 1),
+    box-shadow 320ms cubic-bezier(0.22, 1, 0.36, 1),
+    transform 320ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.card::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(80% 60% at 50% 0%, rgba(255, 252, 0, 0.07), transparent 70%);
+  opacity: 0;
+  transition: opacity 320ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.card:hover,
+.card:focus-visible {
+  transform: translateY(-5px);
+  border-color: rgba(255, 252, 0, 0.45);
+  box-shadow:
+    0 18px 44px rgba(0, 0, 0, 0.5),
+    0 0 24px rgba(255, 252, 0, 0.08);
+}
+
+.card:hover::before,
+.card:focus-visible::before {
+  opacity: 1;
+}
+
+.cardFront,
+.cardReveal {
+  position: relative;
+  display: grid;
+  gap: 0.7rem;
+  align-content: start;
+  transition:
+    opacity 360ms cubic-bezier(0.22, 1, 0.36, 1),
+    transform 360ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.cardReveal {
+  position: absolute;
+  inset: 1.5rem;
+  opacity: 0;
+  transform: translateY(14px);
+  pointer-events: none;
+}
+
+.card:hover .cardFront,
+.card:focus-visible .cardFront {
+  opacity: 0;
+  transform: translateY(-10px);
+}
+
+.card:hover .cardReveal,
+.card:focus-visible .cardReveal {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.cardTop {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.cardStatus {
+  padding: 0.22rem 0.5rem;
+  font-size: 0.62rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--muted);
+  border: 1px solid var(--line);
+}
+
+.cardStatus[data-live] {
+  color: #050505;
+  background: var(--accent);
+  border-color: var(--accent);
+  font-weight: 600;
+}
+
+.cardOutput {
+  font-size: 0.64rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--muted-2);
+}
+
+.cardName {
+  margin: 0.4rem 0 0;
+  font-family: var(--font-display), var(--font-inter), sans-serif;
+  font-weight: 700;
+  font-size: 1.45rem;
+  letter-spacing: -0.02em;
+  color: var(--fg);
+}
+
+.cardTagline {
+  margin: 0;
+  font-size: 0.9rem;
+  line-height: 1.55;
+  color: var(--text);
+}
+
+.cardMeta {
+  display: flex;
+  gap: 1.6rem;
+  margin: 0.8rem 0 0;
+}
+
+.cardMeta dt {
+  font-size: 0.6rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--muted-2);
+}
+
+.cardMeta dd {
+  margin: 0.15rem 0 0;
+  font-size: 0.92rem;
+  color: var(--accent-dim);
+}
+
+.cardRevealKicker {
+  font-size: 0.64rem;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+
+.cardSteps {
+  display: grid;
+  gap: 0.45rem;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.cardStep {
+  display: flex;
+  align-items: baseline;
+  gap: 0.6rem;
+  font-size: 0.86rem;
+  color: var(--fg);
+}
+
+.cardStepDot {
+  width: 0.5rem;
+  height: 0.5rem;
+  flex-shrink: 0;
+  align-self: center;
+  background: var(--dot, var(--bg-4));
+  border: 1px solid var(--line);
+}
+
+.cardStepLabel {
+  font-weight: 540;
+}
+
+.cardStepVia {
+  font-size: 0.62rem;
+  letter-spacing: 0.05em;
+  color: var(--muted);
+}
+
+.cardOpen {
+  margin-top: 0.5rem;
+  font-size: 0.7rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+
+@media (max-width: 1080px) {
+  .cardGrid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 680px) {
+  .cardGrid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ==========================================================================
+   Execution demo
+   ========================================================================== */
+
+.demo {
+  display: grid;
+  gap: 1.4rem;
+  padding: clamp(1.4rem, 3vw, 2.4rem);
+  background: rgba(11, 11, 11, 0.6);
+  border: 1px solid var(--line);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+.demoForm {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 1.2rem;
+}
+
+.demoField {
+  display: grid;
+  gap: 0.45rem;
+}
+
+.demoLabel {
+  font-size: 0.64rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--muted-2);
+}
+
+.demoSelect,
+.demoInput {
+  min-height: 44px;
+  padding: 0.5rem 0.85rem;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  color: var(--fg);
+  font-family: var(--font-jetbrains-mono), ui-monospace, monospace;
+  font-size: 0.88rem;
+  border-radius: 0;
+  transition: border-color 160ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.demoSelect:hover,
+.demoInput:hover {
+  border-color: rgba(255, 252, 0, 0.35);
+}
+
+.demoSelect:focus-visible,
+.demoInput:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.demoInput {
+  width: 9rem;
+}
+
+.demoInput[aria-invalid] {
+  border-color: var(--danger);
+}
+
+.demoNetwork {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-height: 44px;
+  padding: 0.5rem 0.85rem;
+  border: 1px solid var(--line-soft);
+  color: var(--muted);
+  font-family: var(--font-jetbrains-mono), ui-monospace, monospace;
+  font-size: 0.82rem;
+}
+
+.demoNetworkDot {
+  width: 0.4rem;
+  height: 0.4rem;
+  background: var(--accent);
+  animation: microBlink 2.4s steps(1) infinite;
+}
+
+.demoError {
+  margin: -0.6rem 0 0;
+  font-size: 0.74rem;
+  color: var(--danger);
+}
+
+.demoOutput {
+  display: grid;
+  grid-template-columns: minmax(200px, 0.8fr) 1.2fr;
+  gap: 1.4rem;
+  align-items: start;
+}
+
+.demoRoute,
+.demoChecks {
+  display: grid;
+  gap: 0.8rem;
+  padding: 1.1rem 1.2rem;
+  border: 1px solid var(--line-soft);
+  background: rgba(5, 5, 5, 0.55);
+}
+
+.demoRouteKicker {
+  font-size: 0.62rem;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--accent-dim);
+}
+
+.demoRouteSteps {
+  display: grid;
+  gap: 0.5rem;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.demoRouteStep {
+  display: flex;
+  gap: 0.7rem;
+  align-items: baseline;
+  font-size: 0.9rem;
+  color: var(--fg);
+}
+
+.demoRouteStep span {
+  font-size: 0.66rem;
+  color: var(--muted-2);
+}
+
+.demoChecks ul {
+  display: grid;
+  gap: 0.45rem;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.demoCheck {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  column-gap: 0.6rem;
+  row-gap: 0.1rem;
+  align-items: baseline;
+  font-size: 0.86rem;
+  color: var(--fg);
+  opacity: 0.25;
+  transform: translateX(-4px);
+  transition:
+    opacity 360ms cubic-bezier(0.22, 1, 0.36, 1),
+    transform 360ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.demoCheck[data-shown] {
+  opacity: 1;
+  transform: translateX(0);
+}
+
+.demoCheckMark {
+  width: 0.55rem;
+  height: 0.55rem;
+  align-self: center;
+  border: 1px solid var(--line);
+  background: transparent;
+}
+
+.demoCheck[data-shown][data-status="pass"] .demoCheckMark {
+  background: var(--ok);
+  border-color: var(--ok);
+}
+
+.demoCheck[data-shown][data-status="warn"] .demoCheckMark {
+  background: var(--amber);
+  border-color: var(--amber);
+}
+
+.demoCheck[data-shown][data-status="block"] .demoCheckMark {
+  background: var(--danger);
+  border-color: var(--danger);
+}
+
+.demoCheckDetail {
+  grid-column: 2;
+  font-size: 0.66rem;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+}
+
+.demoVerdict {
+  grid-column: 1 / -1;
+  display: grid;
+  gap: 1rem;
+  padding: 1.2rem 1.3rem;
+  border: 1px solid rgba(255, 252, 0, 0.3);
+  background: rgba(255, 252, 0, 0.035);
+  opacity: 0;
+  transform: translateY(10px);
+  /* visibility keeps the links inside unfocusable and out of the
+     accessibility tree until a preview actually ran. */
+  visibility: hidden;
+  transition:
+    opacity 480ms cubic-bezier(0.22, 1, 0.36, 1),
+    transform 480ms cubic-bezier(0.22, 1, 0.36, 1),
+    visibility 0s linear 480ms;
+}
+
+.demoVerdict[data-shown] {
+  opacity: 1;
+  transform: translateY(0);
+  visibility: visible;
+  transition-delay: 0s;
+}
+
+.demoVerdictGrid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1.8rem;
+  margin: 0;
+}
+
+.demoVerdictGrid dt {
+  font-size: 0.6rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--muted-2);
+}
+
+.demoVerdictGrid dd {
+  margin: 0.2rem 0 0;
+  font-size: 0.95rem;
+  color: var(--fg);
+}
+
+.demoVerdictGrid dd[data-status="pass"] {
+  color: var(--ok);
+}
+
+.demoVerdictGrid dd[data-status="warn"] {
+  color: var(--amber);
+}
+
+.demoVerdictGrid dd[data-status="block"] {
+  color: var(--danger);
+}
+
+.demoHonesty {
+  margin: 0;
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+.demoActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.8rem;
+}
+
+@media (max-width: 860px) {
+  .demoOutput {
+    grid-template-columns: 1fr;
+  }
+  .demoForm > :global(.btn),
+  .demoForm button {
+    width: 100%;
+  }
+  .demoField {
+    flex: 1 1 40%;
+  }
+}
+
+/* ==========================================================================
+   Why OpenZaps
+   ========================================================================== */
+
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+.whyGrid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  background: var(--line-soft);
+  border: 1px solid var(--line-soft);
+}
+
+.whyCell {
+  display: grid;
+  gap: 0.6rem;
+  align-content: start;
+  padding: clamp(1.4rem, 2.6vw, 2.2rem);
+  background: var(--bg);
+  transition: background-color 320ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.whyCell:hover {
+  background: var(--bg-2);
+}
+
+.whyIndex {
+  font-size: clamp(2.2rem, 4vw, 3.4rem);
+  color: transparent;
+  -webkit-text-stroke: 1px rgba(255, 252, 0, 0.5);
+}
+
+.whyCell:hover .whyIndex {
+  color: var(--accent);
+  -webkit-text-stroke: 0;
+}
+
+.whyTitle {
+  margin: 0;
+  font-family: var(--font-display), var(--font-inter), sans-serif;
+  font-weight: 700;
+  font-size: 1.2rem;
+  letter-spacing: -0.01em;
+  color: var(--fg);
+}
+
+.whyDetail {
+  margin: 0;
+  font-size: 0.9rem;
+  line-height: 1.6;
+  color: var(--text);
+}
+
+@media (max-width: 980px) {
+  .whyGrid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 640px) {
+  .whyGrid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ==========================================================================
+   Protocol graph
+   ========================================================================== */
+
+.graph {
+  display: grid;
+  grid-template-columns: 1.5fr minmax(280px, 1fr);
+  gap: 1.4rem;
+  align-items: stretch;
+}
+
+.graphStage {
+  position: relative;
+  min-height: 440px;
+  border: 1px solid var(--line);
+  background:
+    radial-gradient(70% 60% at 52% 48%, rgba(255, 252, 0, 0.04), transparent 70%),
+    rgba(11, 11, 11, 0.5);
+  overflow: hidden;
+}
+
+.graphSvg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.graphSpoke,
+.graphPair {
+  stroke: var(--line-soft);
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+  transition: stroke 240ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.graphSpoke[data-live] {
+  stroke: rgba(255, 252, 0, 0.22);
+}
+
+.graphSpoke[data-active],
+.graphPair[data-active] {
+  stroke: rgba(255, 252, 0, 0.55);
+}
+
+.graphPair[data-live] {
+  stroke: rgba(255, 252, 0, 0.3);
+  stroke-dasharray: 2 3;
+  animation: pairFlow 1.4s linear infinite;
+}
+
+@keyframes pairFlow {
+  to {
+    stroke-dashoffset: -10;
+  }
+}
+
+.graphCore {
+  position: absolute;
+  left: 52%;
+  top: 48%;
+  transform: translate(-50%, -50%);
+  display: grid;
+  justify-items: center;
+  gap: 0.5rem;
+  pointer-events: none;
+}
+
+.graphCoreDot {
+  width: 0.9rem;
+  height: 0.9rem;
+  background: var(--accent);
+  box-shadow: 0 0 26px rgba(255, 252, 0, 0.75);
+  animation: coreThrob 3.4s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+
+@keyframes coreThrob {
+  50% {
+    box-shadow: 0 0 40px rgba(255, 252, 0, 0.95);
+  }
+}
+
+.graphCoreLabel {
+  font-size: 0.62rem;
+  letter-spacing: 0.3em;
+  text-transform: uppercase;
+  color: var(--accent-dim);
+}
+
+.graphNode {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.4rem 0.7rem;
+  background: var(--glass);
+  border: 1px solid var(--line);
+  color: var(--muted);
+  font-family: var(--font-jetbrains-mono), ui-monospace, monospace;
+  font-size: 0.72rem;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  transition:
+    color 200ms cubic-bezier(0.4, 0, 0.2, 1),
+    border-color 200ms cubic-bezier(0.4, 0, 0.2, 1),
+    box-shadow 200ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.graphNode[data-live] {
+  color: var(--fg);
+  border-color: rgba(255, 252, 0, 0.3);
+}
+
+.graphNode[data-active],
+.graphNode:hover {
+  color: var(--fg);
+  border-color: var(--accent);
+  box-shadow: 0 0 18px rgba(255, 252, 0, 0.2);
+}
+
+.graphNodeDot {
+  width: 0.42rem;
+  height: 0.42rem;
+  background: var(--bg-4);
+}
+
+.graphNode[data-live] .graphNodeDot {
+  background: var(--accent);
+  box-shadow: 0 0 8px rgba(255, 252, 0, 0.7);
+}
+
+.graphPanel {
+  display: grid;
+  gap: 0.9rem;
+  align-content: start;
+  padding: 1.4rem;
+  border: 1px solid var(--line);
+  background: rgba(11, 11, 11, 0.6);
+}
+
+.graphPanelHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+}
+
+.graphPanelName {
+  margin: 0;
+  font-family: var(--font-display), var(--font-inter), sans-serif;
+  font-weight: 700;
+  font-size: 1.3rem;
+  color: var(--fg);
+}
+
+.graphPanelBody {
+  margin: 0;
+  font-size: 0.9rem;
+  line-height: 1.6;
+  color: var(--text);
+}
+
+.graphActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.graphActions li {
+  padding: 0.28rem 0.55rem;
+  border: 1px solid var(--line-soft);
+  font-size: 0.66rem;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+}
+
+@media (max-width: 980px) {
+  .graph {
+    grid-template-columns: 1fr;
+  }
+  .graphStage {
+    min-height: 380px;
+  }
+}
+
+@media (pointer: coarse) {
+  .graphNode {
+    padding: 0.7rem 0.95rem;
+  }
+  .shareOpen,
+  .heroChipLink,
+  .securityAuditLinks a {
+    display: inline-block;
+    padding-top: 0.6rem;
+    padding-bottom: 0.6rem;
+  }
+}
+
+/* ==========================================================================
+   Developer panel
+   ========================================================================== */
+
+.dev {
+  display: grid;
+  grid-template-columns: 1.35fr 1fr;
+  gap: 1.1rem;
+  align-items: stretch;
+}
+
+.devCode,
+.devOut {
+  display: grid;
+  grid-template-rows: auto 1fr;
+  border: 1px solid var(--line);
+  background: rgba(8, 8, 8, 0.72);
+  min-width: 0;
+}
+
+.devCodeBar,
+.devOutBar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.8rem;
+  padding: 0.65rem 1rem;
+  border-bottom: 1px solid var(--line-soft);
+  font-size: 0.66rem;
+  letter-spacing: 0.08em;
+  color: var(--muted-2);
+}
+
+.devCopy {
+  font-size: 0.7rem;
+}
+
+.devPre {
+  margin: 0;
+  padding: 1.1rem 1.2rem;
+  overflow-x: auto;
+  font-family: var(--font-jetbrains-mono), ui-monospace, monospace;
+  font-size: 0.8rem;
+  line-height: 1.75;
+  color: var(--text);
+}
+
+.devLine {
+  display: block;
+  white-space: pre;
+}
+
+.dev[data-code="armed"] .devLine {
+  opacity: 0;
+  transform: translateY(6px);
+}
+
+.dev[data-code="typed"] .devLine {
+  opacity: 0;
+  transform: translateY(6px);
+  animation: devLineIn 420ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation-delay: calc(var(--line-i) * 90ms);
+}
+
+@keyframes devLineIn {
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.devLine [data-tok="kw"] {
+  color: var(--accent);
+}
+
+.devLine [data-tok="str"] {
+  color: var(--champagne);
+}
+
+.devLine [data-tok="fn"] {
+  color: var(--accent-bright);
+}
+
+.devLine [data-tok="num"] {
+  color: var(--amber);
+}
+
+.devLine [data-tok="cm"] {
+  color: var(--muted-2);
+  font-style: italic;
+}
+
+.devOutBar {
+  justify-content: flex-start;
+}
+
+.devOutDot {
+  width: 0.45rem;
+  height: 0.45rem;
+  background: var(--accent);
+  animation: microBlink 2.4s steps(1) infinite;
+}
+
+.devOut > :last-child {
+  align-self: end;
+}
+
+.devOutGrid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1.2rem;
+  margin: 0;
+  padding: 1rem 1.2rem 0.4rem;
+}
+
+.devOutGrid dt {
+  font-size: 0.6rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--muted-2);
+}
+
+.devOutGrid dd {
+  margin: 0.15rem 0 0;
+  font-size: 0.92rem;
+  color: var(--fg);
+}
+
+.devOutGrid dd[data-status="pass"] {
+  color: var(--ok);
+}
+
+.devOutGrid dd[data-status="warn"] {
+  color: var(--amber);
+}
+
+.devOutSteps {
+  display: grid;
+  gap: 0.35rem;
+  list-style: decimal-leading-zero inside;
+  margin: 0;
+  padding: 0.6rem 1.2rem;
+  font-size: 0.72rem;
+  letter-spacing: 0.03em;
+  color: var(--muted);
+}
+
+.devOutNote {
+  margin: 0;
+  padding: 0.8rem 1.2rem;
+  border-top: 1px solid var(--line-soft);
+  font-size: 0.66rem;
+  letter-spacing: 0.08em;
+  color: var(--accent-dim);
+}
+
+.devCtas {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.9rem;
+  margin-top: 1.6rem;
+}
+
+@media (max-width: 980px) {
+  .dev {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ==========================================================================
+   Agent execution
+   ========================================================================== */
+
+.agent {
+  display: grid;
+  grid-template-columns: minmax(280px, 0.85fr) 1.15fr;
+  gap: 1.4rem;
+  align-items: start;
+}
+
+.agentIntents {
+  display: grid;
+  gap: 0.6rem;
+  padding: 1.3rem;
+  border: 1px solid var(--line);
+  background: rgba(8, 8, 8, 0.72);
+}
+
+.agentPrompt {
+  font-size: 0.64rem;
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+  color: var(--accent-dim);
+  margin-bottom: 0.3rem;
+}
+
+.agentIntent {
+  display: flex;
+  align-items: baseline;
+  gap: 0.6rem;
+  padding: 0.7rem 0.9rem;
+  background: transparent;
+  border: 1px solid var(--line-soft);
+  color: var(--muted);
+  font-family: var(--font-jetbrains-mono), ui-monospace, monospace;
+  font-size: 0.82rem;
+  text-align: left;
+  transition:
+    color 160ms cubic-bezier(0.4, 0, 0.2, 1),
+    border-color 160ms cubic-bezier(0.4, 0, 0.2, 1),
+    background-color 160ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.agentIntent:hover {
+  color: var(--fg);
+  border-color: rgba(255, 252, 0, 0.35);
+}
+
+.agentIntent[aria-pressed="true"] {
+  color: var(--fg);
+  border-color: var(--accent);
+  background: rgba(255, 252, 0, 0.05);
+}
+
+.agentCaret {
+  color: var(--accent);
+}
+
+.agentNote {
+  margin: 0.6rem 0 0;
+  font-size: 0.82rem;
+  line-height: 1.6;
+  color: var(--muted);
+}
+
+.agentPlan {
+  display: grid;
+  gap: 1px;
+  border: 1px solid var(--line-soft);
+  background: var(--line-soft);
+  animation: railIn 480ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.agentRow {
+  display: grid;
+  grid-template-columns: 7.5rem 1fr;
+  gap: 1rem;
+  padding: 0.95rem 1.2rem;
+  background: var(--bg);
+}
+
+.agentRowKey {
+  font-size: 0.64rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--muted-2);
+  padding-top: 0.2rem;
+}
+
+.agentRowValue {
+  color: var(--fg);
+  font-size: 0.92rem;
+}
+
+.agentConstraints,
+.agentChecks {
+  display: grid;
+  gap: 0.45rem;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  font-size: 0.86rem;
+  color: var(--text);
+}
+
+.agentChecks li {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.agentChecks li[data-status="pass"] .demoCheckMark {
+  background: var(--ok);
+  border-color: var(--ok);
+}
+
+.agentChecks li[data-status="warn"] .demoCheckMark {
+  background: var(--amber);
+  border-color: var(--amber);
+}
+
+.agentChecks li[data-status="block"] .demoCheckMark {
+  background: var(--danger);
+  border-color: var(--danger);
+}
+
+.agentRefuses {
+  display: grid;
+  grid-template-columns: 7.5rem 1fr;
+  gap: 1rem;
+  padding: 0.95rem 1.2rem;
+  background: rgba(255, 107, 129, 0.04);
+}
+
+.agentRefuses .agentRowKey {
+  color: var(--danger);
+}
+
+.agentRefuses p {
+  margin: 0;
+  font-size: 0.86rem;
+  line-height: 1.6;
+  color: var(--text);
+}
+
+@media (max-width: 980px) {
+  .agent {
+    grid-template-columns: 1fr;
+  }
+  .agentRow,
+  .agentRefuses {
+    grid-template-columns: 1fr;
+    gap: 0.4rem;
+  }
+}
+
+/* ==========================================================================
+   Security
+   ========================================================================== */
+
+.security {
+  display: grid;
+  grid-template-columns: 1.5fr minmax(300px, 1fr);
+  gap: 1.4rem;
+  align-items: start;
+}
+
+.securityGrid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 1px;
+  background: var(--line-soft);
+  border: 1px solid var(--line-soft);
+}
+
+.securityCell {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  column-gap: 0.8rem;
+  row-gap: 0.35rem;
+  align-items: baseline;
+  padding: 1.3rem 1.4rem;
+  background: var(--bg);
+}
+
+.securityLight {
+  width: 0.5rem;
+  height: 0.5rem;
+  background: var(--accent);
+  box-shadow: 0 0 8px rgba(255, 252, 0, 0.5);
+}
+
+.securityTitle {
+  margin: 0;
+  font-size: 0.98rem;
+  font-weight: 590;
+  color: var(--fg);
+}
+
+.securityDetail {
+  grid-column: 2;
+  margin: 0;
+  font-size: 0.85rem;
+  line-height: 1.6;
+  color: var(--text);
+}
+
+.securityAside {
+  display: grid;
+  gap: 1.1rem;
+}
+
+.securityInspect {
+  display: grid;
+  gap: 0.9rem;
+  padding: 1.3rem;
+  border: 1px solid var(--line);
+  background: rgba(8, 8, 8, 0.72);
+}
+
+.securityInspectList {
+  display: grid;
+  gap: 0.75rem;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.securityInspectList li {
+  display: flex;
+  gap: 0.8rem;
+  align-items: baseline;
+}
+
+.securityInspectList li > span {
+  font-size: 0.66rem;
+  color: var(--accent-dim);
+}
+
+.securityInspectList strong {
+  display: block;
+  font-size: 0.88rem;
+  font-weight: 580;
+  color: var(--fg);
+}
+
+.securityInspectList li div span {
+  display: block;
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+
+.securityContracts {
+  margin: 0;
+  padding-top: 0.6rem;
+  border-top: 1px solid var(--line-soft);
+  font-size: 0.68rem;
+  letter-spacing: 0.05em;
+  color: var(--muted-2);
+}
+
+.securityContracts a {
+  color: var(--accent-dim);
+  text-decoration: none;
+}
+
+.securityContracts a:hover {
+  color: var(--accent);
+}
+
+.securityAudit {
+  display: grid;
+  gap: 0.7rem;
+  padding: 1.3rem;
+  border: 1px solid rgba(255, 178, 36, 0.35);
+  background: rgba(255, 178, 36, 0.04);
+}
+
+.securityAuditFlag {
+  justify-self: start;
+  padding: 0.22rem 0.55rem;
+  font-size: 0.62rem;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: #050505;
+  background: var(--amber);
+  font-weight: 600;
+}
+
+.securityAudit p {
+  margin: 0;
+  font-size: 0.88rem;
+  line-height: 1.6;
+  color: var(--text);
+}
+
+.securityAudit strong {
+  color: var(--fg);
+}
+
+.securityAuditLinks {
+  display: flex;
+  gap: 1.2rem;
+}
+
+.securityAuditLinks a {
+  font-size: 0.84rem;
+  color: var(--accent-dim);
+  text-decoration: none;
+  border-bottom: 1px solid var(--line);
+}
+
+.securityAuditLinks a:hover {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+}
+
+@media (max-width: 1080px) {
+  .security {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 720px) {
+  .securityGrid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ==========================================================================
+   Metrics
+   ========================================================================== */
+
+.metricsFeature {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 1.2rem 2rem;
+  justify-content: center;
+  text-align: center;
+}
+
+.metricsBig {
+  font-size: clamp(2.6rem, 7vw, 6rem);
+  color: var(--fg);
+}
+
+.metricsBigAccent {
+  color: var(--accent);
+  text-shadow: 0 0 50px rgba(255, 252, 0, 0.2);
+}
+
+.metricsArrow {
+  font-size: clamp(1.8rem, 4vw, 3.2rem);
+  color: var(--accent-dim);
+}
+
+.metricsCaption {
+  margin: 1.2rem 0 0;
+  text-align: center;
+  font-size: 0.7rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--muted-2);
+}
+
+.metricsGrid {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 1px;
+  margin: clamp(2.5rem, 5vw, 4rem) 0 0;
+  background: var(--line-soft);
+  border: 1px solid var(--line-soft);
+}
+
+.metricsCell {
+  display: grid;
+  gap: 0.4rem;
+  padding: 1.4rem 1.2rem;
+  background: var(--bg);
+  text-align: center;
+}
+
+/* Markup keeps the valid dt-then-dd order; the number leads visually. */
+.metricsCell dt {
+  order: 2;
+}
+
+.metricsValue {
+  margin: 0;
+  font-family: var(--font-display), var(--font-inter), sans-serif;
+  font-weight: 700;
+  font-size: clamp(1.7rem, 3vw, 2.6rem);
+  color: var(--accent);
+}
+
+.metricsLabel {
+  font-size: 0.62rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--muted-2);
+}
+
+@media (max-width: 1080px) {
+  .metricsGrid {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+@media (max-width: 640px) {
+  .metricsGrid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+/* ==========================================================================
+   Shareable Zaps
+   ========================================================================== */
+
+.share {
+  display: grid;
+  gap: 2.2rem;
+}
+
+.shareFlow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 2.2rem;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.shareFlowStep {
+  display: flex;
+  align-items: baseline;
+  gap: 0.6rem;
+  font-size: 0.92rem;
+  font-weight: 540;
+  color: var(--fg);
+}
+
+.shareFlowStep span {
+  font-size: 0.66rem;
+  color: var(--accent-dim);
+}
+
+.shareChips {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 1rem;
+}
+
+.shareChip {
+  display: grid;
+  gap: 0.7rem;
+  padding: 1.1rem 1.2rem;
+  border: 1px solid var(--line);
+  background: rgba(11, 11, 11, 0.6);
+  transition:
+    border-color 240ms cubic-bezier(0.22, 1, 0.36, 1),
+    transform 240ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.shareChip:hover {
+  border-color: rgba(255, 252, 0, 0.4);
+  transform: translateY(-3px);
+}
+
+.shareChipHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+}
+
+.shareChipName {
+  font-weight: 590;
+  font-size: 0.95rem;
+  color: var(--fg);
+}
+
+.shareChipToken {
+  font-size: 0.68rem;
+  letter-spacing: 0.03em;
+  color: var(--accent-dim);
+  word-break: break-all;
+}
+
+.shareChipActions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.8rem;
+}
+
+.shareCopy {
+  font-size: 0.72rem;
+}
+
+.shareOpen {
+  font-size: 0.7rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.shareNote {
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+.shareNote a {
+  color: var(--accent-dim);
+}
+
+/* ==========================================================================
+   Final CTA
+   ========================================================================== */
+
+.finalCta {
+  position: relative;
+  padding: clamp(9rem, 22vw, 16rem) 0 clamp(7rem, 16vw, 12rem);
+}
+
+.finalInner {
+  display: grid;
+  justify-items: center;
+  gap: 1.6rem;
+  text-align: center;
+}
+
+.finalPoint {
+  width: 0.7rem;
+  height: 0.7rem;
+  background: var(--accent);
+  box-shadow: 0 0 40px rgba(255, 252, 0, 0.8);
+  animation: finalThrob 2.8s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+
+@keyframes finalThrob {
+  50% {
+    box-shadow: 0 0 70px rgba(255, 252, 0, 1);
+    transform: scale(1.25);
+  }
+}
+
+.finalTitle {
+  margin: 0;
+  font-size: clamp(2.8rem, 7.5vw, 6.5rem);
+  text-wrap: balance;
+}
+
+.finalLead {
+  margin: 0;
+  max-width: 34rem;
+  font-size: clamp(1rem, 1.5vw, 1.15rem);
+  line-height: 1.6;
+  color: var(--text);
+}
+
+.finalActions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.9rem;
+  margin-top: 0.6rem;
+}
+
+/* ==========================================================================
+   Footer
+   ========================================================================== */
+
+.footer {
+  position: relative;
+  border-top: 1px solid var(--line-soft);
+  padding: clamp(3rem, 6vw, 5rem) 0 2rem;
+  background: linear-gradient(to bottom, rgba(255, 255, 255, 0.015), transparent 40%);
+}
+
+.footerInner {
+  display: grid;
+  grid-template-columns: 1.1fr 1.6fr;
+  gap: clamp(2rem, 5vw, 5rem);
+}
+
+.footerBrand {
+  display: grid;
+  gap: 0.9rem;
+  align-content: start;
+  justify-items: start;
+}
+
+.footerMark {
+  width: 2.4rem;
+  height: auto;
+  color: var(--accent);
+}
+
+.footerPhrase {
+  margin: 0;
+  font-family: var(--font-display), var(--font-inter), sans-serif;
+  font-weight: 700;
+  font-size: 1.15rem;
+  letter-spacing: -0.01em;
+  color: var(--fg);
+  max-width: 18rem;
+}
+
+.footerNote {
+  margin: 0;
+  font-size: 0.68rem;
+  letter-spacing: 0.06em;
+  color: var(--muted-2);
+}
+
+.footerNav {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 1.6rem;
+}
+
+.footerCol {
+  display: grid;
+  gap: 0.55rem;
+  align-content: start;
+}
+
+.footerColTitle {
+  margin: 0 0 0.4rem;
+  font-size: 0.64rem;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--muted-2);
+}
+
+.footerCol a {
+  font-size: 0.88rem;
+  color: var(--text);
+  text-decoration: none;
+  width: fit-content;
+  transition: color 160ms cubic-bezier(0.4, 0, 0.2, 1), transform 160ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.footerCol a:hover {
+  color: var(--accent);
+  transform: translateX(3px);
+}
+
+.footerLegal {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 0.6rem;
+  margin-top: clamp(2.5rem, 5vw, 4rem);
+  padding-top: 1.2rem;
+  border-top: 1px solid var(--line-soft);
+  font-size: 0.7rem;
+  letter-spacing: 0.08em;
+  color: var(--muted-2);
+}
+
+@media (max-width: 860px) {
+  .footerInner {
+    grid-template-columns: 1fr;
+  }
+  .footerNav {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+/* ==========================================================================
+   Reduced motion — kill the loops the global rule can't fully sanitise,
+   keep the object lit and legible.
+   ========================================================================== */
+
+@media (prefers-reduced-motion: reduce) {
+  .heroLine > span,
+  .heroEnter {
+    animation: none;
+    transform: none;
+    filter: none;
+    opacity: 1;
+  }
+
+  .coreRoutePulse,
+  .coreDiscA,
+  .coreDiscB,
+  .coreDiscC,
+  .coreOrbitSlow,
+  .coreOrbitFast,
+  .coreCounterSlow,
+  .coreCounterFast,
+  .coreNodeHalo,
+  .coreChip,
+  .scrollCue::after,
+  .heroMicroDot {
+    animation: none;
+  }
+
+  .coreRoutePulse {
+    stroke-dasharray: none;
+    opacity: 0.25;
+  }
+
+  .grain {
+    display: none;
+  }
+
+  .problemShard,
+  .railPulse,
+  .railPanel,
+  .collapseCapsuleRing,
+  .collapseCapsule[data-lit="true"] .collapseCapsuleRing,
+  .demoNetworkDot,
+  .graphPair,
+  .graphPair[data-live],
+  .graphCoreDot,
+  .finalPoint,
+  .devOutDot,
+  .agentPlan {
+    animation: none;
+  }
+
+  .dev[data-code="armed"] .devLine,
+  .dev[data-code="typed"] .devLine {
+    opacity: 1;
+    transform: none;
+    animation: none;
+  }
+
+  .railPulse {
+    display: none;
+  }
+
+  .demoCheck,
+  .demoVerdict {
+    transition: none;
+  }
+
+  .card:hover,
+  .card:focus-visible {
+    transform: none;
+  }
+}

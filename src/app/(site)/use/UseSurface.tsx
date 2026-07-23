@@ -55,6 +55,9 @@ export function UseSurface(): React.JSX.Element {
   const signTabRef = useRef<HTMLButtonElement>(null);
 
   const view: View = impliedView(new URLSearchParams(searchParams.toString())) ?? "design";
+  // Passed down (and used as a key) so a client-side navigation carrying a new
+  // share token re-seeds the builder instead of showing the stale canvas.
+  const shareToken = searchParams.get("d");
 
   const select = (next: View): void => {
     if (next === view) return;
@@ -127,7 +130,7 @@ export function UseSurface(): React.JSX.Element {
           <main className={buildStyles.page} id="main">
             <DesignHero />
             <div className="container">
-              <ZapBuilder />
+              <ZapBuilder key={shareToken ?? "local"} shareToken={shareToken} />
             </div>
           </main>
         ) : null}

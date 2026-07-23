@@ -10,31 +10,30 @@
    delete information the builder needs to show.
    ──────────────────────────────────────────────────────────────────────── */
 :root {
-  --bg: #060807;
-  --bg-2: #0a0d0b;
-  --fg: #eef2ef;
-  --text: #b9c4bd;
-  --muted: #9aa79f;
-  --muted-2: #8b978f;
+  --bg: #050505;
+  --bg-2: #0b0b0b;
+  --fg: #f4f4f1;
+  --text: #b9b9b4;
+  --muted: #8f8f8a;
+  --muted-2: #7e7e79;
 
-  /* Sodium, not mint. Near-black plus spring-green is the most over-used
-     palette in this category and reads as generic on sight; pushed toward the
-     yellow end it lands on high-voltage instead. 16.3:1 on the ground, and
-     ink-on-accent is the same, so it works as both ink and surface. */
-  --accent: #ccf83f;
-  --accent-bright: #e4ff8c;
-  --accent-deep: #93c11a;
+  /* OpenZaps yellow — pure #FFFC00, owned the way Uniswap owns pink. ~19:1
+     on the ground, and ink-on-accent is the same, so it works as both ink
+     and surface. Matches the landing page's scoped palette exactly. */
+  --accent: #fffc00;
+  --accent-bright: #fffd66;
+  --accent-deep: #cfcc00;
 
-  /* Quieter accent, NOT a neutral. This was briefly set to #9aa79f, which is
+  /* Quieter accent, NOT a neutral. This was briefly set to #8f8f8a, which is
      byte-for-byte --muted — and the old token it replaced (--indigo) was the
      colour that told an inline link apart from the prose around it. Collapsing
      the two made those links invisible as links: same colour, same weight, no
      underline. Kept in the accent family so it still reads as "this is
      interactive", and 12:1 on the ground. */
-  --accent-dim: #b4d472;
+  --accent-dim: #b9b752;
 
-  --line: rgba(238, 242, 239, 0.13);
-  --line-soft: rgba(238, 242, 239, 0.06);
+  --line: rgba(244, 244, 241, 0.13);
+  --line-soft: rgba(244, 244, 241, 0.06);
 
   /* Was a translucent gradient with an inset highlight and a 92px drop
      shadow — the glass-card look this identity is defined against. A panel is
@@ -168,7 +167,7 @@ a {
   z-index: 100;
   padding: 0.65rem 1rem;
   background: var(--accent);
-  /* Ink, not white. The accent is a light sodium green — white text on it is
+  /* Ink, not white. The accent is a light yellow — white text on it is
      roughly 1.1:1, i.e. invisible. It was white because the old accent was a
      mid violet, and this is exactly the kind of pairing that survives a
      retheme unnoticed: the one control almost nobody looks at is the first one
@@ -445,13 +444,13 @@ a {
 
 /* A ring that expands and dissolves — used to acknowledge a completed action. */
 @keyframes ripple {
-  from { box-shadow: 0 0 0 0 rgba(204, 248, 63, 0.5); }
-  to { box-shadow: 0 0 0 12px rgba(204, 248, 63, 0); }
+  from { box-shadow: 0 0 0 0 rgba(255, 252, 0, 0.5); }
+  to { box-shadow: 0 0 0 12px rgba(255, 252, 0, 0); }
 }
 
 /* One-shot highlight when a row's value changes underneath the user. */
 @keyframes flashIn {
-  0% { background-color: rgba(204, 248, 63, 0.18); }
+  0% { background-color: rgba(255, 252, 0, 0.18); }
   100% { background-color: transparent; }
 }
 
@@ -460,7 +459,8 @@ a {
    HTML is visible by default, and only a mounted client observer opts an
    element into the hidden state (`data-reveal="hidden"`). A crawler, a
    JS-disabled browser, or a reduced-motion user therefore always sees content.
-   See the note in page.module.css about `view()` timelines evaluating to 0. */
+   (Historical context: `view()` scroll timelines were tried and removed —
+   crawlers evaluate them at 0 progress, leaving content invisible.) */
 [data-reveal] {
   will-change: opacity, transform;
 }
@@ -522,7 +522,7 @@ a {
   border-radius: inherit;
   background: radial-gradient(
     18rem 18rem at var(--mx, 50%) var(--my, 50%),
-    rgba(204, 248, 63, 0.10),
+    rgba(255, 252, 0, 0.10),
     transparent 68%
   );
   opacity: 0;

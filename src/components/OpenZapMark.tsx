@@ -48,7 +48,7 @@ export function OpenZapMark({ className }: { className?: string }): React.JSX.El
             width={span.x2 - span.x1}
             height={bar}
             rx={Math.min(0.9, bar / 3)}
-            fill="#ccf83f"
+            fill="#fffc00"
             style={{ "--i": span.i } as CSSProperties}
           />
         ))}

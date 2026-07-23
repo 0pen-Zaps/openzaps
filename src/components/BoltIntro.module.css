@@ -18,7 +18,7 @@
      the home page looked completely normal and quietly swallowed every click.
      Invisible-but-still-blocking is the worst way for this to break, and a
      background of its own makes that state impossible to reach again. */
-  background: var(--bg, #060807);
+  background: var(--bg, #050505);
   /* The whole dismissal is CSS, deliberately. If the script never runs — JS
      off, a hydration error, a crawler — the overlay still finishes its run and
      gets out of the way, because a full-viewport black panel that needs
@@ -119,7 +119,7 @@
 .bolt {
   width: auto;
   height: min(46vh, 20rem);
-  filter: drop-shadow(0 0 28px rgb(204 248 63 / 26%));
+  filter: drop-shadow(0 0 28px rgb(255 252 0 / 26%));
 }
 
 /* The rule the bolt is built out of, drawn first: one line across the screen

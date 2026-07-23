@@ -7,8 +7,8 @@
   "scope": "/",
   "lang": "en",
   "display": "standalone",
-  "background_color": "#060807",
-  "theme_color": "#060807",
+  "background_color": "#050505",
+  "theme_color": "#050505",
   "categories": ["finance", "developer", "productivity"],
   "icons": [
     {

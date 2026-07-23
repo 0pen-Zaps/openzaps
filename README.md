@@ -9,8 +9,8 @@
 Bounded policy capsules for agent-triggered DeFi. A capsule fixes the target, the recipient, the asset, and the calldata *before* it is signed — and nothing that executes it can change them.
 
 [![CI](https://github.com/0pen-Zaps/openzaps/actions/workflows/ci.yml/badge.svg)](https://github.com/0pen-Zaps/openzaps/actions/workflows/ci.yml)
-[![License: MIT](https://img.shields.io/badge/license-MIT-ccf83f.svg)](./LICENSE)
-[![Site](https://img.shields.io/badge/live-0xzaps.com-060807.svg)](https://www.0xzaps.com)
+[![License: MIT](https://img.shields.io/badge/license-MIT-fffc00.svg)](./LICENSE)
+[![Site](https://img.shields.io/badge/live-0xzaps.com-050505.svg)](https://www.0xzaps.com)
 
 [Website](https://www.0xzaps.com) · [App](https://www.0xzaps.com/app) · [Docs](https://www.0xzaps.com/docs) · [Token](https://www.0xzaps.com/token) · [X](https://x.com/0xzaps)
 

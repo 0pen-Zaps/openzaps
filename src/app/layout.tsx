@@ -3,8 +3,6 @@ import { Inter, JetBrains_Mono } from "next/font/google";
 import Script from "next/script";
 import { Analytics } from "@vercel/analytics/next";
 import "./globals.css";
-import { SiteNav } from "@/components/SiteNav";
-import { SiteFooter } from "@/components/SiteFooter";
 import { Spotlight } from "@/components/Spotlight";
 import { JsonLd } from "@/components/JsonLd";
 import { LINKS, TOKEN, TOKEN_LAUNCH, X_HANDLE } from "@/lib/config";
@@ -90,7 +88,7 @@ export const viewport: Viewport = {
   colorScheme: "dark",
   // Ink, matching the manifest. Colours the mobile browser chrome so the
   // address bar blends into the dark site rather than the old violet.
-  themeColor: "#060807",
+  themeColor: "#050505",
 };
 
 const siteGraph = {
@@ -186,9 +184,7 @@ export default function RootLayout({
         <a href="#main" className="skipLink">
           Skip to content
         </a>
-        <SiteNav />
         {children}
-        <SiteFooter />
         <Spotlight />
         <Analytics />
       </body>

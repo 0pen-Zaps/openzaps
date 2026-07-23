@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="OpenZaps">
-  <rect width="512" height="512" fill="#060807"/>
-  <g transform="translate(121.333 54.000) scale(2.69333)" fill="#ccf83f">
+  <rect width="512" height="512" fill="#050505"/>
+  <g transform="translate(121.333 54.000) scale(2.69333)" fill="#fffc00">
     <rect x="62.345" y="5.291" width="1.010" height="3.873" rx="0.900"/>
     <rect x="59.035" y="11.745" width="3.029" height="3.873" rx="0.900"/>
     <rect x="55.725" y="18.200" width="5.048" height="3.873" rx="0.900"/>
