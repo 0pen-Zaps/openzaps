@@ -90,11 +90,11 @@ export const SHAPE_LABEL: Record<FlowShape, string> = {
  * distinction the builder exists to show.
  *
  * They are tuned to sit in the LINES palette — `token`, far the most common
- * shape, takes the sodium accent, and the other four span the wheel away from
+ * shape, takes the yellow accent, and the other four span the wheel away from
  * it so no two adjacent shapes read alike on a near-black ground.
  */
 export const SHAPE_COLOR: Record<FlowShape, string> = {
-  token: "#ccf83f",
+  token: "#fffc00",
   lp: "#5fd8e8",
   receipt: "#a89bff",
   yield: "#ffc26b",

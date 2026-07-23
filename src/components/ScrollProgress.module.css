@@ -14,7 +14,7 @@
   transform: scaleX(0);
   transform-origin: 0 50%;
   background: var(--grad-brand);
-  box-shadow: 0 0 12px rgba(204, 248, 63, 0.7);
+  box-shadow: 0 0 12px rgba(255, 252, 0, 0.7);
   /* Scale rather than width so the bar animates on the compositor. The short
      duration only smooths the gap between rAF samples — it must not lag. */
   transition: transform 90ms linear;

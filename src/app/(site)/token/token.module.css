@@ -19,7 +19,7 @@
 .heroMark svg {
   width: clamp(5.5rem, 13vw, 8.5rem);
   height: clamp(5.5rem, 13vw, 8.5rem);
-  filter: drop-shadow(0 0 50px rgba(204, 248, 63, 0.5));
+  filter: drop-shadow(0 0 50px rgba(255, 252, 0, 0.5));
   animation: float 6s ease-in-out infinite;
 }
 
@@ -279,8 +279,8 @@
 }
 
 .verifyRow:hover {
-  border-color: rgba(204, 248, 63, 0.35);
-  background: rgba(204, 248, 63, 0.06);
+  border-color: rgba(255, 252, 0, 0.35);
+  background: rgba(255, 252, 0, 0.06);
 }
 
 .verifyRow span {
@@ -426,7 +426,7 @@
 .utilCard:hover,
 .step:hover {
   transform: translateY(-4px);
-  border-color: rgba(204, 248, 63, 0.4);
+  border-color: rgba(255, 252, 0, 0.4);
   box-shadow: 0 16px 38px rgba(0, 0, 0, 0.42);
 }
 
@@ -468,8 +468,8 @@
 }
 
 @keyframes tokenBreathe {
-  0%, 100% { transform: translateY(0) scale(1); filter: drop-shadow(0 0 34px rgba(204, 248, 63, 0.28)); }
-  50% { transform: translateY(-9px) scale(1.025); filter: drop-shadow(0 0 54px rgba(204, 248, 63, 0.45)); }
+  0%, 100% { transform: translateY(0) scale(1); filter: drop-shadow(0 0 34px rgba(255, 252, 0, 0.28)); }
+  50% { transform: translateY(-9px) scale(1.025); filter: drop-shadow(0 0 54px rgba(255, 252, 0, 0.45)); }
 }
 
 .addressValue {

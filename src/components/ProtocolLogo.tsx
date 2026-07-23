@@ -19,8 +19,8 @@ import { type ProtocolId, type ProtocolInfo } from "@/lib/protocols";
  * the marks render identically on the server and inside any caller.
  */
 
-/** OpenZaps sodium accent — `--accent` in globals.css. */
-const OPENZAPS_ACCENT = "#ccf83f";
+/** OpenZaps yellow accent — `--accent` in globals.css. */
+const OPENZAPS_ACCENT = "#fffc00";
 const UNISWAP_PINK = "#FF007A";
 
 /**

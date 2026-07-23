@@ -117,33 +117,36 @@ const DEPLOYABLE_RECIPES: ReadonlySet<string> = new Set(
 );
 
 /**
- * The chain this page opens with, resolved exactly once per page load.
+ * The chain this page opens with, resolved once per share token.
  *
  * `useSyncExternalStore` is what makes this hydration-safe: the server snapshot
  * is always `null`, so the server and the first client render agree, and React
- * swaps in the real chain immediately after hydrating. Re-reading later would be
- * wrong anyway — the builder writes to storage constantly, so a live read would
- * just echo the component's own state back at it. Seeding a shared design goes
- * through this same snapshot rather than an effect, because setting state from
- * an effect body is a hard lint error here (and would flash the wrong chain).
+ * swaps in the real chain immediately after hydrating. Re-reading on every
+ * render would be wrong — the builder writes to storage constantly, so a live
+ * read would just echo the component's own state back at it. But the token CAN
+ * change under this mounted page now that the landing page renders in-app
+ * `<Link href="/use?d=…">`s, so the cache is keyed by the token it consumed
+ * (`consumedToken`) and re-resolves when a client-side navigation brings a
+ * different one.
  */
 let cachedDraft: Draft | null | undefined;
+let consumedToken: string | null | undefined;
 
-function readInitialDraft(): Draft | null {
-  return readSharedDraft() ?? readDraft();
+function readInitialDraft(token: string | null): Draft | null {
+  return readSharedDraft(token) ?? readDraft();
 }
 
 /**
  * A design carried in `?d=`, which wins over the saved draft.
  *
  * Following a share link is a request to see *that* design; the local draft is
- * untouched in storage and comes back at a bare /build. The query is read from
- * `window.location.search` rather than `useSearchParams()`, which would push
- * this statically rendered page into a client-side render bailout.
+ * untouched in storage and comes back at a bare /build. The token arrives from
+ * `UseSurface`'s `useSearchParams()` (already inside the route's Suspense
+ * boundary) rather than `window.location.search`, which lags the router during
+ * client-side transitions.
  */
-function readSharedDraft(): Draft | null {
+function readSharedDraft(token: string | null): Draft | null {
   try {
-    const token = new URLSearchParams(window.location.search).get(SHARE_PARAM);
     if (!token) return null;
     const chain = decodeChain(token);
     if (!chain || chain.length === 0) return null;
@@ -211,8 +214,11 @@ function expectedParamType(param: BlockParam): "number" | "string" {
   return param.type === "number" ? "number" : "string";
 }
 
-function draftSnapshot(): Draft | null {
-  if (cachedDraft === undefined) cachedDraft = readInitialDraft();
+function draftSnapshot(token: string | null): Draft | null {
+  if (cachedDraft === undefined || token !== consumedToken) {
+    consumedToken = token;
+    cachedDraft = readInitialDraft(token);
+  }
   return cachedDraft;
 }
 
@@ -230,18 +236,27 @@ function serverOrigin(): string {
 }
 
 /**
- * Neither the draft key nor the location changes underneath this page, so there
- * is nothing to subscribe to — the store exists purely for its hydration-safe
- * server snapshot.
+ * The stores never emit — token changes arrive as a prop (with a `key` remount
+ * from UseSurface), so the store exists purely for its hydration-safe server
+ * snapshot.
  */
 function subscribeNever(): () => void {
   return () => {};
 }
 
-export function ZapBuilder(): React.JSX.Element {
+export function ZapBuilder({
+  shareToken = null,
+}: {
+  /** The `?d=` token, from UseSurface's searchParams; null on a bare /use. */
+  shareToken?: string | null;
+}): React.JSX.Element {
   // The chain is whatever the user has edited this session, falling back to the
   // saved draft and finally to the opening blueprint.
-  const stored = useSyncExternalStore(subscribeNever, draftSnapshot, serverSnapshot);
+  const stored = useSyncExternalStore(
+    subscribeNever,
+    () => draftSnapshot(shareToken),
+    serverSnapshot,
+  );
   const origin = useSyncExternalStore(subscribeNever, originSnapshot, serverOrigin);
   const [edited, setEdited] = useState<Draft | null>(null);
   const draft = edited ?? stored ?? DEFAULT_DRAFT;

@@ -57,7 +57,7 @@
 
 .brand:hover .mark {
   transform: rotate(-8deg) scale(1.08);
-  filter: drop-shadow(0 0 14px rgba(204, 248, 63, 0.6));
+  filter: drop-shadow(0 0 14px rgba(255, 252, 0, 0.6));
 }
 
 .brand:active .mark {
@@ -78,7 +78,7 @@
 }
 
 .brand:hover .ticker {
-  border-color: rgba(204, 248, 63, 0.4);
+  border-color: rgba(255, 252, 0, 0.4);
   color: var(--accent-bright);
 }
 

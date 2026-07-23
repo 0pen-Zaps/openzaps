@@ -8,7 +8,7 @@ import { CopyButton } from "@/components/CopyButton";
 import { SHAPE_COLOR, SHAPE_LABEL, type FlowShape } from "@/lib/blocks";
 import { explorerAddress, explorerTransaction } from "@/lib/robinhood";
 import type { ZapDetailPayload, ZapPolicyView } from "@/lib/zap";
-import { BlockGlyph } from "@/app/use/BlockGlyph";
+import { BlockGlyph } from "@/app/(site)/use/BlockGlyph";
 import { ProtocolStack } from "@/components/ProtocolLogo";
 import { protocolsForRouteKind, type ProtocolInfo } from "@/lib/protocols";
 import styles from "../zaps.module.css";

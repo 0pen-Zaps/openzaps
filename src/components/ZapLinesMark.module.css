@@ -7,7 +7,7 @@
 .svg {
   display: block;
   overflow: visible;
-  color: var(--accent, #ccf83f);
+  color: var(--accent, #fffc00);
 }
 
 .bar {
@@ -91,12 +91,12 @@
   font-family: var(--font-inter), system-ui, sans-serif;
   font-size: 1em;
   font-weight: 800;
-  color: var(--fg, #eef2ef);
+  color: var(--fg, #f4f4f1);
   letter-spacing: -0.03em;
   white-space: nowrap;
 }
 
 .word b {
   font-weight: 800;
-  color: var(--accent, #ccf83f);
+  color: var(--accent, #fffc00);
 }
