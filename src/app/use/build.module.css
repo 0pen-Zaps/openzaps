@@ -1571,15 +1571,18 @@
    route choices, but the view switcher was eating half the first screen. Two
    compact columns instead. */
 @media (max-width: 640px) {
-  .useTabs {
+  /* Doubled class: the console's own mobile rule collapses .segment to one
+     column at the same (0,1,0) specificity, and module chunk order is not
+     ours to rely on. (0,2,0) wins the cascade either way. */
+  .useTabs.useTabs {
     display: grid;
     grid-template-columns: 1fr 1fr;
     gap: 0.5rem;
   }
-  .useTabs button {
+  .useTabs.useTabs button {
     padding: 0.6rem 0.75rem;
   }
-  .useTabs button em {
+  .useTabs.useTabs button em {
     font-size: 0.68rem;
   }
 }
