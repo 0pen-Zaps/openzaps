@@ -81,7 +81,9 @@ export function recipeCard(recipe: ZapRecipe): RecipeCard {
     name: recipe.name,
     tagline: recipe.tagline,
     accentColor: SHAPE_COLOR[recipe.accent],
-    outputLabel: compiled.outputShape ? SHAPE_LABEL[compiled.outputShape] : "—",
+    // The recipe's editorial accent shape, not compileChain's outputShape:
+    // finished chains end in sinks, which emit null.
+    outputLabel: SHAPE_LABEL[recipe.accent],
     steps,
     blockCount: chain.length,
     gas: compiled.gas,

@@ -27,6 +27,17 @@ import {
   type ZapRecipe,
 } from "@/lib/blocks";
 import { reduceChainToLiveRoute } from "@/lib/deployable";
+import {
+  MAX_DESIGN_NAME,
+  MAX_SAVED_DESIGNS,
+  decodeSavedDesign,
+  readDesignLibrary,
+  removeDesign,
+  renameDesign,
+  upsertDesign,
+  writeDesignLibrary,
+  type SavedDesign,
+} from "@/lib/designs";
 import { edgeScrollDelta } from "@/lib/drag";
 import { protocolsForAction } from "@/lib/protocols";
 import { resolveRouteById } from "@/lib/routes";
@@ -927,6 +938,105 @@ export function ZapBuilder({
     trackEvent("builder_design_saved", { blocks: chain.length });
   }, [chain, recipeId]);
 
+  /* ---- the design library: named, durable saves beside the one draft ---- */
+
+  // null until mounted: the server renders no library, so hydration agrees.
+  const [library, setLibrary] = useState<SavedDesign[] | null>(null);
+  const [naming, setNaming] = useState(false);
+  const [libraryName, setLibraryName] = useState("");
+  const [renamingId, setRenamingId] = useState<string | null>(null);
+  const [renameText, setRenameText] = useState("");
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const confirmTimer = useRef<number | undefined>(undefined);
+
+  useEffect(() => {
+    setLibrary(readDesignLibrary());
+    return () => window.clearTimeout(confirmTimer.current);
+  }, []);
+
+  const persistLibrary = useCallback((next: SavedDesign[]): void => {
+    setLibrary(next);
+    writeDesignLibrary(next);
+  }, []);
+
+  const saveToLibrary = useCallback((): void => {
+    if (!library) return;
+    const result = upsertDesign(library, {
+      name: libraryName,
+      chain,
+      now: Date.now(),
+      id: crypto.randomUUID(),
+    });
+    if (!result.ok) {
+      flash(result.reason);
+      return;
+    }
+    persistLibrary(result.list);
+    setNaming(false);
+    setLibraryName("");
+    const message = result.replaced
+      ? `Updated “${result.saved.name}” in your library.`
+      : `Saved “${result.saved.name}” to your library.`;
+    flash(message);
+    announce(message);
+    trackEvent("builder_library_saved", { blocks: chain.length, replaced: result.replaced });
+  }, [announce, chain, flash, library, libraryName, persistLibrary]);
+
+  const loadSavedDesign = useCallback(
+    (design: SavedDesign): void => {
+      const nodes = decodeSavedDesign(design);
+      if (!nodes) {
+        // A token can stop decoding when the catalog retires a block; the
+        // entry stays put so the name still tells the user what it was.
+        flash(`“${design.name}” no longer decodes against today's catalog.`);
+        return;
+      }
+      advancePlacementCounter(nodes);
+      commit(nodes);
+      setOpenUid(null);
+      const message = `Loaded “${design.name}”: ${nodes.length} blocks. ⌘Z puts your previous chain back.`;
+      flash(message);
+      announce(message);
+      trackEvent("builder_library_loaded", { blocks: nodes.length });
+    },
+    [announce, commit, flash],
+  );
+
+  const confirmRename = useCallback((): void => {
+    if (!library || !renamingId) return;
+    const result = renameDesign(library, renamingId, renameText, Date.now());
+    if (!result.ok) {
+      flash(result.reason);
+      return;
+    }
+    persistLibrary(result.list);
+    setRenamingId(null);
+    setRenameText("");
+    announce(`Renamed to “${result.saved.name}”.`);
+  }, [announce, flash, library, persistLibrary, renameText, renamingId]);
+
+  const deleteSavedDesign = useCallback(
+    (design: SavedDesign): void => {
+      if (!library) return;
+      if (confirmDeleteId !== design.id) {
+        // Two presses on the same control: deleting is the one library action
+        // undo cannot reach, so it does not fire on a stray click.
+        setConfirmDeleteId(design.id);
+        window.clearTimeout(confirmTimer.current);
+        confirmTimer.current = window.setTimeout(() => setConfirmDeleteId(null), 4000);
+        return;
+      }
+      window.clearTimeout(confirmTimer.current);
+      setConfirmDeleteId(null);
+      persistLibrary(removeDesign(library, design.id));
+      const message = `Deleted “${design.name}” from your library.`;
+      flash(message);
+      announce(message);
+      trackEvent("builder_library_deleted", { blocks: design.blocks });
+    },
+    [announce, confirmDeleteId, flash, library, persistLibrary],
+  );
+
   const dragBlock = drag ? getBlock(drag.blockId) : undefined;
 
   return (
@@ -961,6 +1071,87 @@ export function ZapBuilder({
           ))}
         </div>
       </section>
+
+      {library && library.length > 0 ? (
+        <section className={styles.libraryRow} aria-label="Your saved designs">
+          <div className={styles.recipeHead}>
+            <h2>Your designs</h2>
+            <p>
+              Saved on this device — {library.length} of {MAX_SAVED_DESIGNS}. Loading one lands on the
+              undo stack like any other edit; the share link reopens it anywhere.
+            </p>
+          </div>
+          <div className={styles.recipeRow}>
+            {library.map((design) => (
+              <div
+                key={design.id}
+                className={styles.saved}
+                style={{ ["--accent" as string]: SHAPE_COLOR[design.accent] }}
+              >
+                {renamingId === design.id ? (
+                  <div className={styles.savedRename}>
+                    <input
+                      value={renameText}
+                      autoFocus
+                      maxLength={MAX_DESIGN_NAME}
+                      aria-label={`New name for ${design.name}`}
+                      onChange={(event) => setRenameText(event.target.value)}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter") confirmRename();
+                        if (event.key === "Escape") setRenamingId(null);
+                      }}
+                    />
+                    <button type="button" onClick={confirmRename} disabled={!renameText.trim()}>
+                      Rename
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    className={styles.savedLoad}
+                    onClick={() => loadSavedDesign(design)}
+                  >
+                    <strong>{design.name}</strong>
+                    <em>
+                      {design.blocks} blocks · settles as {SHAPE_LABEL[design.accent]}
+                    </em>
+                  </button>
+                )}
+                <div className={styles.savedControls}>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setRenamingId(design.id);
+                      setRenameText(design.name);
+                      setConfirmDeleteId(null);
+                    }}
+                  >
+                    Rename
+                  </button>
+                  <CopyButton
+                    value={`${origin}/use?${SHARE_PARAM}=${design.token}`}
+                    label="Link"
+                    className={styles.savedCopy}
+                    title={`Copy a share link that reopens “${design.name}”`}
+                  />
+                  <button
+                    type="button"
+                    data-danger
+                    aria-label={
+                      confirmDeleteId === design.id
+                        ? `Press again to delete ${design.name}`
+                        : `Delete ${design.name}`
+                    }
+                    onClick={() => deleteSavedDesign(design)}
+                  >
+                    {confirmDeleteId === design.id ? "Sure?" : "Delete"}
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+      ) : null}
 
       <div className={styles.workspace}>
         {/* ---- palette ---- */}
@@ -1598,6 +1789,42 @@ export function ZapBuilder({
               title="Copy a link that reopens this exact design"
             />
             <CopyButton className={styles.exportBtn} value={exportPayload} label="Copy design JSON" title="Copy the compiled chain" />
+
+            {/* Durable, named saves — the draft answers "put my canvas back";
+                the library answers "keep this one, I'm starting another". */}
+            <button
+              type="button"
+              className={styles.importToggle}
+              aria-expanded={naming}
+              disabled={chain.length === 0}
+              onClick={() => setNaming((open) => !open)}
+            >
+              {naming ? "Cancel save" : "Save to library"}
+            </button>
+            {naming ? (
+              <div className={styles.import}>
+                <label htmlFor="library-name">
+                  Name this design. Saving under an existing name updates it.
+                </label>
+                <input
+                  id="library-name"
+                  type="text"
+                  value={libraryName}
+                  autoFocus
+                  maxLength={MAX_DESIGN_NAME}
+                  spellCheck={false}
+                  placeholder="e.g. Weekly aeWETH → 0xZAPS"
+                  onChange={(event) => setLibraryName(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Escape") setNaming(false);
+                    if (event.key === "Enter") saveToLibrary();
+                  }}
+                />
+                <button type="button" onClick={saveToLibrary} disabled={!libraryName.trim()}>
+                  Save design
+                </button>
+              </div>
+            ) : null}
 
             {/* The other half of those two buttons. A design copied out as JSON
                 had no way back in except by hand. */}

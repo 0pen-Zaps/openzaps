@@ -1586,3 +1586,147 @@
     font-size: 0.68rem;
   }
 }
+
+/* ---------------- design library ----------------
+   Named, durable saves rendered in the blueprint strip's own vocabulary —
+   an accent tick, a name, mono facts — so catalog blueprints and the user's
+   designs read as the same kind of thing. */
+
+.libraryRow {
+  display: grid;
+  gap: 0.9rem;
+}
+
+.saved {
+  display: grid;
+  grid-template-rows: 1fr auto;
+  border: 1px solid var(--line);
+  border-radius: 0;
+  background: var(--card);
+  scroll-snap-align: start;
+}
+
+.savedLoad {
+  display: grid;
+  gap: 0.3rem;
+  padding: 0.9rem 1rem;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: inherit;
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background var(--dur-2) var(--ease-standard);
+}
+
+.savedLoad::before {
+  width: 1.8rem;
+  height: 0.22rem;
+  content: "";
+  background: var(--accent);
+}
+
+.savedLoad:hover {
+  background: rgba(255, 252, 0, 0.05);
+}
+
+.savedLoad strong {
+  font-size: 0.98rem;
+  font-weight: 560;
+}
+
+.savedLoad em {
+  color: var(--muted-2);
+  font-family: var(--font-jetbrains-mono), ui-monospace, monospace;
+  font-size: 0.7rem;
+  font-style: normal;
+}
+
+.savedRename {
+  display: flex;
+  gap: 0.4rem;
+  padding: 0.9rem 1rem 0.5rem;
+}
+
+.savedRename input {
+  flex: 1;
+  min-width: 0;
+  padding: 0.4rem 0.5rem;
+  border: 1px solid var(--line);
+  border-radius: 0;
+  background: var(--bg-2);
+  color: var(--fg);
+  font-family: inherit;
+  font-size: 0.85rem;
+}
+
+.savedRename button {
+  padding: 0.34rem 0.7rem;
+  border: 1px solid var(--line);
+  border-radius: 0;
+  background: transparent;
+  color: var(--text);
+  font-family: inherit;
+  font-size: 0.78rem;
+  cursor: pointer;
+}
+
+.savedRename button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.savedControls {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.35rem 0.6rem;
+  border-top: 1px solid var(--line-soft);
+}
+
+.savedControls button {
+  padding: 0.3rem 0.5rem;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--muted);
+  font-family: var(--font-jetbrains-mono), ui-monospace, monospace;
+  font-size: 0.68rem;
+  cursor: pointer;
+  transition: color var(--dur-1) var(--ease-standard);
+}
+
+.savedControls button:hover {
+  color: var(--fg);
+}
+
+/* Deleting is the one library action undo cannot reach; it sits apart and
+   only warms up on approach. */
+.savedControls button[data-danger] {
+  margin-left: auto;
+}
+
+.savedControls button[data-danger]:hover {
+  color: #ff7a90;
+}
+
+.savedCopy {
+  font-size: 0.68rem;
+}
+
+/* The save-to-library name field, in the import panel's clothes. */
+.import input {
+  width: 100%;
+  padding: 0.45rem 0.5rem;
+  border: 1px solid var(--line);
+  border-radius: 0;
+  background: var(--bg-2);
+  color: var(--fg);
+  font-family: inherit;
+  font-size: 0.85rem;
+}
+
+.import input::placeholder {
+  color: var(--muted-2);
+}
