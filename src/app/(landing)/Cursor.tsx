@@ -1,20 +1,22 @@
 "use client";
 
 import { useEffect, useRef } from "react";
+import { ZapLinesMark } from "@/components/ZapLinesMark";
 import { clamp, damp, finePointer, reducedMotion } from "./motion";
 import styles from "./landing.module.css";
 
 /**
- * The liquid-yellow droplet cursor.
+ * The cursor is the brand bolt, small and quiet: one scanline mark that
+ * follows the pointer on a stiff spring, warms slightly over interactive
+ * elements, and dips on press. No droplet body, no trailing glow — the
+ * pointer is a pointer, not a light show.
  *
- * Three layers follow the pointer at different spring rates: a crisp core dot,
- * a glossy droplet body, and a slow luminous trail. Interactive elements are
- * classified by delegated pointerover (no per-element listeners); magnetic
- * targets get a small pull written back to them as CSS variables.
- *
- * The component activates only on fine pointers with motion allowed, and it
- * stamps `data-cursor-active` on the landing root so CSS can hide the native
- * cursor exactly when — and only when — the replacement is alive.
+ * Interactive elements are classified by delegated pointerover (no
+ * per-element listeners); magnetic targets get a small pull written back to
+ * them as CSS variables. The component activates only on fine pointers with
+ * motion allowed, and it stamps `data-cursor-active` on the landing root the
+ * moment the bolt is actually visible — never before — so CSS hides the
+ * native cursor exactly when the replacement exists.
  */
 
 type CursorMode = "default" | "link" | "button" | "card" | "down";
@@ -22,26 +24,26 @@ type CursorMode = "default" | "link" | "button" | "card" | "down";
 const MAGNET_RANGE = 72;
 const MAGNET_SHIFT = 5;
 
+const MODE_SCALE: Record<CursorMode, number> = {
+  default: 1,
+  link: 1.1,
+  button: 1.2,
+  card: 1.35,
+  down: 0.85,
+};
+
 export function Cursor(): React.JSX.Element | null {
-  const dotRef = useRef<HTMLDivElement>(null);
-  const dropRef = useRef<HTMLDivElement>(null);
-  const trailRef = useRef<HTMLDivElement>(null);
+  const boltRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!finePointer() || reducedMotion()) return;
-    const dot = dotRef.current;
-    const drop = dropRef.current;
-    const trail = trailRef.current;
+    const bolt = boltRef.current;
     const root = document.getElementById("landing-root");
-    if (!dot || !drop || !trail || !root) return;
+    if (!bolt || !root) return;
 
     let targetX = window.innerWidth / 2;
     let targetY = window.innerHeight / 2;
-    const pos = {
-      dot: { x: targetX, y: targetY },
-      drop: { x: targetX, y: targetY },
-      trail: { x: targetX, y: targetY },
-    };
+    const pos = { x: targetX, y: targetY };
     let mode: CursorMode = "default";
     let pressed = false;
     let magnet: HTMLElement | null = null;
@@ -54,7 +56,7 @@ export function Cursor(): React.JSX.Element | null {
     const setMode = (next: CursorMode) => {
       if (mode === next) return;
       mode = next;
-      drop.dataset.mode = next;
+      bolt.dataset.mode = next;
       ensureRunning();
     };
 
@@ -88,14 +90,11 @@ export function Cursor(): React.JSX.Element | null {
       targetY = event.clientY;
       if (!seen) {
         seen = true;
-        pos.dot = { x: targetX, y: targetY };
-        pos.drop = { x: targetX, y: targetY };
-        pos.trail = { x: targetX, y: targetY };
-        dot.style.opacity = "1";
-        drop.style.opacity = "1";
-        trail.style.opacity = "1";
-        // Hide the native cursor only once the droplet actually exists — a
-        // page reached by keyboard or scroll keeps its cursor until then.
+        pos.x = targetX;
+        pos.y = targetY;
+        bolt.style.opacity = "1";
+        // Hide the native cursor only once the bolt actually exists — a page
+        // reached by keyboard or scroll keeps its cursor until then.
         root.setAttribute("data-cursor-active", "true");
       }
       ensureRunning();
@@ -120,9 +119,7 @@ export function Cursor(): React.JSX.Element | null {
       setMode(classify(event.target as Element | null).mode);
     };
     const onLeave = () => {
-      dot.style.opacity = "0";
-      drop.style.opacity = "0";
-      trail.style.opacity = "0";
+      bolt.style.opacity = "0";
       seen = false;
       releaseMagnet();
       root.removeAttribute("data-cursor-active");
@@ -154,27 +151,18 @@ export function Cursor(): React.JSX.Element | null {
         }
       }
 
-      pos.dot.x = damp(pos.dot.x, goalX, 38, dt);
-      pos.dot.y = damp(pos.dot.y, goalY, 38, dt);
-      pos.drop.x = damp(pos.drop.x, goalX, 17, dt);
-      pos.drop.y = damp(pos.drop.y, goalY, 17, dt);
-      pos.trail.x = damp(pos.trail.x, goalX, 6, dt);
-      pos.trail.y = damp(pos.trail.y, goalY, 6, dt);
-
-      const targetScale =
-        mode === "down" ? 0.82 : mode === "card" ? 2.6 : mode === "button" ? 1.5 : mode === "link" ? 1.25 : 1;
+      // Stiff spring: the bolt is the only pointer indicator, so it must not
+      // lag far enough to make precise pointing feel loose.
+      pos.x = damp(pos.x, goalX, 30, dt);
+      pos.y = damp(pos.y, goalY, 30, dt);
+      const targetScale = MODE_SCALE[mode];
       scale = damp(scale, targetScale, 14, dt);
 
-      dot.style.transform = `translate3d(${pos.dot.x}px, ${pos.dot.y}px, 0)`;
-      drop.style.transform = `translate3d(${pos.drop.x}px, ${pos.drop.y}px, 0) scale(${scale.toFixed(3)})`;
-      const stretch = clamp(Math.hypot(goalX - pos.trail.x, goalY - pos.trail.y) / 120, 0, 0.55);
-      trail.style.transform = `translate3d(${pos.trail.x}px, ${pos.trail.y}px, 0) scale(${(scale * (1 + stretch)).toFixed(3)})`;
+      bolt.style.transform = `translate3d(${pos.x.toFixed(1)}px, ${pos.y.toFixed(1)}px, 0) scale(${scale.toFixed(3)})`;
 
-      // Every layer caught up and nothing is pulling: park the loop. Any
-      // pointer event (or scroll, which moves magnet rects) restarts it.
       const settled =
-        Math.abs(pos.trail.x - goalX) < 0.15 &&
-        Math.abs(pos.trail.y - goalY) < 0.15 &&
+        Math.abs(pos.x - goalX) < 0.15 &&
+        Math.abs(pos.y - goalY) < 0.15 &&
         Math.abs(scale - targetScale) < 0.002 &&
         !magnet;
       if (settled) {
@@ -213,10 +201,8 @@ export function Cursor(): React.JSX.Element | null {
   }, []);
 
   return (
-    <div aria-hidden="true">
-      <div ref={trailRef} className={styles.cursorTrail} />
-      <div ref={dropRef} className={styles.cursorDrop} data-mode="default" />
-      <div ref={dotRef} className={styles.cursorDot} />
+    <div ref={boltRef} className={styles.cursorBolt} data-mode="default" aria-hidden="true">
+      <ZapLinesMark lines={9} weight={0.68} />
     </div>
   );
 }
