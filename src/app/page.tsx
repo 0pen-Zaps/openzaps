@@ -233,8 +233,8 @@ export default function Home(): React.JSX.Element {
             <Link href="/build" className="btn btnPrimary btnLg">
               Open the builder
             </Link>
-            <Link href="/app" className="btn btnGhost btnLg">
-              Policy console
+            <Link href="/use" className="btn btnGhost btnLg">
+              Use OpenZaps
             </Link>
             <Link href="/docs" className="btn btnGhost btnLg">
               Read docs
@@ -674,8 +674,8 @@ export default function Home(): React.JSX.Element {
           </h2>
           <p>Connect a wallet to quote, deploy, fund, sign, execute, verify, and recover a bounded zap.</p>
           <div className={styles.actions}>
-            <Link href="/app" className="btn btnGhost btnLg">
-              Open policy console
+            <Link href="/use" className="btn btnGhost btnLg">
+              Use OpenZaps
             </Link>
             <Link href="/roadmap" className="btn btnPrimary btnLg">
               Roadmap

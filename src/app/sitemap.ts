@@ -3,7 +3,7 @@ import { SITE_URL } from "@/lib/seo";
 
 const ROUTES = [
   { path: "", priority: 1, changeFrequency: "weekly" },
-  { path: "/app", priority: 0.95, changeFrequency: "weekly" },
+  { path: "/use", priority: 0.95, changeFrequency: "weekly" },
   { path: "/build", priority: 0.92, changeFrequency: "weekly" },
   // Only the index: per-zap URLs are minted onchain, so enumerating them here
   // would need an RPC read at build time and would go stale the moment the

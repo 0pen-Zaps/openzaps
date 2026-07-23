@@ -10,7 +10,7 @@ import { TOKEN } from "@/lib/config";
 import styles from "./SiteNav.module.css";
 
 const LINKS = [
-  { href: "/app", label: "App" },
+  { href: "/use", label: "Use" },
   { href: "/build", label: "Build" },
   { href: "/zaps", label: "Zaps Feed" },
   { href: "/docs", label: "Docs" },

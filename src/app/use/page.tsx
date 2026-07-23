@@ -74,6 +74,7 @@ import {
   v4QuoterAbi,
   watchZapsAsset,
   wethAbi,
+  rangeVaultAbi,
   zapVaultAbi,
 } from "@/lib/robinhood";
 import styles from "./app.module.css";
@@ -101,6 +102,94 @@ async function quoteRoute(route: Route, amountIn: bigint, account: Address): Pro
     });
     return { amountOut: result[0], gasEstimate: result[1] };
   }
+
+  if (route.quote.source === "v4-route") {
+    // A stitched route quotes hop by hop, each hop fed the previous output —
+    // the same measured-forwarding the adapter performs onchain.
+    let carried = amountIn;
+    let gasTotal = 0n;
+    for (const hop of route.quote.hops) {
+      const { result } = await publicClient.simulateContract({
+        account,
+        address: ROBINHOOD_LIQUIDITY.v4Quoter,
+        abi: v4QuoterAbi,
+        functionName: "quoteExactInputSingle",
+        args: [{ poolKey: hop.poolKey, zeroForOne: hop.zeroForOne, exactAmount: carried, hookData: "0x" }],
+      });
+      carried = result[0];
+      gasTotal += result[1];
+    }
+    if (carried <= 0n) throw new Error("The stitched route quotes to zero output. Try a larger amount.");
+    return { amountOut: carried, gasEstimate: gasTotal };
+  }
+
+  if (route.quote.source === "range-deposit") {
+    // Mirror the adapter: half is swapped in the vault's own pool, both legs
+    // are then priced by the vault's previewDeposit. A preview, not a promise —
+    // the real deposit compounds fees first and refunds what the ratio rejects.
+    const swapAmount = amountIn / 2n;
+    const keep = amountIn - swapAmount;
+    const { result } = await publicClient.simulateContract({
+      account,
+      address: ROBINHOOD_LIQUIDITY.v4Quoter,
+      abi: v4QuoterAbi,
+      functionName: "quoteExactInputSingle",
+      args: [
+        { poolKey: route.quote.poolKey, zeroForOne: route.quote.zeroForOne, exactAmount: swapAmount, hookData: "0x" },
+      ],
+    });
+    const swapped = result[0];
+    const [amount0, amount1] = route.quote.zeroForOne ? [keep, swapped] : [swapped, keep];
+    const [shares] = await publicClient.readContract({
+      address: route.quote.vault,
+      abi: rangeVaultAbi,
+      functionName: "previewDeposit",
+      args: [amount0, amount1],
+    });
+    if (shares <= 0n) {
+      throw new Error("The liquidity preview is zero, so this deposit would revert. Try a larger amount.");
+    }
+    return { amountOut: shares, gasEstimate: null };
+  }
+
+  if (route.quote.source === "range-withdraw") {
+    // previewRedeem yields both currencies; the off-target leg is quoted
+    // through the pool and added to the target.
+    const [amount0, amount1] = await publicClient.readContract({
+      address: route.quote.vault,
+      abi: rangeVaultAbi,
+      functionName: "previewRedeem",
+      args: [amountIn],
+    });
+    const target = route.quote.assetOutIsCurrency0 ? amount0 : amount1;
+    const offTarget = route.quote.assetOutIsCurrency0 ? amount1 : amount0;
+    let swapped = 0n;
+    if (offTarget > 0n) {
+      const { result } = await publicClient.simulateContract({
+        account,
+        address: ROBINHOOD_LIQUIDITY.v4Quoter,
+        abi: v4QuoterAbi,
+        functionName: "quoteExactInputSingle",
+        args: [
+          {
+            poolKey: route.quote.poolKey,
+            // The off-target leg swaps INTO the target, so its direction is the
+            // opposite of the target's side.
+            zeroForOne: !route.quote.assetOutIsCurrency0,
+            exactAmount: offTarget,
+            hookData: "0x",
+          },
+        ],
+      });
+      swapped = result[0];
+    }
+    const amountOut = target + swapped;
+    if (amountOut <= 0n) {
+      throw new Error("The withdraw preview is zero, so this redeem would revert. Try a larger share amount.");
+    }
+    return { amountOut, gasEstimate: null };
+  }
+
   const functionName = route.quote.source === "erc4626-deposit" ? "previewDeposit" : "previewRedeem";
   const amountOut = await publicClient.readContract({
     address: route.quote.vault,
@@ -347,16 +436,24 @@ export default function AppPage(): React.JSX.Element {
       ? "—"
       : route.kind === "swap"
         ? "Uniswap v4 pool"
-        : route.kind === "vault-deposit"
-          ? "ERC-4626 vault deposit"
-          : "ERC-4626 vault redeem";
+        : route.kind === "swap-route"
+          ? "Uniswap v4, two pools stitched"
+          : route.kind === "lp-deposit"
+            ? "Full-range v4 LP vault deposit"
+            : route.kind === "lp-withdraw"
+              ? "Full-range v4 LP vault withdraw"
+              : route.kind === "vault-deposit"
+                ? "ERC-4626 vault deposit"
+                : "ERC-4626 vault redeem";
   const routePairLabel = route === null ? "—" : `${route.tokenIn.symbol} → ${route.tokenOut.symbol}`;
   const settlementLabel =
     route === null
       ? "—"
       : route.quote.source === "v4"
         ? `${routePairLabel} · Uniswap v4`
-        : `Vault ${shortAddress(route.quote.vault)}`;
+        : route.quote.source === "v4-route"
+          ? `${routePairLabel} · via aeWETH, one signed step`
+          : `Vault ${shortAddress(route.quote.vault)}`;
   const amountIn = useMemo(() => parseOptionalRouterAmount(amount, inDecimals), [amount, inDecimals]);
   const requiredAmount = zap ? BigInt(zap.amountIn) : amountIn;
   const walletInputBalance = walletInBalance;

@@ -10,7 +10,7 @@ export const metadata: Metadata = {
 };
 
 const SUGGESTIONS = [
-  { href: "/app", label: "Policy console" },
+  { href: "/use", label: "Use OpenZaps" },
   { href: "/zaps", label: "Zaps Feed" },
   { href: "/docs", label: "Docs" },
   { href: "/docs#security", label: "Security" },

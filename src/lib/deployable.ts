@@ -215,7 +215,10 @@ export function reduceChainToLivePolicy(
     );
   }
   for (const entry of sources) {
-    if (entry.block.id === "wallet-balance") {
+    // Both sources are the same onchain fact — an exact ERC-20 pull from the
+    // owner wallet. `lp-position` pulls the ozRANGE share token, which IS an
+    // ERC-20; the lp shape only decides which blocks can seat below it.
+    if (entry.block.id === "wallet-balance" || entry.block.id === "lp-position") {
       source ??= entry;
       continue;
     }
@@ -324,6 +327,18 @@ export function reduceChainToLivePolicy(
           "Send to recipient uses a custom address, but the live policy hardcodes recipient = owner wallet. A capsule that settles anywhere else is not deployable here.",
         );
       }
+      continue;
+    }
+    // "Hold position" is deployable exactly when the position IS an ERC-20 the
+    // policy can settle: an lp-deposit step mints ozRANGE shares straight to
+    // the owner wallet, which is precisely "keep the position open". Any other
+    // chain under this sink still ends on an open position nothing can settle.
+    if (
+      entry.block.id === "hold-lp" &&
+      steps.length > 0 &&
+      steps.length === actions.length &&
+      steps[steps.length - 1].kind === "lp-deposit"
+    ) {
       continue;
     }
     reasons.push(

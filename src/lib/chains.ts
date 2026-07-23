@@ -42,7 +42,13 @@ import type { ZapDirection } from "@/lib/openzap";
  * IS allowlisting one action against one protocol (`IAdapter.execute` takes a
  * fixed selector and no arbitrary calldata).
  */
-export type AdapterKind = "swap" | "vault-deposit" | "vault-redeem";
+export type AdapterKind =
+  | "swap"
+  | "swap-route"
+  | "vault-deposit"
+  | "vault-redeem"
+  | "lp-deposit"
+  | "lp-withdraw";
 
 /**
  * Env vars carrying deployed adapter addresses.
@@ -54,7 +60,12 @@ export type AdapterEnvVar =
   | "NEXT_PUBLIC_OPENZAP_ROBINHOOD_V4_ADAPTER"
   | "NEXT_PUBLIC_OPENZAP_ROBINHOOD_V4_USDG_ADAPTER"
   | "NEXT_PUBLIC_OPENZAP_ZAP_VAULT_DEPOSIT_ADAPTER"
-  | "NEXT_PUBLIC_OPENZAP_ZAP_VAULT_REDEEM_ADAPTER";
+  | "NEXT_PUBLIC_OPENZAP_ZAP_VAULT_REDEEM_ADAPTER"
+  | "NEXT_PUBLIC_OPENZAP_ROUTE_USDG_ZAPS_ADAPTER"
+  | "NEXT_PUBLIC_OPENZAP_ROUTE_ZAPS_USDG_ADAPTER"
+  | "NEXT_PUBLIC_OPENZAP_RANGE_DEPOSIT_ADAPTER"
+  | "NEXT_PUBLIC_OPENZAP_RANGE_WITHDRAW_USDG_ADAPTER"
+  | "NEXT_PUBLIC_OPENZAP_RANGE_WITHDRAW_WETH_ADAPTER";
 
 export type AdapterSpec = {
   /** Stable id, used in policy readouts and rejection copy. */
@@ -270,6 +281,140 @@ export const ROBINHOOD_ADAPTERS: readonly AdapterSpec[] = [
     refuses:
       "Refuses any vault or asset but the ones welded into its constructor, and refuses to redeem to anyone but its caller.",
   },
+
+  // ---- the "Use" expansion set: DEPLOYED and allowlisted -------------------
+  // Broadcast via `contracts/script/DeployRobinhoodUse.s.sol` and verified
+  // onchain 2026-07-23: all five adapters allowlisted in the AdapterRegistry,
+  // the ozRANGE share token (the ZapRangeVault at 0x9FE8…D5B) allowlisted, and
+  // the vault seeded with its seed shares burned to 0xdead. Addresses are baked
+  // below per the registry rule: an address is baked ONLY once the adapter is
+  // deployed and allowlisted, which these now are.
+
+  // Multi-swap stitching: one frozen two-hop route per adapter, executed as ONE
+  // step — hop 2 spends the measured output of hop 1 at runtime, so USDG and
+  // 0xZAPS trade against each other through aeWETH with nothing guessed at
+  // signing time and nothing stranded. `blockId: "swap"` on purpose: in the
+  // builder this IS a swap (USDG → 0xZAPS); the stitching is the adapter's
+  // internal business.
+  {
+    id: "robinhood-v4-route-usdg-zaps",
+    chainId: ROBINHOOD_CHAIN_ID,
+    kind: "swap-route",
+    label: "Uniswap v4 USDG → 0xZAPS (via aeWETH)",
+    blockId: "swap",
+    weldedParams: { venue: "Uniswap v4" },
+    tokenIn: "USDG",
+    tokenOut: "0xZAPS",
+    direction: null,
+    envVar: "NEXT_PUBLIC_OPENZAP_ROUTE_USDG_ZAPS_ADAPTER",
+    // Broadcast and allowlisted on chain 4663 (verified onchain 2026-07-23; see
+    // docs/deployments.md). Baked so the route is live without Vercel env; the env
+    // var still overrides for a redeploy.
+    deployedAddress: "0x132e65D4A28ec1687D3B2b2a6e2DfD75afCf4900",
+    refuses:
+      "Refuses any pools but the two welded into its constructor, any route input but USDG, any calldata beyond a bounded final minimum-out, and any chain but 4663.",
+  },
+  {
+    id: "robinhood-v4-route-zaps-usdg",
+    chainId: ROBINHOOD_CHAIN_ID,
+    kind: "swap-route",
+    label: "Uniswap v4 0xZAPS → USDG (via aeWETH)",
+    blockId: "swap",
+    weldedParams: { venue: "Uniswap v4" },
+    tokenIn: "0xZAPS",
+    tokenOut: "USDG",
+    direction: null,
+    envVar: "NEXT_PUBLIC_OPENZAP_ROUTE_ZAPS_USDG_ADAPTER",
+    // Broadcast and allowlisted on chain 4663 (verified onchain 2026-07-23; see
+    // docs/deployments.md). Baked so the route is live without Vercel env; the env
+    // var still overrides for a redeploy.
+    deployedAddress: "0x9C3F7F057aC3d2828C7271ba73538B33E32E7a59",
+    refuses:
+      "Refuses any pools but the two welded into its constructor, any route input but 0xZAPS, any calldata beyond a bounded final minimum-out, and any chain but 4663.",
+  },
+
+  // Liquidity provisioning: ONE currency in, ERC-20 LP shares (ozRANGE) out.
+  // The adapter swaps half the input inside the vault's own aeWETH/USDG pool
+  // and deposits both legs into the full-range ZapRangeVault; whatever the pool
+  // ratio cannot absorb is refunded to the capsule, where it strands until
+  // emergencyExit. One contract accepts either currency — two entries because
+  // the mapper matches on tokenIn.
+  {
+    id: "robinhood-range-deposit-weth",
+    chainId: ROBINHOOD_CHAIN_ID,
+    kind: "lp-deposit",
+    label: "Provide aeWETH/USDG liquidity (from aeWETH)",
+    blockId: "add-liquidity",
+    weldedParams: { pool: "WETH/USDG" },
+    tokenIn: "WETH",
+    tokenOut: "ozRANGE",
+    direction: null,
+    envVar: "NEXT_PUBLIC_OPENZAP_RANGE_DEPOSIT_ADAPTER",
+    // Broadcast and allowlisted on chain 4663 (verified onchain 2026-07-23; see
+    // docs/deployments.md). Baked so the route is live without Vercel env; the env
+    // var still overrides for a redeploy.
+    deployedAddress: "0xaB2e75fdb8f108c0589048c8cc0F3ce5Fb8b7896",
+    refuses:
+      "Refuses any pool or vault but the ones welded into its constructor, refuses to hold shares or tokens between calls, and refuses to mint shares to anyone but its caller.",
+  },
+  {
+    id: "robinhood-range-deposit-usdg",
+    chainId: ROBINHOOD_CHAIN_ID,
+    kind: "lp-deposit",
+    label: "Provide aeWETH/USDG liquidity (from USDG)",
+    blockId: "add-liquidity",
+    weldedParams: { pool: "WETH/USDG" },
+    tokenIn: "USDG",
+    tokenOut: "ozRANGE",
+    direction: null,
+    envVar: "NEXT_PUBLIC_OPENZAP_RANGE_DEPOSIT_ADAPTER",
+    // Broadcast and allowlisted on chain 4663 (verified onchain 2026-07-23; see
+    // docs/deployments.md). Baked so the route is live without Vercel env; the env
+    // var still overrides for a redeploy.
+    deployedAddress: "0xaB2e75fdb8f108c0589048c8cc0F3ce5Fb8b7896",
+    refuses:
+      "Refuses any pool or vault but the ones welded into its constructor, refuses to hold shares or tokens between calls, and refuses to mint shares to anyone but its caller.",
+  },
+
+  // The unwind leg: ozRANGE shares in, ONE currency out. One deployment per
+  // settlement currency (the output token is a constructor immutable), so the
+  // block's `settle` param picks which entry a design maps to.
+  {
+    id: "robinhood-range-withdraw-usdg",
+    chainId: ROBINHOOD_CHAIN_ID,
+    kind: "lp-withdraw",
+    label: "Withdraw aeWETH/USDG liquidity to USDG",
+    blockId: "remove-liquidity",
+    weldedParams: { settle: "USDG" },
+    tokenIn: "ozRANGE",
+    tokenOut: "USDG",
+    direction: null,
+    envVar: "NEXT_PUBLIC_OPENZAP_RANGE_WITHDRAW_USDG_ADAPTER",
+    // Broadcast and allowlisted on chain 4663 (verified onchain 2026-07-23; see
+    // docs/deployments.md). Baked so the route is live without Vercel env; the env
+    // var still overrides for a redeploy.
+    deployedAddress: "0xDeaC50A0fD41e66900E8a4ab721ce8A43129aE1C",
+    refuses:
+      "Refuses any vault but the one welded into its constructor, any settlement asset but USDG, and refuses to burn more shares than the step names.",
+  },
+  {
+    id: "robinhood-range-withdraw-weth",
+    chainId: ROBINHOOD_CHAIN_ID,
+    kind: "lp-withdraw",
+    label: "Withdraw aeWETH/USDG liquidity to aeWETH",
+    blockId: "remove-liquidity",
+    weldedParams: { settle: "WETH" },
+    tokenIn: "ozRANGE",
+    tokenOut: "WETH",
+    direction: null,
+    envVar: "NEXT_PUBLIC_OPENZAP_RANGE_WITHDRAW_WETH_ADAPTER",
+    // Broadcast and allowlisted on chain 4663 (verified onchain 2026-07-23; see
+    // docs/deployments.md). Baked so the route is live without Vercel env; the env
+    // var still overrides for a redeploy.
+    deployedAddress: "0x5a7F5e5D5Ef503300E04Ab91145CDA2F1c7289B8",
+    refuses:
+      "Refuses any vault but the one welded into its constructor, any settlement asset but aeWETH, and refuses to burn more shares than the step names.",
+  },
 ];
 
 /** The entries that make up the one route the app signs today. */
@@ -291,6 +436,11 @@ function envAddresses(): Record<AdapterEnvVar, string | undefined> {
     NEXT_PUBLIC_OPENZAP_ROBINHOOD_V4_USDG_ADAPTER: process.env.NEXT_PUBLIC_OPENZAP_ROBINHOOD_V4_USDG_ADAPTER,
     NEXT_PUBLIC_OPENZAP_ZAP_VAULT_DEPOSIT_ADAPTER: process.env.NEXT_PUBLIC_OPENZAP_ZAP_VAULT_DEPOSIT_ADAPTER,
     NEXT_PUBLIC_OPENZAP_ZAP_VAULT_REDEEM_ADAPTER: process.env.NEXT_PUBLIC_OPENZAP_ZAP_VAULT_REDEEM_ADAPTER,
+    NEXT_PUBLIC_OPENZAP_ROUTE_USDG_ZAPS_ADAPTER: process.env.NEXT_PUBLIC_OPENZAP_ROUTE_USDG_ZAPS_ADAPTER,
+    NEXT_PUBLIC_OPENZAP_ROUTE_ZAPS_USDG_ADAPTER: process.env.NEXT_PUBLIC_OPENZAP_ROUTE_ZAPS_USDG_ADAPTER,
+    NEXT_PUBLIC_OPENZAP_RANGE_DEPOSIT_ADAPTER: process.env.NEXT_PUBLIC_OPENZAP_RANGE_DEPOSIT_ADAPTER,
+    NEXT_PUBLIC_OPENZAP_RANGE_WITHDRAW_USDG_ADAPTER: process.env.NEXT_PUBLIC_OPENZAP_RANGE_WITHDRAW_USDG_ADAPTER,
+    NEXT_PUBLIC_OPENZAP_RANGE_WITHDRAW_WETH_ADAPTER: process.env.NEXT_PUBLIC_OPENZAP_RANGE_WITHDRAW_WETH_ADAPTER,
   };
 }
 

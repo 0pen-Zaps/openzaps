@@ -73,8 +73,8 @@ export default function DocsPage(): React.JSX.Element {
             audited. Onchain actions are irreversible, so deposit only what you can afford to lose.
           </p>
           <div className={styles.heroActions}>
-            <Link className="btn btnPrimary btnLg" href="/app">
-              Open policy console
+            <Link className="btn btnPrimary btnLg" href="/use">
+              Use OpenZaps
             </Link>
             <a className="btn btnGhost btnLg" href={LINKS.contractSource} target="_blank" rel="noreferrer">
               Contract source

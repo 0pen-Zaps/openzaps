@@ -1,5 +1,5 @@
 import { encodeAbiParameters, getAddress, type PublicClient } from "viem";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 
 import {
   buildRobinhoodPolicy,
@@ -32,7 +32,7 @@ function route(id: string): Route {
 }
 
 describe("resolveRoute — the deployed route set", () => {
-  it("resolves all four swaps and both vault legs", () => {
+  it("resolves the full deployed set — swaps, vault legs, stitched routes, and range LP", () => {
     expect(deployedRoutes().map((r) => r.id)).toEqual([
       "robinhood-v4-weth-zaps",
       "robinhood-v4-zaps-weth",
@@ -40,6 +40,12 @@ describe("resolveRoute — the deployed route set", () => {
       "robinhood-v4-usdg-weth",
       "robinhood-zap-vault-deposit",
       "robinhood-zap-vault-redeem",
+      "robinhood-v4-route-usdg-zaps",
+      "robinhood-v4-route-zaps-usdg",
+      "robinhood-range-deposit-weth",
+      "robinhood-range-deposit-usdg",
+      "robinhood-range-withdraw-usdg",
+      "robinhood-range-withdraw-weth",
     ]);
   });
 
@@ -225,17 +231,22 @@ describe("resolveOfferedRoutes — fail-closed vault seeding gate", () => {
     } as unknown as PublicClient;
   }
 
-  it("excludes BOTH vault routes while the vault is unseeded (totalSupply 0)", async () => {
+  it("excludes EVERY vault-backed route while its vault is unseeded (totalSupply 0)", async () => {
     const offered = await resolveOfferedRoutes(fakeClient(0n));
     const ids = offered.map((r) => r.id);
+    // Swaps and stitched routes need no seeding read; both vault legs and all
+    // four LP routes are dropped while their vault reads empty.
     expect(ids).toEqual([
       "robinhood-v4-weth-zaps",
       "robinhood-v4-zaps-weth",
       "robinhood-v4-weth-usdg",
       "robinhood-v4-usdg-weth",
+      "robinhood-v4-route-usdg-zaps",
+      "robinhood-v4-route-zaps-usdg",
     ]);
     expect(ids).not.toContain("robinhood-zap-vault-deposit");
-    expect(ids).not.toContain("robinhood-zap-vault-redeem");
+    expect(ids).not.toContain("robinhood-range-deposit-weth");
+    expect(ids).not.toContain("robinhood-range-withdraw-usdg");
   });
 
   it("offers the vault routes once the vault is seeded (totalSupply > 0)", async () => {
@@ -249,5 +260,78 @@ describe("resolveOfferedRoutes — fail-closed vault seeding gate", () => {
     expect(ids).not.toContain("robinhood-zap-vault-deposit");
     // Swaps need no read and are still offered.
     expect(ids).toContain("robinhood-v4-weth-zaps");
+  });
+});
+
+describe("the Use expansion routes — stitched swaps and range LP", () => {
+  const ROUTE_ENV = [
+    "NEXT_PUBLIC_OPENZAP_ROUTE_USDG_ZAPS_ADAPTER",
+    "NEXT_PUBLIC_OPENZAP_ROUTE_ZAPS_USDG_ADAPTER",
+    "NEXT_PUBLIC_OPENZAP_RANGE_DEPOSIT_ADAPTER",
+  ] as const;
+  const ROUTE_ADAPTER = "0x2222222222222222222222222222222222222222";
+
+  afterEach(() => {
+    for (const key of ROUTE_ENV) delete process.env[key];
+  });
+
+  it("resolves from the baked broadcast addresses with no env configured", () => {
+    // Broadcast + allowlisted 2026-07-23; the baked addresses are the deployed
+    // truth and an env var only overrides them for a redeploy.
+    expect(route("robinhood-v4-route-usdg-zaps").adapter).toBe("0x132e65D4A28ec1687D3B2b2a6e2DfD75afCf4900");
+    expect(route("robinhood-v4-route-zaps-usdg").adapter).toBe("0x9C3F7F057aC3d2828C7271ba73538B33E32E7a59");
+    expect(route("robinhood-range-deposit-weth").adapter).toBe("0xaB2e75fdb8f108c0589048c8cc0F3ce5Fb8b7896");
+    expect(route("robinhood-range-deposit-usdg").adapter).toBe("0xaB2e75fdb8f108c0589048c8cc0F3ce5Fb8b7896");
+    expect(route("robinhood-range-withdraw-usdg").adapter).toBe("0xDeaC50A0fD41e66900E8a4ab721ce8A43129aE1C");
+    expect(route("robinhood-range-withdraw-weth").adapter).toBe("0x5a7F5e5D5Ef503300E04Ab91145CDA2F1c7289B8");
+  });
+
+  it("resolves the stitched USDG → 0xZAPS route with per-hop directions derived from the path", () => {
+    process.env.NEXT_PUBLIC_OPENZAP_ROUTE_USDG_ZAPS_ADAPTER = ROUTE_ADAPTER;
+    const stitched = route("robinhood-v4-route-usdg-zaps");
+    expect(stitched.kind).toBe("swap-route");
+    expect(stitched.data).toBe("min-amount-out");
+    expect(stitched.tokenIn.symbol).toBe("USDG");
+    expect(stitched.tokenOut.symbol).toBe("0xZAPS");
+    // Endpoints only: the intermediate aeWETH never rests in the capsule.
+    expect(stitched.trackedAssets).toEqual([ROBINHOOD_ASSETS.usdg, ROBINHOOD_ASSETS.zaps]);
+    if (stitched.quote.source !== "v4-route") throw new Error("expected a v4-route quote");
+    expect(stitched.quote.hops).toHaveLength(2);
+    // Hop 1: USDG into the aeWETH/USDG pool — USDG is currency1, so NOT zeroForOne.
+    expect(stitched.quote.hops[0].poolKey).toEqual(usdgPoolKey);
+    expect(stitched.quote.hops[0].zeroForOne).toBe(false);
+    // Hop 2: aeWETH into the aeWETH/0xZAPS pool — aeWETH is currency0.
+    expect(stitched.quote.hops[1].poolKey).toEqual(robinhoodPoolKey);
+    expect(stitched.quote.hops[1].zeroForOne).toBe(true);
+  });
+
+  it("resolves the reverse route with mirrored hops", () => {
+    process.env.NEXT_PUBLIC_OPENZAP_ROUTE_ZAPS_USDG_ADAPTER = ROUTE_ADAPTER;
+    const stitched = route("robinhood-v4-route-zaps-usdg");
+    if (stitched.quote.source !== "v4-route") throw new Error("expected a v4-route quote");
+    expect(stitched.quote.hops[0].poolKey).toEqual(robinhoodPoolKey);
+    expect(stitched.quote.hops[0].zeroForOne).toBe(false); // 0xZAPS is currency1
+    expect(stitched.quote.hops[1].poolKey).toEqual(usdgPoolKey);
+    expect(stitched.quote.hops[1].zeroForOne).toBe(true); // aeWETH is currency0
+  });
+
+  it("welds every LP route to the deployed ozRANGE vault", () => {
+    // The share token IS the vault: deposit tokenOut, withdraw tokenIn, and the
+    // quote vault must all be the one broadcast address.
+    const vaultAddress = "0x9FE852CE89c5920a87F8465C91B9e691f37BeD5B";
+    const deposit = route("robinhood-range-deposit-weth");
+    expect(deposit.tokenOut.address).toBe(vaultAddress);
+    expect(deposit.requiresSeededVault).toBe(true);
+    if (deposit.quote.source !== "range-deposit") throw new Error("expected a range-deposit quote");
+    expect(deposit.quote.vault).toBe(vaultAddress);
+    // aeWETH is currency0 of the vault's pool, so the half-swap sells currency0.
+    expect(deposit.quote.zeroForOne).toBe(true);
+
+    const withdraw = route("robinhood-range-withdraw-usdg");
+    expect(withdraw.tokenIn.address).toBe(vaultAddress);
+    if (withdraw.quote.source !== "range-withdraw") throw new Error("expected a range-withdraw quote");
+    expect(withdraw.quote.vault).toBe(vaultAddress);
+    // USDG is currency1 of the pool, so the settlement asset is NOT currency0.
+    expect(withdraw.quote.assetOutIsCurrency0).toBe(false);
   });
 });

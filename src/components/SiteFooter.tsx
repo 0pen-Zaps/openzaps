@@ -29,7 +29,7 @@ export function SiteFooter(): React.JSX.Element {
         <nav className={styles.cols} aria-label="Footer">
           <div className={styles.col}>
             <h3>Product</h3>
-            <Link href="/app">Open the app</Link>
+            <Link href="/use">Use OpenZaps</Link>
             <Link href="/zaps">Zaps Feed</Link>
             <Link href="/docs">Developer docs</Link>
             <Link href="/roadmap">Roadmap</Link>

@@ -48,8 +48,21 @@ export type V4PoolKey = {
  */
 export type RouteQuote =
   | { source: "v4"; poolKey: V4PoolKey; zeroForOne: boolean }
+  /** A stitched multi-pool route: quote each hop in order, feeding outputs forward. */
+  | { source: "v4-route"; hops: readonly { poolKey: V4PoolKey; zeroForOne: boolean }[] }
   | { source: "erc4626-deposit"; vault: Address }
-  | { source: "erc4626-redeem"; vault: Address };
+  | { source: "erc4626-redeem"; vault: Address }
+  /**
+   * LP provide: half of `amountIn` is quoted through the vault's own pool, then
+   * both legs go through `previewDeposit(amount0, amount1)`. `zeroForOne` is
+   * the half-swap's direction from the route's tokenIn.
+   */
+  | { source: "range-deposit"; vault: Address; poolKey: V4PoolKey; zeroForOne: boolean }
+  /**
+   * LP withdraw: `previewRedeem(shares)` yields both currencies; the off-target
+   * leg is quoted through the pool and added to the target.
+   */
+  | { source: "range-withdraw"; vault: Address; poolKey: V4PoolKey; assetOutIsCurrency0: boolean };
 
 /**
  * What goes into `Step.data`, VERIFIED against each deployed adapter:
@@ -62,7 +75,7 @@ export type RouteDataKind = "empty" | "min-amount-out";
 
 export type Route = {
   readonly id: string;
-  readonly kind: "swap" | "vault-deposit" | "vault-redeem";
+  readonly kind: "swap" | "swap-route" | "vault-deposit" | "vault-redeem" | "lp-deposit" | "lp-withdraw";
   readonly adapter: Address;
   /** OpenZap forces `spender === adapter` at initialize; kept explicit. */
   readonly spender: Address;
@@ -88,6 +101,18 @@ const SWAP_POOLS: Record<string, { poolKey: V4PoolKey; data: RouteDataKind }> = 
   "robinhood-v4-zaps-weth": { poolKey: robinhoodPoolKey, data: "empty" },
   "robinhood-v4-weth-usdg": { poolKey: usdgPoolKey, data: "min-amount-out" },
   "robinhood-v4-usdg-weth": { poolKey: usdgPoolKey, data: "min-amount-out" },
+};
+
+/**
+ * Per-route-adapter hop list, keyed by spec id, in execution order. Same
+ * fail-closed rule as `SWAP_POOLS`: a `swap-route` spec absent here cannot be
+ * resolved, because quoting a stitched route against guessed pools would quote
+ * the wrong ones. Hop direction is derived by walking the token path, exactly
+ * as the adapter itself does.
+ */
+const ROUTE_HOPS: Record<string, readonly V4PoolKey[]> = {
+  "robinhood-v4-route-usdg-zaps": [usdgPoolKey, robinhoodPoolKey],
+  "robinhood-v4-route-zaps-usdg": [robinhoodPoolKey, usdgPoolKey],
 };
 
 /**
@@ -128,6 +153,72 @@ export function resolveRoute(spec: AdapterSpec): Route | null {
       quote: { source: "v4", poolKey: pool.poolKey, zeroForOne },
       requiresSeededVault: false,
       direction: spec.direction,
+    };
+  }
+
+  if (spec.kind === "swap-route") {
+    const hops = ROUTE_HOPS[spec.id];
+    if (!hops) return null;
+    // Walk the token path hop by hop, deriving each hop's direction from which
+    // side of its pool the incoming token sits on — the adapter does the same.
+    let hopIn = tokenIn.address;
+    const quoteHops: { poolKey: V4PoolKey; zeroForOne: boolean }[] = [];
+    for (const poolKey of hops) {
+      const zeroForOne = isAddressEqual(hopIn, poolKey.currency0);
+      if (!zeroForOne && !isAddressEqual(hopIn, poolKey.currency1)) return null; // broken hop table
+      quoteHops.push({ poolKey, zeroForOne });
+      hopIn = zeroForOne ? poolKey.currency1 : poolKey.currency0;
+    }
+    if (!isAddressEqual(hopIn, tokenOut.address)) return null; // route must end on the spec's output
+    return {
+      id: spec.id,
+      kind: "swap-route",
+      adapter,
+      spender: adapter,
+      tokenIn,
+      tokenOut,
+      // The endpoints only: the intermediate token never rests in the capsule,
+      // and settlement measures the final output.
+      trackedAssets: [tokenIn.address, tokenOut.address],
+      data: "min-amount-out",
+      quote: { source: "v4-route", hops: quoteHops },
+      requiresSeededVault: false,
+      direction: null,
+    };
+  }
+
+  if (spec.kind === "lp-deposit" || spec.kind === "lp-withdraw") {
+    // The ozRANGE share token IS the range vault, and the half-swap pool is the
+    // vault's own aeWETH/USDG pool.
+    const vault = spec.kind === "lp-deposit" ? tokenOut.address : tokenIn.address;
+    const other = spec.kind === "lp-deposit" ? tokenIn : tokenOut;
+    const trackedAssets: readonly [Address, Address] =
+      spec.kind === "lp-deposit" ? [other.address, vault] : [vault, other.address];
+    return {
+      id: spec.id,
+      kind: spec.kind,
+      adapter,
+      spender: adapter,
+      tokenIn,
+      tokenOut,
+      trackedAssets,
+      data: "min-amount-out",
+      quote:
+        spec.kind === "lp-deposit"
+          ? {
+              source: "range-deposit",
+              vault,
+              poolKey: usdgPoolKey,
+              zeroForOne: isAddressEqual(tokenIn.address, usdgPoolKey.currency0),
+            }
+          : {
+              source: "range-withdraw",
+              vault,
+              poolKey: usdgPoolKey,
+              assetOutIsCurrency0: isAddressEqual(tokenOut.address, usdgPoolKey.currency0),
+            },
+      requiresSeededVault: true,
+      direction: null,
     };
   }
 
@@ -195,7 +286,7 @@ export async function resolveOfferedRoutes(
   const seeded = await Promise.all(
     candidates.map(async (route) => {
       if (!route.requiresSeededVault) return true;
-      const vault = route.quote.source === "erc4626-redeem" || route.quote.source === "erc4626-deposit" ? route.quote.vault : null;
+      const vault = "vault" in route.quote ? route.quote.vault : null;
       if (!vault) return false;
       try {
         const supply = await client.readContract({ address: vault, abi: zapVaultAbi, functionName: "totalSupply" });
