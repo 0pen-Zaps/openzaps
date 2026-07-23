@@ -183,7 +183,7 @@ export function ZapLive({
 
         {policy.deviations.length > 0 && (
           <div className={styles.deviations} role="alert">
-            <strong>This capsule departs from the one route the live contracts support.</strong>
+            <strong>This capsule departs from the routes the live contracts support.</strong>
             <ul>
               {policy.deviations.map((deviation) => (
                 <li key={deviation}>{deviation}</li>

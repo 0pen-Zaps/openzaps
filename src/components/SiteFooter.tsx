@@ -14,7 +14,7 @@ export function SiteFooter(): React.JSX.Element {
               <strong>OpenZaps</strong>
               <p>
                 Policy capsules for agent-triggered DeFi: the target, recipient, asset, and calldata are fixed before
-                signing. {TOKEN.symbol} is the ERC-20 in the one live route, traded through {TOKEN_LAUNCH.venue} on{" "}
+                signing. {TOKEN.symbol} is the ERC-20 in the protocol&apos;s first live route, traded through {TOKEN_LAUNCH.venue} on{" "}
                 {TOKEN_LAUNCH.network}.
               </p>
             </div>

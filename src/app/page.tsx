@@ -126,8 +126,8 @@ const flow = [
   {
     label: "03 / Deploy",
     title: "Only the bounded route leaves the canvas",
-    body: "A design that reduces to the one route the live contracts implement hands the app a prefilled direction, amount, and slippage cap. You create, fund, and sign it there. Every other design stays a design and cannot be deployed today.",
-    grade: "aeWETH ↔ 0xZAPS",
+    body: "A design that reduces to a route the live contracts implement hands the app a prefilled direction, amount, and slippage cap. You create, fund, and sign it there. Every other design stays a design and cannot be deployed today.",
+    grade: "aeWETH ↔ 0xZAPS · aeWETH ↔ USDG",
   },
   {
     label: "04 / Verify",
@@ -389,8 +389,9 @@ export default function Home(): React.JSX.Element {
 
             <p className={styles.honesty}>
               <strong>The canvas designs zaps — it does not deploy them.</strong> Every chain here compiles and
-              simulates, but the only one the live contracts can carry today is a single-step aeWETH ↔ 0xZAPS swap.
-              Anything else saves as a design, and the readout names which one you have.
+              simulates, but the only ones the live contracts can carry today are single-step swaps through two pinned
+              pools: aeWETH ↔ 0xZAPS and aeWETH ↔ USDG. Anything else saves as a design, and the readout names which
+              one you have.
             </p>
           </Reveal>
 
@@ -466,7 +467,7 @@ export default function Home(): React.JSX.Element {
           <span className="eyebrow">Product flow</span>
           <h2>Draw it. Read it. Deploy what is bounded. Verify it onchain.</h2>
           <p>
-            The builder composes, the readout compiles a verdict, the app signs the one route the live contracts
+            The builder composes, the readout compiles a verdict, the app signs the routes the live contracts
             implement, and the capsule&apos;s own page reports what actually happened. The steps are separate on
             purpose. Nothing skips ahead of the review, and nothing on this site submits a transaction for you.
           </p>
@@ -601,8 +602,9 @@ export default function Home(): React.JSX.Element {
           <h2>A narrow contract has fewer things an attacker can ask it to do.</h2>
           <p>
             The v1.1 contracts have not been externally audited. The source is verified on the block explorer and
-            linked below; read it before you sign anything. One route is live: a single-step aeWETH ↔ 0xZAPS swap,
-            with the recipient forced to the capsule owner and the relayer fee cap set to zero. The multi-block designs
+            linked below; read it before you sign anything. Two routes are live — single-step swaps through pinned
+            aeWETH ↔ 0xZAPS and aeWETH ↔ USDG pools — with the recipient forced to the capsule owner and the relayer
+            fee cap set to zero. The multi-block designs
             you can assemble in the builder cannot be deployed today. Onchain actions are irreversible. The owner keeps
             an unconditional withdraw and revoke path.
           </p>

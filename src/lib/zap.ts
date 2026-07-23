@@ -415,7 +415,7 @@ export function aggregateZapDetail(input: ZapDetailInput): ZapDetailPayload {
 
 /**
  * Describe the policy exactly as the clone reports it, then list every way it
- * departs from the one route the live contracts support. Nothing here is
+ * departs from the routes the live contracts support. Nothing here is
  * asserted away: a deviating zap is still shown, with its deviations named.
  */
 function buildPolicyView(

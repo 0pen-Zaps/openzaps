@@ -94,7 +94,7 @@ export const POLICY_TEMPLATES: PolicyTemplate[] = [
     name: "Launch pool deposit",
     short: "Fund a specific launch or community pool.",
     description:
-      "A deposit into one named launch pool, with the recipient vault fixed and no arbitrary calldata. The live contracts carry a single-step aeWETH ↔ 0xZAPS swap and nothing else, so this template simulates and does not deploy.",
+      "A deposit into one named launch pool, with the recipient vault fixed and no arbitrary calldata. The live contracts currently deploy only bounded single-step swaps, so this template simulates and does not deploy.",
     recommendedModel: "safe",
     category: "launch",
     production: "requires-review",
