@@ -127,7 +127,7 @@ export default async function ZapsFeedPage(): Promise<React.JSX.Element> {
           ) : (
             <>
               <strong>
-                {formatPulseAmount(rangeVault.totalShares, 18)}
+                {formatPulseAmount(rangeVault.totalShares, 18, 8)}
                 {rangeVault.totalShares > 0n
                   ? ` · ${Number((rangeVault.burnedShares * 1000n) / rangeVault.totalShares) / 10}% burned`
                   : ""}
