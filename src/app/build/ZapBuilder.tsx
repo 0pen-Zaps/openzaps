@@ -1030,9 +1030,9 @@ export function ZapBuilder(): React.JSX.Element {
 
           <p className={styles.scopeBanner} role="note">
             <strong>This canvas designs zaps. It does not deploy them.</strong> A chain that seats here compiles
-            and simulates. The only one the live contracts can carry is a single-step aeWETH ↔ 0xZAPS swap, with
-            the recipient forced to the owner and the relayer fee cap at zero. Anything else saves as a design,
-            and the panel on the right names which one you have.
+            and simulates. The only ones the live contracts can carry are single-step swaps through two pinned
+            pools — aeWETH ↔ 0xZAPS and aeWETH ↔ USDG — with the recipient forced to the owner and the relayer
+            fee cap at zero. Anything else saves as a design, and the panel on the right names which one you have.
           </p>
 
           <div className={styles.canvas} ref={canvasRef}>
@@ -1475,8 +1475,8 @@ export function ZapBuilder(): React.JSX.Element {
           </div>
 
           <p className={styles.disclaimer}>
-            The builder compiles and simulates. It cannot sign, fund, or submit a transaction. The one route the app
-            page can deploy is the bounded aeWETH ↔ 0xZAPS capsule.
+            The builder compiles and simulates. It cannot sign, fund, or submit a transaction. The routes the app
+            page can deploy are the bounded aeWETH ↔ 0xZAPS and aeWETH ↔ USDG capsules.
           </p>
         </aside>
       </div>

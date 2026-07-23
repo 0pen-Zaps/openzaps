@@ -1,0 +1,303 @@
+.page {
+  padding-bottom: 6rem;
+}
+
+/* Hero */
+.hero {
+  padding-top: calc(var(--nav-h, 5rem) + 3rem);
+  padding-bottom: 2.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+  max-width: 60rem;
+}
+
+.title {
+  font-size: clamp(2.4rem, 6vw, 4rem);
+  line-height: 1.02;
+  letter-spacing: -0.02em;
+  margin: 0;
+}
+
+.lead {
+  font-size: clamp(1.05rem, 2vw, 1.25rem);
+  color: var(--muted);
+  max-width: 46rem;
+  line-height: 1.55;
+}
+
+/* The loud not-live banner — the single most important element on the page. */
+.notLive {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  border: 1px solid var(--accent-dim);
+  border-left-width: 3px;
+  border-left-color: var(--accent-bright);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--accent-bright) 6%, transparent);
+  padding: 1.1rem 1.25rem;
+  max-width: 46rem;
+}
+
+.notLive strong {
+  font-family: var(--font-jetbrains-mono), monospace;
+  font-size: 0.82rem;
+  letter-spacing: 0.02em;
+  color: var(--accent-bright);
+  text-transform: uppercase;
+}
+
+.notLive p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.95rem;
+  line-height: 1.5;
+}
+
+/* Sections */
+.section {
+  padding-block: 2.5rem;
+  border-top: 1px solid var(--line);
+  max-width: 68rem;
+}
+
+.head {
+  margin-bottom: 1.75rem;
+  max-width: 46rem;
+}
+
+.head h2 {
+  font-size: clamp(1.6rem, 3vw, 2.1rem);
+  letter-spacing: -0.015em;
+  margin: 0.4rem 0 0.6rem;
+}
+
+.head p {
+  color: var(--muted);
+  line-height: 1.55;
+  margin: 0;
+}
+
+/* The one rule */
+.ruleCard {
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--card);
+  padding: 1.5rem 1.6rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.ruleCard strong {
+  font-size: 1.15rem;
+  letter-spacing: -0.01em;
+}
+
+.ruleCard p {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.55;
+}
+
+/* Mechanic grid */
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr));
+  gap: 1rem;
+}
+
+.card {
+  position: relative;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--card);
+  padding: 1.4rem 1.4rem 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+}
+
+.cardNum {
+  font-family: var(--font-jetbrains-mono), monospace;
+  font-size: 0.75rem;
+  color: var(--accent-bright);
+  letter-spacing: 0.08em;
+}
+
+.card h3 {
+  font-size: 1.1rem;
+  letter-spacing: -0.01em;
+  margin: 0;
+}
+
+.card p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.94rem;
+  line-height: 1.5;
+}
+
+.card .role {
+  margin-top: auto;
+  padding-top: 0.7rem;
+  border-top: 1px dashed var(--line);
+  font-size: 0.85rem;
+  color: var(--muted-2);
+}
+
+.card .role b {
+  color: var(--text);
+  font-weight: 600;
+}
+
+/* Lineage two-column */
+.lineageGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+}
+
+@media (max-width: 640px) {
+  .lineageGrid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.lineageCol {
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--card);
+  padding: 1.3rem 1.4rem;
+}
+
+.lineageCol h3 {
+  margin: 0 0 0.8rem;
+  font-size: 1rem;
+}
+
+.lineageCol ul {
+  margin: 0;
+  padding-left: 1.1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+}
+
+.lineageCol li {
+  color: var(--muted);
+  line-height: 1.45;
+  font-size: 0.93rem;
+}
+
+.kept {
+  border-left: 3px solid var(--accent-bright);
+}
+
+.deleted {
+  border-left: 3px solid var(--muted-2);
+}
+
+/* Token flows */
+.flows {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr));
+  gap: 0.9rem;
+}
+
+.flow {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--card);
+  padding: 1.1rem 1.2rem;
+}
+
+.flow span {
+  display: inline-block;
+  font-family: var(--font-jetbrains-mono), monospace;
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--accent-bright);
+  margin-bottom: 0.5rem;
+}
+
+.flow strong {
+  display: block;
+  font-size: 0.98rem;
+  margin-bottom: 0.35rem;
+}
+
+.flow p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.88rem;
+  line-height: 1.45;
+}
+
+/* Disclosure block — mirrors the /token not-financial-advice register */
+.disclosure {
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--muted-2) 6%, transparent);
+  padding: 1.4rem 1.5rem;
+  color: var(--muted);
+  line-height: 1.6;
+  font-size: 0.94rem;
+  max-width: 52rem;
+}
+
+.disclosure strong {
+  color: var(--text);
+}
+
+/* Gates list */
+.gateList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+  counter-reset: gate;
+}
+
+.gateList li {
+  position: relative;
+  padding-left: 2.2rem;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.gateList li::before {
+  counter-increment: gate;
+  content: counter(gate);
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 1.5rem;
+  height: 1.5rem;
+  display: grid;
+  place-items: center;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--accent-bright) 12%, transparent);
+  color: var(--accent-bright);
+  font-family: var(--font-jetbrains-mono), monospace;
+  font-size: 0.78rem;
+}
+
+.footerNote {
+  margin-top: 2.5rem;
+  color: var(--muted-2);
+  font-size: 0.85rem;
+  max-width: 52rem;
+  line-height: 1.55;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin-top: 0.5rem;
+}

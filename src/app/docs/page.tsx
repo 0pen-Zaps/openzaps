@@ -106,8 +106,9 @@ export default function DocsPage(): React.JSX.Element {
             <span>Audit status</span>
             <strong>The contracts have not been externally audited.</strong>
             <p>
-              The v1.1 contracts are live on {CHAIN.name} and carry one bounded route: a single-step aeWETH ↔ 0xZAPS
-              swap, with the recipient forced to the owner and the relayer fee cap set to zero. The owner keeps an
+              The v1.1 contracts are live on {CHAIN.name} and carry two bounded routes — single-step swaps through
+              pinned aeWETH ↔ 0xZAPS and aeWETH ↔ USDG pools — with the recipient forced to the owner and the relayer
+              fee cap set to zero. The owner keeps an
               unconditional withdraw and revoke path. No external audit, formal verification, adapter governance,
               testnet soak, or live wallet review has completed. Deposited funds are at risk.
             </p>
