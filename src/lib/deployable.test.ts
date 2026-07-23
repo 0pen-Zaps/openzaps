@@ -596,15 +596,37 @@ describe("the Live route blueprint", () => {
     expect(mapping.deployable && mapping.direction).toBe("buy");
   });
 
-  it("is the only blueprint that reduces to the live route", () => {
-    // The blueprint row badges exactly the deployable ones and the copy beside
-    // it says there is one such shape. Both are read off this.
+  it("badges exactly the four deployable blueprints", () => {
+    // The blueprint row badges exactly the deployable ones. This is the list
+    // the copy beside the row describes; a recipe drifting off its route (or a
+    // non-deployable design quietly becoming badged) fails here first.
     const deployable = RECIPES.filter((entry) =>
       reduceChainToLiveRoute(
         entry.blocks.map(([id, params], index) => makeNode(id, `${entry.id}-${index}`, params)),
       ).deployable,
     ).map((entry) => entry.id);
-    expect(deployable).toEqual(["live-route"]);
+    expect(deployable).toEqual(["live-route", "stitched-route", "provide-liquidity", "exit-liquidity"]);
+  });
+
+  it("routes each deployable blueprint to the adapter it claims", () => {
+    // The taglines make onchain claims ("two pools, one signed step", "the
+    // full-range position"); each must reduce to the exact route that makes
+    // its claim true, not merely to "some deployable route".
+    const expected: Record<string, string> = {
+      "live-route": "robinhood-v4-weth-zaps",
+      "stitched-route": "robinhood-v4-route-usdg-zaps",
+      "provide-liquidity": "robinhood-range-deposit-weth",
+      "exit-liquidity": "robinhood-range-withdraw-usdg",
+    };
+    for (const [recipeId, routeId] of Object.entries(expected)) {
+      const entry = RECIPES.find((candidate) => candidate.id === recipeId);
+      expect(entry, recipeId).toBeDefined();
+      const mapping = reduceChainToLiveRoute(
+        (entry?.blocks ?? []).map(([id, params], index) => makeNode(id, `${recipeId}-${index}`, params)),
+      );
+      expect(mapping.deployable, `${recipeId}: ${mapping.deployable ? "" : mapping.reasons.join(" | ")}`).toBe(true);
+      if (mapping.deployable) expect(mapping.routeId, recipeId).toBe(routeId);
+    }
   });
 
   it("states a slippage cap the live app can sign without rounding it", () => {
@@ -939,7 +961,9 @@ describe("with the real vault adapter configured", () => {
         entry.blocks.map(([id, params], index) => makeNode(id, `${entry.id}-${index}`, params)),
       ).deployable,
     ).map((entry) => entry.id);
-    expect(deployable).toEqual(["live-route"]);
+    // Overriding the vault-deposit address must not badge any blueprint beyond
+    // the standing deployable four — no recipe supplies into the ozUSDG vault.
+    expect(deployable).toEqual(["live-route", "stitched-route", "provide-liquidity", "exit-liquidity"]);
   });
 });
 

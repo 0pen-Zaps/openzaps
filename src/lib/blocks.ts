@@ -1184,24 +1184,66 @@ export type ZapRecipe = {
 
 export const RECIPES: readonly ZapRecipe[] = [
   {
-    // First, and the chain the builder opens on, because it is the only one of
-    // these that the deployed contracts can actually carry. Every other
-    // blueprint here is a design; a user who loaded one and read the rejection
-    // list had to reverse-engineer this shape from a list of things it is not.
-    //
-    // Its exact contents are the reduction rules in `deployable.ts` read
-    // forwards — WETH in, 0xZAPS out, Uniswap v4, settled to the owner wallet,
-    // an amount the router's own parser accepts. A test holds the two together,
-    // because a catalog edit that quietly drops this off the live route would
-    // otherwise leave the front door pointing nowhere.
+    // First, and the chain the builder opens on. The first four blueprints are
+    // the DEPLOYABLE set — each reduces to a route the live contracts carry,
+    // and a test in deployable.test.ts holds every one of them to that claim,
+    // because a catalog edit that quietly drops one off its route would
+    // otherwise leave a badged front door pointing nowhere. Everything after
+    // them is a design: it compiles and simulates but cannot be deployed today.
     id: "live-route",
-    name: "Live route",
-    tagline: "The one chain today's contracts can carry: aeWETH into 0xZAPS.",
+    name: "Buy 0xZAPS",
+    tagline: "The original bounded route: aeWETH into 0xZAPS, one signed step.",
     accent: "token",
     blocks: [
       ["wallet-balance", { asset: "WETH", amount: "0.05" }],
       ["guard-slippage", { bps: 50 }],
       ["swap", { into: "0xZAPS", venue: "Uniswap v4" }],
+      ["send", { recipient: "owner wallet" }],
+    ],
+  },
+  {
+    // The stitched multi-swap: USDG and 0xZAPS have no direct pool, so the
+    // route adapter runs USDG → aeWETH → 0xZAPS inside ONE step, each hop
+    // sized by the measured output of the last. In the canvas it is simply a
+    // swap — the stitching is the adapter's business, which is the point.
+    id: "stitched-route",
+    name: "Stitched swap",
+    tagline: "USDG into 0xZAPS through aeWETH — two pools, one signed step.",
+    accent: "token",
+    blocks: [
+      ["wallet-balance", { asset: "USDG", amount: "25" }],
+      ["guard-slippage", { bps: 50 }],
+      ["swap", { into: "0xZAPS", venue: "Uniswap v4" }],
+      ["send", { recipient: "owner wallet" }],
+    ],
+  },
+  {
+    // Liquidity provisioning through the range vault: one currency in, ERC-20
+    // LP shares (ozRANGE) out, fees compounding to holders. Ends on hold-lp —
+    // the shares ARE the position, and they settle to the owner wallet.
+    id: "provide-liquidity",
+    name: "Provide liquidity",
+    tagline: "aeWETH into the full-range aeWETH/USDG position, shares to you.",
+    accent: "lp",
+    blocks: [
+      ["wallet-balance", { asset: "WETH", amount: "0.02" }],
+      ["guard-slippage", { bps: 100 }],
+      ["add-liquidity", { pool: "WETH/USDG", range: "Full range" }],
+      ["hold-lp"],
+    ],
+  },
+  {
+    // The unwind: starts from ozRANGE shares already in the wallet (a
+    // withdraw capsule is funded with shares, not tokens) and settles in one
+    // currency.
+    id: "exit-liquidity",
+    name: "Exit liquidity",
+    tagline: "Burn ozRANGE shares back to USDG — principal plus accrued fees.",
+    accent: "lp",
+    blocks: [
+      ["lp-position", { asset: "ozRANGE", amount: "1" }],
+      ["guard-slippage", { bps: 100 }],
+      ["remove-liquidity", { settle: "USDG", portion: 100 }],
       ["send", { recipient: "owner wallet" }],
     ],
   },
