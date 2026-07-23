@@ -922,8 +922,8 @@ export function ZapBuilder(): React.JSX.Element {
           {/* No count in the copy: it went stale the first time a blueprint was
               added, and the row is right there to be counted. */}
           <p>
-            One kind of zap each. The one marked <em>deployable</em> is the only shape the live contracts can carry.
-            Load any of them, then rebuild piece by piece.
+            One kind of zap each. The ones marked <em>deployable</em> reduce to routes the live contracts carry —
+            swaps, the stitched USDG route, and aeWETH/USDG liquidity. Load any of them, then rebuild piece by piece.
           </p>
         </div>
         <div className={styles.recipeRow}>
