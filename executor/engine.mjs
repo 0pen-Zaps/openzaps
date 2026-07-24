@@ -7,6 +7,8 @@ import { getAddress, zeroAddress } from "viem";
 import { openZapV3Abi, priceSourceAbi } from "./abi.mjs";
 
 const BPS = 10_000n;
+/** Modest tip (0.1 gwei), always capped by the intent/config fee ceiling. */
+const PRIORITY_FEE_WEI = 100_000_000n;
 
 export function log(level, msg, extra) {
   const line = `[${new Date().toISOString()}] ${level.toUpperCase().padEnd(5)} ${msg}`;
@@ -105,7 +107,10 @@ export async function submitExecution(publicClient, walletClient, item, cfg) {
 
   const feeCap = intent.maxFeePerGas < cfg.maxFeePerGasWei ? intent.maxFeePerGas : cfg.maxFeePerGasWei;
   try {
-    const hash = await walletClient.writeContract({ ...request, maxFeePerGas: feeCap });
+    // Explicit priority fee capped by the fee ceiling: without it, a node-suggested tip above the
+    // cap makes viem reject the request and the submission stalls forever.
+    const priority = feeCap < PRIORITY_FEE_WEI ? feeCap : PRIORITY_FEE_WEI;
+    const hash = await walletClient.writeContract({ ...request, maxFeePerGas: feeCap, maxPriorityFeePerGas: priority });
     const receipt = await publicClient.waitForTransactionReceipt({ hash, timeout: 120_000 });
     return {
       outcome: receipt.status === "success" ? "executed" : "tx-reverted",

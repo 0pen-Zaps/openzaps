@@ -101,5 +101,10 @@ export function readState(stateFile) {
 }
 
 export function writeState(stateFile, state) {
-  writeFileSync(stateFile, JSON.stringify(state, null, 2));
+  // Atomic: write a sibling temp file then rename over the target. A crash mid-write leaves the
+  // previous good state.json intact instead of a truncated file that readState would silently
+  // reset to empty — losing lifetime earnings and the convert throttle.
+  const tmp = `${stateFile}.tmp`;
+  writeFileSync(tmp, JSON.stringify(state, null, 2));
+  renameSync(tmp, stateFile);
 }
