@@ -69,6 +69,23 @@ export function feedConditionForZapsMove(moveBps: number, rises: boolean): { abo
   return { above: true, thresholdBps: Math.round((10_000 * m) / (10_000 - m)) };
 }
 
+/**
+ * Default slippage tolerance per mode. A recurring series signs ONE floor at creation that every
+ * run must clear over hours or days, so a tight band bricks runs the moment the market drifts past
+ * it (a 1% band reverts as soon as the output falls ~1% from the signing quote — an hour of normal
+ * movement). A wider default keeps a series alive; a one-shot trigger, valid for a bounded window,
+ * can stay tighter. This is a STOPGAP until the relative-floor capsule computes a fresh per-run
+ * floor from spot at execution.
+ */
+export const DEFAULT_SLIPPAGE_BPS: Record<AutomationMode, number> = {
+  recurring: 500, // 5%
+  trigger: 200, // 2%
+} as const;
+
+export function defaultSlippageBps(mode: AutomationMode): number {
+  return DEFAULT_SLIPPAGE_BPS[mode];
+}
+
 /** How much the capsule must hold before the automation can run to completion. */
 export function requiredFunding(perRun: bigint, mode: AutomationMode, maxRuns: number): bigint {
   if (mode === "trigger") return perRun;

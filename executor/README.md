@@ -62,6 +62,20 @@ Configuration (all optional) lives in `~/.openzaps/executor/config.json` or env:
 fallback transport — every request tries the endpoints in order, so one flaky RPC never idles the
 bundler.
 
+## The shared relay (how executors discover work)
+
+The daemon polls a hosted **intent relay** (`OPENZAPS_RELAY_URL`, default `https://www.0xzaps.com`)
+each pass and merges the open intents it finds with the local file store — so it executes
+automations published by ANY owner from the Automate tab, not just files dropped on this machine.
+That is the "connected" half: owners publish once (the app POSTs their signed intent to
+`/api/intents`), and every executor sees the shared pool. The relay is untrusted — the capsule
+re-verifies each intent on-chain — so the daemon re-validates every relayed intent through the same
+`store.validateIntentObject` gate a file goes through, and a hung relay can never stall the intent
+loop (the poll is bounded to 8s). When an intent's nonce is spent on-chain the daemon marks it
+consumed on the relay (a permissionless call the relay only honors if the chain confirms it's dead),
+keeping the shared open-list bounded. Set `OPENZAPS_RELAY_URL=""` to disable relay polling and run
+purely off the local file store.
+
 ## Intent intake (no more file shuffling)
 
 The daemon runs a localhost-only HTTP listener (`OPENZAPS_INTAKE_PORT`, default 8477; `0`

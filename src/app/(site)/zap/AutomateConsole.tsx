@@ -17,6 +17,7 @@ import { trackEvent } from "@/lib/analytics";
 import {
   INTERVAL_PRESETS,
   THRESHOLD_PRESETS,
+  defaultSlippageBps,
   describeSeries,
   draftRecurringIntent,
   draftTriggerIntent,
@@ -25,6 +26,7 @@ import {
   netFloorFromQuote,
   type AutomationMode,
 } from "@/lib/automate";
+import { publishIntent, type RelaySubmission } from "@/lib/relay";
 import {
   EXEC_FEE_BPS,
   EXECUTOR_SHARE_BPS,
@@ -69,7 +71,7 @@ const publicClient = createPublicClient({ chain: robinhoodChain, transport: http
 const STORAGE_KEY = "openzap:v3:automations";
 const MAX_SAVED_AUTOMATIONS = 5;
 
-type BusyAction = "connect" | "create" | "fund" | "sign" | "cancel" | "recover" | "refresh" | "send" | null;
+type BusyAction = "connect" | "create" | "fund" | "sign" | "cancel" | "recover" | "refresh" | "send" | "publish" | null;
 
 /** The reference daemon's localhost intake (executor/intake.mjs). Probed only after signing. */
 const EXECUTOR_INTAKE_URL = "http://127.0.0.1:8477";
@@ -152,7 +154,18 @@ export default function AutomateConsole(): React.JSX.Element {
   const [mode, setMode] = useState<AutomationMode>("recurring");
   const [routeId, setRouteId] = useState<string>(BOUNDED_SWAP_IDS[0]);
   const [amount, setAmount] = useState("0.001");
-  const [slippageBps, setSlippageBps] = useState(100);
+  const [slippageBps, setSlippageBps] = useState(defaultSlippageBps("recurring"));
+
+  /** Switch execution type AND reset slippage to that mode's default (recurring needs a wider band).
+   *  No-op when the mode is unchanged, so re-clicking the active tab never clobbers a manual slider. */
+  const selectMode = useCallback(
+    (next: AutomationMode) => {
+      if (next === mode) return;
+      setMode(next);
+      setSlippageBps(defaultSlippageBps(next));
+    },
+    [mode],
+  );
   const [intervalId, setIntervalId] = useState("daily");
   const [maxRuns, setMaxRuns] = useState(10);
   const [thresholdId, setThresholdId] = useState("up10");
@@ -440,10 +453,24 @@ export default function AutomateConsole(): React.JSX.Element {
         terms = `${threshold.label} · valid ${validDays}d`;
       }
 
+      // Auto-publish to the shared relay so the owner never has to move a file. Best-effort: if the
+      // relay is down or not yet configured, the intent is still signed and the manual publish /
+      // file-export / local-executor fallbacks below still work.
+      let deliveredTo: string | undefined;
+      try {
+        await publishIntent(JSON.parse(file) as RelaySubmission);
+        deliveredTo = "relay";
+      } catch {
+        // Relay unavailable — fall through to the fallbacks.
+      }
       // Persisting swaps in a NEW record object, so the status effect reloads on its own.
-      persist(records.map((r) => (r.address === record.address ? { ...r, intentFile: file, terms } : r)));
-      setNotice("Standing intent signed. Export the intent file and hand it to an executor — the zap enforces everything else.");
-      trackEvent("automate_sign", { mode: record.mode });
+      persist(records.map((r) => (r.address === record.address ? { ...r, intentFile: file, terms, deliveredTo } : r)));
+      setNotice(
+        deliveredTo === "relay"
+          ? "Signed and published to the executor network — any executor can run it now. Nothing else to do."
+          : "Standing intent signed. Publish it to an executor below, or export the file.",
+      );
+      trackEvent("automate_sign", { mode: record.mode, published: deliveredTo === "relay" });
     } catch (cause) {
       setError(readableError(cause));
     } finally {
@@ -545,6 +572,23 @@ export default function AutomateConsole(): React.JSX.Element {
       setBusy(null);
     }
   }, [executorHealth, intakeToken, persist, record, records]);
+
+  /** Manual retry of the auto-publish (e.g. the relay was down at signing time). */
+  const publishToRelay = useCallback(async () => {
+    setBusy("publish");
+    setError("");
+    try {
+      if (!record?.intentFile) throw new Error("Sign the intent first.");
+      await publishIntent(JSON.parse(record.intentFile) as RelaySubmission);
+      persist(records.map((r) => (r.address === record.address ? { ...r, deliveredTo: "relay" } : r)));
+      setNotice("Published to the executor network — any executor can run it now.");
+      trackEvent("automate_publish_relay");
+    } catch (cause) {
+      setError(readableError(cause));
+    } finally {
+      setBusy(null);
+    }
+  }, [persist, record, records]);
 
   const exportIntent = useCallback(() => {
     if (!record?.intentFile) return;
@@ -729,11 +773,11 @@ export default function AutomateConsole(): React.JSX.Element {
           </div>
 
           <div className={styles.segment} role="group" aria-label="Execution type">
-            <button type="button" className={mode === "recurring" ? styles.segOn : styles.seg} onClick={() => setMode("recurring")} disabled={busy !== null || record !== null}>
+            <button type="button" className={mode === "recurring" ? styles.segOn : styles.seg} onClick={() => selectMode("recurring")} disabled={busy !== null || record !== null}>
               Recurring
               <em>every X time, N runs</em>
             </button>
-            <button type="button" className={mode === "trigger" ? styles.segOn : styles.seg} onClick={() => setMode("trigger")} disabled={busy !== null || record !== null}>
+            <button type="button" className={mode === "trigger" ? styles.segOn : styles.seg} onClick={() => selectMode("trigger")} disabled={busy !== null || record !== null}>
               Price trigger
               <em>fires once at ±X%</em>
             </button>
@@ -885,7 +929,14 @@ export default function AutomateConsole(): React.JSX.Element {
               )}
               {signed && (
                 <>
-                  <button className="btn btnPrimary" onClick={exportIntent} type="button">Download intent file</button>
+                  {record?.deliveredTo === "relay" ? (
+                    <span className={styles.utilStatus}>✓ published to the executor network — nothing else to do</span>
+                  ) : (
+                    <button data-busy={busy === "publish"} className="btn btnPrimary" disabled={busy !== null} onClick={() => void publishToRelay()} type="button">
+                      {busy === "publish" ? "Publishing…" : "Publish to network"}
+                    </button>
+                  )}
+                  <button className="btn btnGhost" onClick={exportIntent} type="button">Download file</button>
                   <button className="btn btnGhost" onClick={() => void copyIntent()} type="button">Copy JSON</button>
                 </>
               )}
@@ -912,24 +963,20 @@ export default function AutomateConsole(): React.JSX.Element {
                   onClick={() => void sendToExecutor()}
                   type="button"
                 >
-                  {busy === "send" ? "Delivering…" : record?.deliveredTo ? "Send again" : "Send to executor"}
+                  {busy === "send" ? "Delivering…" : record?.deliveredTo === "local-executor" ? "Send again" : "Send to executor"}
                 </button>
-                {record?.deliveredTo && <span className={styles.utilStatus}>✓ delivered to your local executor</span>}
+                {record?.deliveredTo === "local-executor" && <span className={styles.utilStatus}>✓ delivered to your local executor</span>}
               </div>
             </div>
           )}
 
           {signed && (
             <p className={styles.utilStatus}>
-              {executorHealth
-                ? "Or hand the file to any other executor: "
-                : "Drop the file into an executor's intent store (reference daemon: "}
-              <code>~/.openzaps/executor/intents/</code>
-              {executorHealth
-                ? "."
-                : "). Running the daemon on this machine (in a Chromium browser)? A Send button appears here automatically; Safari and Firefox block a page from reaching localhost, so use the file drop there."}{" "}
-              Any executor can submit runs the zap owes; the executor cannot change what runs — and if no
-              executor serves this file, nothing runs. Cancel any time below; cancellation is on-chain and final.
+              Signing publishes your intent to the shared executor network automatically — no files, no setup.
+              The buttons above are fallbacks: run your own executor and point it at the network, or hand the
+              file to any executor directly. Any executor can submit runs the zap owes; none can change what
+              runs, and if no executor serves it, nothing runs. Cancel any time below; cancellation is on-chain
+              and final.
             </p>
           )}
         </section>
