@@ -4,42 +4,49 @@ import { useRef } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 
 import Console from "./Console";
+import AutomateConsole from "./AutomateConsole";
 import { ZapBuilder } from "./ZapBuilder";
 import { DesignHero } from "./DesignHero";
 import buildStyles from "./build.module.css";
 import appStyles from "./app.module.css";
 
 /**
- * The one product surface: design a zap and sign it, same page.
+ * The one product surface: design a zap, sign it, or automate it — same page.
  *
- * Two views, one URL. "Design" is the visual builder — the block palette,
+ * Three views, one URL. "Design" is the visual builder — the block palette,
  * canvas, and readout that used to live at /build. "Sign & run" is the policy
- * console that creates, funds, and executes capsules. The builder's deploy
- * handoff is now a same-page switch: it writes the route/amount/bps into the
- * query string exactly as the old cross-page link did (so the console's
- * importer, old bookmarks, and the /build and /app redirects all keep
- * working) and this wrapper flips the visible view to match.
+ * console that creates, funds, and executes v1.1 capsules. "Automate" is the
+ * v3 console: recurring and price-triggered capsules whose cadence/condition
+ * the contract enforces, executed by permissionless executors for a 1% fee.
+ * The builder's deploy handoff is a same-page switch: it writes the
+ * route/amount/bps into the query string exactly as the old cross-page link
+ * did (so the console's importer, old bookmarks, and the /build and /app
+ * redirects all keep working) and this wrapper flips the visible view to
+ * match.
  *
  * The URL is the single source of truth for the visible view. Tab clicks
  * `router.replace` the `view` param (no history entry per click — Back leaves
  * /zap, it does not replay tab flips), while the builder's handoff `Link`
  * pushes, so Back from a handoff returns to the Design canvas.
  *
- * Both tabpanel wrappers stay in the DOM (so each tab's `aria-controls` always
+ * All tabpanel wrappers stay in the DOM (so each tab's `aria-controls` always
  * points at a real element) but only the ACTIVE panel's content is mounted.
- * The console owns wallet listeners, RPC polling, and localStorage restores in
- * its mount effects; keeping it unmounted while someone drags blocks means
- * none of that runs until it is needed — and mounting it fresh on switch is
- * what makes it read the handoff query at the right moment.
+ * Each console owns wallet listeners, RPC polling, and localStorage restores
+ * in its mount effects; keeping them unmounted while someone drags blocks
+ * means none of that runs until it is needed — and mounting fresh on switch
+ * is what makes the sign console read the handoff query at the right moment.
  */
 
-type View = "design" | "sign";
+type View = "design" | "sign" | "automate";
+
+const VIEW_ORDER: readonly View[] = ["design", "sign", "automate"];
 
 /** What the URL says the visible view should be, or null when it is silent. */
 function impliedView(params: URLSearchParams): View | null {
   const view = params.get("view");
   if (view === "sign") return "sign";
   if (view === "design") return "design";
+  if (view === "automate") return "automate";
   // A deploy handoff or a deep link to a specific route opens the console; a
   // `?d=` share link opens the canvas it encodes.
   if (params.get("src") === "build" || params.get("route")) return "sign";
@@ -53,6 +60,12 @@ export function UseSurface(): React.JSX.Element {
   const pathname = usePathname();
   const designTabRef = useRef<HTMLButtonElement>(null);
   const signTabRef = useRef<HTMLButtonElement>(null);
+  const automateTabRef = useRef<HTMLButtonElement>(null);
+  const tabRefs: Record<View, React.RefObject<HTMLButtonElement | null>> = {
+    design: designTabRef,
+    sign: signTabRef,
+    automate: automateTabRef,
+  };
 
   const view: View = impliedView(new URLSearchParams(searchParams.toString())) ?? "design";
   // Passed down (and used as a key) so a client-side navigation carrying a new
@@ -68,15 +81,20 @@ export function UseSurface(): React.JSX.Element {
 
   /** The WAI-ARIA tabs pattern: arrows move AND activate, Home/End jump. */
   const onTablistKeyDown = (event: React.KeyboardEvent): void => {
+    const index = VIEW_ORDER.indexOf(view);
     const next =
-      event.key === "ArrowRight" || event.key === "ArrowDown" || event.key === "End"
-        ? "sign"
-        : event.key === "ArrowLeft" || event.key === "ArrowUp" || event.key === "Home"
-          ? "design"
-          : null;
+      event.key === "ArrowRight" || event.key === "ArrowDown"
+        ? VIEW_ORDER[Math.min(index + 1, VIEW_ORDER.length - 1)]
+        : event.key === "ArrowLeft" || event.key === "ArrowUp"
+          ? VIEW_ORDER[Math.max(index - 1, 0)]
+          : event.key === "Home"
+            ? VIEW_ORDER[0]
+            : event.key === "End"
+              ? VIEW_ORDER[VIEW_ORDER.length - 1]
+              : null;
     if (!next) return;
     event.preventDefault();
-    (next === "design" ? designTabRef : signTabRef).current?.focus();
+    tabRefs[next].current?.focus();
     select(next);
   };
 
@@ -117,6 +135,20 @@ export function UseSurface(): React.JSX.Element {
             Sign &amp; run
             <em>create, fund, execute</em>
           </button>
+          <button
+            ref={automateTabRef}
+            type="button"
+            role="tab"
+            id="use-tab-automate"
+            aria-selected={view === "automate"}
+            aria-controls="use-panel-automate"
+            tabIndex={view === "automate" ? 0 : -1}
+            className={view === "automate" ? appStyles.segOn : appStyles.seg}
+            onClick={() => select("automate")}
+          >
+            Automate
+            <em>recurring &amp; price triggers</em>
+          </button>
         </div>
       </div>
 
@@ -142,6 +174,14 @@ export function UseSurface(): React.JSX.Element {
         hidden={view !== "sign"}
       >
         {view === "sign" ? <Console /> : null}
+      </div>
+      <div
+        id="use-panel-automate"
+        role="tabpanel"
+        aria-labelledby="use-tab-automate"
+        hidden={view !== "automate"}
+      >
+        {view === "automate" ? <AutomateConsole /> : null}
       </div>
     </div>
   );

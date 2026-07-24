@@ -1565,18 +1565,27 @@
   gap: 0.35rem;
 }
 
+/* ---- /zap tab switcher ---------------------------------------------------- */
+/* Three views now (Design / Sign & run / Automate), but the console's .segment
+   base is a two-column grid — without this the third tab wraps onto its own
+   full-width row. Doubled class for the same cascade reason as the mobile rule
+   below: (0,2,0) beats .segment's (0,1,0) regardless of module chunk order. */
+.useTabs.useTabs {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
 /* ---- /zap tab switcher (mobile) ----------------------------------------- */
-/* The Design / Sign & run tabs reuse the console's segment styling, which
-   stacks its buttons into full-width cards below 640px — the right call for
-   route choices, but the view switcher was eating half the first screen. Two
-   compact columns instead. */
+/* The tabs reuse the console's segment styling, which stacks its buttons into
+   full-width cards below 640px — the right call for route choices, but the
+   view switcher was eating half the first screen. Three compact columns
+   instead. */
 @media (max-width: 640px) {
   /* Doubled class: the console's own mobile rule collapses .segment to one
      column at the same (0,1,0) specificity, and module chunk order is not
      ours to rely on. (0,2,0) wins the cascade either way. */
   .useTabs.useTabs {
     display: grid;
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: 0.5rem;
   }
   .useTabs.useTabs button {

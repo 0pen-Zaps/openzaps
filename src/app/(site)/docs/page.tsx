@@ -93,6 +93,7 @@ export default function DocsPage(): React.JSX.Element {
           <a href="#policy">Policy schema</a>
           <a href="#api">Simulation API</a>
           <a href="#templates">Templates</a>
+          <a href="#automation">Automation (v3)</a>
           <a href="#lifecycle">Execution lifecycle</a>
           <a href="#sdk">SDK surface</a>
           <a href="#security">Security model</a>
@@ -118,7 +119,8 @@ export default function DocsPage(): React.JSX.Element {
             <h2>Quickstart</h2>
             <p>
               The product lives at /zap: the Design view is the visual builder, Sign &amp; run is the console that
-              creates, funds, and executes capsules — one page, two tabs. The builder compiles a design and names
+              creates, funds, and executes v1.1 capsules, and Automate is the v3 console for recurring and
+              price-triggered capsules — one page, three tabs. The builder compiles a design and names
               every guard the live policy does not bind; a design that reduces to a deployed route (swaps, the
               stitched USDG ↔ 0xZAPS route, aeWETH/USDG liquidity provide/withdraw) hands Sign &amp; run a prefilled
               route, amount, and slippage cap. Anything else saves as a design and cannot be deployed today. An
@@ -208,6 +210,50 @@ export default function DocsPage(): React.JSX.Element {
                 </article>
               ))}
             </div>
+          </section>
+
+          <section className={styles.section} id="automation">
+            <h2>Automation &amp; the executor economy (v3)</h2>
+            <p>
+              The v3 capsule adds two standing execution types to the one-shot policy. Both are owner-signed once and
+              condition-gated <em>by the contract</em>, so submission is permissionless: any executor can submit a run
+              the capsule owes, and no executor can submit one it does not.
+            </p>
+            <div className={styles.twoCol}>
+              <article>
+                <h3>Recurring</h3>
+                <p>
+                  One EIP-712 signature authorizes up to <code>maxRuns</code> executions of the frozen route, at least{" "}
+                  <code>interval</code> seconds apart, inside a signed window. Running early reverts
+                  (<code>IntervalNotElapsed</code>); exhaustion consumes the series; <code>invalidateNonce</code>{" "}
+                  cancels it at any time.
+                </p>
+              </article>
+              <article>
+                <h3>Price trigger</h3>
+                <p>
+                  One signature arms one execution against an allowlisted onchain price source. Until the market moves
+                  past the signed threshold the capsule reverts (<code>TriggerNotMet</code>); the submitter cannot
+                  supply a price. The spot threshold is an arming condition, not a fair-value oracle — the signed
+                  net-output floor still bounds every run.
+                </p>
+              </article>
+            </div>
+            <p>
+              <strong>Fees.</strong> Each automated run pays 1% of its measured output at settlement: 80% to the
+              executor that submitted it, 20% to the protocol lottery pot, converted to 0xZAPS through the pinned
+              bounded adapter by a later, permissionless keeper call. Signed floors are enforced <em>net</em> of the
+              fee. Every fee contribution credits
+              lottery tickets to the capsule owner; the pot pays prizes only in 0xZAPS and only to ticket holders —
+              there is no owner drain. Winner selection is a deferred, governance-gated decision until a randomness
+              ADR lands.
+            </p>
+            <p>
+              Build one in the <Link href="/zap?view=automate">Automate tab</Link>. The signed intent exports as a
+              JSON file any executor can serve; the reference executor daemon lives in{" "}
+              <code>executor/</code> in the repository. The v3 contracts are live on Robinhood Chain and, like
+              everything here, pre-external-audit.
+            </p>
           </section>
 
           <section className={styles.section} id="lifecycle">

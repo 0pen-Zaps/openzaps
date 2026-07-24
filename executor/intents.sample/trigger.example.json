@@ -1,0 +1,23 @@
+{
+  "kind": "trigger",
+  "comment": "Example only — fires ONCE when the allowlisted price source reports +10% (1000 bps) above the signed baseline; e.g. 'if 0xZAPS/aeWETH rises 10%, run my frozen buy policy'.",
+  "intent": {
+    "zap": "0x0000000000000000000000000000000000000000",
+    "chainId": "4663",
+    "nonce": "2",
+    "validAfter": "0",
+    "deadline": "1793750400",
+    "priceSource": "0x0000000000000000000000000000000000000000",
+    "baselinePriceX96": "79228162514264337593543950336",
+    "thresholdBps": "1000",
+    "above": true,
+    "recipient": "0x0000000000000000000000000000000000000000",
+    "executor": "0x0000000000000000000000000000000000000000",
+    "maxGas": "1500000",
+    "maxFeePerGas": "2000000000",
+    "policyHash": "0x0000000000000000000000000000000000000000000000000000000000000000",
+    "outAsset": "0x0000000000000000000000000000000000000000",
+    "minOut": "0"
+  },
+  "signature": "0x0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+}

@@ -39,7 +39,8 @@ This is a monorepo. The web app and the Solidity protocol live together.
 | --- | --- |
 | [`src/app/`](src/app) | The Next.js 16 site: landing page, live policy console (`/zap`), Explore feed (`/explore`), docs, token, and API routes. |
 | [`src/lib/`](src/lib) | Chain definitions, protocol addresses and ABIs, the block catalog behind the visual builder, and the deterministic policy simulator. |
-| [`contracts/`](contracts/README.md) | The live v1.1 Solidity protocol, bounded adapters, deploy/smoke scripts, and the Foundry unit / fuzz / invariant / fork suite. **Pre-external-audit.** |
+| [`contracts/`](contracts/README.md) | The live v1.1 Solidity protocol, bounded adapters, deploy/smoke scripts, and the Foundry unit / fuzz / invariant / fork suite. **Pre-external-audit.** The [`v3 candidate`](contracts/src/v3/README.md) adds recurring + price-triggered execution and the executor fee/lottery economy. |
+| [`executor/`](executor/README.md) | The reference **Zap Executor** daemon: watches time and chain, submits owed recurring/triggered runs for 80% of the 1% protocol fee (20% funds the 0xZAPS lottery pot). Watch-only unless a gas key is configured. |
 | [`docs/`](docs) | Architecture Decision Records, the testable invariant catalog, and product/security research the design derives from. |
 
 ## Quickstart

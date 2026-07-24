@@ -133,7 +133,7 @@ type Placed = { node: ChainNode; block: LegoBlock };
  */
 const SOURCE_REJECTIONS: Record<string, string> = {
   "recurring-stream":
-    "Recurring deposit sets a cadence, and a cadence is not expressible in the live policy: the v1.1 capsule holds one signed step that executes once, not a schedule. Nothing onchain would repeat it.",
+    "Recurring deposit sets a cadence, and a cadence is not expressible in the v1.1 policy this canvas deploys: that capsule holds one signed step that executes once, not a schedule. A cadence IS enforceable by the v3 capsule — build it in the Automate tab, where the interval and run count are bound onchain.",
   "pending-rewards":
     "Pending rewards emits a claimable, not tokens. The live route can only spend an ERC-20 amount pulled from the owner wallet, so there is nothing for it to swap.",
 };
@@ -162,9 +162,9 @@ const SINK_REJECTIONS: Record<string, string> = {
 function unenforcedGuardNote(block: LegoBlock, node: ChainNode): string | null {
   switch (block.id) {
     case "guard-oracle":
-      return `Price band (±${node.params.band ?? "?"}%) is designed but not enforced: the v1.1 policy has no oracle precondition, so nothing checks the band before execution.`;
+      return `Price band (±${node.params.band ?? "?"}%) is designed but not enforced here: the v1.1 policy this canvas deploys has no oracle precondition, so nothing checks the band before execution. What the v3 trigger capsule in the Automate tab DOES enforce is a one-sided spot-price threshold on the pinned pool — an arming condition, not this two-sided band.`;
     case "guard-window":
-      return `Time window (${node.params.expiry ?? "?"}) is designed but not enforced: the v1.1 policy has no expiry or cadence field. The capsule stays executable until you withdraw or recover it.`;
+      return `Time window (${node.params.expiry ?? "?"}) is designed but not enforced here: the v1.1 policy has no expiry or cadence field, so this capsule stays executable until you withdraw or recover it. A deadline and cadence ARE bound by the v3 capsule in the Automate tab.`;
     case "guard-private":
       return "Private submission is designed but not enforced: the v1.1 policy cannot bind a submitter, so whoever executes the capsule chooses the mempool path.";
     case "guard-approval":

@@ -74,7 +74,7 @@ export const POLICY_TEMPLATES: PolicyTemplate[] = [
     name: "Recurring DCA",
     short: "Buy a fixed asset on a fixed cadence.",
     description:
-      "Recurring ERC-20 buys, with spend, cadence, recipient, slippage, and relayer fee cap stated before signing. The live v1.1 capsule holds one signed step that executes once, so it cannot carry the cadence.",
+      "Recurring ERC-20 buys, with spend, cadence, recipient, slippage, and relayer fee cap stated before signing. The v1.1 capsule holds one signed step that executes once; the v3 capsule in the Automate tab binds the cadence onchain — one signature, interval and run count enforced by the contract.",
     recommendedModel: "deposit",
     category: "automation",
     production: "ready-preview",
@@ -134,7 +134,7 @@ export const POLICY_TEMPLATES: PolicyTemplate[] = [
     name: "Guarded exit",
     short: "Exit only if risk limits break.",
     description:
-      "An exit triggered by a liquidity or oracle condition. The v1.1 policy has no oracle precondition, so nothing onchain could evaluate the trigger. Blocked in v1 until protective-zap review is complete.",
+      "An exit triggered by a liquidity or oracle condition. Price-conditioned OPTIMIZATION zaps are live via the v3 trigger capsule (Automate tab); protective, liquidation-sensitive exits stay deferred until the protective-zap review completes — a missed protective trigger costs principal, and that class needs its own ADR.",
     recommendedModel: "safe",
     category: "protection",
     production: "deferred",
