@@ -14,16 +14,51 @@
 //   * the maintenance loop — gas self-check + the pot-conversion keeper.
 // They are separate on purpose: a buyZaps stuck in waitForTransactionReceipt (up to 120s) must
 // never delay an owed execution, which is time-critical fee income.
-import { createPublicClient, createWalletClient, defineChain, http } from "viem";
+import { createPublicClient, createWalletClient, createNonceManager, defineChain, fallback, http } from "viem";
+import { jsonRpc } from "viem/nonce";
 import { privateKeyToAccount } from "viem/accounts";
+import { writeFileSync, readFileSync, unlinkSync, existsSync } from "node:fs";
+import { join } from "node:path";
 import { loadConfig, loadExecutorKey } from "./config.mjs";
 import { loadIntents, archiveIntent, readState, writeState } from "./store.mjs";
 import { tick, log } from "./engine.mjs";
 import { checkGas, convertPotFees } from "./keeper.mjs";
+import { loadIntakeToken, startIntake } from "./intake.mjs";
 
 const MAX_SUBMISSION_RECORDS = 200;
 
 const cfg = loadConfig();
+
+/**
+ * Single-instance guard. Two daemons on one intents dir both broadcast every due run (the loser's
+ * tx reverts and burns gas) and race state.json. The intake port is only an accidental mutex — it
+ * vanishes when configs diverge (different intakePort, or 0). A pid lockfile makes it explicit.
+ * Returns a release() to call on clean shutdown.
+ */
+function acquireLock() {
+  const lockFile = join(cfg.stateFile, "..", "executor.lock");
+  if (existsSync(lockFile)) {
+    const pid = Number(readFileSync(lockFile, "utf8").trim());
+    let alive = false;
+    try {
+      process.kill(pid, 0); // signal 0 only probes existence
+      alive = pid !== process.pid;
+    } catch {
+      alive = false; // ESRCH → stale lock from a crashed run
+    }
+    if (alive) {
+      throw new Error(`another executor is already running (pid ${pid}, lock ${lockFile}). Stop it first.`);
+    }
+  }
+  writeFileSync(lockFile, String(process.pid));
+  return () => {
+    try {
+      if (existsSync(lockFile) && readFileSync(lockFile, "utf8").trim() === String(process.pid)) unlinkSync(lockFile);
+    } catch {
+      // Best effort.
+    }
+  };
+}
 
 const chain = defineChain({
   id: cfg.chainId,
@@ -32,13 +67,19 @@ const chain = defineChain({
   rpcUrls: { default: { http: [cfg.rpcUrl] } },
 });
 
-const publicClient = createPublicClient({ chain, transport: http(cfg.rpcUrl) });
+// One flaky endpoint must not idle the bundler: with OPENZAPS_RPC_URLS set, every request tries
+// the URLs in order (viem ranks/falls back per call). Single-URL mode otherwise.
+const transport = cfg.rpcUrls.length > 1 ? fallback(cfg.rpcUrls.map((u) => http(u))) : http(cfg.rpcUrls[0] ?? cfg.rpcUrl);
+
+const publicClient = createPublicClient({ chain, transport });
 
 function buildWalletClient() {
   const key = loadExecutorKey();
   if (!key) return null;
-  const account = privateKeyToAccount(key);
-  return createWalletClient({ account, chain, transport: http(cfg.rpcUrl) });
+  // A shared nonce manager serializes nonce assignment across the two loops (intent + maintenance),
+  // so a submission and a buyZaps that fire close together can never grab the same nonce.
+  const account = privateKeyToAccount(key, { nonceManager: createNonceManager({ source: jsonRpc() }) });
+  return createWalletClient({ account, chain, transport });
 }
 
 async function connectivity() {
@@ -120,8 +161,9 @@ async function main() {
   const command = process.argv[2] ?? "start";
   const walletClient = buildWalletClient();
 
+  const endpointLabel = cfg.rpcUrls.length > 1 ? `${cfg.rpcUrls.length} RPCs (fallback)` : cfg.rpcUrls[0] ?? cfg.rpcUrl;
   const { block } = await connectivity();
-  log("info", `connected to chain ${cfg.chainId} via ${cfg.rpcUrl} (block ${block})`);
+  log("info", `connected to chain ${cfg.chainId} via ${endpointLabel} (block ${block})`);
   log(
     "info",
     walletClient
@@ -144,19 +186,33 @@ async function main() {
     const { ok, bad } = loadIntents(cfg.intentsDir);
     log("info", `intents: ${ok.length} valid (${ok.filter((i) => i.kind === "recurring").length} recurring, ${ok.filter((i) => i.kind === "trigger").length} trigger), ${bad.length} malformed`);
     log("info", `lifetime: ${state.earnings.runs} runs executed, ${state.earnings.conversions} pot conversions`);
+    if (cfg.intakePort > 0) {
+      // The token is a LOCAL capability (this machine only); status is where the operator
+      // retrieves it to paste into the Automate tab's "Send to executor" field.
+      log("info", `intake: http://127.0.0.1:${cfg.intakePort} — token: ${loadIntakeToken(cfg.intakeTokenFile)}`);
+    }
     if (walletClient) await checkGas({ publicClient, walletClient, cfg, announce: true });
     return;
   }
 
-  if (command === "once") {
-    await runPass(walletClient, state);
-    await runMaintenance(walletClient, state);
+  if (command !== "once" && command !== "start") {
+    console.error(`unknown command: ${command} (use start | once | status)`);
+    process.exitCode = 2;
     return;
   }
 
-  if (command !== "start") {
-    console.error(`unknown command: ${command} (use start | once | status)`);
-    process.exitCode = 2;
+  // Both broadcasting commands hold the single-instance lock, so a manual `once` cannot
+  // double-broadcast alongside a running daemon (and two daemons cannot run at all).
+  const release = acquireLock();
+  process.on("exit", release);
+
+  if (command === "once") {
+    try {
+      await runPass(walletClient, state);
+      await runMaintenance(walletClient, state);
+    } finally {
+      release();
+    }
     return;
   }
 
@@ -167,6 +223,16 @@ async function main() {
   };
   process.on("SIGTERM", () => stop("SIGTERM"));
   process.on("SIGINT", () => stop("SIGINT"));
+
+  let intakeServer = null;
+  if (cfg.intakePort > 0) {
+    intakeServer = startIntake({
+      cfg,
+      token: loadIntakeToken(cfg.intakeTokenFile),
+      isExecuting: () => walletClient !== null,
+      countIntents: () => loadIntents(cfg.intentsDir).ok.length,
+    });
+  }
 
   log("info", `loop started — intents every ${cfg.pollMs}ms, maintenance every ${cfg.convertEveryMs}ms`);
 
@@ -196,6 +262,8 @@ async function main() {
   })();
 
   await Promise.all([intentLoop, maintenanceLoop]);
+  intakeServer?.close();
+  release();
 }
 
 main().catch((err) => {

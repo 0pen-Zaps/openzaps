@@ -49,8 +49,18 @@ function safeNumber(name, value, fallback) {
 export function loadConfig() {
   const fileCfg = readJsonIfPresent(join(HOME_DIR, "config.json"));
 
+  // Comma-separated fallback list; the first entry is the primary. A single flaky endpoint must
+  // not idle the bundler, so every URL is tried in order per request (viem fallback transport).
+  const rpcUrlsRaw = process.env.OPENZAPS_RPC_URLS ?? fileCfg.rpcUrls;
+  const rpcUrls = Array.isArray(rpcUrlsRaw)
+    ? rpcUrlsRaw
+    : typeof rpcUrlsRaw === "string"
+      ? rpcUrlsRaw.split(",").map((u) => u.trim()).filter(Boolean)
+      : [];
+
   const cfg = {
     rpcUrl: process.env.OPENZAPS_RPC_URL ?? fileCfg.rpcUrl ?? DEFAULT_RPC_URL,
+    rpcUrls, // empty => single-URL mode on rpcUrl
     chainId: safeNumber("OPENZAPS_CHAIN_ID", process.env.OPENZAPS_CHAIN_ID ?? fileCfg.chainId, ROBINHOOD_CHAIN_ID),
     // How often the loop re-evaluates every stored intent, in milliseconds.
     pollMs: safeNumber("OPENZAPS_POLL_MS", process.env.OPENZAPS_POLL_MS ?? fileCfg.pollMs, 15_000),
@@ -90,6 +100,9 @@ export function loadConfig() {
     gasWarnRuns: safeNumber("OPENZAPS_GAS_WARN_RUNS", process.env.OPENZAPS_GAS_WARN_RUNS ?? fileCfg.gasWarnRuns, 10),
     // Max gas price the executor will ever pay, in wei (griefing guard for our own key).
     maxFeePerGasWei: safeBigInt("OPENZAPS_MAX_FEE_PER_GAS", process.env.OPENZAPS_MAX_FEE_PER_GAS ?? fileCfg.maxFeePerGasWei, 2_000_000_000n),
+    // Intent intake listener (localhost-only HTTP). 0 disables it.
+    intakePort: safeNumber("OPENZAPS_INTAKE_PORT", process.env.OPENZAPS_INTAKE_PORT ?? fileCfg.intakePort, 8477),
+    intakeTokenFile: fileCfg.intakeTokenFile ?? join(HOME_DIR, "intake.token"),
   };
 
   for (const dir of [HOME_DIR, cfg.intentsDir, cfg.doneDir]) {
