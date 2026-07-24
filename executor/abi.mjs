@@ -121,6 +121,16 @@ export const priceSourceAbi = [
   },
 ];
 
+export const erc20Abi = [
+  {
+    type: "function",
+    name: "balanceOf",
+    stateMutability: "view",
+    inputs: [{ name: "", type: "address" }],
+    outputs: [{ name: "", type: "uint256" }],
+  },
+];
+
 export const lotteryPotAbi = [
   {
     type: "function",

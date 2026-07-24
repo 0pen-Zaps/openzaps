@@ -60,10 +60,30 @@ Configuration (all optional) lives in `~/.openzaps/executor/config.json` or env:
 `OPENZAPS_LOTTERY_POT`, `OPENZAPS_MAX_FEE_PER_GAS`. Defaults target Robinhood Chain (4663) via
 `https://rpc.mainnet.chain.robinhood.com`.
 
+## Pot-conversion keeper
+
+The 20% of each fee that funds the lottery pot arrives as 0xZAPS on buy runs, but as **aeWETH** on
+sell runs — and aeWETH just sits in the pot until someone calls the permissionless `buyZaps` to
+convert it. The daemon does this on a cadence (`OPENZAPS_CONVERT_EVERY_MS`, default 5 min): it reads
+the pot's fee-asset balance and the live pool price, floors the conversion output by
+`OPENZAPS_CONVERT_SLIPPAGE_BPS` (default 3%), and — with a signer — submits `buyZaps`, turning the
+fee into the round's 0xZAPS prize. Below `OPENZAPS_CONVERT_MIN_WEI` (default 0.001 aeWETH) it idles
+rather than pay gas to convert dust. Watch-only mode simulates and logs what it would convert.
+
+Relevant config: `OPENZAPS_POOL_PRICE_SOURCE`, `OPENZAPS_FEE_ASSET`, `OPENZAPS_CONVERT_MIN_WEI`,
+`OPENZAPS_CONVERT_SLIPPAGE_BPS`, `OPENZAPS_CONVERT_EVERY_MS` (all default to the live deployment).
+
+## Gas self-monitoring
+
+An executing daemon watches its own gas wallet each pass and logs a **LOW** warning when it can
+afford fewer than `OPENZAPS_GAS_WARN_RUNS` (default 10) more runs, or an **EMPTY** error when it
+cannot fund one — so it never silently stops broadcasting. `node executor/index.mjs status` prints
+lifetime runs executed and pot conversions alongside the current gas health.
+
 ## What an executor can and cannot do
 
 Can: submit a run the schedule already owes; submit a trigger the market already arms; earn the
-fee; convert pot fee assets to 0xZAPS via the pinned bounded adapter.
+fee; convert pot fee assets to 0xZAPS via the pinned bounded adapter (permissionless `buyZaps`).
 
 Cannot: change route, amounts, recipient, or out-asset (frozen policy + signature); run early
 (`IntervalNotElapsed`), re-run (`NonceReplay`), fire an unarmed trigger (`TriggerNotMet`), pass

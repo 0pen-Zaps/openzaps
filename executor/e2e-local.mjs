@@ -21,6 +21,7 @@ import {
 } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { tick, log } from "./engine.mjs";
+import { convertPotFees } from "./keeper.mjs";
 import { loadIntents, archiveIntent } from "./store.mjs";
 
 const RPC = process.env.E2E_RPC ?? "http://127.0.0.1:8547";
@@ -99,6 +100,7 @@ async function main() {
   await write(allowlist, "setToken", [zapsToken.address, true]);
   await write(pot, "setFactory", [factory.address]);
   await write(zapsToken, "mint", [adapter.address, parseEther("1000000")]);
+  await write(zapsToken, "mint", [buyAdapter.address, parseEther("1000000")]); // pot buyZaps reserve
 
   // ---- create + fund a zap owned by the OWNER key ----
   const amountIn = parseEther("100");
@@ -267,6 +269,35 @@ async function main() {
   assertEq(await zapsBal(ownerAccount.address), parseEther("297"), "recipient received net output of all 3 runs");
   assertEq(await read(pot, "tickets", [1n, ownerAccount.address]), parseEther("0.6"), "owner holds lottery tickets equal to contributed fees");
   assertEq(await read(pot, "roundPrize", [1n]), parseEther("0.6"), "round 1 prize accrued in 0xZAPS");
+
+  // ---- pot-conversion keeper: a sell run leaves aeWETH-denominated fees the keeper must convert ----
+  // The prior runs settled in 0xZAPS (credited straight to the prize). Simulate a fee asset (aeWETH)
+  // accruing in the pot and drive the real keeper: it reads the price source, floors output by
+  // slippage, and calls the permissionless buyZaps to turn the fee into 0xZAPS prize.
+  const feeAsset = await deploy("MockERC20.sol", "MockERC20", ["Fee", "FEE", 18]);
+  await write(feeAsset, "mint", [pot.address, parseEther("1")]); // 1 aeWETH of accrued fee
+  const keeperPrice = await deploy("MockPriceSource.sol", "MockPriceSource");
+  await write(keeperPrice, "setPrice", [1n << 96n]); // 1 0xZAPS per fee-asset (Q96), matches the 1:1 mock adapter
+
+  const keeperCfg = {
+    chainId: 31337,
+    maxFeePerGasWei: 1_000_000_000_000n,
+    lotteryPot: pot.address,
+    poolPriceSource: keeperPrice.address,
+    feeAsset: feeAsset.address,
+    convertMinWei: parseEther("0.001"),
+    convertSlippageBps: 300,
+  };
+
+  const prizeBefore = await read(pot, "roundPrize", [1n]);
+  const conv = await convertPotFees({ publicClient, walletClient: executorWallet, cfg: keeperCfg });
+  assertEq(conv.outcome, "converted", "keeper converts accrued fee asset to 0xZAPS via buyZaps");
+  assertEq(await read(pot, "roundPrize", [1n]), prizeBefore + parseEther("1"), "converted 0xZAPS added to the round prize");
+
+  const feeBalAfter = await publicClient.readContract({ address: feeAsset.address, abi: feeAsset.abi, functionName: "balanceOf", args: [pot.address] });
+  assertEq(feeBalAfter, 0n, "pot fully drained of the fee asset");
+  const idle = await convertPotFees({ publicClient, walletClient: executorWallet, cfg: keeperCfg });
+  assertEq(idle.outcome, "idle", "keeper idles when the pot holds no convertible fee");
 
   log(failures ? "error" : "info", failures ? `E2E FAILED — ${failures} assertion(s)` : "E2E PASSED — all assertions green");
   process.exitCode = failures ? 1 : 0;
