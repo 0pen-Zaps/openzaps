@@ -24,6 +24,14 @@ import { loadIntents, archiveIntent, readState, writeState } from "./store.mjs";
 import { tick, log } from "./engine.mjs";
 import { checkGas, convertPotFees } from "./keeper.mjs";
 import { loadIntakeToken, startIntake } from "./intake.mjs";
+import { fetchRelayIntents, markRelayConsumed } from "./relay-source.mjs";
+
+let relayWarned = false; // dedupe the relay-poll failure warning to once per outage
+
+/** Dedup key: an intent is uniquely a (kind, seriesId|nonce). */
+function intentKey(item) {
+  return `${item.kind}:${item.kind === "recurring" ? item.intent.seriesId : item.intent.nonce}`;
+}
 
 const MAX_SUBMISSION_RECORDS = 200;
 
@@ -102,17 +110,46 @@ function recordSubmission(state, key, record) {
   }
 }
 
-/** One intent pass: evaluate every stored intent, submit owed runs, persist what happened. */
+/** One intent pass: evaluate every intent (local files + the shared relay pool), submit owed runs. */
 async function runPass(walletClient, state) {
   const { ok, bad } = loadIntents(cfg.intentsDir);
   for (const b of bad) log("warn", `unparseable intent ${b.file}: ${b.error}`);
+
+  // Discover intents published to the shared relay by any owner — the "connected" pool.
+  let intents = ok;
+  if (cfg.relayUrl) {
+    // Bounded: a hung relay must never stall the intent loop (owed runs are time-critical).
+    const abort = new AbortController();
+    const timer = setTimeout(() => abort.abort(), 8_000);
+    try {
+      const relayed = await fetchRelayIntents(cfg.relayUrl, abort.signal);
+      for (const b of relayed.bad) log("warn", `relay intent ${b.file}: ${b.error}`);
+      // De-dupe: a local file and a relay row for the same (kind, seriesId/nonce) are one intent.
+      const localKeys = new Set(ok.map(intentKey));
+      intents = [...ok, ...relayed.ok.filter((i) => !localKeys.has(intentKey(i)))];
+      relayWarned = false; // recovered
+    } catch (err) {
+      if (!relayWarned) {
+        log("warn", `relay poll failed (file store still active): ${err.shortMessage ?? err.message}`);
+        relayWarned = true;
+      }
+    } finally {
+      clearTimeout(timer);
+    }
+  }
 
   const results = await tick({
     publicClient,
     walletClient,
     cfg,
-    intents: ok,
-    archive: (item, reason) => archiveIntent(item, cfg.doneDir, reason),
+    intents,
+    // File intents archive by renaming; a relay intent is instead marked consumed on the relay
+    // (best-effort) so it drops out of the shared open list once its nonce is spent on-chain.
+    archive: (item, reason) => {
+      if (item.path) return archiveIntent(item, cfg.doneDir, reason);
+      if (item.source === "relay" && item.relayId && cfg.relayUrl) void markRelayConsumed(cfg.relayUrl, item.relayId);
+      return `relay:${item.relayId ?? item.file}`;
+    },
   });
 
   for (const r of results) {
@@ -171,6 +208,7 @@ async function main() {
       : "no executor key configured — WATCH-ONLY mode (simulates, never broadcasts)",
   );
   log("info", `intent store: ${cfg.intentsDir}`);
+  log("info", cfg.relayUrl ? `relay: polling ${cfg.relayUrl}/api/intents for shared intents` : "relay: disabled (local file store only)");
   log(
     "info",
     cfg.lotteryPot

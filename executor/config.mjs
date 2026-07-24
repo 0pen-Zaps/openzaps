@@ -103,6 +103,9 @@ export function loadConfig() {
     // Intent intake listener (localhost-only HTTP). 0 disables it.
     intakePort: safeNumber("OPENZAPS_INTAKE_PORT", process.env.OPENZAPS_INTAKE_PORT ?? fileCfg.intakePort, 8477),
     intakeTokenFile: fileCfg.intakeTokenFile ?? join(HOME_DIR, "intake.token"),
+    // The hosted relay to poll for shared intents. Empty string disables relay polling (local
+    // file store only). Defaults to the live site so the daemon discovers intents published there.
+    relayUrl: (process.env.OPENZAPS_RELAY_URL ?? fileCfg.relayUrl ?? "https://www.0xzaps.com").replace(/\/$/, ""),
   };
 
   for (const dir of [HOME_DIR, cfg.intentsDir, cfg.doneDir]) {

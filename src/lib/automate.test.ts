@@ -4,6 +4,7 @@ import { parseEther, type Address } from "viem";
 import {
   INTERVAL_PRESETS,
   THRESHOLD_PRESETS,
+  defaultSlippageBps,
   describeSeries,
   draftRecurringIntent,
   draftTriggerIntent,
@@ -166,5 +167,14 @@ describe("intentFileName", () => {
   it("derives a stable per-capsule name", () => {
     expect(intentFileName("recurring", ZAP)).toBe("openzap-recurring-9941dd72.json");
     expect(intentFileName("trigger", ZAP)).toBe("openzap-trigger-9941dd72.json");
+  });
+});
+
+describe("defaultSlippageBps", () => {
+  it("gives recurring a wider band than a one-shot trigger", () => {
+    // A recurring series signs ONE floor for many runs over time, so it must tolerate more drift.
+    expect(defaultSlippageBps("recurring")).toBeGreaterThan(defaultSlippageBps("trigger"));
+    expect(defaultSlippageBps("recurring")).toBe(500);
+    expect(defaultSlippageBps("trigger")).toBe(200);
   });
 });
