@@ -69,7 +69,16 @@ const publicClient = createPublicClient({ chain: robinhoodChain, transport: http
 const STORAGE_KEY = "openzap:v3:automations";
 const MAX_SAVED_AUTOMATIONS = 5;
 
-type BusyAction = "connect" | "create" | "fund" | "sign" | "cancel" | "recover" | "refresh" | null;
+type BusyAction = "connect" | "create" | "fund" | "sign" | "cancel" | "recover" | "refresh" | "send" | null;
+
+/** The reference daemon's localhost intake (executor/intake.mjs). Probed only after signing. */
+const EXECUTOR_INTAKE_URL = "http://127.0.0.1:8477";
+const INTAKE_TOKEN_STORAGE_KEY = "openzap:executor:intake-token";
+
+interface ExecutorHealth {
+  executing: boolean;
+  chainId: number;
+}
 
 /** A signed automation, persisted locally. The intent file IS the artifact the executor consumes. */
 interface AutomationRecord {
@@ -85,6 +94,8 @@ interface AutomationRecord {
   terms?: string;
   /** Set once the standing intent is signed: the exact executor intent-file JSON. */
   intentFile?: string;
+  /** Set once handed to a local executor, so the UI stops implying it still needs delivery. */
+  deliveredTo?: string;
 }
 
 interface SeriesStatus {
@@ -151,6 +162,8 @@ export default function AutomateConsole(): React.JSX.Element {
   const [selected, setSelected] = useState<Address | null>(null);
   const [loaded, setLoaded] = useState<LoadedState | null>(null);
   const [pot, setPot] = useState<PotStatus | null>(null);
+  const [executorHealth, setExecutorHealth] = useState<ExecutorHealth | null>(null);
+  const [intakeToken, setIntakeToken] = useState("");
   const loadEpochRef = useRef(0);
 
   const configured = openZapV3Configured();
@@ -437,6 +450,101 @@ export default function AutomateConsole(): React.JSX.Element {
       setBusy(null);
     }
   }, [account, interval, persist, record, recordRoute, records, slippageBps, threshold, validDays]);
+
+  // ---- local executor intake (reference daemon on this machine) ----
+
+  // Probe once signed, then KEEP probing every few seconds until a daemon answers — the realistic
+  // flow is "sign, then start the daemon", so a one-shot probe on the `signed` edge would never
+  // notice a daemon that comes up later. Stops polling once detected. A failed probe is the NORMAL
+  // case (no local daemon) and renders as nothing.
+  useEffect(() => {
+    if (!signed || executorHealth) return;
+    let live = true;
+    const probe = async () => {
+      const abort = new AbortController();
+      const timer = setTimeout(() => abort.abort(), 1_500);
+      try {
+        const res = await fetch(`${EXECUTOR_INTAKE_URL}/health`, { signal: abort.signal });
+        const body = res.ok ? ((await res.json()) as { ok?: boolean; executing?: boolean; chainId?: number }) : null;
+        if (live && body?.ok) setExecutorHealth({ executing: body.executing === true, chainId: Number(body.chainId) });
+      } catch {
+        // No daemon reachable (the common case, and on Safari/Firefox where https→http localhost is
+        // blocked) — leave it null and try again on the next tick.
+      } finally {
+        clearTimeout(timer);
+      }
+    };
+    void probe();
+    const interval = setInterval(() => void probe(), 5_000);
+    return () => {
+      live = false;
+      clearInterval(interval);
+    };
+  }, [signed, executorHealth]);
+
+  useEffect(() => {
+    try {
+      // sessionStorage, not localStorage: the intake token is a local-machine capability, and
+      // scoping it to the tab session keeps an XSS on the public origin from exfiltrating a durable
+      // one. The small cost is re-pasting it in a new session.
+      const saved = window.sessionStorage.getItem(INTAKE_TOKEN_STORAGE_KEY);
+      if (saved) Promise.resolve().then(() => setIntakeToken(saved));
+    } catch {
+      // Storage unavailable — the field just starts empty.
+    }
+  }, []);
+
+  const updateIntakeToken = useCallback((value: string) => {
+    setIntakeToken(value);
+    try {
+      window.sessionStorage.setItem(INTAKE_TOKEN_STORAGE_KEY, value);
+    } catch {
+      // Storage unavailable — the value lives only in component state.
+    }
+  }, []);
+
+  const sendToExecutor = useCallback(async () => {
+    setBusy("send");
+    setError("");
+    try {
+      if (!record?.intentFile) throw new Error("Sign the intent first.");
+      if (!intakeToken.trim()) throw new Error("Paste the intake token (run `node executor/index.mjs status` to see it).");
+      if (executorHealth && executorHealth.chainId !== ROBINHOOD_CHAIN_ID) {
+        throw new Error(`Local executor is on chain ${executorHealth.chainId}, not ${ROBINHOOD_CHAIN_ID}. It would reject this intent.`);
+      }
+      // Bounded like the probe: a wedged daemon must not pin `busy` and freeze every other button.
+      const abort = new AbortController();
+      const timer = setTimeout(() => abort.abort(), 5_000);
+      let res: Response;
+      try {
+        res = await fetch(`${EXECUTOR_INTAKE_URL}/intents`, {
+          method: "POST",
+          headers: { "content-type": "application/json", authorization: `Bearer ${intakeToken.trim()}` },
+          body: record.intentFile,
+          signal: abort.signal,
+        });
+      } finally {
+        clearTimeout(timer);
+      }
+      if (res.status === 401) throw new Error("The executor rejected the token — copy it from `node executor/index.mjs status`.");
+      if (!res.ok) {
+        const body = (await res.json().catch(() => null)) as { error?: string } | null;
+        throw new Error(body?.error ?? `Executor refused the intent (HTTP ${res.status}).`);
+      }
+      const body = (await res.json()) as { stored: string };
+      persist(records.map((r) => (r.address === record.address ? { ...r, deliveredTo: "local-executor" } : r)));
+      setNotice(`Intent delivered to your local executor (${body.stored}) — it takes over from here.`);
+      trackEvent("automate_send_executor");
+    } catch (cause) {
+      if (cause instanceof DOMException && cause.name === "AbortError") {
+        setError("The local executor did not respond in time. Is the daemon healthy?");
+      } else {
+        setError(readableError(cause));
+      }
+    } finally {
+      setBusy(null);
+    }
+  }, [executorHealth, intakeToken, persist, record, records]);
 
   const exportIntent = useCallback(() => {
     if (!record?.intentFile) return;
@@ -784,12 +892,44 @@ export default function AutomateConsole(): React.JSX.Element {
             </FlowStep>
           </div>
 
+          {signed && executorHealth && (
+            <div className={styles.formGrid}>
+              <Field label={`Local executor detected${executorHealth.executing ? "" : " (watch-only — it will simulate, not broadcast)"}`}>
+                <input
+                  className={styles.input}
+                  type="password"
+                  placeholder="intake token — from `node executor/index.mjs status`"
+                  value={intakeToken}
+                  onChange={(event) => updateIntakeToken(event.target.value)}
+                  autoComplete="off"
+                />
+              </Field>
+              <div className={styles.flowActions}>
+                <button
+                  data-busy={busy === "send"}
+                  className="btn btnPrimary"
+                  disabled={busy !== null || !intakeToken.trim()}
+                  onClick={() => void sendToExecutor()}
+                  type="button"
+                >
+                  {busy === "send" ? "Delivering…" : record?.deliveredTo ? "Send again" : "Send to executor"}
+                </button>
+                {record?.deliveredTo && <span className={styles.utilStatus}>✓ delivered to your local executor</span>}
+              </div>
+            </div>
+          )}
+
           {signed && (
             <p className={styles.utilStatus}>
-              Drop the file into an executor&apos;s intent store (reference daemon:{" "}
-              <code>~/.openzaps/executor/intents/</code>). Any executor can submit runs the capsule owes; the
-              executor cannot change what runs — and if no executor serves this file, nothing runs. Cancel any time
-              below; cancellation is on-chain and final.
+              {executorHealth
+                ? "Or hand the file to any other executor: "
+                : "Drop the file into an executor's intent store (reference daemon: "}
+              <code>~/.openzaps/executor/intents/</code>
+              {executorHealth
+                ? "."
+                : "). Running the daemon on this machine (in a Chromium browser)? A Send button appears here automatically; Safari and Firefox block a page from reaching localhost, so use the file drop there."}{" "}
+              Any executor can submit runs the capsule owes; the executor cannot change what runs — and if no
+              executor serves this file, nothing runs. Cancel any time below; cancellation is on-chain and final.
             </p>
           )}
         </section>
@@ -1085,6 +1225,7 @@ function readAutomations(owner: Address): AutomationRecord[] {
           plannedRuns: typeof r.plannedRuns === "number" && r.plannedRuns >= 1 ? Math.trunc(r.plannedRuns) : undefined,
           terms: typeof r.terms === "string" ? r.terms : undefined,
           intentFile: typeof r.intentFile === "string" ? r.intentFile : undefined,
+          deliveredTo: typeof r.deliveredTo === "string" ? r.deliveredTo : undefined,
         } satisfies AutomationRecord];
       } catch {
         return [];

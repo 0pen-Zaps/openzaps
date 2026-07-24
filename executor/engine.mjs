@@ -50,6 +50,8 @@ export async function evaluateTrigger(client, item, nowSec) {
   }
   if (nowSec > intent.deadline) return { status: "expired", detail: `deadline ${intent.deadline} passed` };
   if (nowSec < intent.validAfter) return { status: "waiting", detail: `starts at ${intent.validAfter}` };
+  // A zero baseline is malformed (the capsule rejects it too) — guard before it divides by zero below.
+  if (intent.baselinePriceX96 <= 0n) return { status: "blocked", detail: "baselinePriceX96 is zero — malformed trigger" };
 
   let price;
   try {
@@ -106,6 +108,20 @@ export async function submitExecution(publicClient, walletClient, item, cfg) {
   }
 
   const feeCap = intent.maxFeePerGas < cfg.maxFeePerGasWei ? intent.maxFeePerGas : cfg.maxFeePerGasWei;
+
+  // Base-fee guard BEFORE broadcast. simulateContract runs eth_call at gasprice 0, so it cannot
+  // catch a feeCap below the live base fee — the tx would broadcast, sit unmineable at the next
+  // nonce, and every subsequent pass would stack another stuck tx behind it (nonce-lane wedge).
+  // Skip instead: the run stays due and retries when the base fee falls back under the cap.
+  try {
+    const base = (await publicClient.getBlock({ blockTag: "pending" })).baseFeePerGas;
+    if (base !== null && base !== undefined && base > feeCap) {
+      return { outcome: "gas-above-cap", detail: `base fee ${base} > cap ${feeCap} — deferring (would not mine)` };
+    }
+  } catch {
+    // Non-1559 chain or a read blip: fall through and let the send attempt decide.
+  }
+
   try {
     // Explicit priority fee capped by the fee ceiling: without it, a node-suggested tip above the
     // cap makes viem reject the request and the submission stalls forever.
@@ -124,27 +140,41 @@ export async function submitExecution(publicClient, walletClient, item, cfg) {
 
 const EVALUATORS = { recurring: evaluateRecurring, trigger: evaluateTrigger };
 
-/** One full pass over the store. Returns per-intent results for status/logging. */
+/**
+ * One full pass over the store. EVALUATION fans out concurrently — it is all reads, and with many
+ * intents a sequential scan would let due runs go stale behind slow RPC round-trips. SUBMISSION
+ * stays strictly sequential: one wallet means one nonce lane, and parallel writeContract calls
+ * would race the nonce and reject each other. Returns per-intent results for status/logging.
+ */
 export async function tick({ publicClient, walletClient, cfg, intents, archive }) {
   // The contract gates on block.timestamp, so "now" must be CHAIN time, not the wall clock —
   // the two can diverge (chain lag, or a warped local test chain).
   const nowSec = (await publicClient.getBlock({ blockTag: "latest" })).timestamp;
+
+  const evaluated = await Promise.all(
+    intents.map(async (item) => {
+      const label = `${item.kind}:${item.file}`;
+      try {
+        if (BigInt(item.intent.chainId) !== BigInt(cfg.chainId)) {
+          return { item, label, result: { status: "blocked", detail: `intent chainId ${item.intent.chainId} != ${cfg.chainId}` } };
+        }
+        return { item, label, result: await EVALUATORS[item.kind](publicClient, item, nowSec) };
+      } catch (err) {
+        return { item, label, result: { status: "error", detail: err.shortMessage ?? err.message } };
+      }
+    }),
+  );
+
   const results = [];
-  for (const item of intents) {
-    const label = `${item.kind}:${item.file}`;
+  for (const { item, label, result } of evaluated) {
     try {
-      if (BigInt(item.intent.chainId) !== BigInt(cfg.chainId)) {
-        results.push({ label, status: "blocked", detail: `intent chainId ${item.intent.chainId} != ${cfg.chainId}` });
+      if (result.status === "finished" || result.status === "expired") {
+        const archived = archive(item, result.status);
+        results.push({ label, ...result, detail: `${result.detail} — archived to ${archived}` });
         continue;
       }
-      const evaluation = await EVALUATORS[item.kind](publicClient, item, nowSec);
-      if (evaluation.status === "finished" || evaluation.status === "expired") {
-        const archived = archive(item, evaluation.status);
-        results.push({ label, ...evaluation, detail: `${evaluation.detail} — archived to ${archived}` });
-        continue;
-      }
-      if (evaluation.status !== "due") {
-        results.push({ label, ...evaluation });
+      if (result.status !== "due") {
+        results.push({ label, ...result });
         continue;
       }
       const submission = await submitExecution(publicClient, walletClient, item, cfg);

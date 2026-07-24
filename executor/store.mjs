@@ -39,8 +39,12 @@ const KIND_FIELDS = {
 
 function coerce(name, rule, value) {
   if (rule === "bigint") {
-    if (typeof value !== "string" && typeof value !== "number") {
-      throw new Error(`field ${name}: expected string/number, got ${typeof value}`);
+    // MUST be a decimal string. A JSON number cannot hold a uint256 without silent precision loss
+    // (e.g. 2^96-1 round-trips wrong through a JS double), which would corrupt the signed value the
+    // capsule re-hashes — so a numeric type is rejected outright, not coerced. The app always
+    // serializes these as strings (serializeIntentFile), so this only rejects malformed input.
+    if (typeof value !== "string" || !/^[0-9]+$/.test(value)) {
+      throw new Error(`field ${name}: expected a decimal string, got ${typeof value}`);
     }
     return BigInt(value);
   }
@@ -52,9 +56,13 @@ function coerce(name, rule, value) {
   return value;
 }
 
-/** Parse + validate one intent file. Throws with a precise message on any deviation. */
-export function parseIntentFile(path) {
-  const raw = JSON.parse(readFileSync(path, "utf8"));
+/**
+ * Validate a raw intent OBJECT (already JSON-parsed). Throws with a precise message on any
+ * deviation. Shared by the file loader below and the intake listener — one schema gate,
+ * regardless of how an intent arrives.
+ */
+export function validateIntentObject(raw) {
+  if (typeof raw !== "object" || raw === null) throw new Error("intent payload must be a JSON object");
   const kind = raw.kind;
   if (kind !== "recurring" && kind !== "trigger") throw new Error(`kind must be "recurring" or "trigger"`);
   if (typeof raw.signature !== "string" || !HEX_SIG.test(raw.signature)) throw new Error("signature: malformed");
@@ -65,7 +73,14 @@ export function parseIntentFile(path) {
     if (!(name in raw.intent)) throw new Error(`intent.${name}: missing`);
     intent[name] = coerce(name, rule, raw.intent[name]);
   }
-  return { file: basename(path), path, kind, intent, signature: raw.signature };
+  return { kind, intent, signature: raw.signature };
+}
+
+/** Parse + validate one intent file. Throws with a precise message on any deviation. */
+export function parseIntentFile(path) {
+  const raw = JSON.parse(readFileSync(path, "utf8"));
+  const { kind, intent, signature } = validateIntentObject(raw);
+  return { file: basename(path), path, kind, intent, signature };
 }
 
 /** Load every parseable intent; report the broken ones instead of dying on them. */

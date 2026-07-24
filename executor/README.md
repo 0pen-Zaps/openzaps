@@ -31,7 +31,7 @@ node executor/index.mjs once     # one evaluation pass
 node executor/index.mjs start    # the loop (what launchd runs)
 ```
 
-Host it on this machine (macOS LaunchAgent, restarts on crash and on boot):
+Host it on this machine (macOS LaunchAgent, restarts on crash and at login):
 
 ```bash
 ./executor/install-launchd.sh          # install + start
@@ -58,7 +58,20 @@ cancelled, or expired intents are archived to `~/.openzaps/executor/done/`, neve
 Configuration (all optional) lives in `~/.openzaps/executor/config.json` or env:
 `OPENZAPS_RPC_URL`, `OPENZAPS_CHAIN_ID`, `OPENZAPS_POLL_MS`, `OPENZAPS_INTENTS_DIR`,
 `OPENZAPS_LOTTERY_POT`, `OPENZAPS_MAX_FEE_PER_GAS`. Defaults target Robinhood Chain (4663) via
-`https://rpc.mainnet.chain.robinhood.com`.
+`https://rpc.mainnet.chain.robinhood.com`. Set `OPENZAPS_RPC_URLS` (comma-separated) to run on a
+fallback transport — every request tries the endpoints in order, so one flaky RPC never idles the
+bundler.
+
+## Intent intake (no more file shuffling)
+
+The daemon runs a localhost-only HTTP listener (`OPENZAPS_INTAKE_PORT`, default 8477; `0`
+disables): the Automate tab detects it after you sign and offers **Send to executor**, delivering
+the signed intent straight into the store. Auth is a bearer token minted once into
+`~/.openzaps/executor/intake.token` (chmod 600) — `node executor/index.mjs status` prints it;
+paste it into the UI field one time. Bound to `127.0.0.1`, CORS-scoped to the OpenZaps origins,
+schema-validated on arrival, and chain-checked — a hostile or malformed payload gets a 4xx and
+nothing is written. Everything the file drop enforces still applies: the capsule re-verifies every
+intent on-chain, so intake spam can only waste a simulation.
 
 ## Pot-conversion keeper
 
