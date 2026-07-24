@@ -309,7 +309,7 @@ export default function AutomateConsole(): React.JSX.Element {
         publicClient.readContract({ address: predicted, abi: openZapV3Abi, functionName: "policyHash" }),
       ]);
       if (code !== expectedCloneRuntime(OPENZAP_V3_CONTRACTS.implementation)) {
-        throw new Error("Deployed capsule bytecode does not match the v3 implementation. Do not fund it.");
+        throw new Error("Deployed zap bytecode does not match the v3 implementation. Do not fund it.");
       }
 
       const next: AutomationRecord = {
@@ -323,7 +323,7 @@ export default function AutomateConsole(): React.JSX.Element {
       };
       persist([next, ...records].slice(0, MAX_SAVED_AUTOMATIONS));
       setSelected(predicted);
-      setNotice(`v3 capsule created and verified at ${shortAddress(predicted)}. Fund it next.`);
+      setNotice(`v3 zap created and verified at ${shortAddress(predicted)}. Fund it next.`);
       trackEvent("automate_create", { mode });
     } catch (cause) {
       setError(readableError(cause));
@@ -337,15 +337,15 @@ export default function AutomateConsole(): React.JSX.Element {
     setError("");
     try {
       const owner = requireAccount(account);
-      if (!record || !recordRoute) throw new Error("Create a capsule first.");
+      if (!record || !recordRoute) throw new Error("Create a zap first.");
       // Fresh reads, never React state: a stale balance here is a double-funding, not a stale pixel.
       const fresh = await loadAutomationStatus(record, recordRoute);
-      if (fresh.balance === null) throw new Error("Capsule balance is unreadable right now. Try again.");
+      if (fresh.balance === null) throw new Error("Zap balance is unreadable right now. Try again.");
       const target = remainingFundingTarget(record, fresh.status);
       const missing = target - fresh.balance;
       if (missing <= 0n) {
         await applyLoad(record);
-        setNotice("Capsule already holds everything the remaining runs can spend.");
+        setNotice("Your zap already holds everything the remaining runs can spend.");
         return;
       }
       const wallet = await requireWallet(owner);
@@ -359,7 +359,7 @@ export default function AutomateConsole(): React.JSX.Element {
       const hash = await wallet.writeContract(request);
       await publicClient.waitForTransactionReceipt({ hash });
       await applyLoad(record);
-      setNotice(`Funded ${formatToken(missing, recordRoute.tokenIn.decimals)} ${recordRoute.tokenIn.symbol} into the capsule.`);
+      setNotice(`Funded ${formatToken(missing, recordRoute.tokenIn.decimals)} ${recordRoute.tokenIn.symbol} into the zap.`);
       trackEvent("automate_fund");
     } catch (cause) {
       setError(readableError(cause));
@@ -373,7 +373,7 @@ export default function AutomateConsole(): React.JSX.Element {
     setError("");
     try {
       const owner = requireAccount(account);
-      if (!record || !recordRoute) throw new Error("Create a capsule first.");
+      if (!record || !recordRoute) throw new Error("Create a zap first.");
       if (recordRoute.quote.source !== "v4") throw new Error("Automation supports the bounded pool routes only.");
       const wallet = await requireWallet(owner);
       const perRun = BigInt(record.amountPerRun);
@@ -442,7 +442,7 @@ export default function AutomateConsole(): React.JSX.Element {
 
       // Persisting swaps in a NEW record object, so the status effect reloads on its own.
       persist(records.map((r) => (r.address === record.address ? { ...r, intentFile: file, terms } : r)));
-      setNotice("Standing intent signed. Export the intent file and hand it to an executor — the capsule enforces everything else.");
+      setNotice("Standing intent signed. Export the intent file and hand it to an executor — the zap enforces everything else.");
       trackEvent("automate_sign", { mode: record.mode });
     } catch (cause) {
       setError(readableError(cause));
@@ -612,7 +612,7 @@ export default function AutomateConsole(): React.JSX.Element {
     setError("");
     try {
       const owner = requireAccount(account);
-      if (!record || !recordRoute) throw new Error("No capsule selected.");
+      if (!record || !recordRoute) throw new Error("No zap selected.");
       const wallet = await requireWallet(owner);
       const { request } = await publicClient.simulateContract({
         account: owner,
@@ -638,9 +638,9 @@ export default function AutomateConsole(): React.JSX.Element {
   const stepLabel = !account
     ? "1. Connect wallet"
     : !record
-      ? "2. Create capsule"
+      ? "2. Create zap"
       : !funded
-        ? "3. Fund capsule"
+        ? "3. Fund zap"
         : !signed
           ? "4. Sign standing intent"
           : "Automation armed";
@@ -649,9 +649,9 @@ export default function AutomateConsole(): React.JSX.Element {
   const executorPct = Number(EXECUTOR_SHARE_BPS) / 100;
 
   const fundingDetail = !record || !recordRoute
-    ? "Transfer exactly what the automation will spend. Nothing else can leave the capsule."
+    ? "Transfer exactly what the automation will spend. Nothing else can leave the zap."
     : capsuleBalance === null
-      ? "Capsule balance is unavailable — refresh before funding. Funding is disabled until the balance reads."
+      ? "Zap balance is unavailable — refresh before funding. Funding is disabled until the balance reads."
       : `Remaining target ${formatToken(remainingTarget, recordRoute.tokenIn.decimals)} ${recordRoute.tokenIn.symbol} — holds ${formatToken(capsuleBalance, recordRoute.tokenIn.decimals)}.`;
 
   return (
@@ -663,7 +663,7 @@ export default function AutomateConsole(): React.JSX.Element {
         <p>
           {configured ? (
             <>
-              Recurring and price-triggered capsules run through factory{" "}
+              Recurring and price-triggered zaps run through factory{" "}
               <a href={explorerAddress(OPENZAP_V3_CONTRACTS.factory)} target="_blank" rel="noreferrer">
                 {shortAddress(OPENZAP_V3_CONTRACTS.factory)}
               </a>
@@ -684,9 +684,9 @@ export default function AutomateConsole(): React.JSX.Element {
             <span className="eyebrow">Automate</span>
             <h1>Sign once. The chain keeps the terms.</h1>
             <p>
-              A v3 capsule executes your frozen route on a cadence or on a price move — the interval and the
+              A v3 zap executes your frozen route on a cadence or on a price move — the interval and the
               threshold are enforced by the contract, so any executor can submit a run that is owed and none can
-              submit one that is not. Runs land only when an executor submits them: the capsule enforces the terms,
+              submit one that is not. Runs land only when an executor submits them: the zap enforces the terms,
               executors provide the liveness.
             </p>
           </div>
@@ -721,7 +721,7 @@ export default function AutomateConsole(): React.JSX.Element {
               <span className={styles.cardHead}>Automation builder</span>
               <h2>{(record?.mode ?? mode) === "recurring" ? "Repeat a bounded swap on a cadence" : "Fire a bounded swap on a price move"}</h2>
               <p>
-                The capsule holds ONE frozen swap on the pinned aeWETH ⇄ 0xZAPS pool. Automation adds only timing:
+                The zap holds ONE frozen swap on the pinned aeWETH ⇄ 0xZAPS pool. Automation adds only timing:
                 route, amounts, recipient, and the net output floor stay signed and immutable.
               </p>
             </div>
@@ -838,7 +838,7 @@ export default function AutomateConsole(): React.JSX.Element {
 
             <FlowStep
               number="2"
-              title="Create the v3 capsule"
+              title="Create the v3 zap"
               detail="Deploys an immutable clone from the v3 factory and verifies its bytecode before anything is funded."
               done={record !== null}
             >
@@ -850,12 +850,12 @@ export default function AutomateConsole(): React.JSX.Element {
                   onClick={() => void createCapsule()}
                   type="button"
                 >
-                  {busy === "create" ? "Creating…" : "Create capsule"}
+                  {busy === "create" ? "Creating…" : "Create zap"}
                 </button>
               )}
             </FlowStep>
 
-            <FlowStep number="3" title="Fund the capsule" detail={fundingDetail} done={record !== null && funded}>
+            <FlowStep number="3" title="Fund the zap" detail={fundingDetail} done={record !== null && funded}>
               {record && balanceKnown && !funded && (
                 <button data-busy={busy === "fund"} className="btn btnPrimary" disabled={busy !== null} onClick={() => void fundCapsule()} type="button">
                   {busy === "fund" ? "Funding…" : "Fund"}
@@ -873,8 +873,8 @@ export default function AutomateConsole(): React.JSX.Element {
               title="Sign the standing intent"
               detail={
                 (record?.mode ?? mode) === "recurring"
-                  ? "One EIP-712 signature authorizes the whole series. The capsule enforces the interval and the run count."
-                  : "One EIP-712 signature arms the trigger. The baseline price is read at signing time, and the capsule re-reads the market itself on every attempt."
+                  ? "One EIP-712 signature authorizes the whole series. The zap enforces the interval and the run count."
+                  : "One EIP-712 signature arms the trigger. The baseline price is read at signing time, and the zap re-reads the market itself on every attempt."
               }
               done={signed}
             >
@@ -928,7 +928,7 @@ export default function AutomateConsole(): React.JSX.Element {
               {executorHealth
                 ? "."
                 : "). Running the daemon on this machine (in a Chromium browser)? A Send button appears here automatically; Safari and Firefox block a page from reaching localhost, so use the file drop there."}{" "}
-              Any executor can submit runs the capsule owes; the executor cannot change what runs — and if no
+              Any executor can submit runs the zap owes; the executor cannot change what runs — and if no
               executor serves this file, nothing runs. Cancel any time below; cancellation is on-chain and final.
             </p>
           )}
@@ -938,7 +938,7 @@ export default function AutomateConsole(): React.JSX.Element {
           <span className={styles.cardHead}>Status</span>
           {record ? (
             <div className={styles.verifyList}>
-              <VerifyRow label="Capsule" value={shortAddress(record.address)} href={explorerAddress(record.address)} ok />
+              <VerifyRow label="Zap" value={shortAddress(record.address)} href={explorerAddress(record.address)} ok />
               <VerifyRow
                 label="Terms"
                 value={
@@ -989,7 +989,7 @@ export default function AutomateConsole(): React.JSX.Element {
               </div>
             </div>
           ) : (
-            <p className={styles.empty}>No automation yet. Configure one on the left — the capsule, not the executor, holds every bound.</p>
+            <p className={styles.empty}>No automation yet. Configure one on the left — the zap, not the executor, holds every bound.</p>
           )}
 
           <span className={styles.cardHead}>Protocol lottery</span>
