@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 
 import { RECIPES, compileChain, getBlock, makeNode, type ChainNode, type ParamValue } from "@/lib/blocks";
+import { resolveRouteById } from "@/lib/routes";
 import {
   BOUNDED_SWAP_IDS,
   MAX_POLICY_STEPS,
@@ -596,7 +597,7 @@ describe("the Live route blueprint", () => {
     expect(mapping.deployable && mapping.direction).toBe("buy");
   });
 
-  it("badges exactly the five deployable blueprints", () => {
+  it("badges exactly the eight deployable blueprints", () => {
     // The blueprint row badges exactly the deployable ones. This is the list
     // the copy beside the row describes; a recipe drifting off its route (or a
     // non-deployable design quietly becoming badged) fails here first.
@@ -605,7 +606,16 @@ describe("the Live route blueprint", () => {
         entry.blocks.map(([id, params], index) => makeNode(id, `${entry.id}-${index}`, params)),
       ).deployable,
     ).map((entry) => entry.id);
-    expect(deployable).toEqual(["live-route", "sell-zaps", "stitched-route", "provide-liquidity", "exit-liquidity"]);
+    expect(deployable).toEqual([
+      "live-route",
+      "sell-zaps",
+      "stitched-route",
+      "provide-liquidity",
+      "exit-liquidity",
+      "weth-usdg",
+      "stitched-exit",
+      "provide-liquidity-usdg",
+    ]);
   });
 
   it("maps the sell blueprint to the other side of the bounded pool", () => {
@@ -631,6 +641,9 @@ describe("the Live route blueprint", () => {
       "stitched-route": "robinhood-v4-route-usdg-zaps",
       "provide-liquidity": "robinhood-range-deposit-weth",
       "exit-liquidity": "robinhood-range-withdraw-usdg",
+      "weth-usdg": "robinhood-v4-weth-usdg",
+      "stitched-exit": "robinhood-v4-route-zaps-usdg",
+      "provide-liquidity-usdg": "robinhood-range-deposit-usdg",
     };
     for (const [recipeId, routeId] of Object.entries(expected)) {
       const entry = RECIPES.find((candidate) => candidate.id === recipeId);
@@ -640,6 +653,33 @@ describe("the Live route blueprint", () => {
       );
       expect(mapping.deployable, `${recipeId}: ${mapping.deployable ? "" : mapping.reasons.join(" | ")}`).toBe(true);
       if (mapping.deployable) expect(mapping.routeId, recipeId).toBe(routeId);
+    }
+  });
+
+  it("resolves every deployable blueprint to a quotable route the console can sign", () => {
+    // Reducing to a routeId is not enough on its own: the Sign & run console has
+    // to resolve that id to a Route with a real quote source, or the blueprint is
+    // badged deployable and then dead-ends at the handoff.
+    const expected: Record<string, string> = {
+      "live-route": "aeWETH>0xZAPS",
+      "sell-zaps": "0xZAPS>aeWETH",
+      "stitched-route": "USDG>0xZAPS",
+      "provide-liquidity": "aeWETH>ozRANGE",
+      "exit-liquidity": "ozRANGE>USDG",
+      "weth-usdg": "aeWETH>USDG",
+      "stitched-exit": "0xZAPS>USDG",
+      "provide-liquidity-usdg": "USDG>ozRANGE",
+    };
+    for (const entry of RECIPES) {
+      const mapping = reduceChainToLiveRoute(
+        entry.blocks.map(([id, params], index) => makeNode(id, `${entry.id}-${index}`, params)),
+      );
+      if (!mapping.deployable) continue;
+      const route = resolveRouteById(mapping.routeId);
+      expect(route, `${entry.id} -> ${mapping.routeId}`).not.toBeNull();
+      if (!route) continue;
+      expect(route.quote.source, entry.id).not.toBe("none");
+      expect(`${route.tokenIn.symbol}>${route.tokenOut.symbol}`, entry.id).toBe(expected[entry.id]);
     }
   });
 
@@ -976,8 +1016,17 @@ describe("with the real vault adapter configured", () => {
       ).deployable,
     ).map((entry) => entry.id);
     // Overriding the vault-deposit address must not badge any blueprint beyond
-    // the standing deployable five — no recipe supplies into the ozUSDG vault.
-    expect(deployable).toEqual(["live-route", "sell-zaps", "stitched-route", "provide-liquidity", "exit-liquidity"]);
+    // the standing deployable eight — no recipe supplies into the ozUSDG vault.
+    expect(deployable).toEqual([
+      "live-route",
+      "sell-zaps",
+      "stitched-route",
+      "provide-liquidity",
+      "exit-liquidity",
+      "weth-usdg",
+      "stitched-exit",
+      "provide-liquidity-usdg",
+    ]);
   });
 });
 
