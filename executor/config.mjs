@@ -69,7 +69,12 @@ export function loadConfig() {
     stateFile: fileCfg.stateFile ?? join(HOME_DIR, "state.json"),
     // The protocol lottery pot. When set, the daemon periodically converts accrued fee assets into
     // 0xZAPS via the pot's permissionless `buyZaps`, closing the lottery-prize loop.
-    lotteryPot: process.env.OPENZAPS_LOTTERY_POT ?? fileCfg.lotteryPot ?? "0xeB7a15CE1c969efBA43ecfc1A63960Ad0042CFe3",
+    //
+    // Defaults to the v3.1 pot, because that is the one the app's recurring flow actually pays into
+    // (AutomateConsole creates every recurring capsule against OPENZAP_V3_1_CONTRACTS). The default
+    // used to be the v3 pot, which no longer receives anything — so a sell-side run's aeWETH fee
+    // would have sat in a pot no keeper was watching, and the prize loop would never have closed.
+    lotteryPot: process.env.OPENZAPS_LOTTERY_POT ?? fileCfg.lotteryPot ?? "0x6ec3D07886Ea641e9d10D45A97a72E5f8ec836F1",
     // The keeper's price feed, used to floor buyZaps output. PAIRED KNOBS: `poolPriceSource` must
     // quote 0xZAPS per one unit of `feeAsset` — reconfigure them TOGETHER or the computed floor is
     // in the wrong units (the pinned pot adapter still fails closed, but conversions stop).

@@ -8,6 +8,7 @@ import {
   custom,
   formatUnits,
   getAddress,
+  isAddress,
   http,
   type Address,
   type Hex,
@@ -167,6 +168,8 @@ export default function AutomateConsole(): React.JSX.Element {
   const [routeId, setRouteId] = useState<string>(BOUNDED_SWAP_IDS[0]);
   const [amount, setAmount] = useState("0.001");
   const [slippageBps, setSlippageBps] = useState(defaultSlippageBps("recurring"));
+  /** Who may submit a run. Empty = open to anyone, which is the liveness default. */
+  const [pinnedExecutor, setPinnedExecutor] = useState("");
 
   /** Switch execution type AND reset slippage to that mode's default (recurring needs a wider band).
    *  No-op when the mode is unchanged, so re-clicking the active tab never clobbers a manual slider. */
@@ -266,6 +269,12 @@ export default function AutomateConsole(): React.JSX.Element {
   // behalf, so the preflight grades aeWETH + wrappable ETH together. Every other asset is aeWETH-blind.
   const isWethFunding =
     fundingTokenAddress !== null && fundingTokenAddress.toLowerCase() === ROBINHOOD_ASSETS.weth.toLowerCase();
+  // A pinned executor must be a real address or the signed intent would name a
+  // submitter that can never match, silently bricking the series.
+  const executorPin = pinnedExecutor.trim();
+  const executorValid = executorPin === "" || isAddress(executorPin);
+  const executorForIntent = executorPin !== "" && isAddress(executorPin) ? getAddress(executorPin) : null;
+
   const funding = isWethFunding
     ? planWethFunding({ needed: fundingNeeded, wethBalance: walletBalanceForToken, ethBalance, gasReserve: WRAP_GAS_RESERVE })
     : { ...fundingReadiness(walletBalanceForToken, fundingNeeded), wrapEth: 0n };
@@ -569,6 +578,7 @@ export default function AutomateConsole(): React.JSX.Element {
         // every run and floors the output maxSlippageBps below it, so the floor is always current
         // and a multi-run series can never go stale. The user's slippage % IS the signed tolerance.
         const intent = draftRecurringRelativeIntent({
+          executor: executorForIntent,
           zap: record.address,
           chainId: ROBINHOOD_CHAIN_ID,
           seriesId: randomNonce(),
@@ -609,6 +619,7 @@ export default function AutomateConsole(): React.JSX.Element {
         // user-facing move into the feed-side condition (see feedConditionForZapsMove).
         const condition = feedConditionForZapsMove(threshold.moveBps, threshold.rises);
         const intent = draftTriggerIntent({
+          executor: executorForIntent,
           zap: record.address,
           chainId: ROBINHOOD_CHAIN_ID,
           nonce: randomNonce(),
@@ -651,7 +662,7 @@ export default function AutomateConsole(): React.JSX.Element {
     } finally {
       setBusy(null);
     }
-  }, [account, interval, persist, record, recordRoute, records, slippageBps, threshold, validDays]);
+  }, [account, executorForIntent, interval, persist, record, recordRoute, records, slippageBps, threshold, validDays]);
 
   // ---- local executor intake (reference daemon on this machine) ----
 
@@ -993,6 +1004,30 @@ export default function AutomateConsole(): React.JSX.Element {
                 disabled={busy !== null || record !== null}
               />
             </Field>
+            <Field label="Who may run it">
+              <select
+                className={styles.input}
+                value={executorPin === "" ? "open" : "pinned"}
+                onChange={(event) => setPinnedExecutor(event.target.value === "open" ? "" : " ")}
+                disabled={busy !== null || signed}
+              >
+                <option value="open">Anyone (recommended)</option>
+                <option value="pinned">Only one executor</option>
+              </select>
+            </Field>
+            {executorPin !== "" && (
+              <Field label="Executor address">
+                <input
+                  className={styles.input}
+                  value={executorPin === " " ? "" : executorPin}
+                  onChange={(event) => setPinnedExecutor(event.target.value || " ")}
+                  placeholder="0x…"
+                  spellCheck={false}
+                  disabled={busy !== null || signed}
+                  aria-invalid={!executorValid}
+                />
+              </Field>
+            )}
             <Field label={`Slippage tolerance (${(slippageBps / 100).toFixed(2)}%)`}>
               <input
                 className={styles.range}
@@ -1051,6 +1086,22 @@ export default function AutomateConsole(): React.JSX.Element {
               </>
             )}
           </div>
+
+          <p className={styles.execNote} aria-live="polite">
+            {executorPin === "" ? (
+              <>
+                Open · any executor may submit a run this zap owes and earns 80% of its 1% fee. The capsule still
+                refuses every run it does not owe, so this only decides <em>who races</em>, never what they can do.
+              </>
+            ) : executorValid ? (
+              <>
+                Pinned · only <code>{executorPin.trim()}</code> may submit. If it goes offline the series stalls
+                until you submit a run yourself — open is the more reliable choice unless you run your own executor.
+              </>
+            ) : (
+              <>That is not a valid address. Signing would name a submitter no wallet can match, stalling the series.</>
+            )}
+          </p>
 
           {activeMode === "recurring" && (
             <p className={styles.floorPreview} aria-live="polite">
@@ -1163,7 +1214,7 @@ export default function AutomateConsole(): React.JSX.Element {
               done={signed}
             >
               {record && funded && !signed && (
-                <button data-busy={busy === "sign"} className="btn btnPrimary" disabled={busy !== null} onClick={() => void signIntent()} type="button">
+                <button data-busy={busy === "sign"} className="btn btnPrimary" disabled={busy !== null || !executorValid} onClick={() => void signIntent()} type="button">
                   {busy === "sign" ? "Awaiting wallet…" : "Sign intent"}
                 </button>
               )}

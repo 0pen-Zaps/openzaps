@@ -150,6 +150,21 @@ export function projectedRelativeFloor(input: {
   return (expected * (BPS - slip)) / BPS;
 }
 
+/** No executor pinned: any submitter may fire a run the capsule owes. */
+export const OPEN_EXECUTOR = "0x0000000000000000000000000000000000000000" as const;
+
+/**
+ * Who is allowed to submit a run. `null`/undefined leaves the intent OPEN, which is
+ * the liveness-maximizing default: whoever gets there first earns the executor's 80%
+ * of the fee, and the capsule still refuses every run it does not owe. Pinning one
+ * address is the trade a user makes when they want a specific executor (their own,
+ * usually) — the capsule then reverts `ExecutorMismatch` for anyone else, so a pinned
+ * executor going offline stalls the series until the owner submits it themselves.
+ */
+export function resolveExecutor(executor?: Address | null): Address {
+  return executor ?? OPEN_EXECUTOR;
+}
+
 export type FundingReadiness = { status: "unknown" | "sufficient" | "short"; shortfall: bigint };
 
 /**
@@ -210,6 +225,8 @@ export function suggestedSeriesDeadline(nowSec: bigint, intervalSec: bigint, max
 }
 
 export interface RecurringDraftInput {
+  /** Pin a single submitter, or omit to leave the run open to anyone. */
+  executor?: Address | null;
   zap: Address;
   chainId: number;
   seriesId: bigint;
@@ -232,7 +249,7 @@ export function draftRecurringIntent(input: RecurringDraftInput): RecurringInten
     interval: input.interval,
     maxRuns: input.maxRuns,
     recipient: input.recipient,
-    executor: "0x0000000000000000000000000000000000000000",
+    executor: resolveExecutor(input.executor),
     maxGas: MAX_EXECUTION_GAS,
     maxFeePerGas: MAX_EXECUTION_FEE_PER_GAS,
     policyHash: input.policyHash,
@@ -242,6 +259,8 @@ export function draftRecurringIntent(input: RecurringDraftInput): RecurringInten
 }
 
 export interface RecurringRelativeDraftInput {
+  /** Pin a single submitter, or omit to leave the run open to anyone. */
+  executor?: Address | null;
   zap: Address;
   chainId: number;
   seriesId: bigint;
@@ -271,7 +290,7 @@ export function draftRecurringRelativeIntent(input: RecurringRelativeDraftInput)
     interval: input.interval,
     maxRuns: input.maxRuns,
     recipient: input.recipient,
-    executor: "0x0000000000000000000000000000000000000000",
+    executor: resolveExecutor(input.executor),
     maxGas: MAX_EXECUTION_GAS,
     maxFeePerGas: MAX_EXECUTION_FEE_PER_GAS,
     policyHash: input.policyHash,
@@ -282,6 +301,8 @@ export function draftRecurringRelativeIntent(input: RecurringRelativeDraftInput)
 }
 
 export interface TriggerDraftInput {
+  /** Pin a single submitter, or omit to leave the run open to anyone. */
+  executor?: Address | null;
   zap: Address;
   chainId: number;
   nonce: bigint;
@@ -309,7 +330,7 @@ export function draftTriggerIntent(input: TriggerDraftInput): TriggerIntent {
     thresholdBps: input.thresholdBps,
     above: input.above,
     recipient: input.recipient,
-    executor: "0x0000000000000000000000000000000000000000",
+    executor: resolveExecutor(input.executor),
     maxGas: MAX_EXECUTION_GAS,
     maxFeePerGas: MAX_EXECUTION_FEE_PER_GAS,
     policyHash: input.policyHash,
