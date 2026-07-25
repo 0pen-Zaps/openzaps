@@ -597,7 +597,7 @@ describe("the Live route blueprint", () => {
     expect(mapping.deployable && mapping.direction).toBe("buy");
   });
 
-  it("badges exactly the eight deployable blueprints", () => {
+  it("badges exactly the eleven deployable blueprints", () => {
     // The blueprint row badges exactly the deployable ones. This is the list
     // the copy beside the row describes; a recipe drifting off its route (or a
     // non-deployable design quietly becoming badged) fails here first.
@@ -615,6 +615,9 @@ describe("the Live route blueprint", () => {
       "weth-usdg",
       "stitched-exit",
       "provide-liquidity-usdg",
+      "usdg-weth",
+      "vault-park",
+      "exit-liquidity-weth",
     ]);
   });
 
@@ -644,6 +647,9 @@ describe("the Live route blueprint", () => {
       "weth-usdg": "robinhood-v4-weth-usdg",
       "stitched-exit": "robinhood-v4-route-zaps-usdg",
       "provide-liquidity-usdg": "robinhood-range-deposit-usdg",
+      "usdg-weth": "robinhood-v4-usdg-weth",
+      "vault-park": "robinhood-zap-vault-deposit",
+      "exit-liquidity-weth": "robinhood-range-withdraw-weth",
     };
     for (const [recipeId, routeId] of Object.entries(expected)) {
       const entry = RECIPES.find((candidate) => candidate.id === recipeId);
@@ -669,6 +675,9 @@ describe("the Live route blueprint", () => {
       "weth-usdg": "aeWETH>USDG",
       "stitched-exit": "0xZAPS>USDG",
       "provide-liquidity-usdg": "USDG>ozRANGE",
+      "usdg-weth": "USDG>aeWETH",
+      "vault-park": "USDG>ozUSDG",
+      "exit-liquidity-weth": "ozRANGE>aeWETH",
     };
     for (const entry of RECIPES) {
       const mapping = reduceChainToLiveRoute(
@@ -681,6 +690,28 @@ describe("the Live route blueprint", () => {
       expect(route.quote.source, entry.id).not.toBe("none");
       expect(`${route.tokenIn.symbol}>${route.tokenOut.symbol}`, entry.id).toBe(expected[entry.id]);
     }
+  });
+
+  it("leaves no deployed, drawable adapter without a blueprint", () => {
+    // The catalog is the only way a user reaches a route. An adapter that is
+    // deployed AND has a blockId (so a chain can actually select it) but that no
+    // blueprint exposes is a live route nobody can find — which is exactly how
+    // seven of them sat unused. `blockId: null` adapters are excluded on purpose:
+    // vault-redeem has no catalog block that turns a share back into tokens, so
+    // it is offered on /app only and cannot be drawn.
+    const exposed = new Set(
+      RECIPES.flatMap((entry) => {
+        const mapping = reduceChainToLiveRoute(
+          entry.blocks.map(([id, params], index) => makeNode(id, `${entry.id}-${index}`, params)),
+        );
+        return mapping.deployable ? [mapping.routeId] : [];
+      }),
+    );
+    const orphans = deployedAdapters()
+      .filter((adapter) => adapter.blockId !== null)
+      .map((adapter) => adapter.id)
+      .filter((id) => !exposed.has(id));
+    expect(orphans, "deployed and drawable, but no blueprint reaches it").toEqual([]);
   });
 
   it("states a slippage cap the live app can sign without rounding it", () => {
@@ -1016,7 +1047,7 @@ describe("with the real vault adapter configured", () => {
       ).deployable,
     ).map((entry) => entry.id);
     // Overriding the vault-deposit address must not badge any blueprint beyond
-    // the standing deployable eight — no recipe supplies into the ozUSDG vault.
+    // the standing deployable eleven.
     expect(deployable).toEqual([
       "live-route",
       "sell-zaps",
@@ -1026,6 +1057,9 @@ describe("with the real vault adapter configured", () => {
       "weth-usdg",
       "stitched-exit",
       "provide-liquidity-usdg",
+      "usdg-weth",
+      "vault-park",
+      "exit-liquidity-weth",
     ]);
   });
 });
