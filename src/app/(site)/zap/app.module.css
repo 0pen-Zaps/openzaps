@@ -174,8 +174,20 @@
 }
 
 .metric span {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
   color: var(--muted);
   font-size: 0.8rem;
+}
+
+/* Leading mark on a notice/error banner, aligned to the first line of copy. */
+.bannerGlyph {
+  flex: none;
+  width: 1.05rem;
+  height: 1.05rem;
+  margin-right: 0.45rem;
+  vertical-align: -0.2em;
 }
 
 .tokenTools {
@@ -296,6 +308,23 @@
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 0.55rem;
+}
+
+/* Two stacked radio groups (execution type, then direction) otherwise read as one four-option list —
+   most visible on a phone, where both collapse to a single column. */
+.segment + .segment {
+  margin-top: 1rem;
+}
+
+/* The mark that carries a segment's meaning (repeat = cadence, band = price move). */
+.segGlyph {
+  width: 1.15rem;
+  height: 1.15rem;
+  color: var(--accent-dim);
+}
+
+.segOn .segGlyph {
+  color: var(--accent-bright);
 }
 
 .seg,
@@ -496,8 +525,37 @@
 }
 
 .flowStep strong {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
   color: var(--fg);
   font-size: 0.94rem;
+}
+
+/* Step meaning at a glance. Inherits the title colour; the accent lands once the step is done. */
+.stepGlyph {
+  flex: none;
+  width: 1.05rem;
+  height: 1.05rem;
+  color: var(--accent-dim);
+}
+
+.flowStep[data-done="true"] .stepGlyph {
+  color: var(--accent-bright);
+}
+
+/* The counter badge's completion mark, sized to the circle it sits in. */
+.stepMark {
+  width: 1.05rem;
+  height: 1.05rem;
+}
+
+/* Icon inside a button label (e.g. the bolt on Fund & run). */
+.btnGlyph {
+  width: 1rem;
+  height: 1rem;
+  margin-right: 0.4rem;
+  vertical-align: -0.18em;
 }
 
 .flowStep p {
@@ -542,6 +600,19 @@
   color: var(--accent-bright);
   background: rgba(255, 252, 0, 0.08);
   font-size: 0.72rem;
+}
+
+/* A check that did NOT pass must not read as pass-yellow. */
+.verifyRow[data-ok="false"] > span {
+  color: #ff8a8a;
+  background: rgba(255, 138, 138, 0.1);
+}
+
+/* Icon inside a status circle or list row — inherits the row's colour. */
+.rowGlyph {
+  flex: none;
+  width: 0.95rem;
+  height: 0.95rem;
 }
 
 .verifyRow small {
@@ -616,6 +687,7 @@
 .savedZap,
 .savedZapActive {
   min-width: 0;
+  min-height: 44px; /* thumb-sized: this list is the only way to switch between zaps */
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -792,7 +864,25 @@
   }
 }
 
+/* Tablets. The verification column and the current-zap column have very different heights, so a
+   two-up review left a large dead gap and rendered its full-width separators at half width. Collapse
+   it well before the phone breakpoint — it only earns two columns at real desktop widths. */
+@media (max-width: 860px) {
+  .review {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
 @media (max-width: 820px) {
+  /* iOS Safari zooms the whole page when a focused control computes under 16px, and these are the
+     money fields (exact input, per-run amount) and the cadence/condition selects. Raise the floor on
+     small screens rather than suppressing pinch-zoom in the viewport meta. */
+  .input,
+  .range,
+  .input option {
+    font-size: 16px;
+  }
+
   .appHead,
   .receiptHead {
     align-items: stretch;

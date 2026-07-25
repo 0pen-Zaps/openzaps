@@ -13,6 +13,7 @@ import {
   type Hex,
 } from "viem";
 import { OpenZapMark } from "@/components/OpenZapMark";
+import { BlockGlyph } from "./BlockGlyph";
 import { trackEvent } from "@/lib/analytics";
 import {
   INTERVAL_PRESETS,
@@ -923,13 +924,18 @@ export default function AutomateConsole(): React.JSX.Element {
       </section>
 
       <div className={`container ${styles.notice}`} role="status">{notice}</div>
-      {error && <div className={`container ${styles.error}`} role="alert">{error}</div>}
+      {error && (
+        <div className={`container ${styles.error}`} role="alert">
+          <BlockGlyph name="alert" className={styles.bannerGlyph} />
+          {error}
+        </div>
+      )}
 
       <section className={`container ${styles.metrics}`} aria-label="Automation metrics">
-        <Metric label="Execution type" value={record ? (record.mode === "recurring" ? "Recurring" : "Price trigger") : mode === "recurring" ? "Recurring" : "Price trigger"} />
-        <Metric label="Current step" value={stepLabel} />
-        <Metric label="Lottery round" value={pot ? `#${pot.round.toString()} · ${formatToken(pot.prize)} 0xZAPS` : "—"} />
-        <Metric label="Your tickets" value={pot && account ? formatToken(pot.tickets) : "—"} />
+        <Metric glyph="repeat" label="Execution type" value={record ? (record.mode === "recurring" ? "Recurring" : "Price trigger") : mode === "recurring" ? "Recurring" : "Price trigger"} />
+        <Metric glyph="gauge" label="Current step" value={stepLabel} />
+        <Metric glyph="sparkle" label="Lottery round" value={pot ? `#${pot.round.toString()} · ${formatToken(pot.prize)} 0xZAPS` : "—"} />
+        <Metric glyph="safe" label="Your tickets" value={pot && account ? formatToken(pot.tickets) : "—"} />
       </section>
 
       <section className={`container ${styles.workspace}`}>
@@ -948,10 +954,12 @@ export default function AutomateConsole(): React.JSX.Element {
 
           <div className={styles.segment} role="group" aria-label="Execution type">
             <button type="button" className={activeMode === "recurring" ? styles.segOn : styles.seg} onClick={() => selectMode("recurring")} disabled={busy !== null || record !== null}>
+              <BlockGlyph name="repeat" className={styles.segGlyph} />
               Recurring
               <em>every X time, N runs</em>
             </button>
             <button type="button" className={activeMode === "trigger" ? styles.segOn : styles.seg} onClick={() => selectMode("trigger")} disabled={busy !== null || record !== null}>
+              <BlockGlyph name="band" className={styles.segGlyph} />
               Price trigger
               <em>fires once at ±X%</em>
             </button>
@@ -1064,7 +1072,7 @@ export default function AutomateConsole(): React.JSX.Element {
           )}
 
           <div className={styles.flow}>
-            <FlowStep number="1" title="Connect wallet" detail="Robinhood Chain (4663), injected wallet." done={account !== null}>
+            <FlowStep number="1" glyph="plug" title="Connect wallet" detail="Robinhood Chain (4663), injected wallet." done={account !== null}>
               {!account && (
                 <button data-busy={busy === "connect"} className="btn btnPrimary" disabled={busy !== null} onClick={() => void connectWallet()} type="button">
                   {busy === "connect" ? "Connecting…" : "Connect"}
@@ -1074,6 +1082,7 @@ export default function AutomateConsole(): React.JSX.Element {
 
             <FlowStep
               number="2"
+              glyph="lock"
               title="Create the v3 zap"
               detail="Deploys an immutable clone from the v3 factory and verifies its bytecode before anything is funded."
               done={record !== null}
@@ -1091,7 +1100,7 @@ export default function AutomateConsole(): React.JSX.Element {
               )}
             </FlowStep>
 
-            <FlowStep number="3" title="Fund the zap" detail={fundingDetail} done={record !== null && funded}>
+            <FlowStep number="3" glyph="coins" title="Fund the zap" detail={fundingDetail} done={record !== null && funded}>
               {record && recordRoute && balanceKnown && !funded && (
                 <p className={funding.status === "short" ? `${styles.fundCheck} ${styles.fundShort}` : styles.fundCheck} aria-live="polite">
                   {funding.status === "short" ? (
@@ -1145,6 +1154,7 @@ export default function AutomateConsole(): React.JSX.Element {
 
             <FlowStep
               number="4"
+              glyph="hand"
               title="Sign the standing intent"
               detail={
                 (record?.mode ?? mode) === "recurring"
@@ -1290,10 +1300,15 @@ export default function AutomateConsole(): React.JSX.Element {
                   <button
                     key={r.address}
                     type="button"
-                    className={record?.address === r.address ? styles.savedZapActive : undefined}
+                    // Unselected rows need the base class too — `undefined` left them as bare UA
+                    // buttons beside a fully styled active row.
+                    className={record?.address === r.address ? styles.savedZapActive : styles.savedZap}
                     onClick={() => setSelected(r.address)}
                   >
-                    {r.mode === "recurring" ? "⟳" : "⚡"} {shortAddress(r.address)}
+                    {/* Geometry, not emoji: U+26A1 renders as full-colour Apple/Segoe emoji and broke
+                        the monochrome list. BlockGlyph inherits the row's currentColor. */}
+                    <BlockGlyph name={r.mode === "recurring" ? "repeat" : "band"} className={styles.rowGlyph} />
+                    {shortAddress(r.address)}
                   </button>
                 ))}
               </div>
@@ -1542,33 +1557,61 @@ function readableError(cause: unknown): string {
   return "Unknown wallet or RPC error.";
 }
 
-function Metric({ label, value }: { label: string; value: string }): React.JSX.Element {
-  return <div className={styles.metric}><strong>{value}</strong><span>{label}</span></div>;
+function Metric({ label, value, glyph }: { label: string; value: string; glyph?: string }): React.JSX.Element {
+  return (
+    <div className={styles.metric}>
+      <strong>{value}</strong>
+      <span>
+        {glyph ? <BlockGlyph name={glyph} className={styles.rowGlyph} /> : null}
+        {label}
+      </span>
+    </div>
+  );
 }
 
 function Field({ label, children }: { label: string; children: React.ReactNode }): React.JSX.Element {
   return <label className={styles.field}><span>{label}</span>{children}</label>;
 }
 
-function FlowStep({ number, title, detail, done, children }: {
+function FlowStep({ number, title, detail, done, glyph, children }: {
   number: string;
   title: string;
   detail: string;
   done: boolean;
+  /** BlockGlyph name — the step's meaning at a glance, beside the counter. */
+  glyph?: string;
   children: React.ReactNode;
 }): React.JSX.Element {
   return (
     <div className={styles.flowStep} data-done={done}>
-      <span>{done ? "✓" : number}</span>
-      <div><strong>{title}</strong><p>{detail}</p><div className={styles.flowActions}>{children}</div></div>
+      <span>{done ? <BlockGlyph name="check" className={styles.stepMark} /> : number}</span>
+      <div>
+        <strong>
+          {glyph ? <BlockGlyph name={glyph} className={styles.stepGlyph} /> : null}
+          {title}
+        </strong>
+        <p>{detail}</p>
+        <div className={styles.flowActions}>{children}</div>
+      </div>
     </div>
   );
 }
 
-function VerifyRow({ label, value, href, ok }: { label: string; value: string; href?: string; ok: boolean }): React.JSX.Element {
+function VerifyRow({ label, value, href, ok, glyph }: {
+  label: string;
+  value: string;
+  href?: string;
+  ok: boolean;
+  /** BlockGlyph name for what this row checks; falls back to the pass/fail mark. */
+  glyph?: string;
+}): React.JSX.Element {
   return (
-    <div className={styles.verifyRow}>
-      <span>{ok ? "✓" : "!"}</span>
+    // data-ok drives the failed state: every mark used to render in the same pass-yellow, so a check
+    // that did NOT pass looked exactly like one that did.
+    <div className={styles.verifyRow} data-ok={ok}>
+      <span>
+        <BlockGlyph name={glyph ?? (ok ? "check" : "alert")} className={styles.rowGlyph} />
+      </span>
       <div><small>{label}</small>{href ? <a href={href} target="_blank" rel="noreferrer">{value}</a> : <strong>{value}</strong>}</div>
     </div>
   );

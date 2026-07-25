@@ -17,6 +17,7 @@ import {
   type Hex,
 } from "viem";
 import { OpenZapMark } from "@/components/OpenZapMark";
+import { BlockGlyph } from "./BlockGlyph";
 import { trackEvent } from "@/lib/analytics";
 import {
   ACTIVITY_FROM_BLOCK,
@@ -308,6 +309,9 @@ export default function AppPage(): React.JSX.Element {
   const [zapNativeBalance, setZapNativeBalance] = useState(0n);
   const [nativeBalance, setNativeBalance] = useState(0n);
   const [busy, setBusy] = useState<BusyAction>(null);
+  /** True for the whole "Fund & run" chain, including the gap between its two legs where `busy`
+   *  briefly returns to null — without it that gap would re-enable the button mid-flight. */
+  const [chainedRun, setChainedRun] = useState(false);
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
   const [transactions, setTransactions] = useState<TransactionRecord[]>([]);
@@ -869,7 +873,8 @@ export default function AppPage(): React.JSX.Element {
     }
   }
 
-  async function fundZap(): Promise<void> {
+  /** Returns true when the zap is funded to its policy amount — so "Fund & run" can chain on it. */
+  async function fundZap(): Promise<boolean> {
     setBusy("fund");
     clearMessages();
     try {
@@ -887,7 +892,7 @@ export default function AppPage(): React.JSX.Element {
       const target = verifiedZap.amountIn;
       if (current >= target) {
         setNotice("Zap is already funded for this execution.");
-        return;
+        return true;
       }
       const missing = target - current;
       const balance = await publicClient.readContract({
@@ -917,15 +922,34 @@ export default function AppPage(): React.JSX.Element {
       });
       if (verified < target) throw new Error("Zap balance did not reach the policy amount after confirmation.");
       setNotice(`Zap funded with ${formatToken(target, tokenIn.decimals)} ${tokenIn.symbol}.`);
+      return true;
     } catch (cause) {
       setError(readableError(cause));
+      return false;
     } finally {
       setBusy(null);
       await refreshBalances();
     }
   }
 
-  async function executeZap(): Promise<void> {
+  /**
+   * Fund, then immediately use the zap — the funding step's own "and run it" path, so a funded zap
+   * is never left sitting idle behind a second click. Chains only on a real funding success; the
+   * execute leg re-verifies the balance and the reviewed quote on its own, exactly as a manual
+   * Sign & execute would. `chainedRun` keeps both buttons disabled across the gap between the two
+   * legs, where `busy` is momentarily null.
+   */
+  async function fundAndRun(): Promise<void> {
+    setChainedRun(true);
+    try {
+      if (!(await fundZap())) return;
+      await executeZap();
+    } finally {
+      setChainedRun(false);
+    }
+  }
+
+  async function executeZap(): Promise<boolean> {
     setBusy("execute");
     clearMessages();
     try {
@@ -1036,8 +1060,10 @@ export default function AppPage(): React.JSX.Element {
       // announcement instead of letting it fall to <body>.
       queueMicrotask(() => noticeRef.current?.focus());
       trackEvent("robinhood_zap_executed", { zap: verifiedZap.address, route: zapRoute.id, tx: hash });
+      return true;
     } catch (cause) {
       setError(readableError(cause));
+      return false;
     } finally {
       setBusy(null);
       await refreshBalances();
@@ -1428,13 +1454,18 @@ export default function AppPage(): React.JSX.Element {
           </>
         ) : null}
       </div>
-      {error && <div className={`container ${styles.error}`} role="alert">{error}</div>}
+      {error && (
+        <div className={`container ${styles.error}`} role="alert">
+          <BlockGlyph name="alert" className={styles.bannerGlyph} />
+          {error}
+        </div>
+      )}
 
       <section className={`container ${styles.metrics}`} aria-label="Live protocol metrics">
-        <Metric label="Network" value={wrongNetwork ? `Wrong chain · ${walletChainId ?? "?"}` : "Robinhood 4663"} />
-        <Metric label="Venue" value={venueLabel} />
-        <Metric label="Wallet input" value={`${formatToken(walletInputBalance, inDecimals)} ${inputSymbol}`} />
-        <Metric label="Current step" value={stepLabel} />
+        <Metric glyph="bridge" label="Network" value={wrongNetwork ? `Wrong chain · ${walletChainId ?? "?"}` : "Robinhood 4663"} />
+        <Metric glyph="pool" label="Venue" value={venueLabel} />
+        <Metric glyph="wallet" label="Wallet input" value={`${formatToken(walletInputBalance, inDecimals)} ${inputSymbol}`} />
+        <Metric glyph="gauge" label="Current step" value={stepLabel} />
       </section>
 
       <section className={`container ${styles.tokenTools}`} aria-label="0xZAPS token tools">
@@ -1510,24 +1541,44 @@ export default function AppPage(): React.JSX.Element {
           </div>
 
           <div className={styles.flow}>
-            <FlowStep number="1" title="Create immutable zap" detail="Policy binds owner, recipient, adapter, spender, input token, and exact amount." done={zap !== null}>
-              <button data-busy={busy === "create"} className="btn btnPrimary" data-testid="create-zap" disabled={!account || !protocolReady || wrongNetwork || zap !== null || busy !== null || amountIn <= 0n} onClick={() => void createZap()} type="button">
+            <FlowStep number="1" glyph="lock" title="Create immutable zap" detail="Policy binds owner, recipient, adapter, spender, input token, and exact amount." done={zap !== null}>
+              <button data-busy={busy === "create"} className="btn btnPrimary" data-testid="create-zap" disabled={!account || !protocolReady || wrongNetwork || zap !== null || busy !== null || chainedRun || amountIn <= 0n} onClick={() => void createZap()} type="button">
                 {busy === "create" ? "Creating…" : "Create zap"}
               </button>
-              {zap && <button className="btn btnGhost" disabled={busy !== null} onClick={startNewZap} type="button">Build another</button>}
+              {zap && <button className="btn btnGhost" disabled={busy !== null || chainedRun} onClick={startNewZap} type="button">Build another</button>}
             </FlowStep>
-            <FlowStep number="2" title={`Fund with ${inputSymbol}`} detail="Direct ERC-20 transfer only. No standing wallet allowance is created." done={funded}>
+            <FlowStep
+              number="2"
+              glyph="coins"
+              title={`Fund with ${inputSymbol} — and run it`}
+              detail="Direct ERC-20 transfer only. No standing wallet allowance is created. With a reviewed quote in hand, Fund & run does the transfer and the signed execution back to back, so a funded zap never sits idle."
+              done={funded}
+            >
               {canWrapInput && (
-                <button data-busy={busy === "wrap"} className="btn btnGhost" disabled={!account || busy !== null || amountIn <= 0n || nativeBalance < amountIn} onClick={() => void wrapEth()} type="button">
+                <button data-busy={busy === "wrap"} className="btn btnGhost" disabled={!account || busy !== null || chainedRun || amountIn <= 0n || nativeBalance < amountIn} onClick={() => void wrapEth()} type="button">
                   {busy === "wrap" ? "Wrapping…" : "Wrap ETH"}
                 </button>
               )}
-              <button data-busy={busy === "fund"} className="btn btnPrimary" disabled={!zap || !protocolReady || funded || busy !== null} onClick={() => void fundZap()} type="button">
-                {busy === "fund" ? "Funding…" : "Fund zap"}
+              {!funded && (
+                <button
+                  data-busy={chainedRun}
+                  className="btn btnPrimary"
+                  data-testid="fund-and-run"
+                  disabled={!zap || !protocolReady || funded || busy !== null || chainedRun || reviewedQuote === null || executionComplete}
+                  onClick={() => void fundAndRun()}
+                  type="button"
+                  title={reviewedQuote === null ? "Request a live quote first — running signs against the minimum you reviewed." : undefined}
+                >
+                  <BlockGlyph name="bolt" className={styles.btnGlyph} />
+                  {chainedRun ? (busy === "execute" ? "Running…" : "Funding…") : "Fund & run"}
+                </button>
+              )}
+              <button data-busy={busy === "fund"} className={funded ? "btn btnPrimary" : "btn btnGhost"} disabled={!zap || !protocolReady || funded || busy !== null || chainedRun} onClick={() => void fundZap()} type="button">
+                {busy === "fund" && !chainedRun ? "Funding…" : funded ? "Funded" : "Fund only"}
               </button>
             </FlowStep>
-            <FlowStep number="3" title="Sign and execute" detail="Requires a reviewed live quote; execution aborts if the price drops below your displayed minimum. The EIP-712 intent expires in ten minutes and caps gas and fee price." done={executionComplete}>
-              <button data-busy={busy === "execute"} className="btn btnPrimary" disabled={!protocolReady || !funded || reviewedQuote === null || busy !== null || executionComplete} onClick={() => void executeZap()} type="button">
+            <FlowStep number="3" glyph="bolt" title="Sign and execute" detail="Requires a reviewed live quote; execution aborts if the price drops below your displayed minimum. The EIP-712 intent expires in ten minutes and caps gas and fee price." done={executionComplete}>
+              <button data-busy={busy === "execute"} className="btn btnPrimary" disabled={!protocolReady || !funded || reviewedQuote === null || busy !== null || chainedRun || executionComplete} onClick={() => void executeZap()} type="button">
                 {busy === "execute" ? "Executing…" : executionComplete ? "Execution confirmed" : "Sign & execute"}
               </button>
             </FlowStep>
@@ -1538,12 +1589,12 @@ export default function AppPage(): React.JSX.Element {
           <span className={styles.cardHead}>Verification</span>
           <h2>Nothing hidden.</h2>
           <div className={styles.verifyList}>
-            <VerifyRow label="Factory health" value={protocolReady ? "RPC reads ready" : protocolHealth} href={configured ? explorerAddress(OPENZAP_CONTRACTS.factory) : undefined} ok={protocolReady} />
-            <VerifyRow label="Pool-bound adapter" value={route ? shortAddress(route.adapter) : "—"} href={route ? explorerAddress(route.adapter) : undefined} ok={route !== null} />
-            <VerifyRow label="Settles through" value={settlementLabel} ok={route !== null} />
-            <VerifyRow label="Router allowance" value="Cleared after every call" ok />
-            <VerifyRow label="Permit2 allowance" value="Cleared after every swap" ok />
-            <VerifyRow label="Output protection" value="Signed minOut in OpenZap" ok />
+            <VerifyRow glyph="gauge" label="Factory health" value={protocolReady ? "RPC reads ready" : protocolHealth} href={configured ? explorerAddress(OPENZAP_CONTRACTS.factory) : undefined} ok={protocolReady} />
+            <VerifyRow glyph="pool" label="Pool-bound adapter" value={route ? shortAddress(route.adapter) : "—"} href={route ? explorerAddress(route.adapter) : undefined} ok={route !== null} />
+            <VerifyRow glyph="send" label="Settles through" value={settlementLabel} ok={route !== null} />
+            <VerifyRow glyph="shield" label="Router allowance" value="Cleared after every call" ok />
+            <VerifyRow glyph="lock" label="Permit2 allowance" value="Cleared after every swap" ok />
+            <VerifyRow glyph="safe" label="Output protection" value="Signed minOut in OpenZap" ok />
           </div>
 
           <div className={styles.currentZap}>
@@ -1851,33 +1902,61 @@ function readableError(cause: unknown): string {
   return "Unknown wallet or RPC error.";
 }
 
-function Metric({ label, value }: { label: string; value: string }): React.JSX.Element {
-  return <div className={styles.metric}><strong>{value}</strong><span>{label}</span></div>;
+function Metric({ label, value, glyph }: { label: string; value: string; glyph?: string }): React.JSX.Element {
+  return (
+    <div className={styles.metric}>
+      <strong>{value}</strong>
+      <span>
+        {glyph ? <BlockGlyph name={glyph} className={styles.rowGlyph} /> : null}
+        {label}
+      </span>
+    </div>
+  );
 }
 
 function Field({ label, children }: { label: string; children: React.ReactNode }): React.JSX.Element {
   return <label className={styles.field}><span>{label}</span>{children}</label>;
 }
 
-function FlowStep({ number, title, detail, done, children }: {
+function FlowStep({ number, title, detail, done, glyph, children }: {
   number: string;
   title: string;
   detail: string;
   done: boolean;
+  /** BlockGlyph name — the step's meaning at a glance, beside the counter. */
+  glyph?: string;
   children: React.ReactNode;
 }): React.JSX.Element {
   return (
     <div className={styles.flowStep} data-done={done}>
-      <span>{done ? "✓" : number}</span>
-      <div><strong>{title}</strong><p>{detail}</p><div className={styles.flowActions}>{children}</div></div>
+      <span>{done ? <BlockGlyph name="check" className={styles.stepMark} /> : number}</span>
+      <div>
+        <strong>
+          {glyph ? <BlockGlyph name={glyph} className={styles.stepGlyph} /> : null}
+          {title}
+        </strong>
+        <p>{detail}</p>
+        <div className={styles.flowActions}>{children}</div>
+      </div>
     </div>
   );
 }
 
-function VerifyRow({ label, value, href, ok }: { label: string; value: string; href?: string; ok: boolean }): React.JSX.Element {
+function VerifyRow({ label, value, href, ok, glyph }: {
+  label: string;
+  value: string;
+  href?: string;
+  ok: boolean;
+  /** BlockGlyph name for what this row checks; falls back to the pass/fail mark. */
+  glyph?: string;
+}): React.JSX.Element {
   return (
-    <div className={styles.verifyRow}>
-      <span>{ok ? "✓" : "!"}</span>
+    // data-ok drives the failed state: every mark used to render in the same pass-yellow, so a check
+    // that did NOT pass looked exactly like one that did.
+    <div className={styles.verifyRow} data-ok={ok}>
+      <span>
+        <BlockGlyph name={glyph ?? (ok ? "check" : "alert")} className={styles.rowGlyph} />
+      </span>
       <div><small>{label}</small>{href ? <a href={href} target="_blank" rel="noreferrer">{value}</a> : <strong>{value}</strong>}</div>
     </div>
   );

@@ -1407,17 +1407,35 @@
     grid-template-columns: minmax(0, 1fr);
   }
 
-  /* The palette becomes a full-width tray above the chain. It asks to stick,
-     but `overflow-x: hidden` on html/body in globals.css turns them into scroll
-     containers, which disables position:sticky across the whole site (the nav
-     is affected too). Switching that rule to `overflow-x: clip` would light
-     this up; until then the tray simply scrolls with the page, which is why
-     tap-to-add exists alongside dragging. */
+  /* iOS Safari zooms the page whenever a focused control computes under 16px, and these are the
+     builder's text/param inputs. Raise the floor on small screens instead of disabling pinch-zoom. */
+  .search input,
+  .param select,
+  .param input[type="text"],
+  .import textarea,
+  .import input,
+  .savedRename input {
+    font-size: 16px;
+  }
+
+  /* Thumb-sized icon buttons on touch screens. */
+  .iconBtn {
+    min-width: 44px;
+    min-height: 44px;
+  }
+
+  /* The palette becomes a full-width tray above the chain, pinned under the nav so blocks stay
+     reachable while the chain scrolls. This sticky IS live: globals.css switched html/body to
+     `overflow-x: clip`, so they are no longer scroll containers. (An earlier note here claimed the
+     opposite — it predated that change.) Because it really pins, it must be capped: unbounded, the
+     heading + search + tabs + a two-line chip row took ~40% of a phone viewport permanently. */
   .palette {
     position: sticky;
     top: calc(var(--nav-h) + 0.4rem);
     z-index: 5;
     order: -1;
+    max-height: 42vh;
+    overflow-y: auto;
     background: linear-gradient(180deg, rgba(12, 14, 17, 0.98), rgba(10, 12, 14, 0.94));
     backdrop-filter: blur(14px);
   }
@@ -1487,6 +1505,16 @@
   .cardTools {
     grid-area: tools;
     justify-content: flex-end;
+    /* The row already spans the full card, so there is room for thumb-sized targets. */
+    gap: 0.5rem;
+  }
+
+  /* Move/duplicate/remove are the fallback for dragging on a phone — and remove sits right next to
+     duplicate. 26px targets 3.5px apart made a mis-tap likely on the one destructive control. */
+  .cardTools button {
+    width: 44px;
+    height: 44px;
+    font-size: 1rem;
   }
 
   .maturity {
