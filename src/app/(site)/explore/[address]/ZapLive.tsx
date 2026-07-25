@@ -511,6 +511,10 @@ export function ZapLive({
             <AddressValue address={data.factory.implementation} />
             <span className={styles.factNote}>Factory version {data.factory.version}</span>
           </Fact>
+          <Fact label="Capsule type">
+            <strong>{capsuleLineage(data.factory.version).title}</strong>
+            <span className={styles.factNote}>{capsuleLineage(data.factory.version).detail}</span>
+          </Fact>
         </dl>
       </section>
     </>
@@ -806,4 +810,31 @@ function shortHex(hex: string): string {
 
 function shortDigits(value: string): string {
   return value.length <= 14 ? value : `${value.slice(0, 6)}…${value.slice(-4)}`;
+}
+
+/**
+ * What KIND of capsule this is, read from the creating factory's own VERSION
+ * string rather than guessed from an address list — a v3/v3.1 capsule can hold a
+ * standing authorization, and that is the single most useful thing to know about
+ * it on this page. Unknown versions fall back to the neutral description.
+ */
+function capsuleLineage(version: string): { title: string; detail: string } {
+  if (version.startsWith("3.1")) {
+    return {
+      title: "Automated · v3.1",
+      detail:
+        "Can hold a recurring series whose per-run floor is derived from an allowlisted price source at each run, or a one-shot price trigger. Any executor may submit a run the capsule owes.",
+    };
+  }
+  if (version.startsWith("3")) {
+    return {
+      title: "Automated · v3",
+      detail:
+        "Can hold a recurring series or a one-shot price trigger. Any executor may submit a run the capsule owes; the chain refuses every run it does not.",
+    };
+  }
+  return {
+    title: "One-shot",
+    detail: "Executes its frozen policy once, against an owner-signed intent.",
+  };
 }

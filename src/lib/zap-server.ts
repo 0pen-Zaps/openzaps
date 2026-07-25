@@ -9,6 +9,8 @@ import {
 } from "@/lib/activity";
 import {
   OPENZAP_CONTRACTS,
+  OPENZAP_V3_CONTRACTS,
+  OPENZAP_V3_1_CONTRACTS,
   ROBINHOOD_ASSETS,
   ROBINHOOD_RPC_URL,
   erc20Abi,
@@ -44,6 +46,15 @@ const TIMESTAMP_BUDGET = 60;
  * the first, unknown addresses cost a map lookup. The window is short because
  * the memo also decides 404s.
  */
+/** Every factory whose clones are canonical capsules, deduped by address. */
+const CAPSULE_FACTORIES: Address[] = [
+  ...new Map(
+    [OPENZAP_CONTRACTS.factory, OPENZAP_V3_CONTRACTS.factory, OPENZAP_V3_1_CONTRACTS.factory].map(
+      (address) => [address.toLowerCase(), address] as const,
+    ),
+  ).values(),
+];
+
 const FACTORY_SNAPSHOT_TTL_MS = 10_000;
 
 /**
@@ -143,7 +154,9 @@ async function readFactorySnapshot(): Promise<FactorySnapshot> {
   const head = await currentHead();
 
   const createdLogs = await client.getLogs({
-    address: OPENZAP_CONTRACTS.factory,
+    // All capsule factories: a v3 / v3.1 automated zap is just as canonical as a
+    // v1.1 one, and scanning only v1.1 made its detail page report "not a zap".
+    address: CAPSULE_FACTORIES,
     event: zapCreatedEvent,
     fromBlock: ACTIVITY_FROM_BLOCK,
     toBlock: head,
@@ -155,6 +168,7 @@ async function readFactorySnapshot(): Promise<FactorySnapshot> {
       ? [{
           zap: getAddress(log.args.zap),
           owner: getAddress(log.args.owner),
+          factory: getAddress(log.address),
           policyHash: log.args.policyHash,
           implCodeHash: log.args.implCodeHash,
           salt: log.args.salt,
@@ -222,8 +236,8 @@ export async function fetchZapDetail(zapAddress: Address): Promise<ZapDetailPayl
   const [runtime, implementation, version, owner, recipient, maxRelayerFeeCap, optimization, trackedAssets, stepCount, policyHash] =
     await Promise.all([
       client.getCode({ address, blockNumber: head }),
-      client.readContract({ address: OPENZAP_CONTRACTS.factory, abi: openZapFactoryAbi, functionName: "implementation", blockNumber: head }),
-      client.readContract({ address: OPENZAP_CONTRACTS.factory, abi: openZapFactoryAbi, functionName: "VERSION", blockNumber: head }),
+      client.readContract({ address: created.factory, abi: openZapFactoryAbi, functionName: "implementation", blockNumber: head }),
+      client.readContract({ address: created.factory, abi: openZapFactoryAbi, functionName: "VERSION", blockNumber: head }),
       client.readContract({ address, abi: openZapAbi, functionName: "owner", blockNumber: head }),
       client.readContract({ address, abi: openZapAbi, functionName: "recipient", blockNumber: head }),
       client.readContract({ address, abi: openZapAbi, functionName: "maxRelayerFeeCap", blockNumber: head }),

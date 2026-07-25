@@ -24,6 +24,7 @@ type FeedState =
 const TYPE_LABEL: Record<ActivityEntry["type"], string> = {
   created: "Zap created",
   executed: "Executed",
+  automated: "Automated run",
   recovered: "Recovered",
 };
 
@@ -85,6 +86,7 @@ export function ActivityFeed({ initial }: { initial: ActivityPayload | null }): 
           <>
             <Metric count label="Zaps created" value={String(state.data.stats.zapsCreated)} />
             <Metric count label="Executions" value={String(state.data.stats.executions)} />
+            <Metric count label="Automated runs" value={String(state.data.stats.automatedRuns)} />
             <Metric count label="Recoveries" value={String(state.data.stats.recoveries)} />
             <Metric
               label="Executed volume"
@@ -96,7 +98,7 @@ export function ActivityFeed({ initial }: { initial: ActivityPayload | null }): 
             />
           </>
         ) : (
-          ["Zaps created", "Executions", "Recoveries", "Executed volume"].map((label, i) =>
+          ["Zaps created", "Executions", "Automated runs", "Recoveries", "Executed volume"].map((label, i) =>
             state.status === "loading" ? (
               // Shaped placeholders rather than an ellipsis: the strip keeps its
               // height and reads as "arriving" instead of "empty".
@@ -206,7 +208,11 @@ export function ActivityFeed({ initial }: { initial: ActivityPayload | null }): 
                 <span className={styles.feedDetail}>
                   {entry.type === "created"
                     ? `by ${shortAddress(entry.actor)}`
-                    : `${entry.amount ? formatAmount(entry.amount) : "?"} ${entry.assetSymbol ?? ""} → ${shortAddress(entry.actor)}`}
+                    : entry.type === "automated"
+                      ? // The actor on an automated row is the EXECUTOR that submitted it, not the
+                        // recipient — naming it "→ 0x…" would read as the destination of the output.
+                        `${entry.amount ? formatAmount(entry.amount) : "?"} ${entry.assetSymbol ?? ""} · ${entry.detail ?? "automated"} · by ${shortAddress(entry.actor)}`
+                      : `${entry.amount ? formatAmount(entry.amount) : "?"} ${entry.assetSymbol ?? ""} → ${shortAddress(entry.actor)}`}
                 </span>
                 <code className={styles.feedZap}>{shortAddress(entry.zap)}</code>
                 <span className={styles.feedTime}>
@@ -225,8 +231,10 @@ export function ActivityFeed({ initial }: { initial: ActivityPayload | null }): 
         )}
 
         <p className={styles.feedNote}>
-          Execution and recovery rows are read only from zaps recorded in the factory&apos;s own ZapCreated log;
-          events emitted by non-canonical contracts never reach this feed. View any zap directly on{" "}
+          Execution, automated-run, and recovery rows are read only from zaps recorded in a factory&apos;s own
+          ZapCreated log — v1.1, v3, and v3.1 — so events emitted by non-canonical contracts never reach this
+          feed. An automated row is a run an executor submitted against a standing authorization its owner
+          signed. View any zap directly on{" "}
           <a href={explorerAddress(OPENZAP_CONTRACTS.factory)} target="_blank" rel="noreferrer">
             Blockscout ↗
           </a>
