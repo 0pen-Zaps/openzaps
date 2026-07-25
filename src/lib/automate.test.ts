@@ -13,6 +13,7 @@ import {
   fundingReadiness,
   intentFileName,
   netFloorFromQuote,
+  planWethFunding,
   projectedRelativeFloor,
   requiredFunding,
   suggestedSeriesDeadline,
@@ -290,6 +291,59 @@ describe("fundingReadiness", () => {
       shortfall: parseEther("0.7"),
     });
     expect(fundingReadiness(0n, 1n)).toEqual({ status: "short", shortfall: 1n });
+  });
+});
+
+describe("planWethFunding", () => {
+  const RESERVE = parseEther("0.0005");
+
+  it("needs no wrap when aeWETH already covers the deposit", () => {
+    expect(planWethFunding({ needed: parseEther("1"), wethBalance: parseEther("1"), ethBalance: parseEther("9"), gasReserve: RESERVE }))
+      .toEqual({ status: "sufficient", shortfall: 0n, wrapEth: 0n });
+    // nothing owed → sufficient regardless of balances
+    expect(planWethFunding({ needed: 0n, wethBalance: 0n, ethBalance: 0n, gasReserve: RESERVE }))
+      .toEqual({ status: "sufficient", shortfall: 0n, wrapEth: 0n });
+  });
+
+  it("wraps exactly the gap from ETH when aeWETH is short but ETH covers it", () => {
+    // need 1 aeWETH, hold 0.3 aeWETH → wrap 0.7 ETH; wallet has 2 ETH (>> 0.7 + reserve)
+    const plan = planWethFunding({ needed: parseEther("1"), wethBalance: parseEther("0.3"), ethBalance: parseEther("2"), gasReserve: RESERVE });
+    expect(plan).toEqual({ status: "sufficient", shortfall: 0n, wrapEth: parseEther("0.7") });
+  });
+
+  it("wraps straight from ETH with zero aeWETH held", () => {
+    const plan = planWethFunding({ needed: parseEther("0.05"), wethBalance: 0n, ethBalance: parseEther("0.05") + RESERVE, gasReserve: RESERVE });
+    expect(plan).toEqual({ status: "sufficient", shortfall: 0n, wrapEth: parseEther("0.05") });
+  });
+
+  it("reserves gas: cannot wrap the reserve, so a wallet with exactly the gap is short", () => {
+    // gap 1 ETH, wallet holds exactly 1 ETH → spendable = 1 - reserve < 1 → short by the reserve
+    const plan = planWethFunding({ needed: parseEther("1"), wethBalance: 0n, ethBalance: parseEther("1"), gasReserve: RESERVE });
+    expect(plan.status).toBe("short");
+    expect(plan.shortfall).toBe(RESERVE);
+    expect(plan.wrapEth).toBe(0n);
+  });
+
+  it("never over-wraps: wrapEth equals the gap, not the whole ETH balance", () => {
+    const plan = planWethFunding({ needed: parseEther("0.5"), wethBalance: parseEther("0.1"), ethBalance: parseEther("100"), gasReserve: RESERVE });
+    expect(plan.wrapEth).toBe(parseEther("0.4")); // 0.5 - 0.1, not 100
+  });
+
+  it("is unknown while either balance it needs has not read", () => {
+    // aeWETH unread → unknown regardless of ETH
+    expect(planWethFunding({ needed: parseEther("1"), wethBalance: null, ethBalance: parseEther("9"), gasReserve: RESERVE }).status).toBe("unknown");
+    // aeWETH short but ETH unread → cannot confirm the wrap → unknown, not short
+    expect(planWethFunding({ needed: parseEther("1"), wethBalance: parseEther("0.3"), ethBalance: null, gasReserve: RESERVE }).status).toBe("unknown");
+    // aeWETH already covers → sufficient even if ETH unread (ETH not needed)
+    expect(planWethFunding({ needed: parseEther("1"), wethBalance: parseEther("1"), ethBalance: null, gasReserve: RESERVE }).status).toBe("sufficient");
+  });
+
+  it("reports the exact ETH shortfall when even wrapping everything spendable falls short", () => {
+    // need 1, hold 0.2 aeWETH → gap 0.8; ETH 0.5 → spendable 0.5-reserve; short by 0.8 - (0.5-reserve)
+    const plan = planWethFunding({ needed: parseEther("1"), wethBalance: parseEther("0.2"), ethBalance: parseEther("0.5"), gasReserve: RESERVE });
+    expect(plan.status).toBe("short");
+    expect(plan.shortfall).toBe(parseEther("0.8") - (parseEther("0.5") - RESERVE));
+    expect(plan.wrapEth).toBe(0n);
   });
 });
 

@@ -25,6 +25,7 @@ import {
   fundingReadiness,
   intentFileName,
   netFloorFromQuote,
+  planWethFunding,
   projectedRelativeFloor,
   type AutomationMode,
 } from "@/lib/automate";
@@ -66,6 +67,8 @@ import {
   openZapV3Configured,
   orientedPriceSourceAbi,
   priceSourceAbi,
+  ROBINHOOD_ASSETS,
+  wethAbi,
   robinhoodChain,
   v4QuoterAbi,
 } from "@/lib/robinhood";
@@ -75,6 +78,9 @@ const publicClient = createPublicClient({ chain: robinhoodChain, transport: http
 
 const STORAGE_KEY = "openzap:v3:automations";
 const MAX_SAVED_AUTOMATIONS = 5;
+// ETH left unwrapped so the wrap + transfer can still pay for gas. Robinhood Chain is an L2 with
+// cheap gas; 0.0005 ETH covers both txs comfortably while staying negligible against a real deposit.
+const WRAP_GAS_RESERVE = 500_000_000_000_000n; // 0.0005 ETH
 
 type BusyAction = "connect" | "create" | "fund" | "sign" | "cancel" | "recover" | "refresh" | "send" | "publish" | null;
 
@@ -186,6 +192,8 @@ export default function AutomateConsole(): React.JSX.Element {
    *  balance for the previous route can never be compared against a new route's need (cf. LoadedState
    *  .address). null = not read → "unknown" preflight. */
   const [walletBalance, setWalletBalance] = useState<{ token: Address; balance: bigint } | null>(null);
+  /** Connected wallet's native ETH balance — lets the app wrap ETH→aeWETH to fund an aeWETH zap. */
+  const [ethBalance, setEthBalance] = useState<bigint | null>(null);
   const [executorHealth, setExecutorHealth] = useState<ExecutorHealth | null>(null);
   const [intakeToken, setIntakeToken] = useState("");
   const loadEpochRef = useRef(0);
@@ -253,7 +261,13 @@ export default function AutomateConsole(): React.JSX.Element {
   // record switch (routes have opposite tokenIn) could momentarily grade the wrong balance.
   const walletBalanceForToken =
     walletBalance && fundingTokenAddress && walletBalance.token === fundingTokenAddress ? walletBalance.balance : null;
-  const funding = fundingReadiness(walletBalanceForToken, fundingNeeded);
+  // aeWETH deposits can be funded straight from native ETH: the app wraps the gap on the user's
+  // behalf, so the preflight grades aeWETH + wrappable ETH together. Every other asset is aeWETH-blind.
+  const isWethFunding =
+    fundingTokenAddress !== null && fundingTokenAddress.toLowerCase() === ROBINHOOD_ASSETS.weth.toLowerCase();
+  const funding = isWethFunding
+    ? planWethFunding({ needed: fundingNeeded, wethBalance: walletBalanceForToken, ethBalance, gasReserve: WRAP_GAS_RESERVE })
+    : { ...fundingReadiness(walletBalanceForToken, fundingNeeded), wrapEth: 0n };
 
   /** The one loader. Epoch-guarded: only the newest in-flight load may write state. */
   const applyLoad = useCallback(async (target: AutomationRecord | null) => {
@@ -374,18 +388,24 @@ export default function AutomateConsole(): React.JSX.Element {
       if (cancelled) return;
       if (!account || !fundingTokenAddress) {
         setWalletBalance(null);
+        setEthBalance(null);
         return;
       }
       try {
-        const bal = await publicClient.readContract({
-          address: fundingTokenAddress,
-          abi: erc20Abi,
-          functionName: "balanceOf",
-          args: [account],
-        });
-        if (!cancelled) setWalletBalance({ token: fundingTokenAddress, balance: bal });
+        // aeWETH balance AND native ETH together, so the preflight can count ETH the app can wrap.
+        const [bal, eth] = await Promise.all([
+          publicClient.readContract({ address: fundingTokenAddress, abi: erc20Abi, functionName: "balanceOf", args: [account] }),
+          publicClient.getBalance({ address: account }),
+        ]);
+        if (!cancelled) {
+          setWalletBalance({ token: fundingTokenAddress, balance: bal });
+          setEthBalance(eth);
+        }
       } catch {
-        if (!cancelled) setWalletBalance(null); // explicit unknown, never a fake zero
+        if (!cancelled) {
+          setWalletBalance(null); // explicit unknown, never a fake zero
+          setEthBalance(null);
+        }
       }
     };
     void load();
@@ -474,6 +494,45 @@ export default function AutomateConsole(): React.JSX.Element {
         return;
       }
       const wallet = await requireWallet(owner);
+
+      // Straight-from-ETH deposits: if this zap funds with aeWETH and the wallet is short on aeWETH,
+      // wrap exactly the gap from native ETH first (deposit() mints 1:1), so the user never has to
+      // pre-wrap. Fresh reads — a stale balance would mis-size a real wrap. If the wrap lands but the
+      // transfer below fails, the aeWETH is safely in the wallet and a retry just transfers it.
+      const tokenIn = recordRoute.tokenIn.address;
+      if (tokenIn.toLowerCase() === ROBINHOOD_ASSETS.weth.toLowerCase()) {
+        const walletWeth = await publicClient.readContract({
+          address: tokenIn,
+          abi: erc20Abi,
+          functionName: "balanceOf",
+          args: [owner],
+        });
+        if (walletWeth < missing) {
+          const toWrap = missing - walletWeth;
+          const eth = await publicClient.getBalance({ address: owner });
+          if (eth < toWrap + WRAP_GAS_RESERVE) {
+            throw new Error(
+              `Not enough ETH to wrap: this deposit needs ${formatToken(toWrap)} more aeWETH than the wallet holds, but only ${formatToken(eth)} ETH is available (keeping ${formatToken(WRAP_GAS_RESERVE)} for gas).`,
+            );
+          }
+          const wrapSim = await publicClient.simulateContract({
+            account: owner,
+            address: tokenIn,
+            abi: wethAbi,
+            functionName: "deposit",
+            value: toWrap,
+          });
+          const wrapHash = await wallet.writeContract(wrapSim.request);
+          // waitForTransactionReceipt resolves (not throws) on a reverted tx, so check status: a
+          // reverted deposit mints no aeWETH and must not read as "Wrapped" before a confusing transfer.
+          const wrapReceipt = await publicClient.waitForTransactionReceipt({ hash: wrapHash });
+          if (wrapReceipt.status !== "success") {
+            throw new Error("The ETH wrap reverted — no aeWETH was minted and nothing was deposited. Try again.");
+          }
+          setNotice(`Wrapped ${formatToken(toWrap)} ETH → aeWETH. Confirm the deposit next.`);
+        }
+      }
+
       const { request } = await publicClient.simulateContract({
         account: owner,
         address: recordRoute.tokenIn.address,
@@ -1040,10 +1099,23 @@ export default function AutomateConsole(): React.JSX.Element {
                       Wallet holds{" "}
                       <strong>
                         {formatToken(walletBalanceForToken ?? 0n, recordRoute.tokenIn.decimals)} {recordRoute.tokenIn.symbol}
+                      </strong>
+                      {isWethFunding && ethBalance !== null ? <> + {formatToken(ethBalance)} ETH</> : null} — short{" "}
+                      {formatToken(funding.shortfall, recordRoute.tokenIn.decimals)}{" "}
+                      {isWethFunding ? "ETH" : recordRoute.tokenIn.symbol} of the{" "}
+                      {formatToken(fundingNeeded, recordRoute.tokenIn.decimals)} this step transfers. Add{" "}
+                      {isWethFunding ? "ETH or aeWETH" : recordRoute.tokenIn.symbol} first.
+                    </>
+                  ) : funding.status === "sufficient" && funding.wrapEth > 0n ? (
+                    <>
+                      Wallet holds{" "}
+                      <strong>
+                        {formatToken(walletBalanceForToken ?? 0n, recordRoute.tokenIn.decimals)} {recordRoute.tokenIn.symbol}
                       </strong>{" "}
-                      — short {formatToken(funding.shortfall, recordRoute.tokenIn.decimals)} {recordRoute.tokenIn.symbol} of
-                      the {formatToken(fundingNeeded, recordRoute.tokenIn.decimals)} this step transfers. Top up your wallet
-                      first.
+                      — this deposit wraps{" "}
+                      <strong>{formatToken(funding.wrapEth)} ETH → {recordRoute.tokenIn.symbol}</strong> to cover the{" "}
+                      {formatToken(fundingNeeded, recordRoute.tokenIn.decimals)} it transfers. ✓ One extra signature wraps
+                      it — no need to hold {recordRoute.tokenIn.symbol} first.
                     </>
                   ) : funding.status === "sufficient" && walletBalanceForToken !== null ? (
                     <>
