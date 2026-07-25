@@ -6,6 +6,7 @@ import { pageMetadata } from "@/lib/seo";
 import { CHAIN } from "@/lib/config";
 import { CountUp } from "@/components/CountUp";
 import { Reveal } from "@/components/Reveal";
+import { TokenUtilityPanel } from "@/components/TokenUtilityPanel";
 import { compileChain, makeNode } from "@/lib/blocks";
 import { MAX_POLICY_STEPS } from "@/lib/chains";
 import { AgentIntent } from "./AgentIntent";
@@ -218,6 +219,13 @@ export default function LandingPage(): React.JSX.Element {
             <ExecutionDemo />
           </div>
         </section>
+
+        {/* ======================== 0xZAPS UTILITY ========================== */}
+        <div className={styles.section}>
+          <div className="container">
+            <TokenUtilityPanel id="token" />
+          </div>
+        </div>
 
         {/* ======================== WHY OPENZAPS ============================ */}
         <section className={styles.section} aria-labelledby="why-title">

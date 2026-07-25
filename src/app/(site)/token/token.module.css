@@ -195,7 +195,9 @@
 
 .buyRow {
   display: flex;
+  flex-wrap: wrap;
   justify-content: center;
+  gap: 0.75rem;
   margin-top: 2rem;
 }
 

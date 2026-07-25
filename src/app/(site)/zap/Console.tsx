@@ -19,6 +19,7 @@ import {
 import { OpenZapMark } from "@/components/OpenZapMark";
 import { BlockGlyph } from "./BlockGlyph";
 import { trackEvent } from "@/lib/analytics";
+import { LINKS } from "@/lib/config";
 import {
   ACTIVITY_FROM_BLOCK,
   assetDecimalsFor,
@@ -1484,6 +1485,7 @@ export default function AppPage(): React.JSX.Element {
           </span>
         </div>
         <div className={styles.tokenActions}>
+          <a className="btn btnPrimary" href={LINKS.buy} target="_blank" rel="noreferrer">Buy on Clanker ↗</a>
           <button className="btn btnGhost" onClick={() => void copyTokenAddress()} type="button">Copy address</button>
           <button data-busy={busy === "watch"} className="btn btnGhost" disabled={busy !== null} onClick={() => void watchToken()} type="button">
             {busy === "watch" ? "Opening wallet…" : "Add to wallet"}

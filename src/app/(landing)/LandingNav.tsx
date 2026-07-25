@@ -14,6 +14,7 @@ import styles from "./landing.module.css";
 const SECTIONS = [
   { id: "product", label: "Product" },
   { id: "zaps", label: "Zaps" },
+  { id: "token", label: "0xZAPS" },
   { id: "developers", label: "Developers" },
   { id: "integrations", label: "Integrations" },
 ] as const;

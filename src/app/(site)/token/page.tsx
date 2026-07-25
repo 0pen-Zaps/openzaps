@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { OpenZapMark } from "@/components/OpenZapMark";
 import { BuyButton } from "@/components/BuyButton";
 import { JsonLd } from "@/components/JsonLd";
@@ -33,8 +32,8 @@ const facts = [
 const steps = [
   {
     n: "01",
-    title: "Open the official Clanker market",
-    body: `Use the market linked from this site and confirm it shows ${TOKEN.name} (${TOKEN.symbol}).`,
+    title: "Choose a verified buy path",
+    body: `Use OpenZaps' pinned aeWETH → ${TOKEN.symbol} route or the official Clanker market linked from this site. Both paths identify the same Robinhood Chain token contract.`,
   },
   {
     n: "02",
@@ -43,8 +42,8 @@ const steps = [
   },
   {
     n: "03",
-    title: `Trade ${TOKEN.symbol}`,
-    body: `Connect through Clanker's supported wallet flow, review the ${TOKEN_LAUNCH.network} transaction, and confirm it in your wallet.`,
+    title: "Review and sign in your wallet",
+    body: `Check the exact input, quote, minimum output, destination, and every ${TOKEN_LAUNCH.network} transaction before confirming. OpenZaps shows its bounded policy before execution; Clanker uses its supported market flow.`,
   },
 ] as const;
 
@@ -74,7 +73,7 @@ const faqs = [
   },
   {
     q: `Where can I buy ${TOKEN.symbol}?`,
-    a: `Use the official Clanker market linked on this page and verify ${TOKEN_LAUNCH.contract} before signing.`,
+    a: `Use OpenZaps' pinned aeWETH → ${TOKEN.symbol} route or the official Clanker market linked on this page. Verify ${TOKEN_LAUNCH.contract} before signing either path.`,
   },
   {
     q: "Do I need the token to use OpenZaps?",
@@ -130,7 +129,8 @@ export default function TokenPage(): React.JSX.Element {
           you trade it or add it to a wallet.
         </p>
         <div className={styles.heroActions}>
-          <BuyButton size="lg" />
+          <BuyButton destination="openzaps" label="Buy with OpenZaps" size="lg" />
+          <BuyButton label="Buy on Clanker" size="lg" variant="ghost" />
           <a className="btn btnGhost btnLg" href={LINKS.dexscreener} target="_blank" rel="noreferrer">
             Dexscreener ↗
           </a>
@@ -186,7 +186,8 @@ export default function TokenPage(): React.JSX.Element {
           ))}
         </div>
         <div className={styles.buyRow}>
-          <BuyButton size="lg" />
+          <BuyButton destination="openzaps" label="Buy with OpenZaps" size="lg" />
+          <BuyButton label="Buy on Clanker" size="lg" variant="ghost" />
         </div>
       </section>
 
@@ -270,10 +271,8 @@ export default function TokenPage(): React.JSX.Element {
             Check the address. Then trade <span className="gradientText">{TOKEN.symbol}</span>.
           </h2>
           <div className={styles.heroActions}>
-            <BuyButton size="lg" />
-            <Link className="btn btnGhost btnLg" href="/zap">
-              Launch OpenZaps
-            </Link>
+            <BuyButton destination="openzaps" label="Buy with OpenZaps" size="lg" />
+            <BuyButton label="Clanker market" size="lg" variant="ghost" />
           </div>
           <p className={styles.disclaimer}>
             Not financial advice. {TOKEN.symbol} is an ERC-20 with no claim on revenue, yield, or assets. It is not

@@ -4,6 +4,7 @@ import { POLICY_TEMPLATES } from "@/lib/policy";
 import { JsonLd } from "@/components/JsonLd";
 import { pageMetadata, breadcrumbJsonLd, SITE_URL } from "@/lib/seo";
 import { Reveal } from "@/components/Reveal";
+import { TokenUtilityPanel } from "@/components/TokenUtilityPanel";
 import styles from "./docs.module.css";
 
 export const metadata = pageMetadata({
@@ -90,6 +91,7 @@ export default function DocsPage(): React.JSX.Element {
       <section className={`container ${styles.grid}`}>
         <nav className={styles.toc} aria-label="Documentation sections">
           <a href="#quickstart">Quickstart</a>
+          <a href="#token">0xZAPS utility</a>
           <a href="#policy">Policy schema</a>
           <a href="#api">Simulation API</a>
           <a href="#templates">Templates</a>
@@ -144,6 +146,8 @@ export default function DocsPage(): React.JSX.Element {
   }'`}</pre>
             </div>
           </section>
+
+          <TokenUtilityPanel id="token" />
 
           <section className={styles.section} id="policy">
             <h2>Policy schema</h2>
