@@ -166,6 +166,35 @@ const PATHS: Record<string, React.ReactNode> = {
       <path d="M7 6 9.5 3.5" />
     </>
   ),
+  // Flow/status marks. The bolt is the product's own sign — it marks the moment a zap actually runs.
+  bolt: <path d="M13 2.5 5.5 13.5h5L11 21.5 18.5 10.5h-5z" />,
+  check: (
+    <>
+      <circle cx="12" cy="12" r="8.6" />
+      <path d="m8.2 12.2 2.6 2.6 5-5.4" />
+    </>
+  ),
+  alert: (
+    <>
+      <path d="M12 4.2 21 19.5H3z" />
+      <path d="M12 10v4.1" />
+      <path d="M12 17.1v.1" />
+    </>
+  ),
+  coins: (
+    <>
+      <ellipse cx="12" cy="6.6" rx="7.5" ry="3.1" />
+      <path d="M4.5 6.6v5c0 1.7 3.4 3.1 7.5 3.1s7.5-1.4 7.5-3.1v-5" />
+      <path d="M4.5 11.6v5c0 1.7 3.4 3.1 7.5 3.1s7.5-1.4 7.5-3.1v-5" />
+    </>
+  ),
+  plug: (
+    <>
+      <path d="M9 3.5v5M15 3.5v5" />
+      <path d="M6.5 8.5h11v3a5.5 5.5 0 0 1-11 0z" />
+      <path d="M12 17v3.5" />
+    </>
+  ),
 };
 
 export function BlockGlyph({ name, className }: { name: string; className?: string }): React.JSX.Element {
