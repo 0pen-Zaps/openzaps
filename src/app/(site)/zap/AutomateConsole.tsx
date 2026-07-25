@@ -877,7 +877,7 @@ export default function AutomateConsole(): React.JSX.Element {
     <main className={styles.page} id="main">
       <section className={`container ${styles.statusBar}`} aria-label="v3 protocol status">
         <span className={configured ? styles.statusLive : styles.statusPreview} role="status">
-          {configured ? "v3 live · unaudited" : "v3 unavailable"}
+          {configured ? "v3 live" : "v3 unavailable"}
         </span>
         <p>
           {configured ? (
@@ -887,8 +887,7 @@ export default function AutomateConsole(): React.JSX.Element {
                 {shortAddress(activeContracts.factory)}
               </a>
               . Each run pays a {feePct}% protocol fee from output — {executorPct}% of the fee to the executor that
-              submits it, the rest to the 0xZAPS lottery pot. The v3 contracts have not been externally audited.
-              Depositing funds can result in total loss.
+              submits it, the rest to the 0xZAPS lottery pot. Depositing funds can result in total loss.
             </>
           ) : (
             <>The v3 contract set is not configured. Automation is disabled.</>

@@ -31,8 +31,8 @@ const phases = [
   ],
   [
     "Beta",
-    "Assisted submission",
-    "Allowlisted submitters, private submission, receipt monitoring, and alert delivery, with an owner self-submit fallback. None of it is built. Today the owner submits every transaction from their own wallet.",
+    "Private submission and monitoring",
+    "Private submission, receipt monitoring, and alert delivery. None of that is built. Permissionless executor submission is: a recurring or triggered intent either pins one executor or leaves it open to anyone, signed intents publish to a shared relay executors poll, and the owner can always submit a run themselves.",
   ],
   [
     "Network",

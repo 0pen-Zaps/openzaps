@@ -53,8 +53,8 @@ const GITHUB_URL = "https://github.com/0pen-Zaps/openzaps";
 export const metadata: Metadata = pageMetadata({
   title: "DeFi, in one action",
   description:
-    "OpenZaps turns a multi-protocol DeFi workflow into a single permissionless transaction. Design the route, sign a bounded policy capsule, and execute — live on " +
-    `${CHAIN.name}. The contracts are not externally audited.`,
+    "OpenZaps turns a multi-protocol DeFi workflow into a single permissionless transaction — then keeps running it. Design the route, sign a bounded policy capsule once, and let it execute on a cadence or on a price move. Live on " +
+    `${CHAIN.name}. Deposited funds are at risk.`,
   path: "/",
 });
 
@@ -113,9 +113,9 @@ export default function LandingPage(): React.JSX.Element {
               style={{ "--enter-delay": "360ms" } as React.CSSProperties}
             >
               OpenZaps turns a multi-protocol workflow into a single permissionless
-              transaction. Design the route, sign a bounded policy, and execute —
-              swap, provide, exit, and compose without walking five interfaces to
-              do it.
+              transaction — then keeps running it. Design the route, sign a bounded
+              policy once, and let it execute on a cadence or on a price move. The
+              capsule enforces the terms onchain; anyone can submit the run.
             </p>
             <div
               className={`${styles.heroActions} ${styles.heroEnter}`}
@@ -132,14 +132,14 @@ export default function LandingPage(): React.JSX.Element {
               className={`${styles.heroMicro} ${styles.heroEnter}`}
               style={{ "--enter-delay": "560ms" } as React.CSSProperties}
             >
-              <span className={styles.heroChip}>One transaction. Any protocol.</span>
+              <span className={styles.heroChip}>Sign once. The chain keeps the terms.</span>
               <span className={styles.heroChip}>
                 <span className={styles.heroMicroDot} aria-hidden="true" />
                 Live on {CHAIN.name} · {CHAIN.id}
               </span>
               <span className={styles.heroChip}>
                 <Link href="/legal" className={styles.heroChipLink}>
-                  Pre-audit — read the disclosures
+                  Risk &amp; disclosures
                 </Link>
               </span>
             </div>
@@ -311,8 +311,10 @@ export default function LandingPage(): React.JSX.Element {
               </h2>
               <p className={styles.sectionLead}>
                 A capsule is the contract between you and your agent: it can
-                decide when to execute, and nothing else. Built for a world
-                where software holds triggers.
+                decide when to execute, and nothing else. That world is already
+                here — a capsule takes one signed intent and lets any executor
+                fire the run it owes, while the chain refuses every run it does
+                not.
               </p>
             </Reveal>
             <AgentIntent plans={plans} />
@@ -349,8 +351,10 @@ export default function LandingPage(): React.JSX.Element {
                 1 signed step
               </span>
             </div>
+            {/* No superlative: every deployable blueprint is the same depth today, so "deepest"
+                would imply a maximum that is really a tie. Attribute it instead. */}
             <p className={`${styles.metricsCaption} mono`}>
-              deepest deployable blueprint: {metrics.maxCompression.recipe}
+              compiled from the {metrics.maxCompression.recipe} blueprint
             </p>
             <dl className={styles.metricsGrid}>
               {[
@@ -443,7 +447,10 @@ const WHY = [
     detail: "Target, recipient, calldata, amounts, gas: fixed at signing. Execution cannot exceed the policy.",
   },
   {
-    title: "Open",
-    detail: "MIT-licensed end to end — the builder, the compiler, and the contracts behind it.",
+    // The pillars stay a clean 3×2 grid, so this replaced "Open" — MIT licensing is already stated
+    // twice in the developers section, while nothing here covered the standing-authorization model.
+    title: "Standing",
+    detail:
+      "One signature can authorize a whole series. The capsule enforces the interval, the run count, and a floor priced from live spot — so a zap keeps running without keeping your keys online.",
   },
 ] as const;

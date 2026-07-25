@@ -4,7 +4,7 @@ import { pageMetadata, absoluteUrl, SITE_URL, SITE_NAME } from "@/lib/seo";
 
 export const metadata = pageMetadata({
   title: "Zap — design, sign, and run onchain zaps",
-  description: `Design a zap from typed DeFi blocks, then create, fund, sign, execute, and recover it on ${CHAIN.name} — swaps, stitched multi-pool routes, and aeWETH/USDG liquidity. The contracts have not been externally audited. Deposited funds are at risk.`,
+  description: `Design a zap from typed DeFi blocks, then create, fund, sign, execute, and recover it on ${CHAIN.name} — swaps, stitched multi-pool routes, and aeWETH/USDG liquidity. Deposited funds are at risk.`,
   path: "/zap",
   ogImage: "/og/app.png",
   keywords: ["use OpenZaps", "policy capsule builder", "simulate DeFi policy", "DeFi automation app", "EIP-712 policy review"],

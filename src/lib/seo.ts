@@ -12,8 +12,8 @@ export const OG_IMAGE = "/og.png";
 export const DEFAULT_TITLE = "OpenZaps — DeFi policy capsules agents cannot redirect";
 
 export const DEFAULT_DESCRIPTION =
-  "A capsule fixes the target, recipient, asset, and calldata before it is signed. Nothing that executes it can change them. The owner submits every transaction from their own wallet. " +
-  `One bounded aeWETH ↔ ${TOKEN.symbol} route is live on ${TOKEN_LAUNCH.network}. The contracts are not externally audited.`;
+  "A capsule fixes the target, recipient, asset, and calldata before it is signed. Nothing that executes it can change them. Only the owner ever signs; a recurring or triggered run can be submitted by anyone, and the capsule re-checks every bound. " +
+  `Bounded swaps, stitched routes, liquidity, and standing automations are live on ${TOKEN_LAUNCH.network} for aeWETH ↔ ${TOKEN.symbol}. Deposited funds are at risk.`;
 
 export const SEO_KEYWORDS = [
   "OpenZaps",
