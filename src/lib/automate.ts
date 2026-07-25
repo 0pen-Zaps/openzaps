@@ -150,6 +150,24 @@ export function projectedRelativeFloor(input: {
   return (expected * (BPS - slip)) / BPS;
 }
 
+export type FundingReadiness = { status: "unknown" | "sufficient" | "short"; shortfall: bigint };
+
+/**
+ * Whether the connected wallet can cover the transfer the Fund step is about to make. `needed` is the
+ * amount that will actually LEAVE the wallet — the remaining funding target minus what the capsule
+ * already holds — so a partially-funded zap only checks the gap. Returns:
+ *   "unknown"    — balance hasn't read yet (null); never block the button or promise coverage on a
+ *                  missing read, the on-chain transfer still checks for itself.
+ *   "sufficient" — nothing owed (needed <= 0) or the wallet covers it.
+ *   "short"      — wallet is below `needed`; `shortfall` is exactly how much more it must hold.
+ */
+export function fundingReadiness(walletBalance: bigint | null, needed: bigint): FundingReadiness {
+  if (walletBalance === null) return { status: "unknown", shortfall: 0n };
+  if (needed <= 0n) return { status: "sufficient", shortfall: 0n };
+  if (walletBalance >= needed) return { status: "sufficient", shortfall: 0n };
+  return { status: "short", shortfall: needed - walletBalance };
+}
+
 /**
  * Series end: enough room for every run at its cadence plus 25% headroom (executor latency,
  * chain congestion), never less than a day past the last theoretical run.
