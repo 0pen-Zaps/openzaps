@@ -3,6 +3,8 @@ import { parseEther, type Address } from "viem";
 
 import {
   INTERVAL_PRESETS,
+  OPEN_EXECUTOR,
+  resolveExecutor,
   THRESHOLD_PRESETS,
   defaultSlippageBps,
   describeSeries,
@@ -353,5 +355,40 @@ describe("defaultSlippageBps", () => {
     expect(defaultSlippageBps("recurring")).toBeGreaterThan(defaultSlippageBps("trigger"));
     expect(defaultSlippageBps("recurring")).toBe(500);
     expect(defaultSlippageBps("trigger")).toBe(200);
+  });
+});
+
+describe("executor pinning", () => {
+  const PINNED = "0x11DB3AF89b626ab1e09EDb8223af836D1Bee9347" as Address;
+
+  it("leaves a run open to anyone by default", () => {
+    // Open is the liveness default: whoever gets there first may submit, and the
+    // capsule still refuses every run it does not owe.
+    expect(resolveExecutor()).toBe(OPEN_EXECUTOR);
+    expect(resolveExecutor(null)).toBe(OPEN_EXECUTOR);
+    expect(OPEN_EXECUTOR).toBe("0x0000000000000000000000000000000000000000");
+  });
+
+  it("pins a single submitter when one is chosen", () => {
+    expect(resolveExecutor(PINNED)).toBe(PINNED);
+  });
+
+  it("carries the choice into every execution type", () => {
+    const common = { chainId: 4663, nowSec: 1_000_000n, recipient: ADDR, policyHash: HASH, outAsset: ADDR, zap: ZAP };
+    const recurring = draftRecurringIntent({
+      ...common, seriesId: 1n, interval: 86_400n, maxRuns: 5, minOutPerRun: 0n, executor: PINNED,
+    });
+    const relative = draftRecurringRelativeIntent({
+      ...common, seriesId: 1n, interval: 86_400n, maxRuns: 5, priceSource: ADDR, maxSlippageBps: 500, executor: PINNED,
+    });
+    const trigger = draftTriggerIntent({
+      ...common, nonce: 7n, validDays: 30, priceSource: ADDR, baselinePriceX96: 1n, thresholdBps: 1_000,
+      above: true, minOut: 0n, executor: PINNED,
+    });
+    for (const intent of [recurring, relative, trigger]) expect(intent.executor).toBe(PINNED);
+
+    // …and omitting it still yields an open intent on every type.
+    expect(draftRecurringIntent({ ...common, seriesId: 1n, interval: 86_400n, maxRuns: 5, minOutPerRun: 0n }).executor)
+      .toBe(OPEN_EXECUTOR);
   });
 });

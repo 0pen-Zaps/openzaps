@@ -1174,3 +1174,18 @@
   from { opacity: 0; transform: scale(0.94); }
   to { opacity: 1; transform: none; }
 }
+
+/* Explains what the "who may run it" choice actually changes onchain. */
+.execNote {
+  margin-top: 0.7rem;
+  padding: 0.55rem 0.8rem;
+  border-left: 2px solid var(--line);
+  color: var(--muted);
+  font-size: 0.78rem;
+  line-height: 1.5;
+}
+
+.execNote code {
+  font-family: var(--font-jetbrains-mono), ui-monospace, monospace;
+  overflow-wrap: anywhere;
+}
