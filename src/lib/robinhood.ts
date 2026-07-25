@@ -182,7 +182,7 @@ export const OPENZAP_V3_1_CONTRACTS = {
   /** IOrientedPriceSource pinned to the live aeWETH/0xZAPS pool — exposes currency0/currency1. */
   orientedPriceSource: optionalAddress(
     process.env.NEXT_PUBLIC_OPENZAP_V3_1_ORIENTED_PRICE_SOURCE,
-    "0xb4f66bFa00d2496513A5fd43ff47912A3FE0bB5f",
+    "0xB4f66bFa00D2496513a5fD43ff47912A3fe0Bb5F",
   ),
 } as const;
 
@@ -888,10 +888,16 @@ export const priceSourceAbi = [
   },
 ] as const;
 
+// Checksum-normalize whichever address is in effect — the env override OR the hardcoded fallback.
+// Running the fallback through getAddress too means a bad literal fails CLOSED (→ zeroAddress, which
+// trips openZapV3*Configured and disables the flow loudly) instead of silently reaching viem, whose
+// readContract/typed-data encoding reject a mis-checksummed address at call time. The `Address` cast
+// on a literal is compile-time only; it never validates the checksum.
 function optionalAddress(value: string | undefined, fallback: Address): Address {
-  if (!value) return fallback;
   try {
-    return getAddress(value);
+    // `|| fallback` (not `??`) so a declared-but-empty env override ("") is treated as unset, matching
+    // the prior behaviour — Next.js inlines an empty var as "", which getAddress would otherwise reject.
+    return getAddress(value || fallback);
   } catch {
     return zeroAddress;
   }

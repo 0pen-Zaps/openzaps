@@ -104,7 +104,7 @@ const recurringRelative = {
     maxFeePerGas: "10000000000",
     policyHash: HASH,
     outAsset: "0xDd90bFa4adC7F4401E611AbaC692D939F9F4CB07",
-    priceSource: "0xb4f66bFa00d2496513A5fd43ff47912A3FE0bB5f",
+    priceSource: "0xB4f66bFa00D2496513a5fD43ff47912A3fe0Bb5F",
     maxSlippageBps: "500",
   },
   signature: SIG,
@@ -114,7 +114,7 @@ describe("recurring-relative kind", () => {
   it("accepts a well-formed relative submission and rejects a missing floor field", () => {
     const s = parseRelaySubmission(recurringRelative);
     expect(s.kind).toBe("recurring-relative");
-    expect(s.intent.priceSource).toBe("0xb4f66bFa00d2496513A5fd43ff47912A3FE0bB5f");
+    expect(s.intent.priceSource).toBe("0xB4f66bFa00D2496513a5fD43ff47912A3fe0Bb5F");
     expect(s.intent.maxSlippageBps).toBe("500");
     expect("minOutPerRun" in s.intent).toBe(false);
     const noSlip = { ...recurringRelative, intent: { ...recurringRelative.intent } } as { intent: Record<string, unknown> };

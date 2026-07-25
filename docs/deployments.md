@@ -170,7 +170,7 @@ post-broadcast (factory↔pot, source allowlisted, currency0=aeWETH/currency1=0x
 | OpenZapV3_1 implementation | [`0x0fE5bC78b2bAc5f09E940C2aCcC0c3B785d91063`](https://robinhoodchain.blockscout.com/address/0x0fE5bC78b2bAc5f09E940C2aCcC0c3B785d91063) |
 | ZapLotteryPot (v3.1) | [`0x6ec3D07886Ea641e9d10D45A97a72E5f8ec836F1`](https://robinhoodchain.blockscout.com/address/0x6ec3D07886Ea641e9d10D45A97a72E5f8ec836F1) |
 | Price-source registry (v3.1) | [`0x76CB210F25D016078E10DbfCb19AFfBbB4892e33`](https://robinhoodchain.blockscout.com/address/0x76CB210F25D016078E10DbfCb19AFfBbB4892e33) |
-| V4PoolPriceSourceOriented | [`0xb4f66bFa00d2496513A5fd43ff47912A3FE0bB5f`](https://robinhoodchain.blockscout.com/address/0xb4f66bFa00d2496513A5fd43ff47912A3FE0bB5f) |
+| V4PoolPriceSourceOriented | [`0xB4f66bFa00D2496513a5fD43ff47912A3fe0Bb5F`](https://robinhoodchain.blockscout.com/address/0xB4f66bFa00D2496513a5fD43ff47912A3fe0Bb5F) |
 
 Addresses are wired into `src/lib/robinhood.ts` (`OPENZAP_V3_1_CONTRACTS`). The end-to-end
 create/sign/execute path for relative-floor recurring zaps (app + executor + relay support) is the

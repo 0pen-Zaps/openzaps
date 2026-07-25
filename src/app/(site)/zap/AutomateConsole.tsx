@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   createPublicClient,
   createWalletClient,
@@ -24,6 +24,7 @@ import {
   feedConditionForZapsMove,
   intentFileName,
   netFloorFromQuote,
+  projectedRelativeFloor,
   type AutomationMode,
 } from "@/lib/automate";
 import { publishIntent, type RelaySubmission } from "@/lib/relay";
@@ -62,6 +63,7 @@ import {
   openZapFactoryV3Abi,
   openZapV3Abi,
   openZapV3Configured,
+  orientedPriceSourceAbi,
   priceSourceAbi,
   robinhoodChain,
   v4QuoterAbi,
@@ -177,6 +179,8 @@ export default function AutomateConsole(): React.JSX.Element {
   const [selected, setSelected] = useState<Address | null>(null);
   const [loaded, setLoaded] = useState<LoadedState | null>(null);
   const [pot, setPot] = useState<PotStatus | null>(null);
+  /** Oriented price-source spot, read for the relative-floor preview. null = unreadable → render "—". */
+  const [spot, setSpot] = useState<{ priceX96: bigint; currency0: Address; currency1: Address } | null>(null);
   const [executorHealth, setExecutorHealth] = useState<ExecutorHealth | null>(null);
   const [intakeToken, setIntakeToken] = useState("");
   const loadEpochRef = useRef(0);
@@ -212,6 +216,26 @@ export default function AutomateConsole(): React.JSX.Element {
   const balanceKnown = capsuleBalance !== null;
   const funded = record !== null && balanceKnown && capsuleBalance >= remainingTarget;
   const signed = record?.intentFile !== undefined;
+
+  // The per-run floor a relative recurring zap would enforce at the spot last read — the same number
+  // the v3.1 capsule computes on-chain each run. 0n whenever any input is degenerate (see the lib fn),
+  // so the preview can render an explicit "—" instead of a misleading figure. Memoized to keep the
+  // `route` read bounded to its own reactive scope (the React Compiler otherwise cannot preserve the
+  // manual memoization on the create-capsule callback that also closes over `route`).
+  const projectedFloor = useMemo(
+    () =>
+      spot && route
+        ? projectedRelativeFloor({
+            amountIn: perRunAmount,
+            outAsset: route.tokenOut.address,
+            currency0: spot.currency0,
+            currency1: spot.currency1,
+            priceX96: spot.priceX96,
+            maxSlippageBps: slippageBps,
+          })
+        : 0n,
+    [spot, route, perRunAmount, slippageBps],
+  );
 
   /** The one loader. Epoch-guarded: only the newest in-flight load may write state. */
   const applyLoad = useCallback(async (target: AutomationRecord | null) => {
@@ -294,6 +318,32 @@ export default function AutomateConsole(): React.JSX.Element {
       cancelled = true;
     };
   }, [account, configured, notice, activePot]);
+
+  // ---- oriented spot (relative-floor preview) ----
+  // Read the v3.1 price source the recurring flow signs against, so the create form can show the
+  // concrete per-run floor a chosen slippage implies at today's price. Read once on mount and after
+  // each action (notice); the capsule always recomputes from live spot, so a slightly stale preview
+  // is honest as long as it is labelled indicative. Fails closed to null → the UI renders "—".
+  const orientedSource = OPENZAP_V3_1_CONTRACTS.orientedPriceSource;
+  useEffect(() => {
+    let cancelled = false;
+    const load = async () => {
+      try {
+        const [priceX96, currency0, currency1] = await Promise.all([
+          publicClient.readContract({ address: orientedSource, abi: orientedPriceSourceAbi, functionName: "priceX96" }),
+          publicClient.readContract({ address: orientedSource, abi: orientedPriceSourceAbi, functionName: "currency0" }),
+          publicClient.readContract({ address: orientedSource, abi: orientedPriceSourceAbi, functionName: "currency1" }),
+        ]);
+        if (!cancelled) setSpot({ priceX96, currency0, currency1 });
+      } catch {
+        if (!cancelled) setSpot(null); // explicit unavailable, never a fake price
+      }
+    };
+    if (openZapV3_1Configured()) void load();
+    return () => {
+      cancelled = true;
+    };
+  }, [notice, orientedSource]);
 
   // ---- actions ----
 
@@ -886,6 +936,24 @@ export default function AutomateConsole(): React.JSX.Element {
               </>
             )}
           </div>
+
+          {activeMode === "recurring" && (
+            <p className={styles.floorPreview} aria-live="polite">
+              {spot === null ? (
+                <>Projected floor · spot is unavailable right now — the capsule still enforces your slippage band on-chain every run.</>
+              ) : projectedFloor > 0n && route ? (
+                <>
+                  Projected floor · at current spot each run delivers at least{" "}
+                  <strong>
+                    {formatToken(projectedFloor, route.tokenOut.decimals)} {route.tokenOut.symbol}
+                  </strong>{" "}
+                  (−{(slippageBps / 100).toFixed(1)}%). Recomputed from live spot on every run, so it never goes stale.
+                </>
+              ) : (
+                <>Projected floor · enter a per-run amount to preview each run&apos;s guaranteed minimum.</>
+              )}
+            </p>
+          )}
 
           <div className={styles.flow}>
             <FlowStep number="1" title="Connect wallet" detail="Robinhood Chain (4663), injected wallet." done={account !== null}>

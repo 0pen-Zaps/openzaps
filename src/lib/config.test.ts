@@ -1,12 +1,14 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
-import { getAddress } from "viem";
+import { getAddress, zeroAddress } from "viem";
 import { describe, expect, it } from "vitest";
 
 import { CHAIN, CONTRACTS, TOKEN, TOKEN_LAUNCH } from "@/lib/config";
 import {
   OPENZAP_CONTRACTS,
+  OPENZAP_V3_CONTRACTS,
+  OPENZAP_V3_1_CONTRACTS,
   ROBINHOOD_ASSETS,
   ROBINHOOD_CHAIN_ID,
   ROBINHOOD_LIQUIDITY,
@@ -26,6 +28,22 @@ describe("site config stays consistent with onchain constants", () => {
 
   it("config CONTRACTS match the deployed OpenZap addresses", () => {
     expect(getAddress(CONTRACTS.factory)).toBe(getAddress(OPENZAP_CONTRACTS.factory));
+  });
+
+  // Guards a class of bug that shipped once: a hardcoded default with a bad EIP-55 checksum. viem's
+  // readContract and typed-data encoding reject a mis-checksummed address at CALL time (never at
+  // build), so it slips past types, tsc, and lint — and only fails when a wallet or RPC touches it.
+  // A bad literal now collapses to zeroAddress via optionalAddress; both prongs below catch it.
+  it("every OpenZap v3 / v3.1 contract address is configured and EIP-55 checksummed", () => {
+    for (const [label, contracts] of [
+      ["v3", OPENZAP_V3_CONTRACTS],
+      ["v3.1", OPENZAP_V3_1_CONTRACTS],
+    ] as const) {
+      for (const [key, addr] of Object.entries(contracts)) {
+        expect(addr, `${label}.${key} must be configured (non-zero)`).not.toBe(zeroAddress);
+        expect(getAddress(addr), `${label}.${key} must be a valid EIP-55 checksum`).toBe(addr);
+      }
+    }
   });
 
   it("public token-metadata.json agrees with config", () => {
