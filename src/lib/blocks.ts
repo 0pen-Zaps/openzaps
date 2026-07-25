@@ -1184,7 +1184,7 @@ export type ZapRecipe = {
 
 export const RECIPES: readonly ZapRecipe[] = [
   {
-    // First, and the chain the builder opens on. The first FIVE blueprints are
+    // First, and the chain the builder opens on. The first EIGHT blueprints are
     // the DEPLOYABLE set — each reduces to a route the live contracts carry,
     // and a test in deployable.test.ts holds every one of them to that claim,
     // because a catalog edit that quietly drops one off its route would
@@ -1262,6 +1262,49 @@ export const RECIPES: readonly ZapRecipe[] = [
       ["guard-slippage", { bps: 100 }],
       ["remove-liquidity", { settle: "USDG", portion: 100 }],
       ["send", { recipient: "owner wallet" }],
+    ],
+  },
+  {
+    // Direct aeWETH/USDG pool, the other pinned pair. Takes profit out of ETH
+    // exposure into a stable without touching 0xZAPS at all.
+    id: "weth-usdg",
+    name: "Take profit to USDG",
+    tagline: "aeWETH into USDG through the pinned stable pool, one signed step.",
+    accent: "token",
+    blocks: [
+      ["wallet-balance", { asset: "WETH", amount: "0.05" }],
+      ["guard-slippage", { bps: 50 }],
+      ["swap", { into: "USDG", venue: "Uniswap v4" }],
+      ["send", { recipient: "owner wallet" }],
+    ],
+  },
+  {
+    // The stitched route in reverse: 0xZAPS has no direct USDG pool, so the
+    // adapter runs 0xZAPS → aeWETH → USDG inside ONE step, each hop sized by the
+    // measured output of the last. The natural cash-out for the token.
+    id: "stitched-exit",
+    name: "Cash out to USDG",
+    tagline: "0xZAPS into USDG through aeWETH — two pools, one signed step.",
+    accent: "token",
+    blocks: [
+      ["wallet-balance", { asset: "0xZAPS", amount: "1000000" }],
+      ["guard-slippage", { bps: 50 }],
+      ["swap", { into: "USDG", venue: "Uniswap v4" }],
+      ["send", { recipient: "owner wallet" }],
+    ],
+  },
+  {
+    // The other side of the range vault's deposit leg: same full-range aeWETH/USDG
+    // position, entered from the stable rather than from aeWETH.
+    id: "provide-liquidity-usdg",
+    name: "Provide liquidity from USDG",
+    tagline: "USDG into the full-range aeWETH/USDG position, shares to you.",
+    accent: "lp",
+    blocks: [
+      ["wallet-balance", { asset: "USDG", amount: "25" }],
+      ["guard-slippage", { bps: 100 }],
+      ["add-liquidity", { pool: "WETH/USDG", range: "Full range" }],
+      ["hold-lp"],
     ],
   },
   {
