@@ -1609,6 +1609,16 @@
   transition: border-color 160ms cubic-bezier(0.4, 0, 0.2, 1);
 }
 
+/* iOS Safari zooms the page whenever a focused control computes under 16px, and
+   these are the interactive controls in the live demo. Raise the floor on small
+   screens rather than suppressing pinch-zoom in the viewport meta. */
+@media (max-width: 820px) {
+  .demoSelect,
+  .demoInput {
+    font-size: 16px;
+  }
+}
+
 .demoSelect:hover,
 .demoInput:hover {
   border-color: rgba(255, 252, 0, 0.35);
