@@ -28,9 +28,10 @@ import { fetchRelayIntents, markRelayConsumed } from "./relay-source.mjs";
 
 let relayWarned = false; // dedupe the relay-poll failure warning to once per outage
 
-/** Dedup key: an intent is uniquely a (kind, seriesId|nonce). */
+/** Dedup key: an intent is uniquely a (kind, seriesId|nonce). Trigger uses nonce; the recurring
+ *  kinds use seriesId. */
 function intentKey(item) {
-  return `${item.kind}:${item.kind === "recurring" ? item.intent.seriesId : item.intent.nonce}`;
+  return `${item.kind}:${item.kind === "trigger" ? item.intent.nonce : item.intent.seriesId}`;
 }
 
 const MAX_SUBMISSION_RECORDS = 200;
@@ -222,7 +223,11 @@ async function main() {
 
   if (command === "status") {
     const { ok, bad } = loadIntents(cfg.intentsDir);
-    log("info", `intents: ${ok.length} valid (${ok.filter((i) => i.kind === "recurring").length} recurring, ${ok.filter((i) => i.kind === "trigger").length} trigger), ${bad.length} malformed`);
+    const byKind = (k) => ok.filter((i) => i.kind === k).length;
+    log(
+      "info",
+      `intents: ${ok.length} valid (${byKind("recurring")} recurring, ${byKind("recurring-relative")} recurring-relative, ${byKind("trigger")} trigger), ${bad.length} malformed`,
+    );
     log("info", `lifetime: ${state.earnings.runs} runs executed, ${state.earnings.conversions} pot conversions`);
     if (cfg.intakePort > 0) {
       // The token is a LOCAL capability (this machine only); status is where the operator

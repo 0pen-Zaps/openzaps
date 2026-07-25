@@ -88,6 +88,45 @@ describe("parseRelaySubmission", () => {
   });
 });
 
+const recurringRelative = {
+  kind: "recurring-relative",
+  intent: {
+    zap: "0x9941dD72373429C36F82D888dbcbab080038f033",
+    chainId: "4663",
+    seriesId: "3",
+    validAfter: "0",
+    deadline: "1893456000",
+    interval: "86400",
+    maxRuns: "10",
+    recipient: ADDR,
+    executor: "0x0000000000000000000000000000000000000000",
+    maxGas: "3000000",
+    maxFeePerGas: "10000000000",
+    policyHash: HASH,
+    outAsset: "0xDd90bFa4adC7F4401E611AbaC692D939F9F4CB07",
+    priceSource: "0xb4f66bFa00d2496513A5fd43ff47912A3FE0bB5f",
+    maxSlippageBps: "500",
+  },
+  signature: SIG,
+};
+
+describe("recurring-relative kind", () => {
+  it("accepts a well-formed relative submission and rejects a missing floor field", () => {
+    const s = parseRelaySubmission(recurringRelative);
+    expect(s.kind).toBe("recurring-relative");
+    expect(s.intent.priceSource).toBe("0xb4f66bFa00d2496513A5fd43ff47912A3FE0bB5f");
+    expect(s.intent.maxSlippageBps).toBe("500");
+    expect("minOutPerRun" in s.intent).toBe(false);
+    const noSlip = { ...recurringRelative, intent: { ...recurringRelative.intent } } as { intent: Record<string, unknown> };
+    delete noSlip.intent.maxSlippageBps;
+    expect(() => parseRelaySubmission(noSlip)).toThrow(/maxSlippageBps/);
+  });
+
+  it("uses seriesId as its dedup nonce", () => {
+    expect(relayIntentNonce(parseRelaySubmission(recurringRelative))).toBe("3");
+  });
+});
+
 describe("relayIntentNonce", () => {
   it("is seriesId for recurring and nonce for trigger", () => {
     expect(relayIntentNonce(parseRelaySubmission(recurring))).toBe("1");

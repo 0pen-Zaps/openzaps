@@ -6,6 +6,7 @@ import type { Address, Hex } from "viem";
 import {
   computeExecutorFeeSplit,
   type RecurringIntent,
+  type RecurringRelativeIntent,
   type TriggerIntent,
 } from "@/lib/executions";
 import { MAX_EXECUTION_FEE_PER_GAS, MAX_EXECUTION_GAS } from "@/lib/openzap";
@@ -144,6 +145,46 @@ export function draftRecurringIntent(input: RecurringDraftInput): RecurringInten
     policyHash: input.policyHash,
     outAsset: input.outAsset,
     minOutPerRun: input.minOutPerRun,
+  };
+}
+
+export interface RecurringRelativeDraftInput {
+  zap: Address;
+  chainId: number;
+  seriesId: bigint;
+  nowSec: bigint;
+  interval: bigint;
+  maxRuns: number;
+  recipient: Address;
+  policyHash: Hex;
+  outAsset: Address;
+  priceSource: Address;
+  maxSlippageBps: number;
+}
+
+/**
+ * Draft a relative-floor recurring intent. Unlike the absolute-floor draft, this needs NO fresh
+ * quote at signing: the capsule reads the oriented price source's spot on every run and floors the
+ * output at `maxSlippageBps` below it — so the floor is always current. The user's slippage % IS
+ * the signed tolerance.
+ */
+export function draftRecurringRelativeIntent(input: RecurringRelativeDraftInput): RecurringRelativeIntent {
+  return {
+    zap: input.zap,
+    chainId: BigInt(input.chainId),
+    seriesId: input.seriesId,
+    validAfter: 0n,
+    deadline: suggestedSeriesDeadline(input.nowSec, input.interval, input.maxRuns),
+    interval: input.interval,
+    maxRuns: input.maxRuns,
+    recipient: input.recipient,
+    executor: "0x0000000000000000000000000000000000000000",
+    maxGas: MAX_EXECUTION_GAS,
+    maxFeePerGas: MAX_EXECUTION_FEE_PER_GAS,
+    policyHash: input.policyHash,
+    outAsset: input.outAsset,
+    priceSource: input.priceSource,
+    maxSlippageBps: Math.min(Math.max(Math.trunc(input.maxSlippageBps), 1), 9_999),
   };
 }
 

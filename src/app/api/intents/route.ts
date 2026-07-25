@@ -14,7 +14,13 @@ import {
   type RelayRecord,
   type RelaySubmission,
 } from "@/lib/relay";
-import { RECURRING_INTENT_TYPES, TRIGGER_INTENT_TYPES, openZapV3Domain } from "@/lib/executions";
+import {
+  RECURRING_INTENT_TYPES,
+  RECURRING_RELATIVE_INTENT_TYPES,
+  TRIGGER_INTENT_TYPES,
+  openZapV3Domain,
+  openZapV3_1Domain,
+} from "@/lib/executions";
 import { ROBINHOOD_CHAIN_ID, ROBINHOOD_RPC_URL, openZapV3Abi, robinhoodChain } from "@/lib/robinhood";
 
 // The relay endpoint. POST publishes a signed standing intent to the shared pool; GET lists open
@@ -68,8 +74,14 @@ function rateLimited(req: NextRequest): boolean {
 
 const TYPES: Record<RelayIntentKind, { types: object; primaryType: string }> = {
   recurring: { types: RECURRING_INTENT_TYPES, primaryType: "RecurringIntent" },
+  "recurring-relative": { types: RECURRING_RELATIVE_INTENT_TYPES, primaryType: "RecurringRelativeIntent" },
   trigger: { types: TRIGGER_INTENT_TYPES, primaryType: "TriggerIntent" },
 };
+
+/** v3.1 relative-floor intents sign under domain version "3.1"; everything else under "3". */
+function domainFor(kind: RelayIntentKind, chainId: number, zap: Address) {
+  return kind === "recurring-relative" ? openZapV3_1Domain(chainId, zap) : openZapV3Domain(chainId, zap);
+}
 
 /** Convert the string/bool intent into the typed message viem needs (fields are already bounded). */
 function toTypedMessage(kind: RelayIntentKind, intent: Record<string, string | boolean>): Record<string, unknown> {
@@ -131,7 +143,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
   // The dynamic (per-kind) typed-data shape defeats viem's strict generics; coerce the whole arg.
   const typedData = {
-    domain: openZapV3Domain(chainId, zap),
+    domain: domainFor(sub.kind, chainId, zap),
     types: TYPES[sub.kind].types,
     primaryType: TYPES[sub.kind].primaryType,
     message: toTypedMessage(sub.kind, sub.intent),

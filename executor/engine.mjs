@@ -74,9 +74,15 @@ function intentTuple(item) {
 }
 
 /** Simulate, then (with a signer) broadcast one execution. Returns a submission record. */
+const FUNCTION_BY_KIND = {
+  recurring: "executeRecurring",
+  "recurring-relative": "executeRecurringRelative",
+  trigger: "executeTrigger",
+};
+
 export async function submitExecution(publicClient, walletClient, item, cfg) {
   const { intent, kind } = item;
-  const functionName = kind === "recurring" ? "executeRecurring" : "executeTrigger";
+  const functionName = FUNCTION_BY_KIND[kind];
 
   const pinned = getAddress(intent.executor) !== zeroAddress ? getAddress(intent.executor) : null;
   const self = walletClient ? walletClient.account.address : null;
@@ -138,7 +144,9 @@ export async function submitExecution(publicClient, walletClient, item, cfg) {
   }
 }
 
-const EVALUATORS = { recurring: evaluateRecurring, trigger: evaluateTrigger };
+// A relative-floor series is scheduled identically to an absolute one — only the on-chain floor
+// differs, and that is enforced by the capsule at execution, not decided by the executor.
+const EVALUATORS = { recurring: evaluateRecurring, "recurring-relative": evaluateRecurring, trigger: evaluateTrigger };
 
 /**
  * One full pass over the store. EVALUATION fans out concurrently — it is all reads, and with many

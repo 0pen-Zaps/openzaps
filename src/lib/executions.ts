@@ -13,6 +13,8 @@ export const BPS = 10_000n;
 export const MAX_TRIGGER_THRESHOLD_BPS = 1_000_000n;
 /** v3 clones sign under EIP-712 domain version "3" (v1 = "1", balance-relative v2 = "2"). */
 export const OPENZAP_V3_DOMAIN_VERSION = "3";
+/** v3.1 relative-floor clones sign under domain version "3.1". */
+export const OPENZAP_V3_1_DOMAIN_VERSION = "3.1";
 
 /** One signature, up to `maxRuns` executions, at least `interval` seconds apart. */
 export interface RecurringIntent {
@@ -31,6 +33,31 @@ export interface RecurringIntent {
   policyHash: Hex;
   outAsset: Address;
   minOutPerRun: bigint;
+}
+
+/**
+ * A recurring series whose per-run floor is computed from the price source's spot AT EXECUTION,
+ * not an absolute number frozen at signing — so the floor never goes stale. Same shape as
+ * `RecurringIntent` but `minOutPerRun` is replaced by `priceSource` + `maxSlippageBps`.
+ */
+export interface RecurringRelativeIntent {
+  zap: Address;
+  chainId: bigint;
+  seriesId: bigint;
+  validAfter: bigint;
+  deadline: bigint;
+  interval: bigint;
+  /** uint32 on-chain; viem's typed-data mapping requires a JS number here. */
+  maxRuns: number;
+  recipient: Address;
+  executor: Address;
+  maxGas: bigint;
+  maxFeePerGas: bigint;
+  policyHash: Hex;
+  outAsset: Address;
+  priceSource: Address;
+  /** uint32 on-chain. The most below fair-spot a run may settle before it reverts. */
+  maxSlippageBps: number;
 }
 
 /** One signature, ONE execution, valid only while the market is past the signed threshold. */
@@ -73,6 +100,26 @@ export const RECURRING_INTENT_TYPES = {
   ],
 } as const;
 
+export const RECURRING_RELATIVE_INTENT_TYPES = {
+  RecurringRelativeIntent: [
+    { name: "zap", type: "address" },
+    { name: "chainId", type: "uint256" },
+    { name: "seriesId", type: "uint256" },
+    { name: "validAfter", type: "uint64" },
+    { name: "deadline", type: "uint64" },
+    { name: "interval", type: "uint64" },
+    { name: "maxRuns", type: "uint32" },
+    { name: "recipient", type: "address" },
+    { name: "executor", type: "address" },
+    { name: "maxGas", type: "uint256" },
+    { name: "maxFeePerGas", type: "uint256" },
+    { name: "policyHash", type: "bytes32" },
+    { name: "outAsset", type: "address" },
+    { name: "priceSource", type: "address" },
+    { name: "maxSlippageBps", type: "uint32" },
+  ],
+} as const;
+
 export const TRIGGER_INTENT_TYPES = {
   TriggerIntent: [
     { name: "zap", type: "address" },
@@ -101,6 +148,26 @@ export function openZapV3Domain(chainId: number | bigint, zap: Address): TypedDa
     chainId: Number(chainId),
     verifyingContract: zap,
   };
+}
+
+/** EIP-712 domain for a v3.1 relative-floor capsule (version "3.1"). */
+export function openZapV3_1Domain(chainId: number | bigint, zap: Address): TypedDataDomain {
+  return {
+    name: "OpenZap",
+    version: OPENZAP_V3_1_DOMAIN_VERSION,
+    chainId: Number(chainId),
+    verifyingContract: zap,
+  };
+}
+
+/** Everything a wallet's `signTypedData` needs to authorize a relative-floor recurring series. */
+export function buildRecurringRelativeTypedData(intent: RecurringRelativeIntent) {
+  return {
+    domain: openZapV3_1Domain(intent.chainId, intent.zap),
+    types: RECURRING_RELATIVE_INTENT_TYPES,
+    primaryType: "RecurringRelativeIntent",
+    message: intent,
+  } as const;
 }
 
 /** Everything a wallet's `signTypedData` needs to authorize a recurring series. */
@@ -170,8 +237,8 @@ export function nextRunAt(runs: bigint, lastRun: bigint, interval: bigint, valid
  * every field and the capsule re-verifies everything on-chain.
  */
 export function serializeIntentFile(
-  kind: "recurring" | "trigger",
-  intent: RecurringIntent | TriggerIntent,
+  kind: "recurring" | "recurring-relative" | "trigger",
+  intent: RecurringIntent | RecurringRelativeIntent | TriggerIntent,
   signature: Hex,
 ): string {
   const plain: Record<string, string | boolean> = {};

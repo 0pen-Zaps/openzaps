@@ -18,6 +18,24 @@ export const recurringIntentComponents = [
   { name: "minOutPerRun", type: "uint256" },
 ];
 
+export const recurringRelativeIntentComponents = [
+  { name: "zap", type: "address" },
+  { name: "chainId", type: "uint256" },
+  { name: "seriesId", type: "uint256" },
+  { name: "validAfter", type: "uint64" },
+  { name: "deadline", type: "uint64" },
+  { name: "interval", type: "uint64" },
+  { name: "maxRuns", type: "uint32" },
+  { name: "recipient", type: "address" },
+  { name: "executor", type: "address" },
+  { name: "maxGas", type: "uint256" },
+  { name: "maxFeePerGas", type: "uint256" },
+  { name: "policyHash", type: "bytes32" },
+  { name: "outAsset", type: "address" },
+  { name: "priceSource", type: "address" },
+  { name: "maxSlippageBps", type: "uint32" },
+];
+
 export const triggerIntentComponents = [
   { name: "zap", type: "address" },
   { name: "chainId", type: "uint256" },
@@ -81,6 +99,17 @@ export const openZapV3Abi = [
     stateMutability: "nonpayable",
     inputs: [
       { name: "intent", type: "tuple", components: triggerIntentComponents },
+      { name: "sig", type: "bytes" },
+    ],
+    outputs: [],
+  },
+  {
+    // v3.1 relative-floor path (present on v3.1 clones only; a v3 clone reverts on this selector).
+    type: "function",
+    name: "executeRecurringRelative",
+    stateMutability: "nonpayable",
+    inputs: [
+      { name: "intent", type: "tuple", components: recurringRelativeIntentComponents },
       { name: "sig", type: "bytes" },
     ],
     outputs: [],
