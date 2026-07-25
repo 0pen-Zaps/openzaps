@@ -168,6 +168,37 @@ export function fundingReadiness(walletBalance: bigint | null, needed: bigint): 
   return { status: "short", shortfall: needed - walletBalance };
 }
 
+export type WethFundingPlan = { status: "unknown" | "sufficient" | "short"; shortfall: bigint; wrapEth: bigint };
+
+/**
+ * Funding readiness for an aeWETH-denominated deposit, counting native ETH the app can wrap on the
+ * user's behalf. `needed` is the aeWETH the Fund step will transfer. If the wallet's aeWETH already
+ * covers it, no wrap. Otherwise the gap (`needed - wethBalance`) is wrappable from native ETH, but we
+ * must leave `gasReserve` ETH so the wrap + transfer can still pay for gas — so the ETH actually
+ * spendable on wrapping is `ethBalance - gasReserve`.
+ *   "unknown"    — a balance needed for the decision has not read yet (never block on a missing read).
+ *   "sufficient" — nothing owed, or aeWETH covers it (wrapEth 0), or ETH covers the gap (wrapEth = gap).
+ *   "short"      — even wrapping every spendable wei leaves `shortfall` ETH missing.
+ * `wrapEth` is the EXACT amount to wrap — never more than the gap, so the user is never over-wrapped.
+ */
+export function planWethFunding(input: {
+  needed: bigint;
+  wethBalance: bigint | null;
+  ethBalance: bigint | null;
+  gasReserve: bigint;
+}): WethFundingPlan {
+  const { needed, wethBalance, ethBalance, gasReserve } = input;
+  if (needed <= 0n) return { status: "sufficient", shortfall: 0n, wrapEth: 0n };
+  if (wethBalance === null) return { status: "unknown", shortfall: 0n, wrapEth: 0n };
+  if (wethBalance >= needed) return { status: "sufficient", shortfall: 0n, wrapEth: 0n };
+
+  const gap = needed - wethBalance;
+  if (ethBalance === null) return { status: "unknown", shortfall: 0n, wrapEth: 0n };
+  const spendableEth = ethBalance > gasReserve ? ethBalance - gasReserve : 0n;
+  if (spendableEth >= gap) return { status: "sufficient", shortfall: 0n, wrapEth: gap };
+  return { status: "short", shortfall: gap - spendableEth, wrapEth: 0n };
+}
+
 /**
  * Series end: enough room for every run at its cadence plus 25% headroom (executor latency,
  * chain congestion), never less than a day past the last theoretical run.
