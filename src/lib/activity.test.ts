@@ -4,6 +4,8 @@ import {
   ACTIVITY_FEED_LIMIT,
   aggregateActivity,
   assetSymbolFor,
+  describeAutomatedRun,
+  type AutomatedRunLogInput,
   type CreatedLogInput,
   type ExecutedLogInput,
   type ExitLogInput,
@@ -13,6 +15,7 @@ import { ROBINHOOD_ASSETS } from "@/lib/robinhood";
 const ZAP = "0x0006e5C42776239Db6abAeF3fdf22BbCfA8Cb5b4" as const;
 const OWNER = "0x1111111111111111111111111111111111111111" as const;
 const SPOOFER = "0x9999999999999999999999999999999999999999" as const;
+const EXECUTOR = "0x2222222222222222222222222222222222222222" as const;
 const TX = (n: number): `0x${string}` => `0x${n.toString(16).padStart(64, "0")}` as `0x${string}`;
 const NOW = "2026-07-22T00:00:00.000Z";
 
@@ -29,6 +32,24 @@ function executed(overrides: Partial<ExecutedLogInput> = {}): ExecutedLogInput {
     txHash: TX(2),
     blockNumber: 200n,
     logIndex: 3,
+    ...overrides,
+  };
+}
+
+function automated(overrides: Partial<AutomatedRunLogInput> = {}): AutomatedRunLogInput {
+  return {
+    emitter: ZAP,
+    kind: "recurring",
+    executor: EXECUTOR,
+    outAsset: ROBINHOOD_ASSETS.zaps,
+    amountOut: 7n * 10n ** 18n,
+    executorFee: 8n * 10n ** 16n,
+    potFee: 2n * 10n ** 16n,
+    seriesId: 42n,
+    run: 1,
+    txHash: TX(4),
+    blockNumber: 400n,
+    logIndex: 2,
     ...overrides,
   };
 }
@@ -52,6 +73,7 @@ describe("aggregateActivity integrity filter", () => {
       [created()],
       [executed(), executed({ emitter: SPOOFER, amountOut: 999_999n * 10n ** 18n, txHash: TX(9) })],
       [exited({ emitter: SPOOFER, txHash: TX(10) })],
+      [],
       new Map(),
       NOW,
     );
@@ -66,6 +88,7 @@ describe("aggregateActivity integrity filter", () => {
       [created()],
       [executed({ emitter: ZAP.toLowerCase() as `0x${string}` })],
       [],
+      [],
       new Map(),
       NOW,
     );
@@ -79,6 +102,7 @@ describe("aggregateActivity ordering and shape", () => {
       [created({ blockNumber: 100n })],
       [executed({ blockNumber: 300n, logIndex: 1, txHash: TX(4) }), executed({ blockNumber: 300n, logIndex: 7, txHash: TX(5) })],
       [exited({ blockNumber: 200n })],
+      [],
       new Map([[100n, 1_700_000_000]]),
       NOW,
     );
@@ -92,7 +116,7 @@ describe("aggregateActivity ordering and shape", () => {
     const many = Array.from({ length: ACTIVITY_FEED_LIMIT + 10 }, (_, i) =>
       created({ txHash: TX(100 + i), blockNumber: BigInt(1000 + i), logIndex: i }),
     );
-    const result = aggregateActivity(many, [], [], new Map(), NOW);
+    const result = aggregateActivity(many, [], [], [], new Map(), NOW);
     expect(result.activity).toHaveLength(ACTIVITY_FEED_LIMIT);
     expect(result.stats.zapsCreated).toBe(ACTIVITY_FEED_LIMIT + 10);
   });
@@ -105,6 +129,7 @@ describe("aggregateActivity ordering and shape", () => {
         executed({ amountOut: 3n * 10n ** 18n, txHash: TX(7), logIndex: 4 }),
         executed({ outAsset: ROBINHOOD_ASSETS.weth, amountOut: 10n ** 15n, txHash: TX(8), logIndex: 5 }),
       ],
+      [],
       [],
       new Map(),
       NOW,
@@ -119,5 +144,52 @@ describe("assetSymbolFor", () => {
     expect(assetSymbolFor(ROBINHOOD_ASSETS.weth)).toBe("aeWETH");
     expect(assetSymbolFor(ROBINHOOD_ASSETS.zaps)).toBe("0xZAPS");
     expect(assetSymbolFor("0x9999999999999999999999999999999999999999")).toBe("0x9999…9999");
+  });
+});
+
+describe("automated runs (v3 / v3.1)", () => {
+  it("counts a run, credits its output to volume, and totals the protocol fee", () => {
+    const result = aggregateActivity([created()], [], [], [automated()], new Map(), NOW);
+    expect(result.stats.automatedRuns).toBe(1);
+    // A run is not a one-shot execution; the two are counted separately so neither number lies.
+    expect(result.stats.executions).toBe(0);
+    expect(result.stats.executedVolume["0xZAPS"]).toBe((7n * 10n ** 18n).toString());
+    expect(result.stats.automatedFees["0xZAPS"]).toBe((10n ** 17n).toString()); // executorFee + potFee
+  });
+
+  it("attributes the row to the executor that submitted it, not the owner", () => {
+    const [row] = aggregateActivity([created()], [], [], [automated()], new Map(), NOW).activity;
+    expect(row.type).toBe("automated");
+    expect(row.actor).toBe(EXECUTOR);
+    expect(row.zap).toBe(ZAP);
+    expect(row.detail).toBe("run 1 · recurring");
+  });
+
+  it("drops a run emitted by a contract no factory created", () => {
+    // Same integrity rule the Executed feed has: anyone can emit this shape.
+    const result = aggregateActivity([created()], [], [], [automated({ emitter: SPOOFER })], new Map(), NOW);
+    expect(result.stats.automatedRuns).toBe(0);
+    expect(result.activity.filter((entry) => entry.type === "automated")).toEqual([]);
+    expect(result.stats.executedVolume["0xZAPS"]).toBeUndefined();
+  });
+
+  it("sorts automated rows into the same newest-first stream as everything else", () => {
+    const result = aggregateActivity(
+      [created()],
+      [executed({ blockNumber: 500n })],
+      [],
+      [automated({ blockNumber: 400n })],
+      new Map(),
+      NOW,
+    );
+    expect(result.activity.map((entry) => entry.type)).toEqual(["executed", "automated", "created"]);
+  });
+});
+
+describe("describeAutomatedRun", () => {
+  it("names the authorization that produced the run", () => {
+    expect(describeAutomatedRun("recurring", 3)).toBe("run 3 · recurring");
+    expect(describeAutomatedRun("recurring-relative", 2)).toBe("run 2 · recurring · spot floor");
+    expect(describeAutomatedRun("trigger", null)).toBe("price trigger");
   });
 });

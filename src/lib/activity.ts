@@ -41,6 +41,58 @@ export const emergencyExitEvent = {
   ],
 } as const;
 
+// ---------------------------------------------------------------------------
+// Automated runs (v3 / v3.1). A recurring or triggered run does NOT emit the
+// one-shot `Executed` event — it emits one of these — so a feed that only reads
+// `Executed` shows an automated capsule as created-and-then-silent forever.
+// ---------------------------------------------------------------------------
+
+export const executedRecurringEvent = {
+  type: "event",
+  name: "ExecutedRecurring",
+  inputs: [
+    { name: "seriesId", type: "uint256", indexed: true },
+    { name: "run", type: "uint32", indexed: false },
+    { name: "executor", type: "address", indexed: true },
+    { name: "outAsset", type: "address", indexed: false },
+    { name: "amountOut", type: "uint256", indexed: false },
+    { name: "executorFee", type: "uint256", indexed: false },
+    { name: "potFee", type: "uint256", indexed: false },
+  ],
+} as const;
+
+export const executedRecurringRelativeEvent = {
+  type: "event",
+  name: "ExecutedRecurringRelative",
+  inputs: [
+    { name: "seriesId", type: "uint256", indexed: true },
+    { name: "run", type: "uint32", indexed: false },
+    { name: "executor", type: "address", indexed: true },
+    { name: "priceSource", type: "address", indexed: true },
+    { name: "priceX96", type: "uint256", indexed: false },
+    { name: "outAsset", type: "address", indexed: false },
+    { name: "amountOut", type: "uint256", indexed: false },
+    { name: "executorFee", type: "uint256", indexed: false },
+    { name: "potFee", type: "uint256", indexed: false },
+    { name: "floor", type: "uint256", indexed: false },
+  ],
+} as const;
+
+export const executedTriggerEvent = {
+  type: "event",
+  name: "ExecutedTrigger",
+  inputs: [
+    { name: "nonce", type: "uint256", indexed: true },
+    { name: "executor", type: "address", indexed: true },
+    { name: "priceSource", type: "address", indexed: false },
+    { name: "priceX96", type: "uint256", indexed: false },
+    { name: "outAsset", type: "address", indexed: false },
+    { name: "amountOut", type: "uint256", indexed: false },
+    { name: "executorFee", type: "uint256", indexed: false },
+    { name: "potFee", type: "uint256", indexed: false },
+  ],
+} as const;
+
 export interface CreatedLogInput {
   zap: Address;
   owner: Address;
@@ -69,8 +121,34 @@ export interface ExitLogInput {
   logIndex: number;
 }
 
+/** Which standing authorization produced an automated run. */
+export type AutomatedRunKind = "recurring" | "recurring-relative" | "trigger";
+
+/**
+ * One automated run, normalized across the three v3/v3.1 events. `actor` is the
+ * EXECUTOR that submitted it — the whole point of an automated run is that it
+ * was not the owner — and `amountOut` is the net the recipient received, so it
+ * is directly comparable to a one-shot `Executed`.
+ */
+export interface AutomatedRunLogInput {
+  emitter: Address;
+  kind: AutomatedRunKind;
+  executor: Address;
+  outAsset: Address;
+  amountOut: bigint;
+  executorFee: bigint;
+  potFee: bigint;
+  /** seriesId for a recurring run, nonce for a trigger. */
+  seriesId: bigint;
+  /** 1-based run index within the series; null for a one-shot trigger. */
+  run: number | null;
+  txHash: Hex;
+  blockNumber: bigint;
+  logIndex: number;
+}
+
 export interface ActivityEntry {
-  type: "created" | "executed" | "recovered";
+  type: "created" | "executed" | "automated" | "recovered";
   txHash: Hex;
   blockNumber: string;
   logIndex: number;
@@ -79,14 +157,20 @@ export interface ActivityEntry {
   actor: Address;
   amount: string | null;
   assetSymbol: string | null;
+  /** Automated rows only: "run 3 · recurring", "price trigger". Null elsewhere. */
+  detail: string | null;
 }
 
 export interface ProtocolActivityStats {
   zapsCreated: number;
   executions: number;
+  /** Runs submitted by an executor against a standing authorization. */
+  automatedRuns: number;
   recoveries: number;
-  /** Executed output volume per asset symbol, in wei strings. */
+  /** Settled output volume per asset symbol, in wei strings — one-shot and automated. */
   executedVolume: Record<string, string>;
+  /** Total protocol fee paid out of automated output, per asset symbol. */
+  automatedFees: Record<string, string>;
   lastActivityBlock: string | null;
 }
 
@@ -117,6 +201,13 @@ export function assetDecimalsFor(asset: Address): number {
   return 18;
 }
 
+/** Human label for an automated row: "run 3 · recurring" / "price trigger". */
+export function describeAutomatedRun(kind: AutomatedRunKind, run: number | null): string {
+  if (kind === "trigger") return "price trigger";
+  const label = kind === "recurring-relative" ? "recurring · spot floor" : "recurring";
+  return run === null ? label : `run ${run} · ${label}`;
+}
+
 /**
  * Merge raw logs into a truthful feed. Executed/EmergencyExit logs are only
  * counted when their emitter is a zap the canonical factory created — any
@@ -127,17 +218,28 @@ export function aggregateActivity(
   created: readonly CreatedLogInput[],
   executed: readonly ExecutedLogInput[],
   exits: readonly ExitLogInput[],
+  automated: readonly AutomatedRunLogInput[],
   timestamps: ReadonlyMap<bigint, number>,
   updatedAt: string,
 ): ProtocolActivity {
   const canonicalZaps = new Set(created.map((log) => getAddress(log.zap)));
   const verifiedExecuted = executed.filter((log) => canonicalZaps.has(getAddress(log.emitter)));
   const verifiedExits = exits.filter((log) => canonicalZaps.has(getAddress(log.emitter)));
+  // Automated runs pass the same emitter check: any contract can emit an
+  // identically-shaped ExecutedRecurring, so only a capsule one of the factories
+  // actually created may contribute a row, a count, or volume.
+  const verifiedAutomated = automated.filter((log) => canonicalZaps.has(getAddress(log.emitter)));
 
   const executedVolume: Record<string, bigint> = {};
   for (const log of verifiedExecuted) {
     const symbol = assetSymbolFor(log.outAsset);
     executedVolume[symbol] = (executedVolume[symbol] ?? 0n) + log.amountOut;
+  }
+  const automatedFees: Record<string, bigint> = {};
+  for (const log of verifiedAutomated) {
+    const symbol = assetSymbolFor(log.outAsset);
+    executedVolume[symbol] = (executedVolume[symbol] ?? 0n) + log.amountOut;
+    automatedFees[symbol] = (automatedFees[symbol] ?? 0n) + log.executorFee + log.potFee;
   }
 
   const entries: ActivityEntry[] = [
@@ -151,6 +253,7 @@ export function aggregateActivity(
       actor: getAddress(log.owner),
       amount: null,
       assetSymbol: null,
+      detail: null,
       sortBlock: log.blockNumber,
       sortIndex: log.logIndex,
     })),
@@ -164,6 +267,21 @@ export function aggregateActivity(
       actor: getAddress(log.recipient),
       amount: log.amountOut.toString(),
       assetSymbol: assetSymbolFor(log.outAsset),
+      detail: null,
+      sortBlock: log.blockNumber,
+      sortIndex: log.logIndex,
+    })),
+    ...verifiedAutomated.map((log): ActivityEntry & { sortBlock: bigint; sortIndex: number } => ({
+      type: "automated",
+      txHash: log.txHash,
+      blockNumber: log.blockNumber.toString(),
+      logIndex: log.logIndex,
+      timestamp: timestamps.get(log.blockNumber) ?? null,
+      zap: getAddress(log.emitter),
+      actor: getAddress(log.executor),
+      amount: log.amountOut.toString(),
+      assetSymbol: assetSymbolFor(log.outAsset),
+      detail: describeAutomatedRun(log.kind, log.run),
       sortBlock: log.blockNumber,
       sortIndex: log.logIndex,
     })),
@@ -177,6 +295,7 @@ export function aggregateActivity(
       actor: getAddress(log.owner),
       amount: log.amount.toString(),
       assetSymbol: assetSymbolFor(log.asset),
+      detail: null,
       sortBlock: log.blockNumber,
       sortIndex: log.logIndex,
     })),
@@ -192,6 +311,7 @@ export function aggregateActivity(
       actor: entry.actor,
       amount: entry.amount,
       assetSymbol: entry.assetSymbol,
+      detail: entry.detail,
     }));
 
   const lastActivityBlock = entries[0]?.blockNumber ?? null;
@@ -200,9 +320,13 @@ export function aggregateActivity(
     stats: {
       zapsCreated: created.length,
       executions: verifiedExecuted.length,
+      automatedRuns: verifiedAutomated.length,
       recoveries: verifiedExits.length,
       executedVolume: Object.fromEntries(
         Object.entries(executedVolume).map(([symbol, total]) => [symbol, total.toString()]),
+      ),
+      automatedFees: Object.fromEntries(
+        Object.entries(automatedFees).map(([symbol, total]) => [symbol, total.toString()]),
       ),
       lastActivityBlock,
     },

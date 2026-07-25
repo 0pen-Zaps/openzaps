@@ -199,6 +199,9 @@ export type ZapSummaryPage = {
 export interface ZapCreatedLogInput {
   zap: Address;
   owner: Address;
+  /** The factory that emitted this ZapCreated — v1.1, v3, or v3.1. A capsule must be
+   *  verified against ITS OWN factory's implementation, not a hardcoded one. */
+  factory: Address;
   policyHash: Hex;
   implCodeHash: Hex;
   salt: Hex;

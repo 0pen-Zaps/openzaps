@@ -58,6 +58,7 @@ function created(overrides: Partial<ZapCreatedLogInput> = {}): ZapCreatedLogInpu
   return {
     zap: ZAP,
     owner: OWNER,
+    factory: OPENZAP_CONTRACTS.factory,
     policyHash: hashRobinhoodPolicy(canonicalPolicy),
     implCodeHash: HEX32(0xabc),
     salt: HEX32(0xdef),
