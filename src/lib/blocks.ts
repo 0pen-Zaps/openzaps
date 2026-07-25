@@ -1184,7 +1184,7 @@ export type ZapRecipe = {
 
 export const RECIPES: readonly ZapRecipe[] = [
   {
-    // First, and the chain the builder opens on. The first four blueprints are
+    // First, and the chain the builder opens on. The first FIVE blueprints are
     // the DEPLOYABLE set — each reduces to a route the live contracts carry,
     // and a test in deployable.test.ts holds every one of them to that claim,
     // because a catalog edit that quietly drops one off its route would
@@ -1198,6 +1198,23 @@ export const RECIPES: readonly ZapRecipe[] = [
       ["wallet-balance", { asset: "WETH", amount: "0.05" }],
       ["guard-slippage", { bps: 50 }],
       ["swap", { into: "0xZAPS", venue: "Uniswap v4" }],
+      ["send", { recipient: "owner wallet" }],
+    ],
+  },
+  {
+    // The same bounded pool, the other side. The 0xZAPS → aeWETH adapter is
+    // already deployed and allowlisted at the SAME address as the buy leg (the
+    // adapter picks its side from the token it is handed), so this reduces to
+    // route robinhood-v4-zaps-weth and deploys today with no new broadcast —
+    // it is the buy blueprint's counterpart, "take profit" back to aeWETH.
+    id: "sell-zaps",
+    name: "Sell 0xZAPS",
+    tagline: "The bounded route in reverse: 0xZAPS back into aeWETH, one signed step.",
+    accent: "token",
+    blocks: [
+      ["wallet-balance", { asset: "0xZAPS", amount: "1000000" }],
+      ["guard-slippage", { bps: 50 }],
+      ["swap", { into: "WETH", venue: "Uniswap v4" }],
       ["send", { recipient: "owner wallet" }],
     ],
   },
