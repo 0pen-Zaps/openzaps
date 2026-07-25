@@ -12,6 +12,7 @@ import {
   feedConditionForZapsMove,
   intentFileName,
   netFloorFromQuote,
+  projectedRelativeFloor,
   requiredFunding,
   suggestedSeriesDeadline,
 } from "@/lib/automate";
@@ -210,6 +211,61 @@ const baseRel = {
   priceSource: ADDR,
   maxSlippageBps: 500,
 };
+
+describe("projectedRelativeFloor", () => {
+  // Mirrors OpenZapV3_1._relativeFloor. currency0 = aeWETH, currency1 = 0xZAPS;
+  // priceX96 = currency1 per currency0 (Q96). These values are pinned to the contract math — any
+  // drift here means the preview would lie about the floor the owner actually signed.
+  const Q96 = 1n << 96n;
+  const C0 = "0x0Bd7D308f8E1639FAb988df18A8011f41EAcAD73" as Address; // currency0 (input for a buy)
+  const C1 = "0xDd90bFa4adC7F4401E611AbaC692D939F9F4CB07" as Address; // currency1 (0xZAPS)
+  const OTHER = "0x70997970C51812dc3A010C7d01b50e0d17dc79C8" as Address;
+
+  it("buying currency1 with currency0: floor = amountIn * price * (1 - slip)", () => {
+    // spot = 1000 currency1 per currency0; 1 c0 in → 1000 c1 expected → 5% band → 950 floor
+    const floor = projectedRelativeFloor({
+      amountIn: parseEther("1"), outAsset: C1, currency0: C0, currency1: C1, priceX96: 1000n * Q96, maxSlippageBps: 500,
+    });
+    expect(floor).toBe(parseEther("950"));
+  });
+
+  it("buying currency0 with currency1: uses the reciprocal price", () => {
+    // 1000 c1 in at 1000 c1/c0 → 1 c0 expected → 2% band → 0.98 floor
+    const floor = projectedRelativeFloor({
+      amountIn: parseEther("1000"), outAsset: C0, currency0: C0, currency1: C1, priceX96: 1000n * Q96, maxSlippageBps: 200,
+    });
+    expect(floor).toBe(parseEther("0.98"));
+  });
+
+  it("compares assets case-insensitively (checksummed intent vs lowercased source)", () => {
+    const floor = projectedRelativeFloor({
+      amountIn: parseEther("1"), outAsset: C1,
+      currency0: C0.toLowerCase() as Address, currency1: C1.toLowerCase() as Address,
+      priceX96: 1000n * Q96, maxSlippageBps: 500,
+    });
+    expect(floor).toBe(parseEther("950"));
+  });
+
+  it("mirrors the contract's mulDiv flooring on a non-round price", () => {
+    const priceX96 = (1234567n * Q96) / 1000n; // 1234.567 c1/c0 — not exactly Q96-representable
+    const amountIn = 3n * 10n ** 17n; // 0.3 c0
+    const expected = (amountIn * priceX96) / Q96;
+    const want = (expected * (10_000n - 500n)) / 10_000n;
+    expect(
+      projectedRelativeFloor({ amountIn, outAsset: C1, currency0: C0, currency1: C1, priceX96, maxSlippageBps: 500 }),
+    ).toBe(want);
+  });
+
+  it("returns 0n (caller renders '—') for every degenerate input", () => {
+    const base = { amountIn: parseEther("1"), outAsset: C1, currency0: C0, currency1: C1, priceX96: 1000n * Q96, maxSlippageBps: 500 };
+    expect(projectedRelativeFloor({ ...base, amountIn: 0n })).toBe(0n);
+    expect(projectedRelativeFloor({ ...base, priceX96: 0n })).toBe(0n);
+    expect(projectedRelativeFloor({ ...base, maxSlippageBps: 10_000 })).toBe(0n); // >= 100% disables the floor
+    expect(projectedRelativeFloor({ ...base, maxSlippageBps: -1 })).toBe(0n);
+    expect(projectedRelativeFloor({ ...base, outAsset: OTHER })).toBe(0n); // outAsset not in the pair
+    expect(projectedRelativeFloor({ ...base, amountIn: 1n, priceX96: 1n })).toBe(0n); // expected floors to zero
+  });
+});
 
 describe("defaultSlippageBps", () => {
   it("gives recurring a wider band than a one-shot trigger", () => {

@@ -343,6 +343,24 @@
   margin-top: 1rem;
 }
 
+/* Relative-floor readout: an indicative, live-spot preview of each run's guaranteed minimum. */
+.floorPreview {
+  margin-top: 0.9rem;
+  padding: 0.7rem 0.85rem;
+  border: 1px solid rgba(255, 252, 0, 0.22);
+  background: rgba(255, 252, 0, 0.04);
+  color: var(--muted);
+  font-size: 0.8rem;
+  line-height: 1.5;
+}
+
+.floorPreview strong {
+  color: var(--fg);
+  font-family: var(--font-jetbrains-mono), ui-monospace, monospace;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+
 .field {
   min-width: 0;
 }

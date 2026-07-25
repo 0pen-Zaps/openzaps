@@ -4,6 +4,7 @@
 import type { Address, Hex } from "viem";
 
 import {
+  BPS,
   computeExecutorFeeSplit,
   type RecurringIntent,
   type RecurringRelativeIntent,
@@ -104,6 +105,49 @@ export function netFloorFromQuote(quotedOut: bigint, slippageBps: number): bigin
   const bps = BigInt(Math.min(Math.max(Math.trunc(slippageBps), 0), 9_999));
   const grossFloor = (quotedOut * (10_000n - bps)) / 10_000n;
   return computeExecutorFeeSplit(grossFloor).net;
+}
+
+/** Q96 fixed-point scale, matching the pool's priceX96 encoding (currency1 per currency0). */
+const Q96 = 1n << 96n;
+
+/**
+ * The per-run floor a v3.1 RELATIVE-floor recurring zap would enforce at a given spot — the
+ * on-chain mirror of OpenZapV3_1._relativeFloor, byte-for-byte, so a preview can never overstate
+ * the protection the owner actually signed. `priceX96` is currency1-per-currency0 (Q96); the input
+ * asset is whichever pool currency is NOT the outAsset:
+ *   outAsset == currency1 (buying c1 with c0): expected = amountIn * priceX96 / 2^96
+ *   outAsset == currency0 (buying c0 with c1): expected = amountIn * 2^96 / priceX96
+ * then floor = expected * (BPS - maxSlippageBps) / BPS. The contract enforces this NET of the 1%
+ * fee, so the return value IS the minimum output the recipient is guaranteed each run.
+ *
+ * Returns 0n on every degenerate input — non-positive amount or price, a slippage outside the
+ * capsule's [0, BPS) band, an outAsset the source can't value, or an expected output that floors to
+ * zero (the contract fails closed here) — so callers render an explicit "—", never a false number.
+ */
+export function projectedRelativeFloor(input: {
+  amountIn: bigint;
+  outAsset: Address;
+  currency0: Address;
+  currency1: Address;
+  priceX96: bigint;
+  maxSlippageBps: number;
+}): bigint {
+  const { amountIn, outAsset, currency0, currency1, priceX96, maxSlippageBps } = input;
+  if (amountIn <= 0n || priceX96 <= 0n) return 0n;
+  const slip = BigInt(Math.trunc(maxSlippageBps));
+  if (slip < 0n || slip >= BPS) return 0n; // >= 100% would disable the floor; the capsule reverts
+
+  const out = outAsset.toLowerCase();
+  let expected: bigint;
+  if (out === currency1.toLowerCase()) {
+    expected = (amountIn * priceX96) / Q96;
+  } else if (out === currency0.toLowerCase()) {
+    expected = (amountIn * Q96) / priceX96;
+  } else {
+    return 0n; // pair not valuable by this source
+  }
+  if (expected === 0n) return 0n; // contract reverts FloorUnderflow rather than pass any output
+  return (expected * (BPS - slip)) / BPS;
 }
 
 /**
