@@ -264,11 +264,30 @@
 }
 
 @media (max-width: 920px) {
+  /* minmax(0, 1fr), never bare 1fr or an implicit `auto` track: both refuse to
+     shrink below the min-content of the widest descendant, so ONE unbreakable
+     42-char address sized the hero track to 437px and the callout track to 550px
+     inside a 355px container. html/body use overflow-x: clip, so the excess was
+     not even scrollable — the h1 and the security copy were simply cut off the
+     right edge on every phone. */
   .hero,
   .grid,
   .twoCol,
-  .metrics {
-    grid-template-columns: 1fr;
+  .metrics,
+  .content,
+  .callout,
+  .section {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  /* Grid and flex children default to min-width: auto. Without this the track
+     above can still be widened from the inside. */
+  .content,
+  .callout,
+  .section,
+  .metric,
+  .codeBlock {
+    min-width: 0;
   }
 
   .toc {
@@ -428,4 +447,16 @@
 @keyframes docScan {
   0%, 55% { top: -30%; }
   100% { top: 130%; }
+}
+
+/* Addresses and hashes are unbreakable tokens; without this they set the
+   min-content width of whatever contains them, which is what clipped the hero
+   and the security callout on mobile. */
+.heroCard strong,
+.heroCard code,
+.callout strong,
+.callout code,
+.page code,
+.page dd {
+  overflow-wrap: anywhere;
 }
