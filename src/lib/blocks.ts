@@ -1184,7 +1184,7 @@ export type ZapRecipe = {
 
 export const RECIPES: readonly ZapRecipe[] = [
   {
-    // First, and the chain the builder opens on. The first EIGHT blueprints are
+    // First, and the chain the builder opens on. The first ELEVEN blueprints are
     // the DEPLOYABLE set — each reduces to a route the live contracts carry,
     // and a test in deployable.test.ts holds every one of them to that claim,
     // because a catalog edit that quietly drops one off its route would
@@ -1305,6 +1305,46 @@ export const RECIPES: readonly ZapRecipe[] = [
       ["guard-slippage", { bps: 100 }],
       ["add-liquidity", { pool: "WETH/USDG", range: "Full range" }],
       ["hold-lp"],
+    ],
+  },
+  {
+    // The stable pool's other side: back into ETH exposure from USDG.
+    id: "usdg-weth",
+    name: "Buy aeWETH with USDG",
+    tagline: "USDG into aeWETH through the pinned stable pool, one signed step.",
+    accent: "token",
+    blocks: [
+      ["wallet-balance", { asset: "USDG", amount: "25" }],
+      ["guard-slippage", { bps: 50 }],
+      ["swap", { into: "WETH", venue: "Uniswap v4" }],
+      ["send", { recipient: "owner wallet" }],
+    ],
+  },
+  {
+    // The ERC-4626 receipt wrapper. Deliberately NOT sold as yield: the vault
+    // earns nothing — it turns USDG into a transferable share and back. Its CTA
+    // carries the seeding disclosure, because /app refuses an unseeded vault.
+    id: "vault-park",
+    name: "Wrap USDG into ozUSDG",
+    tagline: "USDG into the vault's ERC-4626 share. A receipt, not a yield position.",
+    accent: "receipt",
+    blocks: [
+      ["wallet-balance", { asset: "USDG", amount: "500" }],
+      ["supply", { market: "ZapVault" }],
+    ],
+  },
+  {
+    // The withdraw leg's other settlement currency: the same ozRANGE shares, out
+    // to aeWETH instead of USDG.
+    id: "exit-liquidity-weth",
+    name: "Exit liquidity to aeWETH",
+    tagline: "Burn ozRANGE shares back to aeWETH — principal plus accrued fees.",
+    accent: "lp",
+    blocks: [
+      ["lp-position", { asset: "ozRANGE", amount: "1" }],
+      ["guard-slippage", { bps: 100 }],
+      ["remove-liquidity", { settle: "WETH", portion: 100 }],
+      ["send", { recipient: "owner wallet" }],
     ],
   },
   {
