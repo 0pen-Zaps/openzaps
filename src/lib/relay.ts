@@ -13,7 +13,7 @@
 // the route, and the real check lives in the contract.
 import type { Hex } from "viem";
 
-export type RelayIntentKind = "recurring" | "trigger";
+export type RelayIntentKind = "recurring" | "recurring-relative" | "trigger";
 export type RelayStatus = "open" | "consumed";
 
 /** Exactly the intent-file shape the executor already consumes, plus the kind + signature. */
@@ -69,6 +69,14 @@ const KIND_FIELDS: Record<RelayIntentKind, [string, Rule][]> = {
     ["maxRuns", "dec"],
     ["minOutPerRun", "dec"],
   ],
+  "recurring-relative": [
+    ...COMMON,
+    ["seriesId", "dec"],
+    ["interval", "dec"],
+    ["maxRuns", "dec"],
+    ["priceSource", "addr"],
+    ["maxSlippageBps", "dec"],
+  ],
   trigger: [
     ...COMMON,
     ["nonce", "dec"],
@@ -100,7 +108,9 @@ export function parseRelaySubmission(body: unknown): RelaySubmission {
   if (typeof body !== "object" || body === null) throw new Error("body must be a JSON object");
   const raw = body as Record<string, unknown>;
   const kind = raw.kind;
-  if (kind !== "recurring" && kind !== "trigger") throw new Error('kind must be "recurring" or "trigger"');
+  if (kind !== "recurring" && kind !== "recurring-relative" && kind !== "trigger") {
+    throw new Error('kind must be "recurring", "recurring-relative", or "trigger"');
+  }
   if (typeof raw.signature !== "string" || !HEX_SIG.test(raw.signature)) throw new Error("signature: malformed");
   if (typeof raw.intent !== "object" || raw.intent === null) throw new Error("intent: missing");
   const src = raw.intent as Record<string, unknown>;
@@ -113,9 +123,9 @@ export function parseRelaySubmission(body: unknown): RelaySubmission {
   return { kind, intent, signature: raw.signature as Hex };
 }
 
-/** The nonce field that identifies an intent for dedup: seriesId for recurring, nonce for trigger. */
+/** The nonce field that identifies an intent for dedup: seriesId for recurring kinds, nonce for trigger. */
 export function relayIntentNonce(sub: RelaySubmission): string {
-  return String(sub.kind === "recurring" ? sub.intent.seriesId : sub.intent.nonce);
+  return String(sub.kind === "trigger" ? sub.intent.nonce : sub.intent.seriesId);
 }
 
 // ---- isomorphic client (works in the browser and in the executor's Node) ----

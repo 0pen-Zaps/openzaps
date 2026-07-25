@@ -26,6 +26,14 @@ const COMMON_FIELDS = [
 
 const KIND_FIELDS = {
   recurring: [...COMMON_FIELDS, ["seriesId", "bigint"], ["interval", "bigint"], ["maxRuns", "bigint"], ["minOutPerRun", "bigint"]],
+  "recurring-relative": [
+    ...COMMON_FIELDS,
+    ["seriesId", "bigint"],
+    ["interval", "bigint"],
+    ["maxRuns", "bigint"],
+    ["priceSource", HEX_ADDR],
+    ["maxSlippageBps", "bigint"],
+  ],
   trigger: [
     ...COMMON_FIELDS,
     ["nonce", "bigint"],
@@ -64,7 +72,9 @@ function coerce(name, rule, value) {
 export function validateIntentObject(raw) {
   if (typeof raw !== "object" || raw === null) throw new Error("intent payload must be a JSON object");
   const kind = raw.kind;
-  if (kind !== "recurring" && kind !== "trigger") throw new Error(`kind must be "recurring" or "trigger"`);
+  if (kind !== "recurring" && kind !== "recurring-relative" && kind !== "trigger") {
+    throw new Error(`kind must be "recurring", "recurring-relative", or "trigger"`);
+  }
   if (typeof raw.signature !== "string" || !HEX_SIG.test(raw.signature)) throw new Error("signature: malformed");
   if (typeof raw.intent !== "object" || raw.intent === null) throw new Error("intent: missing");
 

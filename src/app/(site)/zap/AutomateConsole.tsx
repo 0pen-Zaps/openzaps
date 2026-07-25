@@ -19,7 +19,7 @@ import {
   THRESHOLD_PRESETS,
   defaultSlippageBps,
   describeSeries,
-  draftRecurringIntent,
+  draftRecurringRelativeIntent,
   draftTriggerIntent,
   feedConditionForZapsMove,
   intentFileName,
@@ -30,7 +30,7 @@ import { publishIntent, type RelaySubmission } from "@/lib/relay";
 import {
   EXEC_FEE_BPS,
   EXECUTOR_SHARE_BPS,
-  buildRecurringTypedData,
+  buildRecurringRelativeTypedData,
   buildTriggerTypedData,
   isTriggerArmed,
   serializeIntentFile,
@@ -49,6 +49,8 @@ import { BOUNDED_SWAP_IDS } from "@/lib/chains";
 import { resolveRouteById, type Route } from "@/lib/routes";
 import {
   OPENZAP_V3_CONTRACTS,
+  OPENZAP_V3_1_CONTRACTS,
+  openZapV3_1Configured,
   ROBINHOOD_CHAIN_ID,
   ROBINHOOD_LIQUIDITY,
   ROBINHOOD_RPC_URL,
@@ -179,7 +181,6 @@ export default function AutomateConsole(): React.JSX.Element {
   const [intakeToken, setIntakeToken] = useState("");
   const loadEpochRef = useRef(0);
 
-  const configured = openZapV3Configured();
   const route: Route | null = resolveRouteById(routeId);
   const interval = INTERVAL_PRESETS.find((p) => p.id === intervalId) ?? INTERVAL_PRESETS[2];
   const threshold = THRESHOLD_PRESETS.find((p) => p.id === thresholdId) ?? THRESHOLD_PRESETS[1];
@@ -188,6 +189,19 @@ export default function AutomateConsole(): React.JSX.Element {
     records.find((r) => selected && r.address.toLowerCase() === selected.toLowerCase()) ?? records[0] ?? null;
   const recordRoute = record ? resolveRouteById(record.routeId) : null;
   const perRunAmount = route ? parseAmountSafe(amount, route.tokenIn.decimals) : 0n;
+
+  // The EFFECTIVE execution type: once a zap is selected, everything the user sees AND signs must
+  // follow the record's mode, never the transient tab state (which can't change while a record is
+  // selected). Using this everywhere the UI branches keeps the shown controls, tab highlight, pot,
+  // factory, and the signed intent all in agreement — so a user can never sign terms for a type
+  // whose controls were never rendered.
+  const activeMode: AutomationMode = record?.mode ?? mode;
+  const activeContracts = activeMode === "recurring" ? OPENZAP_V3_1_CONTRACTS : OPENZAP_V3_CONTRACTS;
+
+  // Recurring needs the v3.1 stack; a pure-trigger surface needs only v3. Gate each on what it uses
+  // so a malformed v3.1 env override can't disable the (v3-only) trigger flow.
+  const configured =
+    openZapV3Configured() && (activeMode === "recurring" ? openZapV3_1Configured() : true);
 
   // Loaded chain state counts for the SELECTED capsule only; anything else is a stale response.
   const loadedForRecord = record && loaded && loaded.address === record.address ? loaded : null;
@@ -257,20 +271,17 @@ export default function AutomateConsole(): React.JSX.Element {
 
   // ---- pot (protocol lottery) ----
 
+  const activePot = activeContracts.lotteryPot;
   useEffect(() => {
     let cancelled = false;
     const load = async () => {
       try {
-        const round = await publicClient.readContract({
-          address: OPENZAP_V3_CONTRACTS.lotteryPot,
-          abi: lotteryPotAbi,
-          functionName: "currentRound",
-        });
+        const round = await publicClient.readContract({ address: activePot, abi: lotteryPotAbi, functionName: "currentRound" });
         const [prize, totalTickets, tickets] = await Promise.all([
-          publicClient.readContract({ address: OPENZAP_V3_CONTRACTS.lotteryPot, abi: lotteryPotAbi, functionName: "roundPrize", args: [round] }),
-          publicClient.readContract({ address: OPENZAP_V3_CONTRACTS.lotteryPot, abi: lotteryPotAbi, functionName: "totalTickets", args: [round] }),
+          publicClient.readContract({ address: activePot, abi: lotteryPotAbi, functionName: "roundPrize", args: [round] }),
+          publicClient.readContract({ address: activePot, abi: lotteryPotAbi, functionName: "totalTickets", args: [round] }),
           account
-            ? publicClient.readContract({ address: OPENZAP_V3_CONTRACTS.lotteryPot, abi: lotteryPotAbi, functionName: "tickets", args: [round, account] })
+            ? publicClient.readContract({ address: activePot, abi: lotteryPotAbi, functionName: "tickets", args: [round, account] })
             : Promise.resolve(0n),
         ]);
         if (!cancelled) setPot({ round, prize, tickets, totalTickets });
@@ -282,7 +293,7 @@ export default function AutomateConsole(): React.JSX.Element {
     return () => {
       cancelled = true;
     };
-  }, [account, configured, notice]);
+  }, [account, configured, notice, activePot]);
 
   // ---- actions ----
 
@@ -297,18 +308,20 @@ export default function AutomateConsole(): React.JSX.Element {
       if (perRunAmount <= 0n) throw new Error("Enter a per-run amount first.");
       if (mode === "recurring" && (maxRuns < 1 || maxRuns > 1000)) throw new Error("Runs must be between 1 and 1000.");
 
+      // recurring → v3.1 (relative floor); trigger → v3. Same factory ABI (identical Policy tuple).
+      const stack = mode === "recurring" ? OPENZAP_V3_1_CONTRACTS : OPENZAP_V3_CONTRACTS;
       const wallet = await requireWallet(owner);
       const policy = buildRoutePolicy(owner, activeRoute, perRunAmount);
       const salt = randomHex32();
       const predicted = await publicClient.readContract({
-        address: OPENZAP_V3_CONTRACTS.factory,
+        address: stack.factory,
         abi: openZapFactoryV3Abi,
         functionName: "predict",
         args: [policy, salt],
       });
       const { request } = await publicClient.simulateContract({
         account: owner,
-        address: OPENZAP_V3_CONTRACTS.factory,
+        address: stack.factory,
         abi: openZapFactoryV3Abi,
         functionName: "createZap",
         args: [policy, salt],
@@ -316,13 +329,13 @@ export default function AutomateConsole(): React.JSX.Element {
       const hash = await wallet.writeContract(request);
       await publicClient.waitForTransactionReceipt({ hash });
 
-      // Verify the clone is byte-exact against the v3 implementation before anyone funds it.
+      // Verify the clone is byte-exact against the intended implementation before anyone funds it.
       const [code, policyHash] = await Promise.all([
         publicClient.getCode({ address: predicted }),
         publicClient.readContract({ address: predicted, abi: openZapV3Abi, functionName: "policyHash" }),
       ]);
-      if (code !== expectedCloneRuntime(OPENZAP_V3_CONTRACTS.implementation)) {
-        throw new Error("Deployed zap bytecode does not match the v3 implementation. Do not fund it.");
+      if (code !== expectedCloneRuntime(stack.implementation)) {
+        throw new Error("Deployed zap bytecode does not match the expected implementation. Do not fund it.");
       }
 
       const next: AutomationRecord = {
@@ -389,25 +402,14 @@ export default function AutomateConsole(): React.JSX.Element {
       if (!record || !recordRoute) throw new Error("Create a zap first.");
       if (recordRoute.quote.source !== "v4") throw new Error("Automation supports the bounded pool routes only.");
       const wallet = await requireWallet(owner);
-      const perRun = BigInt(record.amountPerRun);
-
-      // A fresh quote sets the per-run floor: slippage first, then the 1% executor fee, because
-      // the capsule enforces the floor NET of that fee.
-      const { result } = await publicClient.simulateContract({
-        account: owner,
-        address: ROBINHOOD_LIQUIDITY.v4Quoter,
-        abi: v4QuoterAbi,
-        functionName: "quoteExactInputSingle",
-        args: [{ poolKey: recordRoute.quote.poolKey, zeroForOne: recordRoute.quote.zeroForOne, exactAmount: perRun, hookData: "0x" }],
-      });
-      const minOut = netFloorFromQuote(result[0], slippageBps);
-      if (minOut <= 0n) throw new Error("The route quotes to zero output. Try a larger per-run amount.");
-
       const nowSec = BigInt(Math.floor(Date.now() / 1000));
       let file: string;
       let terms: string;
       if (record.mode === "recurring") {
-        const intent = draftRecurringIntent({
+        // Relative floor — NO quote. The v3.1 capsule reads the oriented price source's spot on
+        // every run and floors the output maxSlippageBps below it, so the floor is always current
+        // and a multi-run series can never go stale. The user's slippage % IS the signed tolerance.
+        const intent = draftRecurringRelativeIntent({
           zap: record.address,
           chainId: ROBINHOOD_CHAIN_ID,
           seriesId: randomNonce(),
@@ -417,12 +419,26 @@ export default function AutomateConsole(): React.JSX.Element {
           recipient: owner,
           policyHash: record.policyHash,
           outAsset: recordRoute.tokenOut.address,
-          minOutPerRun: minOut,
+          priceSource: OPENZAP_V3_1_CONTRACTS.orientedPriceSource,
+          maxSlippageBps: slippageBps,
         });
-        const signature = await wallet.signTypedData({ account: owner, ...buildRecurringTypedData(intent) });
-        file = serializeIntentFile("recurring", intent, signature);
-        terms = `${interval.label} · ${runsInRecord(record)} runs`;
+        const signature = await wallet.signTypedData({ account: owner, ...buildRecurringRelativeTypedData(intent) });
+        file = serializeIntentFile("recurring-relative", intent, signature);
+        terms = `${interval.label} · ${runsInRecord(record)} runs · ≤${(slippageBps / 100).toFixed(1)}% slip`;
       } else {
+        // Trigger is one-shot in a bounded window, so it still signs an absolute minOut from a
+        // fresh quote (slippage, then the 1% fee, since the capsule floors NET of the fee).
+        const perRun = BigInt(record.amountPerRun);
+        const { result } = await publicClient.simulateContract({
+          account: owner,
+          address: ROBINHOOD_LIQUIDITY.v4Quoter,
+          abi: v4QuoterAbi,
+          functionName: "quoteExactInputSingle",
+          args: [{ poolKey: recordRoute.quote.poolKey, zeroForOne: recordRoute.quote.zeroForOne, exactAmount: perRun, hookData: "0x" }],
+        });
+        const minOut = netFloorFromQuote(result[0], slippageBps);
+        if (minOut <= 0n) throw new Error("The route quotes to zero output. Try a larger per-run amount.");
+
         // The baseline is read AT SIGNING TIME — the signed condition anchors to the price the
         // user sees now, not one fetched when the page loaded.
         const baseline = await publicClient.readContract({
@@ -708,8 +724,8 @@ export default function AutomateConsole(): React.JSX.Element {
           {configured ? (
             <>
               Recurring and price-triggered zaps run through factory{" "}
-              <a href={explorerAddress(OPENZAP_V3_CONTRACTS.factory)} target="_blank" rel="noreferrer">
-                {shortAddress(OPENZAP_V3_CONTRACTS.factory)}
+              <a href={explorerAddress(activeContracts.factory)} target="_blank" rel="noreferrer">
+                {shortAddress(activeContracts.factory)}
               </a>
               . Each run pays a {feePct}% protocol fee from output — {executorPct}% of the fee to the executor that
               submits it, the rest to the 0xZAPS lottery pot. The v3 contracts have not been externally audited.
@@ -773,11 +789,11 @@ export default function AutomateConsole(): React.JSX.Element {
           </div>
 
           <div className={styles.segment} role="group" aria-label="Execution type">
-            <button type="button" className={mode === "recurring" ? styles.segOn : styles.seg} onClick={() => selectMode("recurring")} disabled={busy !== null || record !== null}>
+            <button type="button" className={activeMode === "recurring" ? styles.segOn : styles.seg} onClick={() => selectMode("recurring")} disabled={busy !== null || record !== null}>
               Recurring
               <em>every X time, N runs</em>
             </button>
-            <button type="button" className={mode === "trigger" ? styles.segOn : styles.seg} onClick={() => selectMode("trigger")} disabled={busy !== null || record !== null}>
+            <button type="button" className={activeMode === "trigger" ? styles.segOn : styles.seg} onClick={() => selectMode("trigger")} disabled={busy !== null || record !== null}>
               Price trigger
               <em>fires once at ±X%</em>
             </button>
@@ -824,7 +840,7 @@ export default function AutomateConsole(): React.JSX.Element {
                 disabled={busy !== null || signed}
               />
             </Field>
-            {mode === "recurring" ? (
+            {activeMode === "recurring" ? (
               <>
                 <Field label="Cadence">
                   <select className={styles.input} value={intervalId} onChange={(event) => setIntervalId(event.target.value)} disabled={busy !== null || signed}>
@@ -1121,11 +1137,14 @@ function remainingFundingTarget(record: AutomationRecord, status: AutomationStat
 function parseIntentFile(raw: string): { kind: AutomationMode; intent: RecurringIntent | TriggerIntent } | null {
   try {
     const parsed = JSON.parse(raw) as { kind?: string; intent?: Record<string, string | boolean> };
-    if ((parsed.kind !== "recurring" && parsed.kind !== "trigger") || !parsed.intent) return null;
+    const isRecurring = parsed.kind === "recurring" || parsed.kind === "recurring-relative";
+    if ((!isRecurring && parsed.kind !== "trigger") || !parsed.intent) return null;
     const i = parsed.intent;
     const big = (key: string) => BigInt(String(i[key]));
     const addr = (key: string) => getAddress(String(i[key]));
-    if (parsed.kind === "recurring") {
+    if (isRecurring) {
+      // Both recurring kinds share the series shape the status panel needs (seriesId/interval/
+      // maxRuns). The relative kind has no minOutPerRun; use 0n — status reads never consult it.
       const intent: RecurringIntent = {
         zap: addr("zap"),
         chainId: big("chainId"),
@@ -1140,7 +1159,7 @@ function parseIntentFile(raw: string): { kind: AutomationMode; intent: Recurring
         maxFeePerGas: big("maxFeePerGas"),
         policyHash: String(i.policyHash) as Hex,
         outAsset: addr("outAsset"),
-        minOutPerRun: big("minOutPerRun"),
+        minOutPerRun: "minOutPerRun" in i ? big("minOutPerRun") : 0n,
       };
       return { kind: "recurring", intent };
     }

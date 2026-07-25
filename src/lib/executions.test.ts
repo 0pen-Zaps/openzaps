@@ -13,6 +13,7 @@ import {
   BPS,
   EXEC_FEE_BPS,
   EXECUTOR_SHARE_BPS,
+  buildRecurringRelativeTypedData,
   buildRecurringTypedData,
   buildTriggerTypedData,
   computeExecutorFeeSplit,
@@ -21,6 +22,7 @@ import {
   serializeIntentFile,
   triggerBoundX96,
   type RecurringIntent,
+  type RecurringRelativeIntent,
   type TriggerIntent,
 } from "@/lib/executions";
 
@@ -168,6 +170,67 @@ describe("typed data builders", () => {
     const digest = hashTypedData(buildRecurringTypedData(recurring));
     expect(hashTypedData(buildRecurringTypedData({ ...recurring, zap: ADDR }))).not.toBe(digest);
     expect(hashTypedData(buildRecurringTypedData({ ...recurring, chainId: 1n }))).not.toBe(digest);
+  });
+
+  const RECURRING_RELATIVE_TYPEHASH = keccak256(
+    stringToHex(
+      "RecurringRelativeIntent(address zap,uint256 chainId,uint256 seriesId,uint64 validAfter,uint64 deadline,uint64 interval,uint32 maxRuns,address recipient,address executor,uint256 maxGas,uint256 maxFeePerGas,bytes32 policyHash,address outAsset,address priceSource,uint32 maxSlippageBps)",
+    ),
+  );
+
+  const relative: RecurringRelativeIntent = {
+    zap: ZAP,
+    chainId: 4663n,
+    seriesId: 3n,
+    validAfter: 0n,
+    deadline: 1_793_750_400n,
+    interval: 86_400n,
+    maxRuns: 10,
+    recipient: ADDR,
+    executor: "0x0000000000000000000000000000000000000000",
+    maxGas: 3_000_000n,
+    maxFeePerGas: 10_000_000_000n,
+    policyHash: HASH,
+    outAsset: ADDR,
+    priceSource: ZAP,
+    maxSlippageBps: 500,
+  };
+
+  function manualRelativeDigest(it_: RecurringRelativeIntent): Hex {
+    // Domain version "3.1" — a distinct signing surface from v3 ("3"), so a v3 sig can't replay.
+    const domainSeparator = keccak256(
+      encodeAbiParameters(
+        [{ type: "bytes32" }, { type: "bytes32" }, { type: "bytes32" }, { type: "uint256" }, { type: "address" }],
+        [DOMAIN_TYPEHASH, keccak256(stringToHex("OpenZap")), keccak256(stringToHex("3.1")), it_.chainId, it_.zap],
+      ),
+    );
+    const structHash = keccak256(
+      encodeAbiParameters(
+        [
+          { type: "bytes32" }, { type: "address" }, { type: "uint256" }, { type: "uint256" }, { type: "uint64" },
+          { type: "uint64" }, { type: "uint64" }, { type: "uint32" }, { type: "address" }, { type: "address" },
+          { type: "uint256" }, { type: "uint256" }, { type: "bytes32" }, { type: "address" }, { type: "address" },
+          { type: "uint32" },
+        ],
+        [
+          RECURRING_RELATIVE_TYPEHASH, it_.zap, it_.chainId, it_.seriesId, it_.validAfter, it_.deadline, it_.interval,
+          it_.maxRuns, it_.recipient, it_.executor, it_.maxGas, it_.maxFeePerGas, it_.policyHash, it_.outAsset,
+          it_.priceSource, it_.maxSlippageBps,
+        ],
+      ),
+    );
+    return keccak256(`0x1901${domainSeparator.slice(2)}${structHash.slice(2)}` as Hex);
+  }
+
+  it("relative typed data hashes to the same digest the v3.1 capsule computes (domain 3.1)", () => {
+    expect(hashTypedData(buildRecurringRelativeTypedData(relative))).toBe(manualRelativeDigest(relative));
+  });
+
+  it("relative digest differs from an otherwise-identical v3 recurring digest (no cross-version replay)", () => {
+    // Same seriesId/zap/chain but different domain version + typehash → different digest.
+    const rel = hashTypedData(buildRecurringRelativeTypedData(relative));
+    const rec = hashTypedData(buildRecurringTypedData({ ...recurring, zap: ZAP, seriesId: 3n }));
+    expect(rel).not.toBe(rec);
   });
 
   it("trigger typed data changes with every authority-bearing field", () => {

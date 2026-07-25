@@ -7,6 +7,7 @@ import {
   defaultSlippageBps,
   describeSeries,
   draftRecurringIntent,
+  draftRecurringRelativeIntent,
   draftTriggerIntent,
   feedConditionForZapsMove,
   intentFileName,
@@ -169,6 +170,46 @@ describe("intentFileName", () => {
     expect(intentFileName("trigger", ZAP)).toBe("openzap-trigger-9941dd72.json");
   });
 });
+
+describe("draftRecurringRelativeIntent", () => {
+  it("carries priceSource + clamped maxSlippageBps instead of an absolute floor", () => {
+    const it_ = draftRecurringRelativeIntent({
+      zap: ZAP,
+      chainId: 4663,
+      seriesId: 9n,
+      nowSec: 1_000_000n,
+      interval: 86_400n,
+      maxRuns: 10,
+      recipient: ADDR,
+      policyHash: HASH,
+      outAsset: ADDR,
+      priceSource: ADDR,
+      maxSlippageBps: 500,
+    });
+    expect(it_.priceSource).toBe(ADDR);
+    expect(it_.maxSlippageBps).toBe(500);
+    expect(it_.executor).toBe("0x0000000000000000000000000000000000000000");
+    expect(it_.deadline).toBe(suggestedSeriesDeadline(1_000_000n, 86_400n, 10));
+    expect("minOutPerRun" in it_).toBe(false);
+    // clamps out-of-range slippage to the capsule's valid band [1, 9999]
+    expect(draftRecurringRelativeIntent({ ...baseRel, maxSlippageBps: 0 }).maxSlippageBps).toBe(1);
+    expect(draftRecurringRelativeIntent({ ...baseRel, maxSlippageBps: 20_000 }).maxSlippageBps).toBe(9_999);
+  });
+});
+
+const baseRel = {
+  zap: ZAP,
+  chainId: 4663,
+  seriesId: 1n,
+  nowSec: 0n,
+  interval: 86_400n,
+  maxRuns: 5,
+  recipient: ADDR,
+  policyHash: HASH,
+  outAsset: ADDR,
+  priceSource: ADDR,
+  maxSlippageBps: 500,
+};
 
 describe("defaultSlippageBps", () => {
   it("gives recurring a wider band than a one-shot trigger", () => {
