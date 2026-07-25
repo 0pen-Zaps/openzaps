@@ -596,7 +596,7 @@ describe("the Live route blueprint", () => {
     expect(mapping.deployable && mapping.direction).toBe("buy");
   });
 
-  it("badges exactly the four deployable blueprints", () => {
+  it("badges exactly the five deployable blueprints", () => {
     // The blueprint row badges exactly the deployable ones. This is the list
     // the copy beside the row describes; a recipe drifting off its route (or a
     // non-deployable design quietly becoming badged) fails here first.
@@ -605,7 +605,20 @@ describe("the Live route blueprint", () => {
         entry.blocks.map(([id, params], index) => makeNode(id, `${entry.id}-${index}`, params)),
       ).deployable,
     ).map((entry) => entry.id);
-    expect(deployable).toEqual(["live-route", "stitched-route", "provide-liquidity", "exit-liquidity"]);
+    expect(deployable).toEqual(["live-route", "sell-zaps", "stitched-route", "provide-liquidity", "exit-liquidity"]);
+  });
+
+  it("maps the sell blueprint to the other side of the bounded pool", () => {
+    // Sell 0xZAPS is the buy blueprint's counterpart: same pool, opposite side,
+    // same allowlisted adapter address — so it deploys today with no new broadcast.
+    const entry = RECIPES.find((candidate) => candidate.id === "sell-zaps");
+    expect(entry).toBeDefined();
+    const mapping = reduceChainToLiveRoute(
+      (entry?.blocks ?? []).map(([id, params], index) => makeNode(id, `sell-zaps-${index}`, params)),
+    );
+    expect(mapping.deployable, mapping.deployable ? "" : mapping.reasons.join(" | ")).toBe(true);
+    expect(mapping.deployable && mapping.direction).toBe("sell");
+    expect(mapping.deployable && mapping.routeId).toBe("robinhood-v4-zaps-weth");
   });
 
   it("routes each deployable blueprint to the adapter it claims", () => {
@@ -614,6 +627,7 @@ describe("the Live route blueprint", () => {
     // its claim true, not merely to "some deployable route".
     const expected: Record<string, string> = {
       "live-route": "robinhood-v4-weth-zaps",
+      "sell-zaps": "robinhood-v4-zaps-weth",
       "stitched-route": "robinhood-v4-route-usdg-zaps",
       "provide-liquidity": "robinhood-range-deposit-weth",
       "exit-liquidity": "robinhood-range-withdraw-usdg",
@@ -962,8 +976,8 @@ describe("with the real vault adapter configured", () => {
       ).deployable,
     ).map((entry) => entry.id);
     // Overriding the vault-deposit address must not badge any blueprint beyond
-    // the standing deployable four — no recipe supplies into the ozUSDG vault.
-    expect(deployable).toEqual(["live-route", "stitched-route", "provide-liquidity", "exit-liquidity"]);
+    // the standing deployable five — no recipe supplies into the ozUSDG vault.
+    expect(deployable).toEqual(["live-route", "sell-zaps", "stitched-route", "provide-liquidity", "exit-liquidity"]);
   });
 });
 

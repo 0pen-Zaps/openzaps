@@ -110,8 +110,16 @@ export function landingCards(): RecipeCard[] {
   );
 }
 
+// The "Social Zaps" strip shows a representative set with live/design badges, so the copy's point
+// ("if it reduces to a live route — signs and runs it") always has both to show. Curated by id, not
+// a RECIPES prefix slice: a prefix slice silently changed membership the moment a blueprint was
+// inserted, once dropping the only design example off the strip. Four deployable routes + one design.
+const SHAREABLE_IDS = ["live-route", "sell-zaps", "stitched-route", "provide-liquidity", "dca"] as const;
+
 export function shareableCards(): RecipeCard[] {
-  return RECIPES.slice(0, 5).map(recipeCard);
+  return SHAREABLE_IDS.map((id) => RECIPES.find((recipe) => recipe.id === id))
+    .filter((recipe): recipe is (typeof RECIPES)[number] => recipe !== undefined)
+    .map(recipeCard);
 }
 
 /* ------------------------------------------------------------------ */
