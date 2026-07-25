@@ -10,7 +10,12 @@ import {
   expectedCloneRuntime,
   hashRobinhoodPolicy,
 } from "@/lib/openzap";
-import { OPENZAP_CONTRACTS, ROBINHOOD_ASSETS } from "@/lib/robinhood";
+import {
+  OPENZAP_CONTRACTS,
+  OPENZAP_V3_CONTRACTS,
+  OPENZAP_V3_1_CONTRACTS,
+  ROBINHOOD_ASSETS,
+} from "@/lib/robinhood";
 import {
   ZAP_STEP_READ_LIMIT,
   ZapNotFoundError,
@@ -262,7 +267,21 @@ describe("assertCanonicalClone", () => {
   it("rejects missing code, a foreign runtime, and a foreign implementation", () => {
     expect(assertCanonicalClone(null, OPENZAP_CONTRACTS.implementation)).toBe(false);
     expect(assertCanonicalClone("0x6080604052", OPENZAP_CONTRACTS.implementation)).toBe(false);
+    // A rogue factory naming its own address as `implementation()` would verify
+    // against itself; the pinned set is what stops that.
     expect(assertCanonicalClone(expectedCloneRuntime(SPOOFER), SPOOFER)).toBe(false);
+  });
+
+  it("accepts an automated (v3 / v3.1) capsule, not just a v1.1 one", () => {
+    // Checking only the v1.1 implementation marked every automated capsule
+    // "unverified shape" on its detail page despite a byte-correct clone.
+    for (const impl of [
+      OPENZAP_CONTRACTS.implementation,
+      OPENZAP_V3_CONTRACTS.implementation,
+      OPENZAP_V3_1_CONTRACTS.implementation,
+    ]) {
+      expect(assertCanonicalClone(expectedCloneRuntime(impl), impl), impl).toBe(true);
+    }
   });
 });
 

@@ -9,7 +9,12 @@ import {
   type ZapDirection,
 } from "@/lib/openzap";
 import { resolveRouteFromStep, type Route } from "@/lib/routes";
-import { OPENZAP_CONTRACTS, ROBINHOOD_ASSETS } from "@/lib/robinhood";
+import {
+  OPENZAP_CONTRACTS,
+  OPENZAP_V3_CONTRACTS,
+  OPENZAP_V3_1_CONTRACTS,
+  ROBINHOOD_ASSETS,
+} from "@/lib/robinhood";
 
 /**
  * The clone exposes `step(i)` one index at a time, so a policy hash can only be
@@ -299,13 +304,27 @@ export function newestZapCreations(
 }
 
 /**
+ * Every implementation this release recognises as canonical. Pinned here rather
+ * than trusted from the factory: a rogue factory reporting its own address as
+ * `implementation()` would otherwise verify against itself and pass. A capsule
+ * from ANY of the three live lineages is canonical — checking only v1.1 marked
+ * every automated (v3 / v3.1) capsule "unverified shape" despite it being a
+ * byte-correct clone.
+ */
+const CANONICAL_IMPLEMENTATIONS: readonly Address[] = [
+  OPENZAP_CONTRACTS.implementation,
+  OPENZAP_V3_CONTRACTS.implementation,
+  OPENZAP_V3_1_CONTRACTS.implementation,
+];
+
+/**
  * True when the runtime is the EIP-1167 clone of the factory's own
- * implementation AND that implementation is the one this release ships.
+ * implementation AND that implementation is one this release ships.
  * Deliberately not `inspectOwnedZap`: that helper is owner-bound and throws.
  */
 export function assertCanonicalClone(runtime: Hex | null, factoryImplementation: Address): boolean {
   if (!runtime) return false;
-  if (!isAddressEqual(factoryImplementation, OPENZAP_CONTRACTS.implementation)) return false;
+  if (!CANONICAL_IMPLEMENTATIONS.some((impl) => isAddressEqual(factoryImplementation, impl))) return false;
   return runtime.toLowerCase() === expectedCloneRuntime(factoryImplementation).toLowerCase();
 }
 
