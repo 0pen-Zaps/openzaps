@@ -155,6 +155,27 @@ onchain post-broadcast (factory↔pot binding, price-source allowlisting, live p
 - **Pre-external-audit**, like everything on this chain. The app's Sign &amp; run tab deploys v1.1
   capsules; the Automate tab deploys v3 capsules against this factory.
 
+### The v3.1 relative-floor stack — live (2026-07-24)
+
+UNAUDITED CANDIDATE. Deployed from [`contracts/script/DeployV3_1Robinhood.s.sol`](../contracts/script/DeployV3_1Robinhood.s.sol)
+by `0x5a52…4aA2` (nonce 206→212, all 6 txs succeeded). Adds `executeRecurringRelative`: a recurring
+per-run floor computed from the oriented price source's spot **at execution**, so a series can't go
+stale (the v3 absolute floor could — a live zap hit exactly that). Superset of v3; domain version
+`"3.1"`; its own price-source registry and lottery pot (`setFactory` is one-shot). Wired on-chain
+post-broadcast (factory↔pot, source allowlisted, currency0=aeWETH/currency1=0xZAPS, live spot read).
+
+| Contract | Address |
+|---|---|
+| OpenZapFactoryV3_1 (`3.1.0-candidate`) | [`0xDA5f501052fe6F87f547bc21FCAA1F122eD2f2E1`](https://robinhoodchain.blockscout.com/address/0xDA5f501052fe6F87f547bc21FCAA1F122eD2f2E1) |
+| OpenZapV3_1 implementation | [`0x0fE5bC78b2bAc5f09E940C2aCcC0c3B785d91063`](https://robinhoodchain.blockscout.com/address/0x0fE5bC78b2bAc5f09E940C2aCcC0c3B785d91063) |
+| ZapLotteryPot (v3.1) | [`0x6ec3D07886Ea641e9d10D45A97a72E5f8ec836F1`](https://robinhoodchain.blockscout.com/address/0x6ec3D07886Ea641e9d10D45A97a72E5f8ec836F1) |
+| Price-source registry (v3.1) | [`0x76CB210F25D016078E10DbfCb19AFfBbB4892e33`](https://robinhoodchain.blockscout.com/address/0x76CB210F25D016078E10DbfCb19AFfBbB4892e33) |
+| V4PoolPriceSourceOriented | [`0xb4f66bFa00d2496513A5fd43ff47912A3FE0bB5f`](https://robinhoodchain.blockscout.com/address/0xb4f66bFa00d2496513A5fd43ff47912A3FE0bB5f) |
+
+Addresses are wired into `src/lib/robinhood.ts` (`OPENZAP_V3_1_CONTRACTS`). The end-to-end
+create/sign/execute path for relative-floor recurring zaps (app + executor + relay support) is the
+follow-up; the contract set itself is live and verified.
+
 ## Base mainnet (chainId 8453)
 
 ### Live v1.1 core (2026-07-23)

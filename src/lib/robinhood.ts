@@ -160,6 +160,36 @@ export function openZapV3Configured(): boolean {
   return Object.values(OPENZAP_V3_CONTRACTS).every((address) => address !== zeroAddress);
 }
 
+/**
+ * The v3.1 relative-floor stack. Superset of v3: adds `executeRecurringRelative`, whose per-run
+ * floor is computed from the ORIENTED price source's spot at execution (not an absolute number
+ * frozen at signing), so a recurring series can't go stale. Deployed on Robinhood Chain
+ * 2026-07-24 — see docs/deployments.md. Signs under EIP-712 domain version "3.1"; its own lottery
+ * pot (setFactory is one-shot). The oriented source exposes currency0/currency1 so the capsule can
+ * value either swap direction.
+ */
+export const OPENZAP_V3_1_CONTRACTS = {
+  implementation: optionalAddress(
+    process.env.NEXT_PUBLIC_OPENZAP_V3_1_IMPLEMENTATION,
+    "0x0fE5bC78b2bAc5f09E940C2aCcC0c3B785d91063",
+  ),
+  factory: optionalAddress(process.env.NEXT_PUBLIC_OPENZAP_V3_1_FACTORY, "0xDA5f501052fe6F87f547bc21FCAA1F122eD2f2E1"),
+  lotteryPot: optionalAddress(process.env.NEXT_PUBLIC_OPENZAP_V3_1_LOTTERY_POT, "0x6ec3D07886Ea641e9d10D45A97a72E5f8ec836F1"),
+  priceSourceRegistry: optionalAddress(
+    process.env.NEXT_PUBLIC_OPENZAP_V3_1_PRICE_SOURCE_REGISTRY,
+    "0x76CB210F25D016078E10DbfCb19AFfBbB4892e33",
+  ),
+  /** IOrientedPriceSource pinned to the live aeWETH/0xZAPS pool — exposes currency0/currency1. */
+  orientedPriceSource: optionalAddress(
+    process.env.NEXT_PUBLIC_OPENZAP_V3_1_ORIENTED_PRICE_SOURCE,
+    "0xb4f66bFa00d2496513A5fd43ff47912A3FE0bB5f",
+  ),
+} as const;
+
+export function openZapV3_1Configured(): boolean {
+  return Object.values(OPENZAP_V3_1_CONTRACTS).every((address) => address !== zeroAddress);
+}
+
 export function explorerAddress(address: Address): string {
   return `${ROBINHOOD_EXPLORER_URL}/address/${address}`;
 }
@@ -769,6 +799,49 @@ export const openZapV3Abi = [
     outputs: [],
     stateMutability: "nonpayable",
   },
+] as const;
+
+/** Mirrors `RecurringRelativeIntent` in contracts/src/v3_1 — order is signature-bearing. Same as
+ *  RecurringIntent but the trailing `minOutPerRun` is replaced by `priceSource` + `maxSlippageBps`. */
+export const recurringRelativeIntentComponents = [
+  { name: "zap", type: "address" },
+  { name: "chainId", type: "uint256" },
+  { name: "seriesId", type: "uint256" },
+  { name: "validAfter", type: "uint64" },
+  { name: "deadline", type: "uint64" },
+  { name: "interval", type: "uint64" },
+  { name: "maxRuns", type: "uint32" },
+  { name: "recipient", type: "address" },
+  { name: "executor", type: "address" },
+  { name: "maxGas", type: "uint256" },
+  { name: "maxFeePerGas", type: "uint256" },
+  { name: "policyHash", type: "bytes32" },
+  { name: "outAsset", type: "address" },
+  { name: "priceSource", type: "address" },
+  { name: "maxSlippageBps", type: "uint32" },
+] as const;
+
+/** v3.1 capsule ABI: the v3 surface plus `executeRecurringRelative`. The factory ABI is identical
+ *  to v3's (`openZapFactoryV3Abi`) — same Policy tuple, createZap/predict. */
+export const openZapV3_1Abi = [
+  ...openZapV3Abi,
+  {
+    type: "function",
+    name: "executeRecurringRelative",
+    inputs: [
+      { name: "intent", type: "tuple", components: recurringRelativeIntentComponents },
+      { name: "sig", type: "bytes" },
+    ],
+    outputs: [],
+    stateMutability: "nonpayable",
+  },
+] as const;
+
+/** The oriented price source exposes the pool's currencies so a UI/executor can value either side. */
+export const orientedPriceSourceAbi = [
+  { type: "function", name: "priceX96", inputs: [], outputs: [{ name: "", type: "uint256" }], stateMutability: "view" },
+  { type: "function", name: "currency0", inputs: [], outputs: [{ name: "", type: "address" }], stateMutability: "view" },
+  { type: "function", name: "currency1", inputs: [], outputs: [{ name: "", type: "address" }], stateMutability: "view" },
 ] as const;
 
 export const lotteryPotAbi = [
