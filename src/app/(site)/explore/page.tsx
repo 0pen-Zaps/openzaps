@@ -244,8 +244,11 @@ export default async function ZapsFeedPage(): Promise<React.JSX.Element> {
       <section className={`container ${feed.section}`}>
         <header className={feed.head}>
           <span className="eyebrow">Verified contracts</span>
-          <h2>The complete deployed set.</h2>
-          <p>Six contracts, all source-verified on Robinhood Blockscout. Nothing else holds protocol authority.</p>
+          <h2>The v1.1 core contract set.</h2>
+          <p>
+            Six source-verified contracts on Robinhood Blockscout. The expansion adapters and the v3 / v3.1
+            automation factories are deployed alongside them — every address is listed in the deployments doc.
+          </p>
         </header>
         <div className={feed.contractGrid}>
           {contractRows.map(([label, address]) => (
@@ -256,8 +259,7 @@ export default async function ZapsFeedPage(): Promise<React.JSX.Element> {
           ))}
         </div>
         <p className={feed.note}>
-          The contracts have not been externally audited. Depositing funds can result in total loss. Onchain actions
-          are irreversible.{" "}
+          Depositing funds can result in total loss. Onchain actions are irreversible.{" "}
           <Link href="/docs#security">Read the security model</Link>.
         </p>
       </section>

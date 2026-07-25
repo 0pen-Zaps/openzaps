@@ -4,7 +4,8 @@ OpenZaps holds real funds on Robinhood Chain, and the contracts **have not been 
 
 ## Current posture
 
-- The v1.1 contracts are **live and pre-audit.** One bounded aeWETH ↔ 0xZAPS route is deployable.
+- Three capsule lineages are **live and pre-audit** on Robinhood Chain: **v1.1** (one-shot execution behind bounded adapters — swaps, a stitched two-hop route, an ERC-4626 receipt vault, and full-range liquidity), **v3** (recurring series and price triggers, submitted permissionlessly for a 1% fee), and **v3.1** (recurring series whose per-run floor is derived from an allowlisted price source at execution).
+- Off-chain surfaces in scope: the intent relay at `/api/intents` (signature and policy-hash verified, service-role key server-side only) and the reference executor daemon in `executor/`. The relay is untrusted by design — a capsule re-verifies every field on-chain — so a relay compromise must not be able to move funds.
 - No external audit, formal verification, adapter governance, testnet soak, or live wallet review has completed. The production gates are tracked at [0xzaps.com/docs#gates](https://www.0xzaps.com/docs#gates).
 - The owner of a capsule always keeps an unconditional withdraw and revoke path.
 

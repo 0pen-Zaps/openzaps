@@ -20,9 +20,8 @@ export function SiteFooter(): React.JSX.Element {
             </div>
           </div>
           <p className={styles.note}>
-            {TOKEN.symbol} is on {TOKEN_LAUNCH.network}. The OpenZaps protocol contracts are deployed on {CHAIN.name}{" "}
-            and have not been externally audited. Onchain actions are irreversible. Not financial advice. No TVL, yield,
-            or return is implied.
+            {TOKEN.symbol} is on {TOKEN_LAUNCH.network}. The OpenZaps protocol contracts are deployed on {CHAIN.name}.
+            Onchain actions are irreversible. Not financial advice. No TVL, yield, or return is implied.
           </p>
         </div>
 

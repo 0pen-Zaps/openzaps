@@ -9,11 +9,15 @@ verified against the invariants in [`../docs/invariant-spec.md`](../docs/invaria
 
 > ## ⚠️ Security status: LIVE, INTERNALLY TESTED, PRE-EXTERNAL-AUDIT
 >
-> v1.1 is deployed on Robinhood Chain with 63 passing unit/fuzz/invariant tests, Slither review,
-> live-pool fork tests in both directions, a full Factory/clone/EIP-712 fork test, exact Sourcify
-> matches, and a successful bounded mainnet smoke zap. It has **not** had a professional third-party
-> audit or formal prover run. Keep deposits scoped, use narrow allowlisted adapters, and preserve the
-> owner-only `emergencyExit` path until those external gates are complete.
+> Three generations are deployed on Robinhood Chain: **v1.1** (single-shot routes), **v3**
+> (recurring + price-triggered execution and the executor fee/lottery economy), and **v3.1**
+> (per-run floors priced from live spot). They ship with passing unit/fuzz/invariant tests, Slither
+> review, live-pool fork tests in both directions, a full Factory/clone/EIP-712 fork test, exact
+> Sourcify matches, and successful bounded mainnet smoke zaps. They have **not** had a professional
+> third-party audit or formal prover run. Keep deposits scoped, use narrow allowlisted adapters, and
+> preserve the owner-only `emergencyExit` path until those external gates are complete.
+>
+> Addresses and broadcast records: [`../docs/deployments.md`](../docs/deployments.md).
 
 ## Architecture
 

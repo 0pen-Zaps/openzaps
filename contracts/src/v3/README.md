@@ -1,7 +1,11 @@
 # OpenZap v3 — recurring & triggered execution, and the executor economy
 
-**Status: UNAUDITED CANDIDATE.** Nothing in `src/v3/` is deployed; the live v1.1 deployment is
-untouched. Deploy with [`script/DeployV3Robinhood.s.sol`](../../script/DeployV3Robinhood.s.sol).
+**Status: LIVE on Robinhood Chain, not externally audited.** Broadcast at block 17,601,632 — factory
+`0x70FCFD3615eA6651a670B6c4CD6B8bA1506717e9`, with the v1.1 deployment untouched alongside it. The
+v3.1 stack in [`../v3_1/`](../v3_1) extends it with per-run floors priced from live spot. Addresses
+and broadcast records: [`docs/deployments.md`](../../../docs/deployments.md). Deploy scripts:
+[`script/DeployV3Robinhood.s.sol`](../../script/DeployV3Robinhood.s.sol),
+[`script/DeployV3_1Robinhood.s.sol`](../../script/DeployV3_1Robinhood.s.sol).
 
 ## What v3 adds
 

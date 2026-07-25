@@ -9,7 +9,7 @@ import styles from "./docs.module.css";
 export const metadata = pageMetadata({
   title: "Developer docs & security",
   description:
-    "How an OpenZaps policy capsule is drafted, simulated, signed as an EIP-712 intent, submitted, and revoked — and what the capsule refuses to do, what an executor could still try, and what has not been reviewed. One bounded route is live on Robinhood Chain. The contracts are not externally audited.",
+    "How an OpenZaps policy capsule is drafted, simulated, signed as an EIP-712 intent, submitted, and revoked — and what the capsule refuses to do, what an executor could still try, and what has not been reviewed. Swaps, liquidity, recurring series, and price triggers are live on Robinhood Chain. Deposited funds are at risk.",
   path: "/docs",
   ogImage: "/og/docs.png",
   keywords: [
@@ -69,8 +69,8 @@ export default function DocsPage(): React.JSX.Element {
           <h1>Everything an execution can do is fixed before you sign it.</h1>
           <p>
             An OpenZap is a contract that holds funds and executes one policy its owner signed. This page documents the
-            policy fields, the simulation API, and the execution lifecycle. The contracts have not been externally
-            audited. Onchain actions are irreversible, so deposit only what you can afford to lose.
+            policy fields, the simulation API, and the execution lifecycle. Onchain actions are irreversible, so
+            deposit only what you can afford to lose.
           </p>
           <div className={styles.heroActions}>
             <Link className="btn btnPrimary btnLg" href="/zap">
@@ -107,11 +107,11 @@ export default function DocsPage(): React.JSX.Element {
             <span>Audit status</span>
             <strong>The contracts have not been externally audited.</strong>
             <p>
-              The v1.1 contracts are live on {CHAIN.name} and carry two bounded routes — single-step swaps through
-              pinned aeWETH ↔ 0xZAPS and aeWETH ↔ USDG pools — with the recipient forced to the owner and the relayer
-              fee cap set to zero. The owner keeps an
-              unconditional withdraw and revoke path. No external audit, formal verification, adapter governance,
-              testnet soak, or live wallet review has completed. Deposited funds are at risk.
+              The contracts are live on {CHAIN.name} and carry bounded swaps through pinned aeWETH ↔ 0xZAPS and
+              aeWETH ↔ USDG pools, a stitched USDG → 0xZAPS route, aeWETH/USDG liquidity, and the v3 recurring and
+              price-triggered execution types — with the recipient forced to the owner and the relayer fee cap set to
+              zero. The owner keeps an unconditional withdraw and revoke path. No external audit, formal verification,
+              adapter governance, testnet soak, or live wallet review has completed. Deposited funds are at risk.
             </p>
           </section>
 
@@ -228,6 +228,12 @@ export default function DocsPage(): React.JSX.Element {
                   (<code>IntervalNotElapsed</code>); exhaustion consumes the series; <code>invalidateNonce</code>{" "}
                   cancels it at any time.
                 </p>
+                <p>
+                  A series signs no absolute floor. Under v3.1 the owner signs an allowlisted price source and a
+                  slippage band, and the capsule derives each run&apos;s minimum output from that source&apos;s spot{" "}
+                  <em>at execution</em> — so a floor agreed weeks ago still protects the run happening now, and a
+                  series cannot go stale into a revert.
+                </p>
               </article>
               <article>
                 <h3>Price trigger</h3>
@@ -242,8 +248,9 @@ export default function DocsPage(): React.JSX.Element {
             <p>
               <strong>Fees.</strong> Each automated run pays 1% of its measured output at settlement: 80% to the
               executor that submitted it, 20% to the protocol lottery pot, converted to 0xZAPS through the pinned
-              bounded adapter by a later, permissionless keeper call. Signed floors are enforced <em>net</em> of the
-              fee. Every fee contribution credits
+              bounded adapter by a later, permissionless keeper call. Floors are enforced <em>net</em> of the fee —
+              both the absolute minimum-out a price trigger signs and the per-run floor a recurring capsule
+              derives from spot. Every fee contribution credits
               lottery tickets to the capsule owner; the pot pays prizes only in 0xZAPS and only to ticket holders —
               there is no owner drain. Winner selection is a deferred, governance-gated decision until a randomness
               ADR lands.
@@ -251,8 +258,7 @@ export default function DocsPage(): React.JSX.Element {
             <p>
               Build one in the <Link href="/zap?view=automate">Automate tab</Link>. The signed intent exports as a
               JSON file any executor can serve; the reference executor daemon lives in{" "}
-              <code>executor/</code> in the repository. The v3 contracts are live on Robinhood Chain and, like
-              everything here, pre-external-audit.
+              <code>executor/</code> in the repository. The v3 contracts are live on Robinhood Chain.
             </p>
           </section>
 

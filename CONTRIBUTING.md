@@ -4,7 +4,7 @@ Thanks for your interest. This is a monorepo — a Next.js 16 web app and a Foun
 
 ## Ground rules
 
-- **Never commit a secret.** No private keys, seed phrases, API keys, or `.env` files. The only secret the project uses is `DEPLOYER_PRIVATE_KEY`, and it is read from your shell or a hardware wallet — never from a tracked file. `.env*`, `*.pem`, and keystores are gitignored, and CI runs a secret scan over every change. A leaked key on a public repo means drained funds within seconds.
+- **Never commit a secret.** No private keys, seed phrases, API keys, or `.env` files. The project uses three — `DEPLOYER_PRIVATE_KEY` (Foundry, read from your shell or a hardware wallet), `SUPABASE_SERVICE_ROLE_KEY` (the relay route, server-side only), and an optional executor key for the reference daemon — and every one of them is read from the environment, never from a tracked file. `.env*`, `*.pem`, and keystores are gitignored, and CI runs a secret scan over every change. A leaked key on a public repo means drained funds within seconds.
 - **Fail closed, never fake.** This is a DeFi product. Do not invent balances, TVL, yields, or activity rows to fill a UI. If a read fails, show nothing or an honest error — an empty list is a claim, and a false one is worse than a blank.
 - **Match the surrounding code.** Comment density, naming, and idiom. The codebase explains *why* at the point a decision is non-obvious; keep that up.
 
