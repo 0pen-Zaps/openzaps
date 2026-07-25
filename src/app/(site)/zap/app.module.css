@@ -361,6 +361,34 @@
   font-weight: 600;
 }
 
+/* Wallet-balance funding preflight: neutral when covered, warning-tinted when the wallet is short. */
+.fundCheck {
+  margin: 0 0 0.7rem;
+  padding: 0.6rem 0.8rem;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--muted);
+  font-size: 0.8rem;
+  line-height: 1.5;
+}
+
+.fundCheck strong {
+  color: var(--fg);
+  font-family: var(--font-jetbrains-mono), ui-monospace, monospace;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+
+.fundShort {
+  border-color: rgba(255, 138, 138, 0.4);
+  background: rgba(255, 138, 138, 0.08);
+  color: #ff8a8a;
+}
+
+.fundShort strong {
+  color: #ffb4b4;
+}
+
 .field {
   min-width: 0;
 }

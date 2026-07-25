@@ -10,6 +10,7 @@ import {
   draftRecurringRelativeIntent,
   draftTriggerIntent,
   feedConditionForZapsMove,
+  fundingReadiness,
   intentFileName,
   netFloorFromQuote,
   projectedRelativeFloor,
@@ -264,6 +265,31 @@ describe("projectedRelativeFloor", () => {
     expect(projectedRelativeFloor({ ...base, maxSlippageBps: -1 })).toBe(0n);
     expect(projectedRelativeFloor({ ...base, outAsset: OTHER })).toBe(0n); // outAsset not in the pair
     expect(projectedRelativeFloor({ ...base, amountIn: 1n, priceX96: 1n })).toBe(0n); // expected floors to zero
+  });
+});
+
+describe("fundingReadiness", () => {
+  it("reports unknown while the wallet balance has not read (never blocks on a missing read)", () => {
+    expect(fundingReadiness(null, parseEther("1"))).toEqual({ status: "unknown", shortfall: 0n });
+    expect(fundingReadiness(null, 0n)).toEqual({ status: "unknown", shortfall: 0n });
+  });
+
+  it("is sufficient when nothing is owed, regardless of balance", () => {
+    expect(fundingReadiness(0n, 0n)).toEqual({ status: "sufficient", shortfall: 0n });
+    expect(fundingReadiness(0n, -5n)).toEqual({ status: "sufficient", shortfall: 0n });
+  });
+
+  it("is sufficient when the wallet meets or exceeds the need (boundary is inclusive)", () => {
+    expect(fundingReadiness(parseEther("1"), parseEther("1"))).toEqual({ status: "sufficient", shortfall: 0n });
+    expect(fundingReadiness(parseEther("2"), parseEther("1"))).toEqual({ status: "sufficient", shortfall: 0n });
+  });
+
+  it("is short by the exact gap when the wallet cannot cover the transfer", () => {
+    expect(fundingReadiness(parseEther("0.3"), parseEther("1"))).toEqual({
+      status: "short",
+      shortfall: parseEther("0.7"),
+    });
+    expect(fundingReadiness(0n, 1n)).toEqual({ status: "short", shortfall: 1n });
   });
 });
 

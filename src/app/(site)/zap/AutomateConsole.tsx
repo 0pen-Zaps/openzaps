@@ -22,6 +22,7 @@ import {
   draftRecurringRelativeIntent,
   draftTriggerIntent,
   feedConditionForZapsMove,
+  fundingReadiness,
   intentFileName,
   netFloorFromQuote,
   projectedRelativeFloor,
@@ -181,6 +182,10 @@ export default function AutomateConsole(): React.JSX.Element {
   const [pot, setPot] = useState<PotStatus | null>(null);
   /** Oriented price-source spot, read for the relative-floor preview. null = unreadable → render "—". */
   const [spot, setSpot] = useState<{ priceX96: bigint; currency0: Address; currency1: Address } | null>(null);
+  /** Connected wallet's balance of the funding asset, TAGGED with the token it was read for — so a
+   *  balance for the previous route can never be compared against a new route's need (cf. LoadedState
+   *  .address). null = not read → "unknown" preflight. */
+  const [walletBalance, setWalletBalance] = useState<{ token: Address; balance: bigint } | null>(null);
   const [executorHealth, setExecutorHealth] = useState<ExecutorHealth | null>(null);
   const [intakeToken, setIntakeToken] = useState("");
   const loadEpochRef = useRef(0);
@@ -236,6 +241,19 @@ export default function AutomateConsole(): React.JSX.Element {
         : 0n,
     [spot, route, perRunAmount, slippageBps],
   );
+
+  // Funding preflight: the token the Fund step transfers, how much this step would move (remaining
+  // target minus what the capsule already holds), and whether the connected wallet can cover it.
+  const fundingTokenAddress = (recordRoute ?? route)?.tokenIn.address ?? null;
+  const fundingNeeded =
+    record && balanceKnown && capsuleBalance !== null && remainingTarget > capsuleBalance
+      ? remainingTarget - capsuleBalance
+      : 0n;
+  // Trust the wallet balance only if it was read for the token we're about to fund with; otherwise a
+  // record switch (routes have opposite tokenIn) could momentarily grade the wrong balance.
+  const walletBalanceForToken =
+    walletBalance && fundingTokenAddress && walletBalance.token === fundingTokenAddress ? walletBalance.balance : null;
+  const funding = fundingReadiness(walletBalanceForToken, fundingNeeded);
 
   /** The one loader. Epoch-guarded: only the newest in-flight load may write state. */
   const applyLoad = useCallback(async (target: AutomationRecord | null) => {
@@ -344,6 +362,37 @@ export default function AutomateConsole(): React.JSX.Element {
       cancelled = true;
     };
   }, [notice, orientedSource]);
+
+  // ---- wallet balance (funding preflight) ----
+  // Read the connected wallet's balance of the funding asset so the Fund step can warn BEFORE a
+  // doomed transfer. Re-reads on account/token change and after each action (notice). Fails closed to
+  // null → the preflight reports "unknown" and never blocks; the on-chain transfer still checks.
+  useEffect(() => {
+    let cancelled = false;
+    const load = async () => {
+      await Promise.resolve(); // keep setState off the synchronous effect path (matches applyLoad)
+      if (cancelled) return;
+      if (!account || !fundingTokenAddress) {
+        setWalletBalance(null);
+        return;
+      }
+      try {
+        const bal = await publicClient.readContract({
+          address: fundingTokenAddress,
+          abi: erc20Abi,
+          functionName: "balanceOf",
+          args: [account],
+        });
+        if (!cancelled) setWalletBalance({ token: fundingTokenAddress, balance: bal });
+      } catch {
+        if (!cancelled) setWalletBalance(null); // explicit unknown, never a fake zero
+      }
+    };
+    void load();
+    return () => {
+      cancelled = true;
+    };
+  }, [account, fundingTokenAddress, notice]);
 
   // ---- actions ----
 
@@ -984,8 +1033,34 @@ export default function AutomateConsole(): React.JSX.Element {
             </FlowStep>
 
             <FlowStep number="3" title="Fund the zap" detail={fundingDetail} done={record !== null && funded}>
+              {record && recordRoute && balanceKnown && !funded && (
+                <p className={funding.status === "short" ? `${styles.fundCheck} ${styles.fundShort}` : styles.fundCheck} aria-live="polite">
+                  {funding.status === "short" ? (
+                    <>
+                      Wallet holds{" "}
+                      <strong>
+                        {formatToken(walletBalanceForToken ?? 0n, recordRoute.tokenIn.decimals)} {recordRoute.tokenIn.symbol}
+                      </strong>{" "}
+                      — short {formatToken(funding.shortfall, recordRoute.tokenIn.decimals)} {recordRoute.tokenIn.symbol} of
+                      the {formatToken(fundingNeeded, recordRoute.tokenIn.decimals)} this step transfers. Top up your wallet
+                      first.
+                    </>
+                  ) : funding.status === "sufficient" && walletBalanceForToken !== null ? (
+                    <>
+                      Wallet holds{" "}
+                      <strong>
+                        {formatToken(walletBalanceForToken, recordRoute.tokenIn.decimals)} {recordRoute.tokenIn.symbol}
+                      </strong>{" "}
+                      — covers the {formatToken(fundingNeeded, recordRoute.tokenIn.decimals)} {recordRoute.tokenIn.symbol}{" "}
+                      this step transfers. ✓
+                    </>
+                  ) : (
+                    <>Wallet balance unavailable — the funding transfer will still verify on-chain.</>
+                  )}
+                </p>
+              )}
               {record && balanceKnown && !funded && (
-                <button data-busy={busy === "fund"} className="btn btnPrimary" disabled={busy !== null} onClick={() => void fundCapsule()} type="button">
+                <button data-busy={busy === "fund"} className="btn btnPrimary" disabled={busy !== null || funding.status === "short"} onClick={() => void fundCapsule()} type="button">
                   {busy === "fund" ? "Funding…" : "Fund"}
                 </button>
               )}
