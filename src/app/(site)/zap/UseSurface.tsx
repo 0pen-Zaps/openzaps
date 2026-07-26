@@ -181,7 +181,7 @@ export function UseSurface(): React.JSX.Element {
         aria-labelledby="use-tab-automate"
         hidden={view !== "automate"}
       >
-        {view === "automate" ? <AutomateConsole /> : null}
+        {view === "automate" ? <AutomateConsole key={searchParams.toString()} /> : null}
       </div>
     </div>
   );

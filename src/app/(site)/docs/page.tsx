@@ -260,6 +260,15 @@ export default function DocsPage(): React.JSX.Element {
               ADR lands.
             </p>
             <p>
+              <strong>Creation fee.</strong> Every capsule created by the current app — one-shot, recurring, or
+              triggered — separately pays exactly 0.00001 ETH. The fee gateway calls the existing lineage factory,
+              wraps the fee to aeWETH, and converts it through the pinned aeWETH → 0xZAPS adapter in the same
+              transaction. The wallet reviews both the fixed fee and a fresh minimum 0xZAPS output before signing; if
+              factory creation or conversion misses that floor, the whole transaction reverts. The old immutable
+              factories remain callable directly, so this is an app-enforced creation path rather than a retroactive
+              change to already-deployed factory bytecode.
+            </p>
+            <p>
               Build one in the <Link href="/zap?view=automate">Automate tab</Link>. The signed intent exports as a
               JSON file any executor can serve; the reference executor daemon lives in{" "}
               <code>executor/</code> in the repository. The v3 contracts are live on Robinhood Chain.

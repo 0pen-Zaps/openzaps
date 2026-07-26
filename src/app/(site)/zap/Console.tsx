@@ -57,12 +57,14 @@ import {
   resolveRouteById,
   type Route,
 } from "@/lib/routes";
+import { quoteCreationFee, quoteRoute, type CreationFeeQuote } from "@/lib/route-quote";
 import {
+  OPENZAP_CREATION_FEE,
+  OPENZAP_CREATION_FEE_CONTRACTS,
   OPENZAP_CONTRACTS,
   ROBINHOOD_ASSETS,
   ROBINHOOD_CHAIN_ID,
   ROBINHOOD_EXPLORER_URL,
-  ROBINHOOD_LIQUIDITY,
   ROBINHOOD_RPC_URL,
   erc20Abi,
   ensureRobinhoodChain,
@@ -70,14 +72,13 @@ import {
   explorerTransaction,
   getInjectedProvider,
   openZapAbi,
+  openZapCreationFeeConfigured,
+  openZapCreationGatewayAbi,
   openZapFactoryAbi,
   openZapProtocolConfigured,
   robinhoodChain,
-  v4QuoterAbi,
   watchZapsAsset,
   wethAbi,
-  rangeVaultAbi,
-  zapVaultAbi,
 } from "@/lib/robinhood";
 import { protocolsForRouteKind } from "@/lib/protocols";
 import { ProtocolStack } from "@/components/ProtocolLogo";
@@ -95,127 +96,6 @@ const ROUTE_KIND_LABEL: Record<Route["kind"], string> = {
   "lp-deposit": "provide liquidity",
   "lp-withdraw": "withdraw liquidity",
 };
-
-/** A live quote plus, for swaps, the quoter's gas estimate (vaults have none). */
-type RouteQuoteResult = { amountOut: bigint; gasEstimate: bigint | null };
-
-/**
- * Quote a route's output for `amountIn` (already in tokenIn decimals). Swaps go
- * through the v4 quoter for the route's OWN pool key; a vault deposit/redeem has
- * no market price and is priced by the ERC-4626 preview. A preview of 0 means
- * "the call would revert", never a valid quote of zero output.
- */
-async function quoteRoute(route: Route, amountIn: bigint, account: Address): Promise<RouteQuoteResult> {
-  if (route.quote.source === "v4") {
-    const { result } = await publicClient.simulateContract({
-      account,
-      address: ROBINHOOD_LIQUIDITY.v4Quoter,
-      abi: v4QuoterAbi,
-      functionName: "quoteExactInputSingle",
-      args: [{ poolKey: route.quote.poolKey, zeroForOne: route.quote.zeroForOne, exactAmount: amountIn, hookData: "0x" }],
-    });
-    return { amountOut: result[0], gasEstimate: result[1] };
-  }
-
-  if (route.quote.source === "v4-route") {
-    // A stitched route quotes hop by hop, each hop fed the previous output —
-    // the same measured-forwarding the adapter performs onchain.
-    let carried = amountIn;
-    let gasTotal = 0n;
-    for (const hop of route.quote.hops) {
-      const { result } = await publicClient.simulateContract({
-        account,
-        address: ROBINHOOD_LIQUIDITY.v4Quoter,
-        abi: v4QuoterAbi,
-        functionName: "quoteExactInputSingle",
-        args: [{ poolKey: hop.poolKey, zeroForOne: hop.zeroForOne, exactAmount: carried, hookData: "0x" }],
-      });
-      carried = result[0];
-      gasTotal += result[1];
-    }
-    if (carried <= 0n) throw new Error("The stitched route quotes to zero output. Try a larger amount.");
-    return { amountOut: carried, gasEstimate: gasTotal };
-  }
-
-  if (route.quote.source === "range-deposit") {
-    // Mirror the adapter: half is swapped in the vault's own pool, both legs
-    // are then priced by the vault's previewDeposit. A preview, not a promise —
-    // the real deposit compounds fees first and refunds what the ratio rejects.
-    const swapAmount = amountIn / 2n;
-    const keep = amountIn - swapAmount;
-    const { result } = await publicClient.simulateContract({
-      account,
-      address: ROBINHOOD_LIQUIDITY.v4Quoter,
-      abi: v4QuoterAbi,
-      functionName: "quoteExactInputSingle",
-      args: [
-        { poolKey: route.quote.poolKey, zeroForOne: route.quote.zeroForOne, exactAmount: swapAmount, hookData: "0x" },
-      ],
-    });
-    const swapped = result[0];
-    const [amount0, amount1] = route.quote.zeroForOne ? [keep, swapped] : [swapped, keep];
-    const [shares] = await publicClient.readContract({
-      address: route.quote.vault,
-      abi: rangeVaultAbi,
-      functionName: "previewDeposit",
-      args: [amount0, amount1],
-    });
-    if (shares <= 0n) {
-      throw new Error("The liquidity preview is zero, so this deposit would revert. Try a larger amount.");
-    }
-    return { amountOut: shares, gasEstimate: null };
-  }
-
-  if (route.quote.source === "range-withdraw") {
-    // previewRedeem yields both currencies; the off-target leg is quoted
-    // through the pool and added to the target.
-    const [amount0, amount1] = await publicClient.readContract({
-      address: route.quote.vault,
-      abi: rangeVaultAbi,
-      functionName: "previewRedeem",
-      args: [amountIn],
-    });
-    const target = route.quote.assetOutIsCurrency0 ? amount0 : amount1;
-    const offTarget = route.quote.assetOutIsCurrency0 ? amount1 : amount0;
-    let swapped = 0n;
-    if (offTarget > 0n) {
-      const { result } = await publicClient.simulateContract({
-        account,
-        address: ROBINHOOD_LIQUIDITY.v4Quoter,
-        abi: v4QuoterAbi,
-        functionName: "quoteExactInputSingle",
-        args: [
-          {
-            poolKey: route.quote.poolKey,
-            // The off-target leg swaps INTO the target, so its direction is the
-            // opposite of the target's side.
-            zeroForOne: !route.quote.assetOutIsCurrency0,
-            exactAmount: offTarget,
-            hookData: "0x",
-          },
-        ],
-      });
-      swapped = result[0];
-    }
-    const amountOut = target + swapped;
-    if (amountOut <= 0n) {
-      throw new Error("The withdraw preview is zero, so this redeem would revert. Try a larger share amount.");
-    }
-    return { amountOut, gasEstimate: null };
-  }
-
-  const functionName = route.quote.source === "erc4626-deposit" ? "previewDeposit" : "previewRedeem";
-  const amountOut = await publicClient.readContract({
-    address: route.quote.vault,
-    abi: zapVaultAbi,
-    functionName,
-    args: [amountIn],
-  });
-  if (amountOut <= 0n) {
-    throw new Error("The vault preview is zero, so this deposit or redeem would revert. Try a larger amount.");
-  }
-  return { amountOut, gasEstimate: null };
-}
 
 type BusyAction =
   | "connect"
@@ -271,6 +151,7 @@ const TX_STORAGE_KEY = "openzaps:robinhood-transactions:v1";
 
 export default function AppPage(): React.JSX.Element {
   const configured = openZapProtocolConfigured();
+  const feeConfigured = openZapCreationFeeConfigured();
   const [account, setAccount] = useState<Address | null>(null);
   const [walletChainId, setWalletChainId] = useState<number | null>(null);
   const [protocolHealth, setProtocolHealth] = useState<HealthState>("checking");
@@ -288,6 +169,8 @@ export default function AppPage(): React.JSX.Element {
   const [slippageBps, setSlippageBps] = useState(100);
   const [quote, setQuote] = useState<bigint | null>(null);
   const [quoteGas, setQuoteGas] = useState<bigint | null>(null);
+  const [creationFeeQuote, setCreationFeeQuote] = useState<CreationFeeQuote | null>(null);
+  const [creationFeeError, setCreationFeeError] = useState("");
   // The quote the user explicitly requested and reviewed. Silent auto-refresh
   // updates `quote` for display but never this — the execute-time abort guard
   // compares against the floor the user actually acknowledged.
@@ -487,16 +370,10 @@ export default function AppPage(): React.JSX.Element {
   // Route-INDEPENDENT — reads 0xZAPS even on a USDG/vault route. Never token-gated.
   const holderTier: HolderTier = account ? holderTierFor(walletZapsBalance) : "none";
 
-  // Latest-callback pattern: the 20s interval always invokes the current
-  // render's closure, so auto-refresh sees fresh state without re-arming.
-  useEffect(() => {
-    holderTierRef.current = holderTier;
-    autoQuoteRef.current = () => {
-      if (!autoRefreshQuotes(holderTier)) return;
-      if (busy !== null || quote === null || executionComplete || amountIn <= 0n) return;
-      void requestQuote({ silent: true });
-    };
-  });
+  const clearMessages = useCallback((): void => {
+    setNotice("");
+    setError("");
+  }, []);
 
   useEffect(() => {
     const timer = window.setInterval(() => autoQuoteRef.current?.(), QUOTE_AUTO_REFRESH_MS);
@@ -569,8 +446,26 @@ export default function AppPage(): React.JSX.Element {
   useEffect(() => {
     let cancelled = false;
     const checkHealth = async (): Promise<void> => {
+      if (!feeConfigured) {
+        if (!cancelled) setProtocolHealth("degraded");
+        return;
+      }
       try {
-        const [response, implementation, version, factoryCode, adapterCode, registryCode, allowlistCode] = await Promise.all([
+        const [
+          response,
+          implementation,
+          version,
+          factoryCode,
+          adapterCode,
+          registryCode,
+          allowlistCode,
+          gatewayCode,
+          potCode,
+          gatewayVersion,
+          gatewayFee,
+          gatewayFactory,
+          gatewayPot,
+        ] = await Promise.all([
           fetch("/api/health", { cache: "no-store" }),
           publicClient.readContract({
             address: OPENZAP_CONTRACTS.factory,
@@ -582,6 +477,29 @@ export default function AppPage(): React.JSX.Element {
           publicClient.getBytecode({ address: OPENZAP_CONTRACTS.adapter }),
           publicClient.getBytecode({ address: OPENZAP_CONTRACTS.adapterRegistry }),
           publicClient.getBytecode({ address: OPENZAP_CONTRACTS.tokenAllowlist }),
+          publicClient.getBytecode({ address: OPENZAP_CREATION_FEE_CONTRACTS.gateway }),
+          publicClient.getBytecode({ address: OPENZAP_CREATION_FEE_CONTRACTS.pot }),
+          publicClient.readContract({
+            address: OPENZAP_CREATION_FEE_CONTRACTS.gateway,
+            abi: openZapCreationGatewayAbi,
+            functionName: "VERSION",
+          }),
+          publicClient.readContract({
+            address: OPENZAP_CREATION_FEE_CONTRACTS.gateway,
+            abi: openZapCreationGatewayAbi,
+            functionName: "CREATION_FEE",
+          }),
+          publicClient.readContract({
+            address: OPENZAP_CREATION_FEE_CONTRACTS.gateway,
+            abi: openZapCreationGatewayAbi,
+            functionName: "lineageFactory",
+            args: [0],
+          }),
+          publicClient.readContract({
+            address: OPENZAP_CREATION_FEE_CONTRACTS.gateway,
+            abi: openZapCreationGatewayAbi,
+            functionName: "CREATION_POT",
+          }),
         ]);
         const body = (await response.json()) as {
           chain?: { id?: number };
@@ -594,7 +512,11 @@ export default function AppPage(): React.JSX.Element {
           && body.status?.preAudit === true;
         const rpcReady = version === "1.1.0"
           && isAddressEqual(implementation, OPENZAP_CONTRACTS.implementation)
-          && Boolean(factoryCode && adapterCode && registryCode && allowlistCode);
+          && gatewayVersion === "1.0.0-candidate"
+          && gatewayFee === OPENZAP_CREATION_FEE
+          && isAddressEqual(gatewayFactory, OPENZAP_CONTRACTS.factory)
+          && isAddressEqual(gatewayPot, OPENZAP_CREATION_FEE_CONTRACTS.pot)
+          && Boolean(factoryCode && adapterCode && registryCode && allowlistCode && gatewayCode && potCode);
         if (!cancelled) setProtocolHealth(apiReady && rpcReady ? "ready" : "degraded");
       } catch {
         if (!cancelled) setProtocolHealth("degraded");
@@ -606,7 +528,7 @@ export default function AppPage(): React.JSX.Element {
       cancelled = true;
       window.clearInterval(timer);
     };
-  }, []);
+  }, [feeConfigured]);
 
   useEffect(() => {
     const provider = getInjectedProvider() as ObservableProvider | null;
@@ -751,7 +673,7 @@ export default function AppPage(): React.JSX.Element {
       const exactAmount = parseRouterAmount(amount, route.tokenIn.decimals);
       // Swap: the v4 quoter for this route's OWN pool key. Vault: the ERC-4626
       // preview — no pool, no gas estimate, and a zero preview means "would revert".
-      const { amountOut, gasEstimate } = await quoteRoute(route, exactAmount, account ?? zeroAddress);
+      const { amountOut, gasEstimate } = await quoteRoute(publicClient, route, exactAmount, account ?? zeroAddress);
       // The route/amount/zap context changed while this quote was in flight; its
       // result belongs to the old context and must be dropped.
       if (epoch !== quoteEpochRef.current) return null;
@@ -784,12 +706,50 @@ export default function AppPage(): React.JSX.Element {
     }
   }
 
+  // Latest-callback pattern: the 20s interval always invokes the current
+  // render's closure, so auto-refresh sees fresh state without re-arming.
+  useEffect(() => {
+    holderTierRef.current = holderTier;
+    autoQuoteRef.current = () => {
+      if (!autoRefreshQuotes(holderTier)) return;
+      if (busy !== null || quote === null || executionComplete || amountIn <= 0n) return;
+      void requestQuote({ silent: true });
+    };
+  });
+
+  const refreshCreationFeeQuote = useCallback(async (): Promise<CreationFeeQuote | null> => {
+    if (!feeConfigured) {
+      setCreationFeeQuote(null);
+      setCreationFeeError("Creation-fee gateway is not configured. New zap creation is paused.");
+      return null;
+    }
+    try {
+      const next = await quoteCreationFee(publicClient, account ?? zeroAddress);
+      setCreationFeeQuote(next);
+      setCreationFeeError("");
+      return next;
+    } catch (cause) {
+      setCreationFeeQuote(null);
+      setCreationFeeError(`Creation-fee quote unavailable: ${readableError(cause)}`);
+      return null;
+    }
+  }, [account, feeConfigured]);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => void refreshCreationFeeQuote(), 0);
+    return () => window.clearTimeout(timer);
+  }, [refreshCreationFeeQuote]);
+
   async function createZap(): Promise<void> {
     setBusy("create");
     clearMessages();
     try {
       const owner = requireAccount(account);
       requireProtocolReady(protocolReady);
+      if (!feeConfigured || OPENZAP_CREATION_FEE_CONTRACTS.gateway === zeroAddress) {
+        throw new Error("Creation-fee gateway is not configured. New zap creation is paused.");
+      }
+      if (!creationFeeQuote) throw new Error("Review a creation-fee conversion quote before creating this zap.");
       if (!route) throw new Error("Select a deployed route first.");
       // Fail closed: never create a capsule for a route that is not offered —
       // an undeployed adapter, or a vault whose totalSupply is 0 (grief-able).
@@ -814,15 +774,16 @@ export default function AppPage(): React.JSX.Element {
       });
       const { request } = await publicClient.simulateContract({
         account: owner,
-        address: OPENZAP_CONTRACTS.factory,
-        abi: openZapFactoryAbi,
+        address: OPENZAP_CREATION_FEE_CONTRACTS.gateway,
+        abi: openZapCreationGatewayAbi,
         functionName: "createZap",
-        args: [policy, salt],
+        args: [0, policy, salt, creationFeeQuote.minZapsOut],
+        value: OPENZAP_CREATION_FEE,
       });
       const hash = await wallet.writeContract(request);
       const receipt = await publicClient.waitForTransactionReceipt({ hash });
-      recordTransaction(owner, hash, "Create immutable zap", receipt.status);
-      if (receipt.status !== "success") throw new Error("Factory transaction reverted.");
+      recordTransaction(owner, hash, "Create immutable zap + convert fee", receipt.status);
+      if (receipt.status !== "success") throw new Error("Creation gateway transaction reverted.");
 
       const verified = await inspectOwnedZap(publicClient, predicted, owner);
       const nextZap: SavedZapRecord = {
@@ -835,8 +796,14 @@ export default function AppPage(): React.JSX.Element {
       };
       rememberZap(owner, nextZap);
       selectZap(nextZap);
-      setNotice(`Immutable zap created at ${shortAddress(predicted)}. Fund it before execution.`);
-      trackEvent("robinhood_zap_created", { zap: predicted, route: route.id });
+      setNotice(
+        `Immutable zap created at ${shortAddress(predicted)}. The ${formatToken(OPENZAP_CREATION_FEE, 18)} ETH creation fee converted atomically with the reviewed ${formatToken(creationFeeQuote.minZapsOut, 18)} 0xZAPS floor. Fund the capsule before execution.`,
+      );
+      trackEvent("robinhood_zap_created", {
+        zap: predicted,
+        route: route.id,
+        fee: OPENZAP_CREATION_FEE.toString(),
+      });
     } catch (cause) {
       setError(readableError(cause));
     } finally {
@@ -976,7 +943,7 @@ export default function AppPage(): React.JSX.Element {
       // threshold.
       if (reviewedQuote === null) throw new Error("Request a live quote first to review the minimum output you are signing.");
       const reviewedFloor = (reviewedQuote * BigInt(10_000 - slippageBps)) / 10_000n;
-      const freshQuote = (await quoteRoute(zapRoute, verifiedZap.amountIn, owner)).amountOut;
+      const freshQuote = (await quoteRoute(publicClient, zapRoute, verifiedZap.amountIn, owner)).amountOut;
       if (freshQuote < reviewedFloor) {
         setQuote(freshQuote);
         setQuoteGas(null);
@@ -987,7 +954,7 @@ export default function AppPage(): React.JSX.Element {
       setQuote(freshQuote);
       setQuoteGas(null);
 
-      const now = Math.floor(Date.now() / 1_000);
+      const now = unixNowSeconds();
       const nonce = randomNonce();
       const intent = {
         zap: verifiedZap.address,
@@ -1236,15 +1203,10 @@ export default function AppPage(): React.JSX.Element {
     window.setTimeout(() => URL.revokeObjectURL(url), 10_000);
   }
 
-  // These three and `startNewZap` below are memoised so the builder-import
+  // These two and `startNewZap` below are memoised so the builder-import
   // effect can list them as dependencies honestly and still run exactly once.
   // They are the only route into direction/amount/zap state that keeps the
   // quote epoch in step.
-  const clearMessages = useCallback((): void => {
-    setNotice("");
-    setError("");
-  }, []);
-
   const changeRoute = useCallback((nextRouteId: string): void => {
     setRouteId(nextRouteId);
     resetQuoteState();
@@ -1542,9 +1504,40 @@ export default function AppPage(): React.JSX.Element {
             </button>
           </div>
 
+          <div className={styles.creationFeeBox} data-ready={creationFeeQuote !== null} role="note">
+            <div>
+              <span>App creation fee</span>
+              <strong>{formatToken(OPENZAP_CREATION_FEE, 18)} ETH</strong>
+            </div>
+            <div>
+              <span>Atomic 0xZAPS conversion</span>
+              <strong>
+                {creationFeeQuote
+                  ? `est. ${formatToken(creationFeeQuote.amountOut, 18)} · min ${formatToken(creationFeeQuote.minZapsOut, 18)} 0xZAPS`
+                  : creationFeeError || "Reading the pinned aeWETH → 0xZAPS route…"}
+              </strong>
+              {feeConfigured ? (
+                <small>
+                  <a href={explorerAddress(OPENZAP_CREATION_FEE_CONTRACTS.gateway)} rel="noreferrer" target="_blank">
+                    Fee gateway
+                  </a>
+                  {" · "}
+                  <a href={explorerAddress(OPENZAP_CREATION_FEE_CONTRACTS.pot)} rel="noreferrer" target="_blank">
+                    0xZAPS pot
+                  </a>
+                </small>
+              ) : null}
+            </div>
+            {creationFeeError ? (
+              <button className="btn btnGhost" type="button" onClick={() => void refreshCreationFeeQuote()}>
+                Retry fee quote
+              </button>
+            ) : null}
+          </div>
+
           <div className={styles.flow}>
-            <FlowStep number="1" glyph="lock" title="Create immutable zap" detail="Policy binds owner, recipient, adapter, spender, input token, and exact amount." done={zap !== null}>
-              <button data-busy={busy === "create"} className="btn btnPrimary" data-testid="create-zap" disabled={!account || !protocolReady || wrongNetwork || zap !== null || busy !== null || chainedRun || amountIn <= 0n} onClick={() => void createZap()} type="button">
+            <FlowStep number="1" glyph="lock" title="Create immutable zap" detail="Policy binds owner, recipient, adapter, spender, input token, and exact amount. The separate fee converts only if creation succeeds; any conversion-floor failure reverts the whole transaction." done={zap !== null}>
+              <button data-busy={busy === "create"} className="btn btnPrimary" data-testid="create-zap" disabled={!account || !protocolReady || !feeConfigured || creationFeeQuote === null || wrongNetwork || zap !== null || busy !== null || chainedRun || amountIn <= 0n} onClick={() => void createZap()} type="button">
                 {busy === "create" ? "Creating…" : "Create zap"}
               </button>
               {zap && <button className="btn btnGhost" disabled={busy !== null || chainedRun} onClick={startNewZap} type="button">Build another</button>}
@@ -1914,6 +1907,10 @@ function Metric({ label, value, glyph }: { label: string; value: string; glyph?:
       </span>
     </div>
   );
+}
+
+function unixNowSeconds(): number {
+  return Math.floor(Date.now() / 1_000);
 }
 
 function Field({ label, children }: { label: string; children: React.ReactNode }): React.JSX.Element {

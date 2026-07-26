@@ -5,7 +5,8 @@ fully-immutable per-zap instances deployed as hardened EIP-1167 clones over a cu
 allowlist (see [ADR-0001](adr/0001-authority-model-and-policy-binding.md),
 [ADR-0002](adr/0002-deployment-and-instance-isolation.md),
 [ADR-0003](adr/0003-submission-privacy-vs-censorship.md),
-[ADR-0004](adr/0004-protective-vs-optimization-zaps.md)).
+[ADR-0004](adr/0004-protective-vs-optimization-zaps.md), and the app-creation fee extension in
+[ADR-0005](adr/0005-universal-creation-fee-gateway.md)).
 
 This is the **machine-checkable contract** for "a zap cannot do anything outside its frozen policy."
 Each invariant has an ID, a statement, its source, the verification method, and a rule sketch.
@@ -134,6 +135,19 @@ lending pool **paused**.
 | **I-TOK-1** | Only curated-allowlist tokens may enter the tracked set | eval Gap 6 | Config/unit |
 | **I-TOK-2** | Fee-on-transfer / rebasing tokens are excluded; accounting uses **measured deltas**, never assumed amounts (defense-in-depth even within the allowlist) | eval Gap 6 | Fuzz with FoT/rebasing mocks expecting rejection or delta-correctness |
 
+## FEE — App-creation fee gateway
+
+| ID | Invariant | Source | Method |
+|---|---|---|---|
+| **I-FEE-1** | Creation accepts exactly the immutable native fee; underpayment and overpayment revert | ADR-0005 | Unit + fork |
+| **I-FEE-2** | Conversion requires nonzero caller minimum and measured 0xZAPS output at or above it | ADR-0005 | Unit + live-pool fork |
+| **I-FEE-3** | Any factory, wrapping, adapter, floor, transfer, or accounting failure rolls back the underlying CREATE2 clone too | ADR-0005 | Unit rollback/retry test |
+| **I-FEE-4** | Lineage selects only the pinned v1.1, v3, or v3.1 factory; resulting runtime/domain remain that factory's | ADR-0005 | Unit + all-lineage fork |
+| **I-FEE-5** | Gateway spends exactly the wrapped fee, measures 0xZAPS by balance delta, transfers the exact delta, and leaves zero adapter approval | ADR-0005 | Unit + fork |
+| **I-FEE-6** | Pot accounting never exceeds received 0xZAPS; direct donations cannot mint tickets or become an award | ADR-0005 | Unit |
+| **I-FEE-7** | The creation pot has no drain; only its current accounted prize can leave, and only to a current-round ticket holder | ADR-0005 | Unit + static review |
+| **I-FEE-8** | UI fails closed unless gateway code, pot code, exact fee, factory mapping, and live conversion quote verify | ADR-0005 | Type/unit + production smoke |
+
 ## SUB — Submission & L2 (v1)
 
 | ID | Invariant | Source | Method |
@@ -162,6 +176,9 @@ Certora proof or a fuzz campaign meeting its state/run budget.
 | Can the user always revoke, invalidate, or withdraw off the fast path? | I-REC-1, I-REC-2, I-REC-3 |
 | Can a shared-implementation bug brick or drain all zaps at once? | I-ISO-1, I-ISO-2, I-ISO-3 |
 | Can a fee-on-transfer / rebasing token corrupt accounting? | I-TOK-1, I-TOK-2, I-FLOW-1 |
+| Can app creation succeed without the exact visible fee becoming floor-bounded 0xZAPS? | I-FEE-1, I-FEE-2, I-FEE-3, I-FEE-5, I-FEE-8 |
+| Can the fee gateway change capsule runtime, domain, or factory lineage? | I-FEE-4 |
+| Can governance or an unsolicited transfer drain or inflate the creation pot? | I-FEE-6, I-FEE-7 |
 
 **Coverage budgets (recommended minimums):** Foundry invariant runs ≥ 50k with ≥ 10 mock
 adapters and the FoT/rebasing mocks in the token pool; Certora rules green on the full rule set with

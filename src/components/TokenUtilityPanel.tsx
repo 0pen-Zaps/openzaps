@@ -19,11 +19,12 @@ export function TokenUtilityPanel({ className = "", id }: TokenUtilityPanelProps
     <section className={`${styles.panel} ${className}`.trim()} id={id} aria-labelledby={id ? `${id}-title` : undefined}>
       <div className={styles.copy}>
         <span className={styles.eyebrow}>Live {TOKEN.symbol} utility</span>
-        <h2 id={id ? `${id}-title` : undefined}>Trade the live route. Unlock app conveniences.</h2>
+        <h2 id={id ? `${id}-title` : undefined}>Trade it. Build with it. Unlock conveniences.</h2>
         <p>
           OpenZaps can buy {TOKEN.symbol} through its pinned aeWETH → {TOKEN.symbol} route. A connected wallet holding
           100,000+ {TOKEN.symbol} also gets auto-refreshing quotes, more saved zaps and receipts, and receipt JSON
-          export. Every core workflow remains open without the token.
+          export. Every capsule created by the current app also converts its visible 0.00001 ETH creation fee into
+          {" "}{TOKEN.symbol} atomically. Every core workflow remains open without pre-holding the token.
         </p>
         <div className={styles.actions}>
           <BuyButton destination="openzaps" label="Buy with OpenZaps" />
@@ -37,6 +38,11 @@ export function TokenUtilityPanel({ className = "", id }: TokenUtilityPanelProps
           <span>Live route</span>
           <strong>aeWETH → {TOKEN.symbol}</strong>
           <p>Pinned Uniswap v4 pool, one bounded policy execution.</p>
+        </div>
+        <div>
+          <span>Every creation</span>
+          <strong>Fee → {TOKEN.symbol}</strong>
+          <p>0.00001 ETH, converted atomically with a reviewed floor or the whole creation reverts.</p>
         </div>
         <div>
           <span>100,000+</span>

@@ -40,6 +40,7 @@ The result is pre-committed, tightly bounded authority for a fixed action graph,
 | **Price triggers** | Fires once when an allowlisted price source crosses the threshold you signed. The capsule re-reads the market itself on every attempt. |
 | **Per-run floors that cannot go stale** | A recurring series derives its minimum output from the price source's spot *at each run*, so a floor signed weeks ago still protects the run happening now. |
 | **Anyone can submit** | Each run pays a 1% protocol fee from output: 80% to whoever submits it, 20% to the 0xZAPS lottery pot. Owners publish signed intents to a shared pool; executors poll it for work. The pool is untrusted — the capsule re-verifies every field onchain. |
+| **One visible creation fee** | Every capsule created by the current app pays exactly 0.00001 ETH. A gateway calls the existing lineage factory and atomically converts the fee to 0xZAPS through the pinned route; a missed conversion floor reverts creation too. Legacy factories remain directly callable. |
 
 The builder at [`/zap`](https://www.0xzaps.com/zap) designs a zap from typed blocks, tells you plainly whether it reduces to a route the live contracts can carry, and hands a deployable one straight to the console that creates, funds, signs, and runs it.
 
@@ -51,7 +52,7 @@ This is a monorepo. The web app and the Solidity protocol live together.
 | --- | --- |
 | [`src/app/`](src/app) | The Next.js 16 site: landing page, live policy console (`/zap`), Explore feed (`/explore`), docs, token, and API routes. |
 | [`src/lib/`](src/lib) | Chain definitions, protocol addresses and ABIs, the block catalog behind the visual builder, and the deterministic policy simulator. |
-| [`contracts/`](contracts/README.md) | The Solidity protocol, bounded adapters, deploy/smoke scripts, and the Foundry unit / fuzz / invariant / fork suite. [`v1.1`](contracts/src) carries the single-shot routes; [`v3`](contracts/src/v3/README.md) adds recurring + price-triggered execution and the executor fee/lottery economy; `v3_1` adds per-run floors priced from live spot. All three are deployed — see [`docs/deployments.md`](docs/deployments.md). |
+| [`contracts/`](contracts/README.md) | The Solidity protocol, bounded adapters, deploy/smoke scripts, and the Foundry unit / fuzz / invariant / fork suite. [`v1.1`](contracts/src) carries the single-shot routes; [`v3`](contracts/src/v3/README.md) adds recurring + price-triggered execution and the executor fee/lottery economy; `v3_1` adds per-run floors priced from live spot. The creation gateway preserves all three lineages while enforcing the current app's separate 0xZAPS-converted creation fee. See [`docs/deployments.md`](docs/deployments.md). |
 | [`executor/`](executor/README.md) | The reference **Zap Executor** daemon: watches time and chain, discovers work from the shared intent pool, and submits owed recurring/triggered runs for 80% of the 1% protocol fee (20% funds the 0xZAPS lottery pot). Watch-only unless a gas key is configured. |
 | [`docs/`](docs) | Architecture Decision Records, the testable invariant catalog, and product/security research the design derives from. |
 

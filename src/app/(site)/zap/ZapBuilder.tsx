@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { createPublicClient, formatUnits, http, zeroAddress } from "viem";
 
 import { CopyButton } from "@/components/CopyButton";
 import { trackEvent } from "@/lib/analytics";
@@ -27,6 +28,9 @@ import {
   type ZapRecipe,
 } from "@/lib/blocks";
 import { reduceChainToLiveRoute } from "@/lib/deployable";
+
+import { automationHandoff, reduceChainToAutomation } from "@/lib/automation-design";
+import { builderQuoteEconomics } from "@/lib/build-quote";
 import {
   MAX_DESIGN_NAME,
   MAX_SAVED_DESIGNS,
@@ -39,8 +43,16 @@ import {
   type SavedDesign,
 } from "@/lib/designs";
 import { edgeScrollDelta } from "@/lib/drag";
+import { parseRouterAmount } from "@/lib/openzap";
 import { protocolsForAction } from "@/lib/protocols";
+import { quoteRoute } from "@/lib/route-quote";
 import { resolveRouteById } from "@/lib/routes";
+import {
+  OPENZAP_CREATION_FEE,
+  OPENZAP_CREATION_FEE_SLIPPAGE_BPS,
+  ROBINHOOD_RPC_URL,
+  robinhoodChain,
+} from "@/lib/robinhood";
 import { ProtocolStack } from "@/components/ProtocolLogo";
 import { BlockGlyph } from "./BlockGlyph";
 import styles from "./build.module.css";
@@ -67,6 +79,17 @@ const FLAG_MS = 2200;
  */
 const GAS_ESTIMATE_NOTE =
   "An estimate: the sum of this build's per-block gas constants. Nothing here was simulated against a node.";
+
+const builderClient = createPublicClient({
+  chain: robinhoodChain,
+  transport: http(ROBINHOOD_RPC_URL, { retryCount: 2, timeout: 10_000 }),
+});
+const CREATION_FEE_ROUTE = resolveRouteById("robinhood-v4-weth-zaps");
+
+type BuilderQuoteState =
+  | { status: "idle" | "loading" }
+  | { status: "error"; message: string }
+  | { status: "ready"; amountOut: bigint; feeZapsOut: bigint; routeId: string };
 
 const CATEGORIES: Array<BlockCategory | "all"> = [
   "all",
@@ -118,13 +141,20 @@ const DEFAULT_DRAFT: Draft = { chain: nodesFromRecipe(RECIPES[0]), recipeId: REC
  * Which blueprints reduce to the live route, asked of the same function the
  * deploy panel asks.
  *
- * Derived rather than declared on the recipe, so the badge cannot drift from
- * the verdict: the day a catalog edit knocks a blueprint off the live route,
- * its badge goes with it in the same render. `RECIPES` is static, so this is
- * computed once for the module rather than once per keystroke.
+ * Derived rather than declared on the recipe, so badges cannot drift from the
+ * reducers. A one-sided trigger deliberately does not receive the one-shot
+ * badge: running that design immediately would discard the condition.
+ * `RECIPES` is static, so this is computed once for the module.
  */
+const AUTOMATABLE_RECIPES: ReadonlySet<string> = new Set(
+  RECIPES.filter((recipe) => reduceChainToAutomation(nodesFromRecipe(recipe)).deployable).map((recipe) => recipe.id),
+);
 const DEPLOYABLE_RECIPES: ReadonlySet<string> = new Set(
-  RECIPES.filter((recipe) => reduceChainToLiveRoute(nodesFromRecipe(recipe)).deployable).map((recipe) => recipe.id),
+  RECIPES.filter((recipe) => {
+    const nodes = nodesFromRecipe(recipe);
+    const automation = reduceChainToAutomation(nodes);
+    return reduceChainToLiveRoute(nodes).deployable && !(automation.deployable && automation.mode === "trigger");
+  }).map((recipe) => recipe.id),
 );
 
 /**
@@ -849,19 +879,100 @@ export function ZapBuilder({
 
   /** What, if anything, of this design the live v1.1 contracts can carry. */
   const deployment = useMemo(() => reduceChainToLiveRoute(chain), [chain]);
+  /** A cadence or one-sided price condition the live automation stack can bind. */
+  const automation = useMemo(() => reduceChainToAutomation(chain), [chain]);
   // `route` is the route identity `/app` resolves and signs; `dir` is kept only
   // for backward-compatibility with the bounded pair (older links carry it and
   // no route id). Amount is the decimal string in the token's own units.
   // `view=sign` flips the surface to the console in place; the rest of the
   // query is byte-identical to the old cross-page handoff, so the console's
   // importer and pre-merge bookmarks both keep working.
-  const deployHref = deployment.deployable
+  const oneShotHandoffAllowed = !(automation.deployable && automation.mode === "trigger");
+  const deployHref = deployment.deployable && oneShotHandoffAllowed
     ? `/zap?view=sign&src=build&route=${encodeURIComponent(deployment.routeId)}${
         deployment.direction ? `&dir=${deployment.direction}` : ""
       }&amount=${encodeURIComponent(deployment.amountIn)}&bps=${deployment.slippageBps}`
     : null;
   /** The resolved route the handoff would sign, for naming its tokens honestly. */
-  const deployRoute = deployment.deployable ? resolveRouteById(deployment.routeId) : null;
+  const deployRoute = useMemo(
+    () => (deployment.deployable ? resolveRouteById(deployment.routeId) : null),
+    [deployment],
+  );
+  const automateHref = automation.deployable ? automationHandoff(automation) : null;
+  const automationRoute = useMemo(
+    () => (automation.deployable ? resolveRouteById(automation.routeId) : null),
+    [automation],
+  );
+
+  // Feature 1: the builder now prices the route it is about to hand off, plus
+  // the fixed native creation fee's atomic aeWETH -> 0xZAPS conversion. The
+  // quote is indicative until the signing console refreshes it immediately
+  // before execution, and every stale async response is epoch-discarded.
+  const quoteRouteTarget = deployRoute ?? automationRoute;
+  const quoteAmountText = deployment.deployable
+    ? deployment.amountIn
+    : automation.deployable
+      ? automation.amountIn
+      : "";
+  const quoteSlippageBps = deployment.deployable
+    ? deployment.slippageBps
+    : automation.deployable
+      ? automation.slippageBps
+      : 0;
+  const [builderQuote, setBuilderQuote] = useState<BuilderQuoteState>({ status: "idle" });
+  const [quoteRefresh, setQuoteRefresh] = useState(0);
+  const quoteEpoch = useRef(0);
+
+  useEffect(() => {
+    const epoch = ++quoteEpoch.current;
+    if (!quoteRouteTarget || !quoteAmountText || !CREATION_FEE_ROUTE) {
+      const timer = window.setTimeout(() => {
+        if (quoteEpoch.current === epoch) setBuilderQuote({ status: "idle" });
+      }, 0);
+      return () => window.clearTimeout(timer);
+    }
+    const timer = window.setTimeout(() => {
+      setBuilderQuote({ status: "loading" });
+      let amountIn: bigint;
+      try {
+        amountIn = parseRouterAmount(quoteAmountText, quoteRouteTarget.tokenIn.decimals);
+      } catch (cause) {
+        setBuilderQuote({ status: "error", message: cause instanceof Error ? cause.message : "Invalid amount." });
+        return;
+      }
+      void Promise.all([
+        quoteRoute(builderClient, quoteRouteTarget, amountIn, zeroAddress),
+        quoteRoute(builderClient, CREATION_FEE_ROUTE, OPENZAP_CREATION_FEE, zeroAddress),
+      ]).then(
+        ([routeQuote, feeQuote]) => {
+          if (quoteEpoch.current !== epoch) return;
+          setBuilderQuote({
+            status: "ready",
+            amountOut: routeQuote.amountOut,
+            feeZapsOut: feeQuote.amountOut,
+            routeId: quoteRouteTarget.id,
+          });
+        },
+        (cause: unknown) => {
+          if (quoteEpoch.current !== epoch) return;
+          setBuilderQuote({
+            status: "error",
+            message: cause instanceof Error ? cause.message : "Live quote unavailable.",
+          });
+        },
+      );
+    }, 320);
+    return () => window.clearTimeout(timer);
+  }, [quoteAmountText, quoteRefresh, quoteRouteTarget]);
+
+  const quoteEconomics =
+    builderQuote.status === "ready"
+      ? builderQuoteEconomics(
+          builderQuote.amountOut,
+          quoteSlippageBps,
+          automation.deployable ? automation.mode : null,
+        )
+      : null;
 
   /**
    * The settings panel's view of the chain: the source block's amount and the
@@ -1047,8 +1158,9 @@ export function ZapBuilder({
           {/* No count in the copy: it went stale the first time a blueprint was
               added, and the row is right there to be counted. */}
           <p>
-            One kind of zap each. The ones marked <em>deployable</em> reduce to routes the live contracts carry —
-            swaps, the stitched USDG route, and aeWETH/USDG liquidity. Load any of them, then rebuild piece by piece.
+            One kind of zap each. <em>Deployable</em> routes can run once; <em>automatable</em> designs bind a
+            cadence or price condition on the live aeWETH ↔ 0xZAPS stack. Load any blueprint, then rebuild it
+            piece by piece.
           </p>
         </div>
         <div className={styles.recipeRow}>
@@ -1066,6 +1178,7 @@ export function ZapBuilder({
               <em>
                 {recipe.blocks.length} blocks
                 {DEPLOYABLE_RECIPES.has(recipe.id) ? <i className={styles.recipeLive}>deployable</i> : null}
+                {AUTOMATABLE_RECIPES.has(recipe.id) ? <i className={styles.recipeAuto}>automatable</i> : null}
               </em>
             </button>
           ))}
@@ -1295,10 +1408,10 @@ export function ZapBuilder({
           </header>
 
           <p className={styles.scopeBanner} role="note">
-            <strong>This canvas designs zaps. It does not deploy them.</strong> A chain that seats here compiles
-            and simulates. The only ones the live contracts can carry are single-step swaps through two pinned
-            pools — aeWETH ↔ 0xZAPS and aeWETH ↔ USDG — with the recipient forced to the owner and the relayer
-            fee cap at zero. Anything else saves as a design, and the panel on the right names which one you have.
+            <strong>Design here; authorize one tab over.</strong> Deployable one-shot routes hand their exact amount
+            and slippage to Sign &amp; run. A Recurring deposit or Price band on the pinned aeWETH ↔ 0xZAPS route
+            hands cadence or threshold to Automate. Every new capsule also shows the fixed creation fee before the
+            wallet prompt; nothing is submitted from this canvas.
           </p>
 
           <div className={styles.canvas} ref={canvasRef}>
@@ -1563,6 +1676,77 @@ export function ZapBuilder({
             </div>
           </div>
 
+          <section className={styles.quotePanel} aria-label="Live route and creation-fee quote">
+            <div className={styles.quoteHead}>
+              <div>
+                <span>Live quote</span>
+                <strong>{quoteRouteTarget ? `${quoteRouteTarget.tokenIn.symbol} → ${quoteRouteTarget.tokenOut.symbol}` : "Add a live route"}</strong>
+              </div>
+              {builderQuote.status === "error" ? (
+                <button type="button" onClick={() => setQuoteRefresh((value) => value + 1)}>
+                  Retry
+                </button>
+              ) : null}
+            </div>
+            {builderQuote.status === "loading" ? (
+              <p className={styles.quoteStatus}>Reading the pinned route and fee conversion…</p>
+            ) : builderQuote.status === "error" ? (
+              <p className={styles.quoteError}>{builderQuote.message}</p>
+            ) : builderQuote.status === "ready" && quoteEconomics && quoteRouteTarget && builderQuote.routeId === quoteRouteTarget.id ? (
+              <div className={styles.quoteGrid}>
+                <div>
+                  <span>Gross route quote</span>
+                  <strong>{formatBuilderToken(builderQuote.amountOut, quoteRouteTarget.tokenOut.decimals)} {quoteRouteTarget.tokenOut.symbol}</strong>
+                </div>
+                <div>
+                  <span>Estimated recipient</span>
+                  <strong>
+                    {formatBuilderToken(quoteEconomics.recipientOut, quoteRouteTarget.tokenOut.decimals)}{" "}
+                    {quoteRouteTarget.tokenOut.symbol}
+                  </strong>
+                </div>
+                <div>
+                  <span>{automation.deployable ? "Indicative net floor" : "Signed minimum"}</span>
+                  <strong>
+                    {formatBuilderToken(quoteEconomics.minimumOut, quoteRouteTarget.tokenOut.decimals)}{" "}
+                    {quoteRouteTarget.tokenOut.symbol}
+                  </strong>
+                </div>
+                {quoteEconomics.automationFee > 0n ? (
+                  <div>
+                    <span>Automation fee</span>
+                    <strong>
+                      {formatBuilderToken(quoteEconomics.automationFee, quoteRouteTarget.tokenOut.decimals)}{" "}
+                      {quoteRouteTarget.tokenOut.symbol} · 1.00%
+                    </strong>
+                  </div>
+                ) : null}
+                <div>
+                  <span>Creation fee</span>
+                  <strong>{formatBuilderToken(OPENZAP_CREATION_FEE, 18)} ETH</strong>
+                </div>
+                <div>
+                  <span>Fee conversion floor</span>
+                  <strong>
+                    {formatBuilderToken(
+                      (builderQuote.feeZapsOut * BigInt(10_000 - OPENZAP_CREATION_FEE_SLIPPAGE_BPS)) / 10_000n,
+                      18,
+                    )}{" "}
+                    0xZAPS
+                  </strong>
+                </div>
+              </div>
+            ) : (
+              <p className={styles.quoteStatus}>Choose a deployable or automatable blueprint to price it here.</p>
+            )}
+            <p className={styles.quoteNote}>
+              {automation.deployable
+                ? "Automated runs retain the live 1% output fee: 80% rewards the executor and 20% enters the existing 0xZAPS conversion pot. "
+                : ""}
+              The separate creation fee is paid only if capsule creation succeeds and atomically converted through the pinned aeWETH → 0xZAPS adapter.
+            </p>
+          </section>
+
           {/* ---- zap settings ----
               The two numbers every zap needs, surfaced without opening a card.
               These inputs edit the CHAIN — the source block's amount and the
@@ -1723,37 +1907,59 @@ export function ZapBuilder({
             match anything on a block explorer.
           </p>
 
-          {deployment.deployable && deployHref ? (
+          {(deployment.deployable && deployHref) || (automation.deployable && automateHref) ? (
             <div className={styles.deploy} data-deployable="true">
-              <Link
-                className={styles.deployBtn}
-                href={deployHref}
-                onClick={() => trackEvent("builder_deploy_handoff", { route: deployment.routeId })}
-              >
-                Sign &amp; run on Robinhood Chain →
-              </Link>
-              <p className={styles.deployNote}>
-                This design reduces to a live route. <strong>Sign &amp; run</strong> opens with{" "}
-                {deployRoute
-                  ? `${deployRoute.tokenIn.symbol} → ${deployRoute.tokenOut.symbol}`
-                  : "the matching route"}
-                , {deployment.amountIn} {deployRoute ? deployRoute.tokenIn.symbol : ""}, and a{" "}
-                {(deployment.slippageBps / 100).toFixed(2)}% signed slippage cap filled in. You create, fund, and
-                sign there — same page, one tab over. Nothing is submitted from here.
-              </p>
-              {deployment.unenforcedGuards.length > 0 ? (
+              {deployment.deployable && deployHref ? (
+                <Link
+                  className={styles.deployBtn}
+                  href={deployHref}
+                  onClick={() => trackEvent("builder_deploy_handoff", { route: deployment.routeId })}
+                >
+                  Review &amp; run once →
+                </Link>
+              ) : null}
+              {automation.deployable && automateHref ? (
+                <Link
+                  className={styles.automateBtn}
+                  href={automateHref}
+                  onClick={() => trackEvent("builder_automate_handoff", { route: automation.routeId, mode: automation.mode })}
+                >
+                  {automation.mode === "recurring" ? "Review recurring series" : "Review price trigger"} →
+                </Link>
+              ) : null}
+              {deployment.deployable ? (
+                <p className={styles.deployNote}>
+                  <strong>Run once</strong> opens with{" "}
+                  {deployRoute
+                    ? `${deployRoute.tokenIn.symbol} → ${deployRoute.tokenOut.symbol}`
+                    : "the matching route"}
+                  , {deployment.amountIn} {deployRoute ? deployRoute.tokenIn.symbol : ""}, and a{" "}
+                  {(deployment.slippageBps / 100).toFixed(2)}% signed slippage cap. Creation, funding, and the
+                  final EIP-712 authorization stay in Sign &amp; run.
+                </p>
+              ) : null}
+              {automation.deployable ? (
+                <p className={styles.deployNote}>
+                  <strong>{automation.mode === "recurring" ? "Recurring" : "Price-triggered"}</strong> handoff
+                  preserves this route, amount, and slippage
+                  {automation.mode === "recurring"
+                    ? `, then binds ${automation.maxRuns} runs on the ${automation.intervalId} cadence.`
+                    : `, then binds ${automation.thresholdId.startsWith("up") ? "a rise" : "a fall"} of ${automation.thresholdId.replace(/\D/g, "")}% for ${automation.validDays} days.`}
+                </p>
+              ) : null}
+              {deployment.deployable && deployment.unenforcedGuards.length > 0 ? (
                 // Rendered in full, in the CTA's own line of sight. Summarising
                 // or counting these would let someone deploy believing a guard
                 // they drew is protecting funds that nothing is protecting.
                 <div className={styles.unenforced} role="note">
                   <strong>
-                    {deployment.unenforcedGuards.length} guard
+                    If you run once, {deployment.unenforcedGuards.length} guard
                     {deployment.unenforcedGuards.length === 1 ? " in this design is" : "s in this design are"} not
                     enforced onchain.
                   </strong>
                   <p>
-                    The v1.1 policy binds owner, recipient, adapter, spender, input token, and exact amount — and
-                    nothing else. Deploying keeps those bounds and drops the rest:
+                    The one-shot policy binds owner, recipient, adapter, spender, input token, exact amount, and
+                    minimum output. Choosing that path keeps those bounds and drops the rest:
                   </p>
                   <ul>
                     {deployment.unenforcedGuards.map((guard) => (
@@ -1770,9 +1976,19 @@ export function ZapBuilder({
               </button>
               {!deployment.deployable ? (
                 <div className={styles.reasons} role="note">
-                  <strong>This design cannot be deployed on Robinhood Chain today.</strong>
+                  <strong>This design cannot run once on Robinhood Chain today.</strong>
                   <ul>
                     {deployment.reasons.map((reason) => (
+                      <li key={reason}>{reason}</li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
+              {!automation.deployable ? (
+                <div className={styles.reasons} role="note">
+                  <strong>This design cannot be automated on Robinhood Chain today.</strong>
+                  <ul>
+                    {automation.reasons.map((reason) => (
                       <li key={reason}>{reason}</li>
                     ))}
                   </ul>
@@ -1915,4 +2131,12 @@ function summarise(block: LegoBlock, node: ChainNode): string {
     return `${value}${paramSuffix(param)}`;
   });
   return parts.length ? parts.join(" · ") : block.blurb;
+}
+
+/** Compact bigint formatting for the builder's indicative quote card. */
+function formatBuilderToken(value: bigint, decimals: number): string {
+  const [whole, fraction = ""] = formatUnits(value, decimals).split(".");
+  const grouped = whole.replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+  const visible = fraction.slice(0, 6).replace(/0+$/, "");
+  return visible ? `${grouped}.${visible}` : grouped;
 }

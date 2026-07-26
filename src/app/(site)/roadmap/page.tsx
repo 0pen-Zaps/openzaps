@@ -44,7 +44,7 @@ const phases = [
 const principles = [
   "ERC-20 first. Callback tokens and multi-asset accounting stay out until their failure modes are reviewed.",
   "Protective zaps stay blocked until oracle, liquidity, and liquidation risk controls are externally reviewed.",
-  "Every fee is visible in the typed policy before it is signed.",
+  "Every execution fee is visible in the typed intent, and every creation fee is visible with its conversion floor before the wallet transaction is signed.",
   "Every automation keeps pause, revoke, audit, and self-submit fallback paths.",
 ] as const;
 

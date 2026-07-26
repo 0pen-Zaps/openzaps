@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import {
   createPublicClient,
   createWalletClient,
@@ -10,6 +11,7 @@ import {
   getAddress,
   isAddress,
   http,
+  zeroAddress,
   type Address,
   type Hex,
 } from "viem";
@@ -29,6 +31,7 @@ import {
   netFloorFromQuote,
   planWethFunding,
   projectedRelativeFloor,
+  readAutomationHandoff,
   type AutomationMode,
 } from "@/lib/automate";
 import { publishIntent, type RelaySubmission } from "@/lib/relay";
@@ -51,8 +54,11 @@ import {
   randomNonce,
 } from "@/lib/openzap";
 import { BOUNDED_SWAP_IDS } from "@/lib/chains";
+import { quoteCreationFee, type CreationFeeQuote } from "@/lib/route-quote";
 import { resolveRouteById, type Route } from "@/lib/routes";
 import {
+  OPENZAP_CREATION_FEE,
+  OPENZAP_CREATION_FEE_CONTRACTS,
   OPENZAP_V3_CONTRACTS,
   OPENZAP_V3_1_CONTRACTS,
   openZapV3_1Configured,
@@ -64,6 +70,8 @@ import {
   explorerAddress,
   getInjectedProvider,
   lotteryPotAbi,
+  openZapCreationFeeConfigured,
+  openZapCreationGatewayAbi,
   openZapFactoryV3Abi,
   openZapV3Abi,
   openZapV3Configured,
@@ -159,15 +167,28 @@ interface PotStatus {
  * executors earn 80% of the 1% protocol fee, the other 20% accrues to the 0xZAPS lottery pot.
  */
 export default function AutomateConsole(): React.JSX.Element {
+  const searchParams = useSearchParams();
+  const handoff = useMemo(
+    () => readAutomationHandoff(new URLSearchParams(searchParams.toString())),
+    [searchParams],
+  );
   const [account, setAccount] = useState<Address | null>(null);
   const [busy, setBusy] = useState<BusyAction>(null);
-  const [notice, setNotice] = useState("");
+  const [notice, setNotice] = useState(
+    handoff
+      ? "Builder settings imported. Review the route, cadence or trigger, fee, and funding total before creating."
+      : "",
+  );
   const [error, setError] = useState("");
+  const [creationFeeQuote, setCreationFeeQuote] = useState<CreationFeeQuote | null>(null);
+  const [creationFeeError, setCreationFeeError] = useState("");
 
-  const [mode, setMode] = useState<AutomationMode>("recurring");
-  const [routeId, setRouteId] = useState<string>(BOUNDED_SWAP_IDS[0]);
-  const [amount, setAmount] = useState("0.001");
-  const [slippageBps, setSlippageBps] = useState(defaultSlippageBps("recurring"));
+  const [mode, setMode] = useState<AutomationMode>(handoff?.mode ?? "recurring");
+  const [routeId, setRouteId] = useState<string>(handoff?.routeId ?? BOUNDED_SWAP_IDS[0]);
+  const [amount, setAmount] = useState(handoff?.amount ?? "0.001");
+  const [slippageBps, setSlippageBps] = useState(
+    handoff?.slippageBps ?? defaultSlippageBps(handoff?.mode ?? "recurring"),
+  );
   /** Who may submit a run. Empty = open to anyone, which is the liveness default. */
   const [pinnedExecutor, setPinnedExecutor] = useState("");
 
@@ -181,10 +202,13 @@ export default function AutomateConsole(): React.JSX.Element {
     },
     [mode],
   );
-  const [intervalId, setIntervalId] = useState("daily");
-  const [maxRuns, setMaxRuns] = useState(10);
-  const [thresholdId, setThresholdId] = useState("up10");
-  const [validDays, setValidDays] = useState(30);
+  const [intervalId, setIntervalId] = useState(handoff?.intervalId ?? "daily");
+  const [maxRuns, setMaxRuns] = useState(handoff?.maxRuns ?? 10);
+  const [recurringValidDays, setRecurringValidDays] = useState<number | null>(
+    handoff?.mode === "recurring" ? handoff.validDays : null,
+  );
+  const [thresholdId, setThresholdId] = useState(handoff?.thresholdId ?? "up10");
+  const [validDays, setValidDays] = useState(handoff?.mode === "trigger" ? handoff.validDays ?? 30 : 30);
 
   const [records, setRecords] = useState<AutomationRecord[]>([]);
   const [selected, setSelected] = useState<Address | null>(null);
@@ -202,14 +226,23 @@ export default function AutomateConsole(): React.JSX.Element {
   const [intakeToken, setIntakeToken] = useState("");
   const loadEpochRef = useRef(0);
 
-  const route: Route | null = resolveRouteById(routeId);
+  const route: Route | null = useMemo(() => resolveRouteById(routeId), [routeId]);
   const interval = INTERVAL_PRESETS.find((p) => p.id === intervalId) ?? INTERVAL_PRESETS[2];
   const threshold = THRESHOLD_PRESETS.find((p) => p.id === thresholdId) ?? THRESHOLD_PRESETS[1];
 
-  const record =
-    records.find((r) => selected && r.address.toLowerCase() === selected.toLowerCase()) ?? records[0] ?? null;
-  const recordRoute = record ? resolveRouteById(record.routeId) : null;
+  const record = useMemo(
+    () =>
+      selected
+        ? records.find((r) => r.address.toLowerCase() === selected.toLowerCase()) ?? null
+        : null,
+    [records, selected],
+  );
+  const recordRoute = useMemo(() => (record ? resolveRouteById(record.routeId) : null), [record]);
   const perRunAmount = route ? parseAmountSafe(amount, route.tokenIn.decimals) : 0n;
+  const recurringRuns = record ? runsInRecord(record) : maxRuns;
+  const recurringWindowSufficient =
+    recurringValidDays === null
+    || interval.seconds * BigInt(Math.max(recurringRuns - 1, 0)) <= BigInt(recurringValidDays) * 86_400n;
 
   // The EFFECTIVE execution type: once a zap is selected, everything the user sees AND signs must
   // follow the record's mode, never the transient tab state (which can't change while a record is
@@ -223,6 +256,7 @@ export default function AutomateConsole(): React.JSX.Element {
   // so a malformed v3.1 env override can't disable the (v3-only) trigger flow.
   const configured =
     openZapV3Configured() && (activeMode === "recurring" ? openZapV3_1Configured() : true);
+  const feeConfigured = openZapCreationFeeConfigured();
 
   // Loaded chain state counts for the SELECTED capsule only; anything else is a stale response.
   const loadedForRecord = record && loaded && loaded.address === record.address ? loaded : null;
@@ -424,6 +458,29 @@ export default function AutomateConsole(): React.JSX.Element {
     };
   }, [account, fundingTokenAddress, notice]);
 
+  const refreshCreationFeeQuote = useCallback(async (): Promise<CreationFeeQuote | null> => {
+    if (!feeConfigured) {
+      setCreationFeeQuote(null);
+      setCreationFeeError("Creation-fee gateway is not configured. New automation creation is paused.");
+      return null;
+    }
+    try {
+      const next = await quoteCreationFee(publicClient, account ?? zeroAddress);
+      setCreationFeeQuote(next);
+      setCreationFeeError("");
+      return next;
+    } catch (cause) {
+      setCreationFeeQuote(null);
+      setCreationFeeError(`Creation-fee quote unavailable: ${readableError(cause)}`);
+      return null;
+    }
+  }, [account, feeConfigured]);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => void refreshCreationFeeQuote(), 0);
+    return () => window.clearTimeout(timer);
+  }, [refreshCreationFeeQuote]);
+
   // ---- actions ----
 
   const createCapsule = useCallback(async () => {
@@ -431,6 +488,10 @@ export default function AutomateConsole(): React.JSX.Element {
     setError("");
     try {
       if (!configured) throw new Error("The v3 factory is not configured.");
+      if (!feeConfigured || OPENZAP_CREATION_FEE_CONTRACTS.gateway === zeroAddress) {
+        throw new Error("Creation-fee gateway is not configured. New automation creation is paused.");
+      }
+      if (!creationFeeQuote) throw new Error("Review a creation-fee conversion quote before creating this automation.");
       const owner = requireAccount(account);
       const activeRoute = route;
       if (!activeRoute) throw new Error("Route unavailable.");
@@ -450,13 +511,15 @@ export default function AutomateConsole(): React.JSX.Element {
       });
       const { request } = await publicClient.simulateContract({
         account: owner,
-        address: stack.factory,
-        abi: openZapFactoryV3Abi,
+        address: OPENZAP_CREATION_FEE_CONTRACTS.gateway,
+        abi: openZapCreationGatewayAbi,
         functionName: "createZap",
-        args: [policy, salt],
+        args: [mode === "recurring" ? 2 : 1, policy, salt, creationFeeQuote.minZapsOut],
+        value: OPENZAP_CREATION_FEE,
       });
       const hash = await wallet.writeContract(request);
-      await publicClient.waitForTransactionReceipt({ hash });
+      const receipt = await publicClient.waitForTransactionReceipt({ hash });
+      if (receipt.status !== "success") throw new Error("Creation gateway transaction reverted.");
 
       // Verify the clone is byte-exact against the intended implementation before anyone funds it.
       const [code, policyHash] = await Promise.all([
@@ -478,14 +541,27 @@ export default function AutomateConsole(): React.JSX.Element {
       };
       persist([next, ...records].slice(0, MAX_SAVED_AUTOMATIONS));
       setSelected(predicted);
-      setNotice(`v3 zap created and verified at ${shortAddress(predicted)}. Fund it next.`);
-      trackEvent("automate_create", { mode });
+      setNotice(
+        `${mode === "recurring" ? "v3.1" : "v3"} zap created and verified at ${shortAddress(predicted)}. The ${formatToken(OPENZAP_CREATION_FEE, 18)} ETH fee converted with the reviewed ${formatToken(creationFeeQuote.minZapsOut, 18)} 0xZAPS floor. Fund it next.`,
+      );
+      trackEvent("automate_create", { mode, fee: OPENZAP_CREATION_FEE.toString() });
     } catch (cause) {
       setError(readableError(cause));
     } finally {
       setBusy(null);
     }
-  }, [account, configured, maxRuns, mode, perRunAmount, persist, records, route]);
+  }, [
+    account,
+    configured,
+    creationFeeQuote,
+    feeConfigured,
+    maxRuns,
+    mode,
+    perRunAmount,
+    persist,
+    records,
+    route,
+  ]);
 
   const fundCapsule = useCallback(async () => {
     setBusy("fund");
@@ -585,6 +661,7 @@ export default function AutomateConsole(): React.JSX.Element {
           nowSec,
           interval: interval.seconds,
           maxRuns: runsInRecord(record),
+          validDays: recurringValidDays,
           recipient: owner,
           policyHash: record.policyHash,
           outAsset: recordRoute.tokenOut.address,
@@ -593,7 +670,7 @@ export default function AutomateConsole(): React.JSX.Element {
         });
         const signature = await wallet.signTypedData({ account: owner, ...buildRecurringRelativeTypedData(intent) });
         file = serializeIntentFile("recurring-relative", intent, signature);
-        terms = `${interval.label} · ${runsInRecord(record)} runs · ≤${(slippageBps / 100).toFixed(1)}% slip`;
+        terms = `${interval.label} · ${runsInRecord(record)} runs · ${recurringValidDays ? `expires ${recurringValidDays}d` : "auto expiry"} · ≤${(slippageBps / 100).toFixed(1)}% slip`;
       } else {
         // Trigger is one-shot in a bounded window, so it still signs an absolute minOut from a
         // fresh quote (slippage, then the 1% fee, since the capsule floors NET of the fee).
@@ -662,7 +739,19 @@ export default function AutomateConsole(): React.JSX.Element {
     } finally {
       setBusy(null);
     }
-  }, [account, executorForIntent, interval, persist, record, recordRoute, records, slippageBps, threshold, validDays]);
+  }, [
+    account,
+    executorForIntent,
+    interval,
+    persist,
+    record,
+    recordRoute,
+    records,
+    recurringValidDays,
+    slippageBps,
+    threshold,
+    validDays,
+  ]);
 
   // ---- local executor intake (reference daemon on this machine) ----
 
@@ -1032,9 +1121,9 @@ export default function AutomateConsole(): React.JSX.Element {
               <input
                 className={styles.range}
                 type="range"
-                min={10}
+                min={5}
                 max={500}
-                step={10}
+                step={5}
                 value={slippageBps}
                 onChange={(event) => setSlippageBps(Number(event.target.value))}
                 disabled={busy !== null || signed}
@@ -1061,6 +1150,21 @@ export default function AutomateConsole(): React.JSX.Element {
                     disabled={busy !== null || record !== null}
                   />
                 </Field>
+                <Field label="Series expiry">
+                  <select
+                    className={styles.input}
+                    value={recurringValidDays === null ? "auto" : String(recurringValidDays)}
+                    onChange={(event) =>
+                      setRecurringValidDays(event.target.value === "auto" ? null : Number(event.target.value))
+                    }
+                    disabled={busy !== null || signed}
+                  >
+                    <option value="auto">Auto · schedule + headroom</option>
+                    <option value="7">7 days</option>
+                    <option value="30">30 days</option>
+                    <option value="90">90 days</option>
+                  </select>
+                </Field>
               </>
             ) : (
               <>
@@ -1086,6 +1190,13 @@ export default function AutomateConsole(): React.JSX.Element {
               </>
             )}
           </div>
+
+          {activeMode === "recurring" && !recurringWindowSufficient ? (
+            <p className={styles.execNote} role="alert">
+              This expiry ends before all {recurringRuns} runs can become due. Choose a longer window, fewer runs, or a
+              shorter cadence.
+            </p>
+          ) : null}
 
           <p className={styles.execNote} aria-live="polite">
             {executorPin === "" ? (
@@ -1121,6 +1232,37 @@ export default function AutomateConsole(): React.JSX.Element {
             </p>
           )}
 
+          <div className={styles.creationFeeBox} data-ready={creationFeeQuote !== null} role="note">
+            <div>
+              <span>App creation fee</span>
+              <strong>{formatToken(OPENZAP_CREATION_FEE, 18)} ETH</strong>
+            </div>
+            <div>
+              <span>Atomic 0xZAPS conversion</span>
+              <strong>
+                {creationFeeQuote
+                  ? `est. ${formatToken(creationFeeQuote.amountOut, 18)} · min ${formatToken(creationFeeQuote.minZapsOut, 18)} 0xZAPS`
+                  : creationFeeError || "Reading the pinned aeWETH → 0xZAPS route…"}
+              </strong>
+              {feeConfigured ? (
+                <small>
+                  <a href={explorerAddress(OPENZAP_CREATION_FEE_CONTRACTS.gateway)} rel="noreferrer" target="_blank">
+                    Fee gateway
+                  </a>
+                  {" · "}
+                  <a href={explorerAddress(OPENZAP_CREATION_FEE_CONTRACTS.pot)} rel="noreferrer" target="_blank">
+                    0xZAPS pot
+                  </a>
+                </small>
+              ) : null}
+            </div>
+            {creationFeeError ? (
+              <button className="btn btnGhost" type="button" onClick={() => void refreshCreationFeeQuote()}>
+                Retry fee quote
+              </button>
+            ) : null}
+          </div>
+
           <div className={styles.flow}>
             <FlowStep number="1" glyph="plug" title="Connect wallet" detail="Robinhood Chain (4663), injected wallet." done={account !== null}>
               {!account && (
@@ -1133,15 +1275,15 @@ export default function AutomateConsole(): React.JSX.Element {
             <FlowStep
               number="2"
               glyph="lock"
-              title="Create the v3 zap"
-              detail="Deploys an immutable clone from the v3 factory and verifies its bytecode before anything is funded."
+              title={`Create the ${activeMode === "recurring" ? "v3.1" : "v3"} zap`}
+              detail="The fee gateway calls the existing lineage factory, atomically converts the separate native fee, then the app verifies clone bytecode before anything is funded."
               done={record !== null}
             >
               {!record && (
                 <button
                   data-busy={busy === "create"}
                   className="btn btnPrimary"
-                  disabled={busy !== null || !account || !configured || perRunAmount <= 0n}
+                  disabled={busy !== null || !account || !configured || !feeConfigured || creationFeeQuote === null || perRunAmount <= 0n}
                   onClick={() => void createCapsule()}
                   type="button"
                 >
@@ -1214,7 +1356,13 @@ export default function AutomateConsole(): React.JSX.Element {
               done={signed}
             >
               {record && funded && !signed && (
-                <button data-busy={busy === "sign"} className="btn btnPrimary" disabled={busy !== null || !executorValid} onClick={() => void signIntent()} type="button">
+                <button
+                  data-busy={busy === "sign"}
+                  className="btn btnPrimary"
+                  disabled={busy !== null || !executorValid || (activeMode === "recurring" && !recurringWindowSufficient)}
+                  onClick={() => void signIntent()}
+                  type="button"
+                >
                   {busy === "sign" ? "Awaiting wallet…" : "Sign intent"}
                 </button>
               )}
