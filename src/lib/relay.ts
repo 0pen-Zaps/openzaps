@@ -11,7 +11,7 @@
 // fallbacks. That is why this file does SCHEMA validation only; the authority check (does the
 // signature recover to the zap's owner, does the policy hash match on-chain) lives server-side in
 // the route, and the real check lives in the contract.
-import type { Hex } from "viem";
+import type { Address, Hex } from "viem";
 
 export type RelayIntentKind = "recurring" | "recurring-relative" | "trigger";
 export type RelayStatus = "open" | "consumed";
@@ -148,6 +148,18 @@ export async function publishIntent(sub: RelaySubmission, baseUrl = ""): Promise
 export async function fetchOpenIntents(baseUrl: string, signal?: AbortSignal): Promise<RelayRecord[]> {
   const res = await fetch(`${baseUrl}/api/intents?status=open`, { signal });
   if (!res.ok) throw new Error(`relay list failed (HTTP ${res.status})`);
+  const body = (await res.json()) as { intents?: RelayRecord[] };
+  return Array.isArray(body.intents) ? body.intents : [];
+}
+
+/** Fetch this owner's relayed intents for a cross-device profile dashboard. */
+export async function fetchOwnerIntents(
+  owner: Address,
+  baseUrl = "",
+  signal?: AbortSignal,
+): Promise<RelayRecord[]> {
+  const res = await fetch(`${baseUrl}/api/intents?owner=${encodeURIComponent(owner)}`, { signal });
+  if (!res.ok) throw new Error(`owner intent list failed (HTTP ${res.status})`);
   const body = (await res.json()) as { intents?: RelayRecord[] };
   return Array.isArray(body.intents) ? body.intents : [];
 }

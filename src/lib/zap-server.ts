@@ -32,6 +32,7 @@ import {
   type ZapSummary,
   type ZapSummaryPage,
 } from "@/lib/zap";
+import { lineageForFactory } from "@/lib/profile";
 
 const ADDRESS_CHUNK = 200;
 const TIMESTAMP_BUDGET = 60;
@@ -371,6 +372,7 @@ export async function fetchZapSummaries(limit: number = ACTIVITY_FEED_LIMIT): Pr
     return {
       address: log.zap,
       owner: log.owner,
+      lineage: lineageForFactory(log.factory),
       createdBlock: log.blockNumber.toString(),
       createdTx: log.txHash,
       createdAt: timestamps.get(log.blockNumber) ?? null,

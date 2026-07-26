@@ -178,6 +178,7 @@ export type ZapDetailPayload = {
 export type ZapSummary = {
   address: Address;
   owner: Address;
+  lineage: "v1.1" | "v3" | "v3.1";
   createdBlock: string;
   createdTx: Hex;
   createdAt: number | null;
