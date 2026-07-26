@@ -1597,6 +1597,15 @@
 }
 
 @media (max-width: 520px) {
+  /* On phones the 42vh sticky tray obscures fee/floor review. Keep the
+     horizontal block rail, but let the palette leave the viewport normally. */
+  .palette {
+    position: static;
+    max-height: none;
+    overflow: visible;
+    backdrop-filter: none;
+  }
+
   .quoteGrid {
     grid-template-columns: minmax(0, 1fr);
   }
