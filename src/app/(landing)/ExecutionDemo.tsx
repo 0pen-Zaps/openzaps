@@ -23,7 +23,7 @@ import styles from "./landing.module.css";
  * hands off to the real surface.
  */
 
-const DEMO_IDS = ["stitched-route", "provide-liquidity", "exit-liquidity", "live-route"] as const;
+const DEMO_IDS = ["sell-zaps", "stitched-route", "provide-liquidity", "exit-liquidity", "live-route"] as const;
 
 type Phase = "idle" | "running" | "done";
 
