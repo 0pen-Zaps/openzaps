@@ -176,6 +176,30 @@ Addresses are wired into `src/lib/robinhood.ts` (`OPENZAP_V3_1_CONTRACTS`). The 
 create/sign/execute path for relative-floor recurring zaps (app + executor + relay support) is the
 follow-up; the contract set itself is live and verified.
 
+### Universal app-creation fee gateway — live (2026-07-25)
+
+UNAUDITED CANDIDATE. Deployed from
+[`contracts/script/DeployCreationGatewayRobinhood.s.sol`](../contracts/script/DeployCreationGatewayRobinhood.s.sol)
+at blocks 19,539,599–19,539,642. The gateway preserves the existing v1.1, v3, and v3.1 factories:
+the current app sends exactly `0.00001 ETH`, atomically converts it through the pinned
+aeWETH→0xZAPS adapter with a caller-reviewed minimum output, and credits a separate creation pot.
+
+| Contract | Address |
+|---|---|
+| OpenZapCreationGateway (`1.0.0-candidate`) | [`0x02A17a94A0e2B470e931E98079Bf563c94281B2b`](https://robinhoodchain.blockscout.com/address/0x02A17a94A0e2B470e931E98079Bf563c94281B2b) |
+| ZapCreationFeePot | [`0x8E0399A8fF81a5f73Bc76CAEE8a355cF9bb0d863`](https://robinhoodchain.blockscout.com/address/0x8E0399A8fF81a5f73Bc76CAEE8a355cF9bb0d863) |
+
+- Deployment transactions: [`0xbded2843…b2937`](https://robinhoodchain.blockscout.com/tx/0xbded28430d14eed79df4cf73c1e65af70630c0ca3bcdf7c4008e238cca6b2937),
+  [`0x09e7e483…a1299`](https://robinhoodchain.blockscout.com/tx/0x09e7e483f0ffcf564ecae5ec1a45b4bba81894f00a941c9f17d60bc39a8a1299),
+  and [`0x1d882787…152c`](https://robinhoodchain.blockscout.com/tx/0x1d882787572dd395625b0781a617782e8a4b997dd081bf751f5a72477613152c)
+  all succeeded. Actual total network cost was `0.000119145102024 ETH`.
+- `ZapCreationFeePot.owner()` is governance `0x5a52…4aA2`; `pendingOwner()` and the one-shot
+  `gatewayInstaller()` are both zero. The pot is bound to the gateway and has no owner sweep path.
+- The gateway's factory pins, aeWETH, 0xZAPS, adapter, pot, and `10,000,000,000,000 wei` fee were
+  independently read back. It held zero ETH, aeWETH, 0xZAPS, and zero adapter allowance after deployment.
+- The existing automated execution fee remains separate: 1% per run, split 80% executor / 20% to
+  the original v3 or v3.1 automation pot.
+
 ## Base mainnet (chainId 8453)
 
 ### Live v1.1 core (2026-07-23)

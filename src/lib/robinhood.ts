@@ -12,6 +12,11 @@ export const ROBINHOOD_RPC_URL =
   process.env.NEXT_PUBLIC_ROBINHOOD_RPC_URL ?? "https://rpc.mainnet.chain.robinhood.com";
 export const ROBINHOOD_EXPLORER_URL = "https://robinhoodchain.blockscout.com";
 
+/** Exact native fee paid when the current factory creates any new capsule. */
+export const OPENZAP_CREATION_FEE = 10_000_000_000_000n; // 0.00001 ETH
+/** The factory's fee conversion reverts below a freshly quoted 5% floor. */
+export const OPENZAP_CREATION_FEE_SLIPPAGE_BPS = 500;
+
 export const robinhoodChain = defineChain({
   id: ROBINHOOD_CHAIN_ID,
   name: "Robinhood Chain",
@@ -188,6 +193,27 @@ export const OPENZAP_V3_1_CONTRACTS = {
 
 export function openZapV3_1Configured(): boolean {
   return Object.values(OPENZAP_V3_1_CONTRACTS).every((address) => address !== zeroAddress);
+}
+
+/**
+ * Universal app-creation fee gateway. The immutable gateway calls the already-live v1.1/v3/v3.1
+ * factories, then converts the exact native creation fee through the pinned aeWETH -> 0xZAPS route.
+ * Deployed and independently read back on Robinhood Chain at blocks 19,539,599–19,539,642. Env
+ * overrides remain available for a future redeploy; malformed overrides still fail closed.
+ */
+export const OPENZAP_CREATION_FEE_CONTRACTS = {
+  gateway: optionalAddress(
+    process.env.NEXT_PUBLIC_OPENZAP_CREATION_GATEWAY,
+    "0x02A17a94A0e2B470e931E98079Bf563c94281B2b",
+  ),
+  pot: optionalAddress(
+    process.env.NEXT_PUBLIC_OPENZAP_CREATION_FEE_POT,
+    "0x8E0399A8fF81a5f73Bc76CAEE8a355cF9bb0d863",
+  ),
+} as const;
+
+export function openZapCreationFeeConfigured(): boolean {
+  return Object.values(OPENZAP_CREATION_FEE_CONTRACTS).every((address) => address !== zeroAddress);
 }
 
 export function explorerAddress(address: Address): string {
@@ -492,6 +518,73 @@ export const openZapFactoryAbi = [
       { name: "implCodeHash", type: "bytes32", indexed: false },
       { name: "salt", type: "bytes32", indexed: false },
     ],
+  },
+] as const;
+
+export const openZapCreationGatewayAbi = [
+  {
+    type: "function",
+    name: "createZap",
+    inputs: [
+      { name: "lineage", type: "uint8" },
+      { name: "p", type: "tuple", components: policyComponents },
+      { name: "salt", type: "bytes32" },
+      { name: "minZapsOut", type: "uint256" },
+    ],
+    outputs: [{ name: "zap", type: "address" }],
+    stateMutability: "payable",
+  },
+  {
+    type: "function",
+    name: "CREATION_FEE",
+    inputs: [],
+    outputs: [{ name: "", type: "uint256" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "CREATION_POT",
+    inputs: [],
+    outputs: [{ name: "", type: "address" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "lineageFactory",
+    inputs: [{ name: "lineage", type: "uint8" }],
+    outputs: [{ name: "", type: "address" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "VERSION",
+    inputs: [],
+    outputs: [{ name: "", type: "string" }],
+    stateMutability: "view",
+  },
+] as const;
+
+export const zapCreationFeePotAbi = [
+  {
+    type: "function",
+    name: "gateway",
+    inputs: [],
+    outputs: [{ name: "", type: "address" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "ZAPS",
+    inputs: [],
+    outputs: [{ name: "", type: "address" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "accountedZaps",
+    inputs: [],
+    outputs: [{ name: "", type: "uint256" }],
+    stateMutability: "view",
   },
 ] as const;
 

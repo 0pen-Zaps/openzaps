@@ -86,6 +86,10 @@ export const LINKS = {
   dexscreener: TOKEN_LAUNCH.dexscreenerUrl,
   tokenExplorer: TOKEN_LAUNCH.contractUrl,
   buy: buyUrl(),
+  // The app's deployed aeWETH → 0xZAPS policy route. Keep this explicit so
+  // every internal buy CTA opens the same bounded route instead of relying on
+  // whatever route the console happens to default to later.
+  buyWithOpenZaps: "/zap?view=sign&route=robinhood-v4-weth-zaps",
 } as const;
 
 /** Official X (Twitter) handle, for twitter:site/creator card tags. */

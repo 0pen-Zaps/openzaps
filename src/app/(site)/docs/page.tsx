@@ -4,6 +4,7 @@ import { POLICY_TEMPLATES } from "@/lib/policy";
 import { JsonLd } from "@/components/JsonLd";
 import { pageMetadata, breadcrumbJsonLd, SITE_URL } from "@/lib/seo";
 import { Reveal } from "@/components/Reveal";
+import { TokenUtilityPanel } from "@/components/TokenUtilityPanel";
 import styles from "./docs.module.css";
 
 export const metadata = pageMetadata({
@@ -90,6 +91,7 @@ export default function DocsPage(): React.JSX.Element {
       <section className={`container ${styles.grid}`}>
         <nav className={styles.toc} aria-label="Documentation sections">
           <a href="#quickstart">Quickstart</a>
+          <a href="#token">0xZAPS utility</a>
           <a href="#policy">Policy schema</a>
           <a href="#api">Simulation API</a>
           <a href="#templates">Templates</a>
@@ -144,6 +146,8 @@ export default function DocsPage(): React.JSX.Element {
   }'`}</pre>
             </div>
           </section>
+
+          <TokenUtilityPanel id="token" />
 
           <section className={styles.section} id="policy">
             <h2>Policy schema</h2>
@@ -254,6 +258,15 @@ export default function DocsPage(): React.JSX.Element {
               lottery tickets to the capsule owner; the pot pays prizes only in 0xZAPS and only to ticket holders —
               there is no owner drain. Winner selection is a deferred, governance-gated decision until a randomness
               ADR lands.
+            </p>
+            <p>
+              <strong>Creation fee.</strong> Every capsule created by the current app — one-shot, recurring, or
+              triggered — separately pays exactly 0.00001 ETH. The fee gateway calls the existing lineage factory,
+              wraps the fee to aeWETH, and converts it through the pinned aeWETH → 0xZAPS adapter in the same
+              transaction. The wallet reviews both the fixed fee and a fresh minimum 0xZAPS output before signing; if
+              factory creation or conversion misses that floor, the whole transaction reverts. The old immutable
+              factories remain callable directly, so this is an app-enforced creation path rather than a retroactive
+              change to already-deployed factory bytecode.
             </p>
             <p>
               Build one in the <Link href="/zap?view=automate">Automate tab</Link>. The signed intent exports as a

@@ -4,7 +4,8 @@ import { join } from "node:path";
 import { getAddress, zeroAddress } from "viem";
 import { describe, expect, it } from "vitest";
 
-import { CHAIN, CONTRACTS, TOKEN, TOKEN_LAUNCH } from "@/lib/config";
+import { BOUNDED_SWAP_IDS } from "@/lib/chains";
+import { CHAIN, CONTRACTS, LINKS, TOKEN, TOKEN_LAUNCH } from "@/lib/config";
 import {
   OPENZAP_CONTRACTS,
   OPENZAP_V3_CONTRACTS,
@@ -44,6 +45,10 @@ describe("site config stays consistent with onchain constants", () => {
         expect(getAddress(addr), `${label}.${key} must be a valid EIP-55 checksum`).toBe(addr);
       }
     }
+  });
+
+  it("the internal buy link opens the deployed aeWETH to 0xZAPS route", () => {
+    expect(LINKS.buyWithOpenZaps).toBe(`/zap?view=sign&route=${BOUNDED_SWAP_IDS[0]}`);
   });
 
   it("public token-metadata.json agrees with config", () => {

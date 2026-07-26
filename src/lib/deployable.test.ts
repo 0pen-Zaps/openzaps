@@ -597,7 +597,7 @@ describe("the Live route blueprint", () => {
     expect(mapping.deployable && mapping.direction).toBe("buy");
   });
 
-  it("badges exactly the eleven deployable blueprints", () => {
+  it("badges exactly the twelve one-shot-deployable blueprints", () => {
     // The blueprint row badges exactly the deployable ones. This is the list
     // the copy beside the row describes; a recipe drifting off its route (or a
     // non-deployable design quietly becoming badged) fails here first.
@@ -618,6 +618,7 @@ describe("the Live route blueprint", () => {
       "usdg-weth",
       "vault-park",
       "exit-liquidity-weth",
+      "price-trigger",
     ]);
   });
 
@@ -678,6 +679,7 @@ describe("the Live route blueprint", () => {
       "usdg-weth": "USDG>aeWETH",
       "vault-park": "USDG>ozUSDG",
       "exit-liquidity-weth": "ozRANGE>aeWETH",
+      "price-trigger": "aeWETH>0xZAPS",
     };
     for (const entry of RECIPES) {
       const mapping = reduceChainToLiveRoute(
@@ -1047,7 +1049,7 @@ describe("with the real vault adapter configured", () => {
       ).deployable,
     ).map((entry) => entry.id);
     // Overriding the vault-deposit address must not badge any blueprint beyond
-    // the standing deployable eleven.
+    // the standing one-shot-deployable twelve.
     expect(deployable).toEqual([
       "live-route",
       "sell-zaps",
@@ -1060,6 +1062,7 @@ describe("with the real vault adapter configured", () => {
       "usdg-weth",
       "vault-park",
       "exit-liquidity-weth",
+      "price-trigger",
     ]);
   });
 });

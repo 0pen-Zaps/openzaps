@@ -86,7 +86,7 @@ export function SiteNav(): React.JSX.Element {
             );
           })}
         </div>
-        <BuyButton className={styles.cta} />
+        <BuyButton className={styles.cta} destination="openzaps" />
       </nav>
       <ScrollProgress />
     </header>

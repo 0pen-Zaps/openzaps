@@ -1,6 +1,7 @@
 import Link from "next/link";
 
 import { JsonLd } from "@/components/JsonLd";
+import { TokenUtilityPanel } from "@/components/TokenUtilityPanel";
 import { ActivityFeed } from "./ActivityFeed";
 import { fetchProtocolActivity } from "@/lib/activity-server";
 import { TOKEN_LAUNCH } from "@/lib/config";
@@ -92,6 +93,8 @@ export default async function ZapsFeedPage(): Promise<React.JSX.Element> {
           <code>{ROBINHOOD_LIQUIDITY.poolId.slice(0, 18)}…{ROBINHOOD_LIQUIDITY.poolId.slice(-8)}</code>
         </aside>
       </section>
+
+      <TokenUtilityPanel className="container" id="token-utility" />
 
       {/* Live totals + the polling activity feed. */}
       <ActivityFeed initial={activity} />

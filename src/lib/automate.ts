@@ -10,6 +10,7 @@ import {
   type RecurringRelativeIntent,
   type TriggerIntent,
 } from "@/lib/executions";
+import { BOUNDED_SWAP_IDS } from "@/lib/chains";
 import { MAX_EXECUTION_FEE_PER_GAS, MAX_EXECUTION_GAS } from "@/lib/openzap";
 
 export type AutomationMode = "recurring" | "trigger";
@@ -26,6 +27,7 @@ export const INTERVAL_PRESETS: readonly IntervalPreset[] = [
   { id: "6h", label: "Every 6 hours", seconds: 21_600n },
   { id: "daily", label: "Every day", seconds: 86_400n },
   { id: "weekly", label: "Every week", seconds: 604_800n },
+  { id: "monthly", label: "Every 30 days", seconds: 2_592_000n },
 ] as const;
 
 export interface ThresholdPreset {
@@ -46,6 +48,43 @@ export const THRESHOLD_PRESETS: readonly ThresholdPreset[] = [
   { id: "down10", label: "0xZAPS falls −10%", moveBps: 1_000, rises: false },
   { id: "down25", label: "0xZAPS falls −25%", moveBps: 2_500, rises: false },
 ] as const;
+
+export interface AutomationHandoffPreset {
+  mode: AutomationMode;
+  routeId: string;
+  amount: string;
+  slippageBps: number;
+  intervalId: string;
+  maxRuns: number;
+  thresholdId: string;
+  validDays: number | null;
+}
+
+/** Validate a visual-builder handoff before it enters the live form. */
+export function readAutomationHandoff(params: URLSearchParams): AutomationHandoffPreset | null {
+  if (params.get("src") !== "build") return null;
+  const mode = params.get("mode");
+  const routeId = params.get("route") ?? "";
+  const amount = params.get("amount") ?? "";
+  const slippageBps = Number(params.get("bps"));
+  const intervalId = params.get("interval") ?? "daily";
+  const maxRuns = Number(params.get("runs") ?? "10");
+  const thresholdId = params.get("threshold") ?? "up10";
+  const daysParam = params.get("days");
+  const validDays = daysParam === null ? null : Number(daysParam);
+
+  if (mode !== "recurring" && mode !== "trigger") return null;
+  if (!BOUNDED_SWAP_IDS.includes(routeId as (typeof BOUNDED_SWAP_IDS)[number])) return null;
+  if (!/^\d+(?:\.\d{0,18})?$/.test(amount) || Number(amount) <= 0) return null;
+  if (!Number.isInteger(slippageBps) || slippageBps < 5 || slippageBps > 500) return null;
+  if (!INTERVAL_PRESETS.some((preset) => preset.id === intervalId)) return null;
+  if (!Number.isInteger(maxRuns) || maxRuns < 1 || maxRuns > 100) return null;
+  if (!THRESHOLD_PRESETS.some((preset) => preset.id === thresholdId)) return null;
+  if (validDays !== null && ![7, 30, 90].includes(validDays)) return null;
+  if (mode === "trigger" && validDays === null) return null;
+
+  return { mode, routeId, amount, slippageBps, intervalId, maxRuns, thresholdId, validDays };
+}
 
 /**
  * Convert a user-facing 0xZAPS price move into the condition the capsule actually checks.
@@ -267,6 +306,8 @@ export interface RecurringRelativeDraftInput {
   nowSec: bigint;
   interval: bigint;
   maxRuns: number;
+  /** Optional explicit series expiry from the builder's execution-window guard. */
+  validDays?: number | null;
   recipient: Address;
   policyHash: Hex;
   outAsset: Address;
@@ -281,12 +322,19 @@ export interface RecurringRelativeDraftInput {
  * the signed tolerance.
  */
 export function draftRecurringRelativeIntent(input: RecurringRelativeDraftInput): RecurringRelativeIntent {
+  const explicitDeadline = input.validDays
+    ? input.nowSec + BigInt(Math.max(Math.trunc(input.validDays), 1)) * 86_400n
+    : null;
+  const lastScheduledRun = input.nowSec + input.interval * BigInt(Math.max(input.maxRuns - 1, 0));
+  if (explicitDeadline !== null && explicitDeadline < lastScheduledRun) {
+    throw new Error("The series expiry ends before all scheduled runs can become due.");
+  }
   return {
     zap: input.zap,
     chainId: BigInt(input.chainId),
     seriesId: input.seriesId,
     validAfter: 0n,
-    deadline: suggestedSeriesDeadline(input.nowSec, input.interval, input.maxRuns),
+    deadline: explicitDeadline ?? suggestedSeriesDeadline(input.nowSec, input.interval, input.maxRuns),
     interval: input.interval,
     maxRuns: input.maxRuns,
     recipient: input.recipient,

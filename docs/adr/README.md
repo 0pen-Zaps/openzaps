@@ -4,8 +4,8 @@ ADRs capture significant, hard-to-reverse design decisions with their context, t
 considered, and the consequences. They are the durable record of *why* the system is shaped the
 way it is.
 
-Each ADR derives from the v1 design evaluation of [`../research-report.md`](../research-report.md).
-The four ADRs below resolve the blocking, decision-shaped issues that evaluation surfaced.
+The first four ADRs derive from the v1 design evaluation of [`../research-report.md`](../research-report.md).
+Later records preserve equally consequential production decisions without rewriting those accepted foundations.
 
 | ADR | Title | Status | Resolves |
 |---|---|---|---|
@@ -13,6 +13,7 @@ The four ADRs below resolve the blocking, decision-shaped issues that evaluation
 | [0002](0002-deployment-and-instance-isolation.md) | Deployment & Instance Isolation | Accepted | Clone shared-implementation blast radius |
 | [0003](0003-submission-privacy-vs-censorship.md) | Submission — Privacy vs Censorship Resistance | Accepted | Private-by-default vs permissionless fallback contradiction |
 | [0004](0004-protective-vs-optimization-zaps.md) | Protective vs Optimization Zaps & Trigger Model | Accepted | Single-submitter liveness SPOF; L2 finality |
+| [0005](0005-universal-creation-fee-gateway.md) | Universal app-creation fee gateway | Accepted | Visible fee conversion without replacing live capsule lineages |
 
 Testable invariants derived from these decisions live in
 [`../invariant-spec.md`](../invariant-spec.md).
@@ -21,8 +22,8 @@ Testable invariants derived from these decisions live in
 
 `Proposed → Accepted → (Deprecated | Superseded by ADR-NNNN)`
 
-All four are **Accepted** (2026-06-06). The implementation in [`../../contracts/`](../../contracts)
-is built against them; any change to an accepted decision must be a new superseding ADR, not an edit.
+All records above are **Accepted**. The implementation in [`../../contracts/`](../../contracts) is built against
+them; any change to an accepted decision must be a new superseding ADR, not an edit.
 
 ## Conventions
 

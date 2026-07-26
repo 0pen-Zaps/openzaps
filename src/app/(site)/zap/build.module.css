@@ -151,6 +151,16 @@
   letter-spacing: 0.02em;
 }
 
+.recipeAuto {
+  margin-left: 0.4rem;
+  padding: 0.1rem 0.4rem;
+  border-radius: 0;
+  color: #b7d8ff;
+  background: rgba(102, 167, 255, 0.13);
+  font-style: normal;
+  letter-spacing: 0.02em;
+}
+
 .recipe:hover {
   transform: translateY(-2px);
   border-color: color-mix(in oklab, var(--accent) 45%, transparent);
@@ -1116,6 +1126,94 @@
   font-weight: 560;
 }
 
+/* Live money preview: route output and the separate creation-fee conversion
+   stay in one card so "minimum received" cannot read as "after a hidden fee". */
+.quotePanel {
+  display: grid;
+  gap: 0.65rem;
+  padding: 0.75rem;
+  border: 1px solid rgba(255, 252, 0, 0.26);
+  border-radius: 0;
+  background: linear-gradient(145deg, rgba(255, 252, 0, 0.08), rgba(255, 255, 255, 0.02));
+}
+
+.quoteHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.65rem;
+}
+
+.quoteHead > div {
+  display: grid;
+  gap: 0.12rem;
+}
+
+.quoteHead span,
+.quoteGrid span {
+  color: var(--muted);
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.quoteHead strong {
+  font-size: 0.9rem;
+  font-weight: 580;
+}
+
+.quoteHead button {
+  padding: 0.28rem 0.55rem;
+  border: 1px solid var(--line);
+  border-radius: 0;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 0.72rem;
+  cursor: pointer;
+}
+
+.quoteGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.45rem;
+}
+
+.quoteGrid > div {
+  display: grid;
+  gap: 0.16rem;
+  min-width: 0;
+  padding: 0.48rem 0.55rem;
+  border: 1px solid var(--line-soft);
+  background: rgba(0, 0, 0, 0.18);
+}
+
+.quoteGrid strong {
+  overflow-wrap: anywhere;
+  color: var(--fg);
+  font-family: var(--font-jetbrains-mono), ui-monospace, monospace;
+  font-size: 0.72rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.quoteStatus,
+.quoteError,
+.quoteNote {
+  color: var(--muted);
+  font-size: 0.72rem;
+  line-height: 1.5;
+}
+
+.quoteError {
+  color: #ff9fb0;
+}
+
+.quoteNote {
+  padding-top: 0.45rem;
+  border-top: 1px solid var(--line-soft);
+  color: var(--muted-2);
+}
+
 /* ---- deploy handoff ---- */
 
 .deploy {
@@ -1140,6 +1238,24 @@
 .deployBtn:hover {
   transform: translateY(-1px);
   box-shadow: 0 12px 30px rgba(255, 252, 0, 0.22);
+}
+
+.automateBtn {
+  display: block;
+  padding: 0.62rem 0.8rem;
+  border: 1px solid rgba(118, 178, 255, 0.45);
+  border-radius: 0;
+  color: #d9eaff;
+  background: linear-gradient(135deg, rgba(65, 125, 210, 0.28), rgba(96, 81, 190, 0.2));
+  text-align: center;
+  font-size: 0.86rem;
+  font-weight: 600;
+  transition: transform var(--dur-2) var(--ease-emphasis), box-shadow var(--dur-3) var(--ease-standard);
+}
+
+.automateBtn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 12px 30px rgba(70, 130, 220, 0.18);
 }
 
 .saveBtn {
@@ -1481,6 +1597,19 @@
 }
 
 @media (max-width: 520px) {
+  /* On phones the 42vh sticky tray obscures fee/floor review. Keep the
+     horizontal block rail, but let the palette leave the viewport normally. */
+  .palette {
+    position: static;
+    max-height: none;
+    overflow: visible;
+    backdrop-filter: none;
+  }
+
+  .quoteGrid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
   .canvasHead {
     align-items: flex-start;
     flex-direction: column;

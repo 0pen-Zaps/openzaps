@@ -17,6 +17,7 @@ import {
   netFloorFromQuote,
   planWethFunding,
   projectedRelativeFloor,
+  readAutomationHandoff,
   requiredFunding,
   suggestedSeriesDeadline,
 } from "@/lib/automate";
@@ -26,6 +27,46 @@ import { MAX_EXECUTION_FEE_PER_GAS, MAX_EXECUTION_GAS } from "@/lib/openzap";
 const ZAP = "0x9941dD72373429C36F82D888dbcbab080038f033" as Address;
 const ADDR = "0x70997970C51812dc3A010C7d01b50e0d17dc79C8" as Address;
 const HASH = "0xa31514d5c136fd98877eafe2bd715ca507fa3ee28e94194d7dba75d3e0360270" as const;
+
+describe("readAutomationHandoff", () => {
+  it("accepts a complete recurring builder handoff", () => {
+    const params = new URLSearchParams({
+      src: "build",
+      mode: "recurring",
+      route: "robinhood-v4-weth-zaps",
+      amount: "0.001",
+      bps: "100",
+      interval: "monthly",
+      runs: "12",
+    });
+    expect(readAutomationHandoff(params)).toEqual({
+      mode: "recurring",
+      routeId: "robinhood-v4-weth-zaps",
+      amount: "0.001",
+      slippageBps: 100,
+      intervalId: "monthly",
+      maxRuns: 12,
+      thresholdId: "up10",
+      validDays: null,
+    });
+  });
+
+  it("accepts a complete trigger handoff and rejects partial or unsupported input", () => {
+    const trigger = new URLSearchParams({
+      src: "build",
+      mode: "trigger",
+      route: "robinhood-v4-zaps-weth",
+      amount: "100000",
+      bps: "200",
+      threshold: "down25",
+      days: "90",
+    });
+    expect(readAutomationHandoff(trigger)?.thresholdId).toBe("down25");
+    expect(readAutomationHandoff(new URLSearchParams("src=build&mode=trigger"))).toBeNull();
+    trigger.set("route", "robinhood-v4-weth-usdg");
+    expect(readAutomationHandoff(trigger)).toBeNull();
+  });
+});
 
 describe("requiredFunding", () => {
   it("multiplies by runs for recurring, single amount for trigger", () => {
@@ -199,6 +240,14 @@ describe("draftRecurringRelativeIntent", () => {
     // clamps out-of-range slippage to the capsule's valid band [1, 9999]
     expect(draftRecurringRelativeIntent({ ...baseRel, maxSlippageBps: 0 }).maxSlippageBps).toBe(1);
     expect(draftRecurringRelativeIntent({ ...baseRel, maxSlippageBps: 20_000 }).maxSlippageBps).toBe(9_999);
+  });
+
+  it("binds an explicit builder expiry and rejects one that truncates the schedule", () => {
+    const explicit = draftRecurringRelativeIntent({ ...baseRel, validDays: 7 });
+    expect(explicit.deadline).toBe(7n * 86_400n);
+    expect(() => draftRecurringRelativeIntent({ ...baseRel, interval: 604_800n, maxRuns: 10, validDays: 30 })).toThrow(
+      "ends before all scheduled runs",
+    );
   });
 });
 

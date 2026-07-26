@@ -25,6 +25,7 @@ export function LandingFooter({ githubUrl }: { githubUrl: string }): React.JSX.E
             <Link href="/zap">Zap</Link>
             <Link href="/explore">Explore</Link>
             <Link href="/token">{TOKEN.symbol} token</Link>
+            <Link href={LINKS.buyWithOpenZaps}>Buy with OpenZaps</Link>
             <Link href="/roadmap">Roadmap</Link>
           </div>
           <div className={styles.footerCol}>
@@ -47,6 +48,9 @@ export function LandingFooter({ githubUrl }: { githubUrl: string }): React.JSX.E
             </a>
             <a href={LINKS.dexscreener} target="_blank" rel="noreferrer noopener">
               Dexscreener ↗
+            </a>
+            <a href={LINKS.buy} target="_blank" rel="noreferrer noopener">
+              Buy on Clanker ↗
             </a>
           </div>
           <div className={styles.footerCol}>
