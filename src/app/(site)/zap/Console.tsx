@@ -40,8 +40,6 @@ import {
   type HolderTier,
 } from "@/lib/holder";
 import {
-  MAX_EXECUTION_FEE_PER_GAS,
-  MAX_EXECUTION_GAS,
   buildRoutePolicy,
   inspectOwnedZap,
   parseRouterAmount,
@@ -49,6 +47,14 @@ import {
   randomNonce,
   type SavedZapRecord,
 } from "@/lib/openzap";
+import {
+  MAX_EXECUTION_FEE_GWEI,
+  MAX_EXECUTION_GAS_UNITS,
+  MIN_EXECUTION_FEE_GWEI,
+  MIN_EXECUTION_GAS_UNITS,
+  readExecutionPolicyParams,
+  type ExecutionPolicy,
+} from "@/lib/execution-policy";
 import {
   BOUNDED_SWAP_IDS,
 } from "@/lib/chains";
@@ -171,6 +177,8 @@ export default function AppPage(): React.JSX.Element {
   const [offeredReady, setOfferedReady] = useState(false);
   const [amount, setAmount] = useState("0.001");
   const [slippageBps, setSlippageBps] = useState(100);
+  const [maxExecutionGas, setMaxExecutionGas] = useState(MAX_EXECUTION_GAS_UNITS);
+  const [maxFeePerGasGwei, setMaxFeePerGasGwei] = useState(MAX_EXECUTION_FEE_GWEI);
   const [quote, setQuote] = useState<bigint | null>(null);
   const [quoteGas, setQuoteGas] = useState<bigint | null>(null);
   const [creationFeeQuote, setCreationFeeQuote] = useState<CreationFeeQuote | null>(null);
@@ -918,8 +926,8 @@ export default function AppPage(): React.JSX.Element {
         recipient: owner,
         relayer: zeroAddress,
         maxRelayerFee: 0n,
-        maxGas: MAX_EXECUTION_GAS,
-        maxFeePerGas: MAX_EXECUTION_FEE_PER_GAS,
+        maxGas: BigInt(maxExecutionGas),
+        maxFeePerGas: BigInt(maxFeePerGasGwei) * 1_000_000_000n,
         policyHash: verifiedZap.policyHash,
         outAsset: tokenOut.address,
         minOut: signedMinOut,
@@ -962,7 +970,7 @@ export default function AppPage(): React.JSX.Element {
         abi: openZapAbi,
         functionName: "execute",
         args: [intent, signature],
-        gas: MAX_EXECUTION_GAS,
+        gas: BigInt(maxExecutionGas),
       });
       const hash = await wallet.writeContract(request);
       const receipt = await publicClient.waitForTransactionReceipt({ hash });
@@ -1223,6 +1231,7 @@ export default function AppPage(): React.JSX.Element {
     const rawRoute = params.get("route");
     const rawDirection = params.get("dir");
     const rawAmount = (params.get("amount") ?? "").trim();
+    const executionPolicy = readExecutionPolicyParams(params);
     const resolvedRouteId =
       rawRoute && resolveRouteById(rawRoute)
         ? rawRoute
@@ -1245,8 +1254,8 @@ export default function AppPage(): React.JSX.Element {
     // A vault route is offered only while its vault is seeded; an unseeded or
     // undeployed route is rejected exactly like an invalid import.
     const offered = resolvedRouteId !== null && offeredRoutes.some((candidate) => candidate.id === resolvedRouteId);
-    let imported: { routeId: string; route: Route; amount: string; bps: number } | null = null;
-    if (candidateRoute && offered && resolvedRouteId) {
+    let imported: { routeId: string; route: Route; amount: string; bps: number; executionPolicy: ExecutionPolicy } | null = null;
+    if (candidateRoute && offered && resolvedRouteId && executionPolicy) {
       try {
         // Validate the amount at the ROUTE's real decimals (USDG 6, ozUSDG 9).
         parseRouterAmount(rawAmount, candidateRoute.tokenIn.decimals);
@@ -1261,6 +1270,7 @@ export default function AppPage(): React.JSX.Element {
           // Snapped to the slider's own min/max/step below.
           // 100 is the same 1.00% the slider starts on when nobody touches it.
           bps: Number.isFinite(parsedBps) ? Math.min(500, Math.max(10, Math.round(parsedBps / 10) * 10)) : 100,
+          executionPolicy,
         };
       } catch {
         imported = null;
@@ -1297,8 +1307,10 @@ export default function AppPage(): React.JSX.Element {
       changeRoute(imported.routeId);
       changeAmount(imported.amount);
       setSlippageBps(imported.bps);
+      setMaxExecutionGas(imported.executionPolicy.maxGas);
+      setMaxFeePerGasGwei(imported.executionPolicy.maxFeePerGasGwei);
       setNotice(
-        `Imported from the builder: ${imported.route.tokenIn.symbol} → ${imported.route.tokenOut.symbol}, ${imported.amount} ${imported.route.tokenIn.symbol}, ${(imported.bps / 100).toFixed(2)}% max slippage. Nothing has been created — check the numbers, then press Create zap.`,
+        `Imported from the builder: ${imported.route.tokenIn.symbol} → ${imported.route.tokenOut.symbol}, ${imported.amount} ${imported.route.tokenIn.symbol}, ${(imported.bps / 100).toFixed(2)}% max slippage, ${imported.executionPolicy.maxGas.toLocaleString("en-US")} gas, and ${imported.executionPolicy.maxFeePerGasGwei} gwei. Nothing has been created — check the numbers, then press Create zap.`,
       );
       trackEvent("robinhood_builder_import", { route: imported.routeId });
     });
@@ -1544,6 +1556,30 @@ export default function AppPage(): React.JSX.Element {
             </Field>
             <Field label={`Signed max slippage (${(slippageBps / 100).toFixed(2)}%)`}>
               <input className={styles.range} min="10" max="500" step="10" type="range" value={slippageBps} onChange={(event) => setSlippageBps(Number(event.target.value))} />
+            </Field>
+            <Field label={`Signed gas limit (${maxExecutionGas.toLocaleString("en-US")})`}>
+              <input
+                className={styles.range}
+                type="range"
+                min={MIN_EXECUTION_GAS_UNITS}
+                max={MAX_EXECUTION_GAS_UNITS}
+                step={50_000}
+                value={maxExecutionGas}
+                onChange={(event) => setMaxExecutionGas(Number(event.target.value))}
+                disabled={busy !== null}
+              />
+            </Field>
+            <Field label={`Signed gas price cap (${maxFeePerGasGwei} gwei)`}>
+              <input
+                className={styles.range}
+                type="range"
+                min={MIN_EXECUTION_FEE_GWEI}
+                max={MAX_EXECUTION_FEE_GWEI}
+                step={1}
+                value={maxFeePerGasGwei}
+                onChange={(event) => setMaxFeePerGasGwei(Number(event.target.value))}
+                disabled={busy !== null}
+              />
             </Field>
           </div>
 

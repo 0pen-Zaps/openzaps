@@ -4,6 +4,7 @@ import {
   BLOCKS,
   RECIPES,
   canInsert,
+  composeBlockStack,
   compileChain,
   decodeChain,
   decodeDesign,
@@ -272,6 +273,44 @@ describe("canInsert agrees with compileChain", () => {
       const own = compileChain(next).issues.filter((issue) => issue.uid === uid);
       expect(own, where).toEqual([]);
     }
+  });
+});
+
+describe("composeBlockStack", () => {
+  it("adds a policy stack at compatible seats as one compiled chain", () => {
+    let uid = 0;
+    const result = composeBlockStack(
+      chain("wallet-balance", "swap", "send"),
+      ["guard-gas-limit", "guard-gas-price", "guard-executor"],
+      () => `stack-${++uid}`,
+    );
+
+    expect(result.rejected).toEqual([]);
+    expect(result.added.map((node) => node.blockId)).toEqual([
+      "guard-gas-limit",
+      "guard-gas-price",
+      "guard-executor",
+    ]);
+    expect(result.chain.map((node) => node.blockId)).toEqual([
+      "wallet-balance",
+      "swap",
+      "guard-gas-limit",
+      "guard-gas-price",
+      "guard-executor",
+      "send",
+    ]);
+    expect(compileChain(result.chain).issues.filter((issue) => issue.level === "block")).toEqual([]);
+  });
+
+  it("keeps composing valid blocks when another id is unknown or cannot seat", () => {
+    let uid = 0;
+    const result = composeBlockStack(
+      chain("wallet-balance", "send"),
+      ["missing-policy", "wallet-balance", "guard-gas-limit"],
+      () => `stack-${++uid}`,
+    );
+    expect(result.rejected).toEqual(["missing-policy", "wallet-balance"]);
+    expect(result.added.map((node) => node.blockId)).toEqual(["guard-gas-limit"]);
   });
 });
 

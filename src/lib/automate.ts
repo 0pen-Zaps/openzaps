@@ -12,6 +12,7 @@ import {
 } from "@/lib/executions";
 import { BOUNDED_SWAP_IDS } from "@/lib/chains";
 import { MAX_EXECUTION_FEE_PER_GAS, MAX_EXECUTION_GAS } from "@/lib/openzap";
+import { readExecutionPolicyParams, type ExecutionPolicy } from "@/lib/execution-policy";
 
 export type AutomationMode = "recurring" | "trigger";
 
@@ -58,6 +59,7 @@ export interface AutomationHandoffPreset {
   maxRuns: number;
   thresholdId: string;
   validDays: number | null;
+  executionPolicy: ExecutionPolicy;
 }
 
 /** Validate a visual-builder handoff before it enters the live form. */
@@ -72,6 +74,7 @@ export function readAutomationHandoff(params: URLSearchParams): AutomationHandof
   const thresholdId = params.get("threshold") ?? "up10";
   const daysParam = params.get("days");
   const validDays = daysParam === null ? null : Number(daysParam);
+  const executionPolicy = readExecutionPolicyParams(params);
 
   if (mode !== "recurring" && mode !== "trigger") return null;
   if (!BOUNDED_SWAP_IDS.includes(routeId as (typeof BOUNDED_SWAP_IDS)[number])) return null;
@@ -82,8 +85,9 @@ export function readAutomationHandoff(params: URLSearchParams): AutomationHandof
   if (!THRESHOLD_PRESETS.some((preset) => preset.id === thresholdId)) return null;
   if (validDays !== null && ![7, 30, 90].includes(validDays)) return null;
   if (mode === "trigger" && validDays === null) return null;
+  if (executionPolicy === null) return null;
 
-  return { mode, routeId, amount, slippageBps, intervalId, maxRuns, thresholdId, validDays };
+  return { mode, routeId, amount, slippageBps, intervalId, maxRuns, thresholdId, validDays, executionPolicy };
 }
 
 /**
@@ -204,6 +208,14 @@ export function resolveExecutor(executor?: Address | null): Address {
   return executor ?? OPEN_EXECUTOR;
 }
 
+function executionBound(value: bigint | undefined, maximum: bigint, label: string): bigint {
+  const resolved = value ?? maximum;
+  if (resolved <= 0n || resolved > maximum) {
+    throw new Error(`${label} must be greater than zero and no more than ${maximum.toString()}.`);
+  }
+  return resolved;
+}
+
 export type FundingReadiness = { status: "unknown" | "sufficient" | "short"; shortfall: bigint };
 
 /**
@@ -266,6 +278,8 @@ export function suggestedSeriesDeadline(nowSec: bigint, intervalSec: bigint, max
 export interface RecurringDraftInput {
   /** Pin a single submitter, or omit to leave the run open to anyone. */
   executor?: Address | null;
+  maxGas?: bigint;
+  maxFeePerGas?: bigint;
   zap: Address;
   chainId: number;
   seriesId: bigint;
@@ -289,8 +303,8 @@ export function draftRecurringIntent(input: RecurringDraftInput): RecurringInten
     maxRuns: input.maxRuns,
     recipient: input.recipient,
     executor: resolveExecutor(input.executor),
-    maxGas: MAX_EXECUTION_GAS,
-    maxFeePerGas: MAX_EXECUTION_FEE_PER_GAS,
+    maxGas: executionBound(input.maxGas, MAX_EXECUTION_GAS, "Execution gas limit"),
+    maxFeePerGas: executionBound(input.maxFeePerGas, MAX_EXECUTION_FEE_PER_GAS, "Gas price cap"),
     policyHash: input.policyHash,
     outAsset: input.outAsset,
     minOutPerRun: input.minOutPerRun,
@@ -300,6 +314,8 @@ export function draftRecurringIntent(input: RecurringDraftInput): RecurringInten
 export interface RecurringRelativeDraftInput {
   /** Pin a single submitter, or omit to leave the run open to anyone. */
   executor?: Address | null;
+  maxGas?: bigint;
+  maxFeePerGas?: bigint;
   zap: Address;
   chainId: number;
   seriesId: bigint;
@@ -339,8 +355,8 @@ export function draftRecurringRelativeIntent(input: RecurringRelativeDraftInput)
     maxRuns: input.maxRuns,
     recipient: input.recipient,
     executor: resolveExecutor(input.executor),
-    maxGas: MAX_EXECUTION_GAS,
-    maxFeePerGas: MAX_EXECUTION_FEE_PER_GAS,
+    maxGas: executionBound(input.maxGas, MAX_EXECUTION_GAS, "Execution gas limit"),
+    maxFeePerGas: executionBound(input.maxFeePerGas, MAX_EXECUTION_FEE_PER_GAS, "Gas price cap"),
     policyHash: input.policyHash,
     outAsset: input.outAsset,
     priceSource: input.priceSource,
@@ -351,6 +367,8 @@ export function draftRecurringRelativeIntent(input: RecurringRelativeDraftInput)
 export interface TriggerDraftInput {
   /** Pin a single submitter, or omit to leave the run open to anyone. */
   executor?: Address | null;
+  maxGas?: bigint;
+  maxFeePerGas?: bigint;
   zap: Address;
   chainId: number;
   nonce: bigint;
@@ -379,8 +397,8 @@ export function draftTriggerIntent(input: TriggerDraftInput): TriggerIntent {
     above: input.above,
     recipient: input.recipient,
     executor: resolveExecutor(input.executor),
-    maxGas: MAX_EXECUTION_GAS,
-    maxFeePerGas: MAX_EXECUTION_FEE_PER_GAS,
+    maxGas: executionBound(input.maxGas, MAX_EXECUTION_GAS, "Execution gas limit"),
+    maxFeePerGas: executionBound(input.maxFeePerGas, MAX_EXECUTION_FEE_PER_GAS, "Gas price cap"),
     policyHash: input.policyHash,
     outAsset: input.outAsset,
     minOut: input.minOut,

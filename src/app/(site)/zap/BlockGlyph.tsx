@@ -147,6 +147,26 @@ const PATHS: Record<string, React.ReactNode> = {
       <circle cx="12" cy="12" r="2.6" />
     </>
   ),
+  fuel: (
+    <>
+      <path d="M7 21V5.5A2.5 2.5 0 0 1 9.5 3h5A2.5 2.5 0 0 1 17 5.5V21" />
+      <path d="M5 21h14M9 7h6v4H9z" />
+      <path d="m17 8 2.5 2.5V17a1.5 1.5 0 0 0 3 0v-5l-2-2" />
+    </>
+  ),
+  fee: (
+    <>
+      <path d="M5 19V9M12 19V5M19 19v-7" />
+      <path d="M3 19h18" />
+      <path d="m16.5 7 2.5-2.5L21.5 7" />
+    </>
+  ),
+  key: (
+    <>
+      <circle cx="8" cy="12" r="4.5" />
+      <path d="M12.5 12H21M17 12v3M20 12v2" />
+    </>
+  ),
   send: (
     <>
       <path d="M21 3.5 10.5 14" />
