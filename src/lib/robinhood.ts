@@ -198,11 +198,18 @@ export function openZapV3_1Configured(): boolean {
 /**
  * Universal app-creation fee gateway. The immutable gateway calls the already-live v1.1/v3/v3.1
  * factories, then converts the exact native creation fee through the pinned aeWETH -> 0xZAPS route.
- * Until both addresses are baked after a verified deployment, all creation paths fail closed.
+ * Deployed and independently read back on Robinhood Chain at blocks 19,539,599–19,539,642. Env
+ * overrides remain available for a future redeploy; malformed overrides still fail closed.
  */
 export const OPENZAP_CREATION_FEE_CONTRACTS = {
-  gateway: optionalAddress(process.env.NEXT_PUBLIC_OPENZAP_CREATION_GATEWAY, zeroAddress),
-  pot: optionalAddress(process.env.NEXT_PUBLIC_OPENZAP_CREATION_FEE_POT, zeroAddress),
+  gateway: optionalAddress(
+    process.env.NEXT_PUBLIC_OPENZAP_CREATION_GATEWAY,
+    "0x02A17a94A0e2B470e931E98079Bf563c94281B2b",
+  ),
+  pot: optionalAddress(
+    process.env.NEXT_PUBLIC_OPENZAP_CREATION_FEE_POT,
+    "0x8E0399A8fF81a5f73Bc76CAEE8a355cF9bb0d863",
+  ),
 } as const;
 
 export function openZapCreationFeeConfigured(): boolean {

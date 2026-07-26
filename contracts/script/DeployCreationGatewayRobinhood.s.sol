@@ -11,7 +11,7 @@ import {ZapCreationFeePot} from "../src/fee/ZapCreationFeePot.sol";
 /// @notice Deploys only the universal creation-fee gateway and its no-drain 0xZAPS pot on canonical
 ///         Robinhood Chain (4663). It reuses, and does not replace, the live v1.1/v3/v3.1 factories.
 ///
-///         PRIVATE_KEY="$(tr -d '\r\n ' < ~/.hermes/secrets/rhc_deployer_v11)" \
+///         PRIVATE_KEY="$(tr -d '\r\n ' < "$DEPLOYER_KEY_FILE")" \
 ///           forge script script/DeployCreationGatewayRobinhood.s.sol --rpc-url $ROBINHOOD_RPC_URL \
 ///             --broadcast --slow
 ///         The pinned deployer receives no ownership. It can only bind the gateway once, and that
