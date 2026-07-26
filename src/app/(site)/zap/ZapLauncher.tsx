@@ -9,9 +9,9 @@ const OPTIONS = [
   {
     number: "01",
     glyph: "bolt",
-    label: "Run once",
-    title: "Swap with one bounded authorization",
-    detail: "Create the capsule, fund it, review the exact output floor, then sign and execute.",
+    label: "Zap now",
+    title: "Zap in with one bounded authorization",
+    detail: "Create the capsule, fund it, review the exact output floor, then sign and Zap.",
     meta: "v1.1 · one-time nonce",
     href: `/zap?view=sign&route=${ROUTE}`,
     accent: "instant",
@@ -21,7 +21,7 @@ const OPTIONS = [
     glyph: "repeat",
     label: "Recurring",
     title: "Repeat a fixed amount on schedule",
-    detail: "Choose cadence, total runs, expiry, and slippage. The capsule enforces every run.",
+    detail: "Choose cadence, total Zaps, expiry, and slippage. The capsule enforces every Zap.",
     meta: "v3.1 · replaceable series",
     href: `/zap?view=automate&src=build&mode=recurring&route=${ROUTE}&amount=0.01&bps=100&interval=daily&runs=10`,
     accent: "recurring",
@@ -40,9 +40,9 @@ const OPTIONS = [
     number: "04",
     glyph: "split",
     label: "Compose",
-    title: "Build the route as connected blocks",
-    detail: "Start from the visual policy canvas, inspect every adapter boundary, then hand off to execution.",
-    meta: "advanced · immutable policy",
+    title: "Build the route and its execution policy",
+    detail: "Connect the route, add gas, gas-price, and executor controls as one stack, then review the resolved bounds before handoff.",
+    meta: "atomic policy stack · one-step undo",
     href: "/zap?view=design",
     accent: "compose",
   },
@@ -56,7 +56,7 @@ export function ZapLauncher(): React.JSX.Element {
           <span className="eyebrow">New zap</span>
           <h1>Start with the outcome.<br />Lock the rules after.</h1>
           <p>
-            Choose how the zap should run. Every path resolves to a capsule with an immutable route,
+            Choose how you want to Zap. Every path resolves to a capsule with an immutable route,
             a wallet-owned recipient, and reviewable execution bounds.
           </p>
         </div>
@@ -102,7 +102,7 @@ export function ZapLauncher(): React.JSX.Element {
       </section>
 
       <section className={`container ${styles.truthStrip}`} aria-label="Zap lifecycle">
-        <div><span>1</span><strong>Choose intent</strong><small>run once, recur, trigger, compose</small></div>
+        <div><span>1</span><strong>Choose intent</strong><small>Zap now, recur, trigger, compose</small></div>
         <i aria-hidden />
         <div><span>2</span><strong>Review policy</strong><small>route, amount, floor, recipient</small></div>
         <i aria-hidden />

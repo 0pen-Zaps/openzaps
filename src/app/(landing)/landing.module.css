@@ -1354,6 +1354,186 @@
 }
 
 /* ==========================================================================
+   Execution policy composer
+   ========================================================================== */
+
+.executionPolicyFeature {
+  display: grid;
+  grid-template-columns: minmax(0, 1.45fr) minmax(280px, 0.75fr);
+  gap: clamp(1rem, 2.4vw, 2rem);
+  align-items: stretch;
+}
+
+.executionPolicyStack {
+  display: grid;
+  gap: 1px;
+  padding: 1px;
+  background: var(--line-soft);
+  border: 1px solid var(--line);
+}
+
+.executionPolicyCard {
+  position: relative;
+  display: grid;
+  grid-template-columns: 3.5rem minmax(0, 1fr) auto;
+  gap: 1rem;
+  align-items: center;
+  min-height: 132px;
+  padding: 1.2rem 1.3rem;
+  background: rgba(8, 8, 8, 0.94);
+  overflow: hidden;
+  transition:
+    background-color 220ms cubic-bezier(0.22, 1, 0.36, 1),
+    box-shadow 220ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.executionPolicyCard::after {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 2px;
+  background: var(--accent);
+  opacity: 0;
+  transition: opacity 220ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.executionPolicyCard:hover {
+  background: rgba(255, 252, 0, 0.035);
+  box-shadow: inset 0 0 36px rgba(255, 252, 0, 0.025);
+}
+
+.executionPolicyCard:hover::after {
+  opacity: 1;
+}
+
+.executionPolicyIcon {
+  display: grid;
+  justify-items: center;
+  gap: 0.5rem;
+  color: var(--accent);
+}
+
+.executionPolicyIcon span {
+  font-size: 0.62rem;
+  letter-spacing: 0.12em;
+  color: var(--muted-2);
+}
+
+.executionPolicyIcon svg {
+  width: 1.55rem;
+  height: 1.55rem;
+}
+
+.executionPolicyCopy {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.executionPolicyField,
+.executionPolicyResultKicker {
+  font-family: var(--font-jetbrains-mono), ui-monospace, monospace;
+  font-size: 0.62rem;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  color: var(--accent-dim);
+}
+
+.executionPolicyCopy h3 {
+  font-family: var(--font-display), var(--font-inter), sans-serif;
+  font-size: clamp(1rem, 1.7vw, 1.25rem);
+  color: var(--fg);
+}
+
+.executionPolicyCopy p {
+  max-width: 38rem;
+  font-size: 0.82rem;
+  line-height: 1.55;
+  color: var(--muted);
+}
+
+.executionPolicyValue {
+  min-width: 8rem;
+  padding: 0.55rem 0.65rem;
+  border: 1px solid rgba(255, 252, 0, 0.22);
+  font-family: var(--font-jetbrains-mono), ui-monospace, monospace;
+  font-size: 0.72rem;
+  font-weight: 500;
+  text-align: center;
+  color: var(--accent);
+  background: rgba(255, 252, 0, 0.035);
+}
+
+.executionPolicyResult {
+  position: relative;
+  display: grid;
+  align-content: center;
+  gap: 1.25rem;
+  padding: clamp(1.5rem, 3vw, 2.3rem);
+  border: 1px solid rgba(255, 252, 0, 0.4);
+  background:
+    radial-gradient(circle at 100% 0%, rgba(255, 252, 0, 0.1), transparent 48%),
+    rgba(255, 252, 0, 0.025);
+  box-shadow: inset 0 0 50px rgba(255, 252, 0, 0.025);
+}
+
+.executionPolicyResult > strong {
+  font-family: var(--font-display), var(--font-inter), sans-serif;
+  font-size: clamp(1.45rem, 2.8vw, 2.2rem);
+  line-height: 1.08;
+  letter-spacing: -0.025em;
+  color: var(--fg);
+  text-wrap: balance;
+}
+
+.executionPolicyResult ol {
+  display: grid;
+  gap: 0.7rem;
+  margin: 0;
+  padding-left: 1.2rem;
+  font-size: 0.86rem;
+  line-height: 1.5;
+  color: var(--text);
+}
+
+.executionPolicyResult li::marker {
+  color: var(--accent);
+}
+
+.executionPolicyResult :global(.btn) {
+  justify-self: start;
+}
+
+.executionPolicyCaveat {
+  max-width: 62rem;
+  margin: 1.3rem 0 0;
+  padding-left: 1rem;
+  border-left: 1px solid var(--accent-dim);
+  font-size: 0.74rem;
+  line-height: 1.6;
+  color: var(--muted);
+}
+
+@media (max-width: 980px) {
+  .executionPolicyFeature {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 640px) {
+  .executionPolicyCard {
+    grid-template-columns: 2.8rem minmax(0, 1fr);
+    min-height: 0;
+    padding: 1rem;
+  }
+
+  .executionPolicyValue {
+    grid-column: 2;
+    justify-self: start;
+    min-width: 0;
+  }
+}
+
+/* ==========================================================================
    Zap cards
    ========================================================================== */
 

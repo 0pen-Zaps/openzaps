@@ -9,7 +9,7 @@ import styles from "./pot.module.css";
 export const metadata = pageMetadata({
   title: "0xZAPS lottery pot",
   description:
-    "Every automated zap run pays 1% of its output — 20% of that fee accrues here and converts to 0xZAPS. See the live prize, the tickets in the round, the conversions, and every prize paid out. Deposited funds are at risk.",
+    "Every automated Zap pays 1% of its output — 20% of that fee accrues here and converts to 0xZAPS. See the live prize, the tickets in the round, the conversions, and every prize paid out. Deposited funds are at risk.",
   path: "/pot",
 });
 
@@ -34,14 +34,14 @@ export default async function PotPage(): Promise<React.JSX.Element> {
         <p className="eyebrow">Protocol fee · 0xZAPS</p>
         <h1>The fee buys the token.</h1>
         <p className={styles.lede}>
-          Every automated run pays 1% of its output. Eighty percent goes to the executor that
+          Every automated Zap pays 1% of its output. Eighty percent goes to the executor that
           submitted it; the other twenty accrues here, becomes 0xZAPS, and is credited to the zap
-          owners whose runs paid for it. Nothing about that is a projection — it is the pot&apos;s
+          owners whose Zaps paid for it. Nothing about that is a projection — it is the pot&apos;s
           own balance, its own events, and the addresses below.
         </p>
         <p className={styles.heroLinks}>
           <Link href="/zap?view=automate">Create an automated zap</Link> ·{" "}
-          <Link href="/explore">See the runs that fed it</Link>
+          <Link href="/explore">See the Zaps that fed it</Link>
         </p>
       </section>
 

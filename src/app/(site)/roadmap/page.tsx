@@ -7,7 +7,7 @@ import styles from "../docs/docs.module.css";
 export const metadata = pageMetadata({
   title: "Roadmap",
   description:
-    "What OpenZaps runs today, what is being worked on, and what is not decided. This page gives no dates. One bounded aeWETH ↔ 0xZAPS route is live; nothing beyond it is committed.",
+    "What users can Zap today, what is being worked on, and what is not decided. Bounded swaps, stitched routes, liquidity, recurring series, price triggers, and execution-policy composition are live on Robinhood Chain.",
   path: "/roadmap",
   ogImage: "/og/roadmap.png",
   keywords: ["OpenZaps roadmap", "DeFi agent roadmap"],
@@ -16,13 +16,13 @@ export const metadata = pageMetadata({
 const phases = [
   [
     "Now",
-    "Live v1.1 on Robinhood Chain",
-    "Wallet connection, live v4 quotes, deterministic clones, EIP-712 execution, receipts, owner recovery, the activity dashboard, the visual builder, per-capsule onchain pages, and 0xZAPS holder utilities in the app. Two pools are deployable, each as a bounded single-step swap: aeWETH ↔ 0xZAPS and aeWETH ↔ USDG. Everything else in the builder saves as a design.",
+    "Live v1.1 + v3.1 on Robinhood Chain",
+    "Bounded swaps, stitched routes, aeWETH/USDG liquidity, recurring series, and price triggers are live. The visual builder composes typed route blocks with signed execution gas, gas-price, and executor-access policies; the three execution controls can be inserted as one undoable stack and carried into Zap now or Automate.",
   ],
   [
     "Next",
-    "More bounded routes",
-    "More policy templates and additional governed adapters. Each adapter and token needs its own review and fork coverage before it can carry funds, so none of them is committed.",
+    "More bounded routes and policies",
+    "More policy templates and governed adapters. Each new field, adapter, and token needs contract support, explicit disclosure, and fork coverage before it can carry funds, so none is committed.",
   ],
   [
     "Hardening",
@@ -32,7 +32,7 @@ const phases = [
   [
     "Beta",
     "Private submission and monitoring",
-    "Private submission, receipt monitoring, and alert delivery. None of that is built. Permissionless executor submission is: a recurring or triggered intent either pins one executor or leaves it open to anyone, signed intents publish to a shared relay executors poll, and the owner can always submit a run themselves.",
+    "Private submission, receipt monitoring, and alert delivery. None of that is built. Permissionless executor submission is: a recurring or triggered intent either pins one executor or leaves it open to anyone, signed intents publish to a shared relay executors poll, and the owner can always submit a Zap themselves.",
   ],
   [
     "Network",
@@ -72,7 +72,7 @@ export default function RoadmapPage(): React.JSX.Element {
         </div>
         <aside className={styles.heroCard}>
           <span>Current release</span>
-          <strong>Live v1.1 console</strong>
+          <strong>Live v1.1 + v3.1</strong>
         </aside>
       </section>
 

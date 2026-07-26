@@ -630,7 +630,7 @@ function actionForRouteKind(
       };
     case "lp-deposit":
       return {
-        title: "Provide liquidity",
+        title: "Zap in to liquidity",
         glyph: "pool",
         accent: "lp",
         emits: "lp",
@@ -638,7 +638,7 @@ function actionForRouteKind(
       };
     case "lp-withdraw":
       return {
-        title: "Withdraw liquidity",
+        title: "Zap out of liquidity",
         glyph: "poolOut",
         accent: "lp",
         emits: "token",
@@ -823,14 +823,14 @@ function capsuleLineage(version: string): { title: string; detail: string } {
     return {
       title: "Automated · v3.1",
       detail:
-        "Can hold a recurring series whose per-run floor is derived from an allowlisted price source at each run, or a one-shot price trigger. Any executor may submit a run the capsule owes.",
+        "Can hold a recurring series whose per-Zap floor is derived from an allowlisted price source for each Zap, or a one-shot price trigger. Any eligible executor may submit a Zap the capsule owes.",
     };
   }
   if (version.startsWith("3")) {
     return {
       title: "Automated · v3",
       detail:
-        "Can hold a recurring series or a one-shot price trigger. Any executor may submit a run the capsule owes; the chain refuses every run it does not.",
+        "Can hold a recurring series or a one-shot price trigger. Any eligible executor may submit a Zap the capsule owes; the chain refuses every Zap it does not.",
     };
   }
   return {

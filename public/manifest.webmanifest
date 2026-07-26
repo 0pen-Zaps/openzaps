@@ -2,7 +2,7 @@
   "id": "/",
   "name": "OpenZaps — bounded onchain execution for agents",
   "short_name": "OpenZaps",
-  "description": "Bounded policy capsules for agent-triggered DeFi execution. 0xZAPS is live on Clanker on Robinhood Chain.",
+  "description": "Compose DeFi routes with signed gas, gas-price, and executor limits, then Zap now, recur, or trigger them on Robinhood Chain.",
   "start_url": "/",
   "scope": "/",
   "lang": "en",

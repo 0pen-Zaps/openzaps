@@ -314,7 +314,7 @@ const AGENT_INTENTS = [
   {
     recipeId: "live-route",
     adapterId: "robinhood-v4-weth-zaps",
-    intent: "Buy 0xZAPS with 0.05 aeWETH",
+    intent: "Zap in to 0xZAPS with 0.05 aeWETH",
   },
   {
     recipeId: "provide-liquidity",

@@ -136,7 +136,7 @@ type Placed = { node: ChainNode; block: LegoBlock };
  */
 const SOURCE_REJECTIONS: Record<string, string> = {
   "recurring-stream":
-    "Recurring deposit sets a cadence, and a cadence is not expressible in the v1.1 policy this canvas deploys: that capsule holds one signed step that executes once, not a schedule. A cadence IS enforceable by the v3 capsule — build it in the Automate tab, where the interval and run count are bound onchain.",
+    "Recurring deposit sets a cadence, and a cadence is not expressible in the v1.1 policy this canvas deploys: that capsule holds one signed step, not a schedule. A cadence IS enforceable by the v3 capsule — build it in Automate, where the interval and total Zap count are bound onchain.",
   "pending-rewards":
     "Pending rewards emits a claimable, not tokens. The live route can only spend an ERC-20 amount pulled from the owner wallet, so there is nothing for it to swap.",
 };
@@ -176,7 +176,7 @@ function unenforcedGuardNote(block: LegoBlock, node: ChainNode): string | null {
       return `Spend ceiling (${node.params.cap ?? "?"}) is designed but not enforced: the v1.1 policy tracks no cumulative budget. The only onchain bound is the single step amount you sign.`;
     case "guard-executor":
       return node.params.access === "Owner only"
-        ? "Executor access is set to Owner only, but the v1.1 one-shot intent cannot restrict who submits a zero-fee execution. This owner-only choice is enforced by v3/v3.1 automation, not by Run once."
+        ? "Executor access is set to Owner only, but the v1.1 one-shot intent cannot restrict who submits a zero-fee execution. This owner-only choice is enforced by v3/v3.1 automation, not by Zap now."
         : null;
     default:
       return null;

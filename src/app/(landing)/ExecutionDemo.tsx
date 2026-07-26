@@ -186,7 +186,7 @@ export function ExecutionDemo(): React.JSX.Element {
               <span className={`${styles.demoRouteKicker} mono`}>
                 simulation ·{" "}
                 <span aria-live="polite">
-                  {phase === "idle" ? "ready" : phase === "running" ? "running" : "complete"}
+                  {phase === "idle" ? "ready" : phase === "running" ? "Zapping" : "complete"}
                 </span>
               </span>
               <ul>
@@ -239,7 +239,7 @@ export function ExecutionDemo(): React.JSX.Element {
                   <span>Open in builder</span>
                 </Link>
                 <Link href="/zap?view=sign" className="btn btnPrimary" data-magnetic>
-                  <span>Sign &amp; run</span>
+                  <span>Zap now</span>
                 </Link>
               </div>
             </div>

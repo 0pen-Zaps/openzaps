@@ -71,10 +71,10 @@ export const TOKENS = ["USDC", "WETH", "cbBTC", "DAI"] as const;
 export const POLICY_TEMPLATES: PolicyTemplate[] = [
   {
     id: "recurring-dca",
-    name: "Recurring DCA",
-    short: "Buy a fixed asset on a fixed cadence.",
+    name: "Recurring Zap in",
+    short: "Zap in to a fixed asset on a fixed cadence.",
     description:
-      "Recurring ERC-20 buys, with spend, cadence, recipient, slippage, and relayer fee cap stated before signing. The v1.1 capsule holds one signed step that executes once; the v3 capsule in the Automate tab binds the cadence onchain — one signature, interval and run count enforced by the contract.",
+      "Recurring ERC-20 Zaps, with spend, cadence, recipient, slippage, and relayer fee cap stated before signing. The v1.1 capsule holds one signed step; the v3 capsule in Automate binds cadence and total Zap count onchain under one signature.",
     recommendedModel: "deposit",
     category: "automation",
     production: "ready-preview",
@@ -91,8 +91,8 @@ export const POLICY_TEMPLATES: PolicyTemplate[] = [
   },
   {
     id: "pool-deposit",
-    name: "Launch pool deposit",
-    short: "Fund a specific launch or community pool.",
+    name: "Zap in to a launch pool",
+    short: "Deposit into one specific launch or community pool.",
     description:
       "A deposit into one named launch pool, with the recipient vault fixed and no arbitrary calldata. The live contracts currently deploy only bounded single-step swaps, so this template simulates and does not deploy.",
     recommendedModel: "safe",
@@ -131,8 +131,8 @@ export const POLICY_TEMPLATES: PolicyTemplate[] = [
   },
   {
     id: "guarded-exit",
-    name: "Guarded exit",
-    short: "Exit only if risk limits break.",
+    name: "Guarded Zap out",
+    short: "Zap out only if risk limits break.",
     description:
       "An exit triggered by a liquidity or oracle condition. Price-conditioned OPTIMIZATION zaps are live via the v3 trigger capsule (Automate tab); protective, liquidation-sensitive exits stay deferred until the protective-zap review completes — a missed protective trigger costs principal, and that class needs its own ADR.",
     recommendedModel: "safe",

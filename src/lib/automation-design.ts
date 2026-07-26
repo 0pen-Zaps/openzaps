@@ -86,7 +86,7 @@ export function reduceChainToAutomation(chain: readonly ChainNode[]): Automation
     return {
       deployable: false,
       reasons: [
-        "Automation is live only for the pinned aeWETH <-> 0xZAPS pool; this route can still run once in Sign & run.",
+        "Automation is live only for the pinned aeWETH <-> 0xZAPS pool; this route can still Zap now.",
       ],
     };
   }

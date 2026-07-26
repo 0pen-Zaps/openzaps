@@ -87,8 +87,8 @@ interface DashboardAutomationView extends DashboardAutomation {
 
 const ACTIVITY_LABELS: Record<WalletActivityEntry["kind"], string> = {
   created: "Created",
-  executed: "Run once",
-  automated: "Auto run",
+  executed: "Zapped",
+  automated: "AutoZap",
   recovered: "Recovered",
   revoked: "Revoked",
   "series-finished": "Completed",
@@ -316,7 +316,7 @@ export function ProfileDashboard(): React.JSX.Element {
       ));
       setLocalActions((rows) => rows.filter((row) => row.id !== localActionId));
       setConfirmAction(null);
-      setNotice("Authorization revoked onchain. That signed nonce or series can never run again.");
+      setNotice("Authorization revoked onchain. That signed nonce or series can never Zap again.");
       await refreshDashboard();
     } catch (cause) {
       const message = readableError(cause);
@@ -417,8 +417,8 @@ export function ProfileDashboard(): React.JSX.Element {
           </div>
           <div className={styles.connectPreview} aria-label="Profile capabilities">
             <PreviewRow glyph="coins" label="Holdings" value="balances · priced subtotal · sources" />
-            <PreviewRow glyph="clock" label="History" value="creations · runs · recoveries" />
-            <PreviewRow glyph="repeat" label="Auto zaps" value="recurring · price triggers" />
+            <PreviewRow glyph="clock" label="History" value="creations · Zaps · recoveries" />
+            <PreviewRow glyph="repeat" label="AutoZaps" value="recurring · price triggers" />
             <PreviewRow glyph="shield" label="Control" value="revoke · replace · recover" />
             <p>No account is uploaded to an OpenZaps profile database. The connected address selects public balances, chain logs, onchain quotes, and its relayed executor records.</p>
           </div>
@@ -485,7 +485,7 @@ export function ProfileDashboard(): React.JSX.Element {
 
       <section className={`container ${styles.metrics}`} aria-label="Wallet zap metrics">
         <Metric value={profile ? String(profile.stats.zapsCreated) : "—"} label="Capsules created" />
-        <Metric value={profile ? String(totalRuns) : "—"} label="Confirmed runs" />
+        <Metric value={profile ? String(totalRuns) : "—"} label="Confirmed Zaps" />
         <Metric value={String(activeAutomations)} label="Live authorizations" />
         <Metric value={profile ? String(profile.stats.authorizationsRevoked) : "—"} label="Revocations" />
       </section>
@@ -540,7 +540,7 @@ export function ProfileDashboard(): React.JSX.Element {
                   {confirm === "revoke" ? (
                     <div className={styles.confirmBox} role="alert">
                       <strong>Revoke this authorization?</strong>
-                      <p>This writes `invalidateNonce` onchain. It cannot be undone, and the existing signature can never run again. Capsule funds stay in place.</p>
+                      <p>This writes `invalidateNonce` onchain. It cannot be undone, and the existing signature can never Zap again. Capsule funds stay in place.</p>
                       <div>
                         <button className="btn btnGhost" disabled={busy !== null} onClick={() => setConfirmAction(null)} type="button">Keep live</button>
                         <button className="btn btnPrimary" data-busy={busy === `revoke:${automation.key}`} disabled={chainMismatch || busy !== null} onClick={() => void submitRevoke(automation)} type="button">
@@ -589,7 +589,7 @@ export function ProfileDashboard(): React.JSX.Element {
         <div className={styles.filters} role="group" aria-label="Filter activity">
           {(["all", "executions", "automation", "control"] as const).map((value) => (
             <button className={filter === value ? styles.filterOn : styles.filter} onClick={() => setFilter(value)} type="button" key={value}>
-              {value === "all" ? "All activity" : value === "executions" ? "Runs" : value === "automation" ? "Auto runs" : "Create / control"}
+              {value === "all" ? "All activity" : value === "executions" ? "Zaps" : value === "automation" ? "AutoZaps" : "Create / control"}
             </button>
           ))}
         </div>
@@ -729,16 +729,16 @@ function automationTerms(automation: DashboardAutomation): string {
   const intent = automation.parsed;
   if (!intent) return "Unsigned capsule";
   if (intent.mode === "recurring") {
-    return `${formatInterval(intent.interval)} · ${intent.maxRuns ?? "?"} runs · expires ${formatDeadline(intent.deadline)}`;
+    return `${formatInterval(intent.interval)} · ${intent.maxRuns ?? "?"} Zaps · expires ${formatDeadline(intent.deadline)}`;
   }
   return `${intent.thresholdBps === null ? "?" : intent.thresholdBps / 100}% signed move · expires ${formatDeadline(intent.deadline)}`;
 }
 
 function automationProgress(automation: DashboardAutomationView): string {
   if (!automation.parsed) return "not signed";
-  if (automation.parsed.mode === "trigger") return automation.chain?.nonceUsed ? "nonce spent" : "one run";
+  if (automation.parsed.mode === "trigger") return automation.chain?.nonceUsed ? "nonce spent" : "one Zap";
   const runs = automation.chain?.runs;
-  return runs === null || runs === undefined ? "unavailable" : `${runs} / ${automation.parsed.maxRuns ?? "?"} runs`;
+  return runs === null || runs === undefined ? "unavailable" : `${runs} / ${automation.parsed.maxRuns ?? "?"} Zaps`;
 }
 
 function replacementHref(automation: DashboardAutomation): string {
@@ -857,7 +857,7 @@ function CapsuleCard({ zap }: { zap: WalletZapSummary }): React.JSX.Element {
     <Link className={styles.capsuleCard} href={`/explore/${zap.address}`}>
       <span className={styles.capsuleLineage}>{zap.lineage}</span>
       <code>{shortAddress(zap.address)}</code>
-      <strong>{zap.executionCount + zap.automatedRunCount} confirmed runs</strong>
+      <strong>{zap.executionCount + zap.automatedRunCount} confirmed Zaps</strong>
       <small>{zap.revocationCount} revoked · {zap.recoveryCount} recoveries</small>
       <span>Open capsule →</span>
     </Link>

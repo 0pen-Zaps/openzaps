@@ -165,7 +165,7 @@ export const BLOCKS: readonly LegoBlock[] = [
     category: "source",
     blurb: "Draw the same amount on a cadence.",
     detail:
-      "The live DCA source. Each execution spends one fixed instalment; cadence and run count are signed into the v3.1 intent, so an executor cannot run early or exceed the series.",
+      "The live DCA source. Each Zap spends one fixed instalment; cadence and total Zap count are signed into the v3.1 intent, so an executor cannot Zap early or exceed the series.",
     accepts: null,
     emits: "token",
     glyph: "repeat",
@@ -467,7 +467,7 @@ export const BLOCKS: readonly LegoBlock[] = [
     kind: "guard",
     category: "guard",
     blurb: "Fire once when 0xZAPS crosses one signed threshold.",
-    detail: "The Automate handoff maps this exact one-sided condition to the live v3 allowlisted pool-price source. Sign & run does not enforce it and labels that distinction before handoff.",
+    detail: "The Automate handoff maps this exact one-sided condition to the live v3 allowlisted pool-price source. Zap now does not enforce it and labels that distinction before handoff.",
     accepts: null,
     emits: null,
     glyph: "spark",
@@ -1338,8 +1338,8 @@ export const RECIPES: readonly ZapRecipe[] = [
     // otherwise leave a badged front door pointing nowhere. Everything after
     // them is a design: it compiles and simulates but cannot be deployed today.
     id: "live-route",
-    name: "Buy 0xZAPS",
-    tagline: "The original bounded route: aeWETH into 0xZAPS, one signed step.",
+    name: "Zap in to 0xZAPS",
+    tagline: "Buy 0xZAPS with aeWETH through the original bounded route, one signed step.",
     accent: "token",
     blocks: [
       ["wallet-balance", { asset: "WETH", amount: "0.05" }],
@@ -1355,8 +1355,8 @@ export const RECIPES: readonly ZapRecipe[] = [
     // route robinhood-v4-zaps-weth and deploys today with no new broadcast —
     // it is the buy blueprint's counterpart, "take profit" back to aeWETH.
     id: "sell-zaps",
-    name: "Sell 0xZAPS",
-    tagline: "The bounded route in reverse: 0xZAPS back into aeWETH, one signed step.",
+    name: "Zap out of 0xZAPS",
+    tagline: "Sell 0xZAPS back to aeWETH through the bounded route, one signed step.",
     accent: "token",
     blocks: [
       ["wallet-balance", { asset: "0xZAPS", amount: "1000000" }],
@@ -1371,8 +1371,8 @@ export const RECIPES: readonly ZapRecipe[] = [
     // sized by the measured output of the last. In the canvas it is simply a
     // swap — the stitching is the adapter's business, which is the point.
     id: "stitched-route",
-    name: "Stitched swap",
-    tagline: "USDG into 0xZAPS through aeWETH — two pools, one signed step.",
+    name: "Zap in from USDG",
+    tagline: "Buy 0xZAPS with USDG through aeWETH, two pools in one signed step.",
     accent: "token",
     blocks: [
       ["wallet-balance", { asset: "USDG", amount: "25" }],
@@ -1386,8 +1386,8 @@ export const RECIPES: readonly ZapRecipe[] = [
     // LP shares (ozRANGE) out, fees compounding to holders. Ends on hold-lp —
     // the shares ARE the position, and they settle to the owner wallet.
     id: "provide-liquidity",
-    name: "Provide liquidity",
-    tagline: "aeWETH into the full-range aeWETH/USDG position, shares to you.",
+    name: "Zap in to liquidity",
+    tagline: "Deposit aeWETH into the full-range aeWETH/USDG position, shares to you.",
     accent: "lp",
     blocks: [
       ["wallet-balance", { asset: "WETH", amount: "0.02" }],
@@ -1401,8 +1401,8 @@ export const RECIPES: readonly ZapRecipe[] = [
     // withdraw capsule is funded with shares, not tokens) and settles in one
     // currency.
     id: "exit-liquidity",
-    name: "Exit liquidity",
-    tagline: "Burn ozRANGE shares back to USDG — principal plus accrued fees.",
+    name: "Zap out of liquidity to USDG",
+    tagline: "Withdraw ozRANGE shares to USDG, including principal and accrued fees.",
     accent: "lp",
     blocks: [
       ["lp-position", { asset: "ozRANGE", amount: "1" }],
@@ -1415,8 +1415,8 @@ export const RECIPES: readonly ZapRecipe[] = [
     // Direct aeWETH/USDG pool, the other pinned pair. Takes profit out of ETH
     // exposure into a stable without touching 0xZAPS at all.
     id: "weth-usdg",
-    name: "Take profit to USDG",
-    tagline: "aeWETH into USDG through the pinned stable pool, one signed step.",
+    name: "Zap out of aeWETH to USDG",
+    tagline: "Sell aeWETH to USDG through the pinned stable pool, one signed step.",
     accent: "token",
     blocks: [
       ["wallet-balance", { asset: "WETH", amount: "0.05" }],
@@ -1430,8 +1430,8 @@ export const RECIPES: readonly ZapRecipe[] = [
     // adapter runs 0xZAPS → aeWETH → USDG inside ONE step, each hop sized by the
     // measured output of the last. The natural cash-out for the token.
     id: "stitched-exit",
-    name: "Cash out to USDG",
-    tagline: "0xZAPS into USDG through aeWETH — two pools, one signed step.",
+    name: "Zap out of 0xZAPS to USDG",
+    tagline: "Sell 0xZAPS to USDG through aeWETH, two pools in one signed step.",
     accent: "token",
     blocks: [
       ["wallet-balance", { asset: "0xZAPS", amount: "1000000" }],
@@ -1444,8 +1444,8 @@ export const RECIPES: readonly ZapRecipe[] = [
     // The other side of the range vault's deposit leg: same full-range aeWETH/USDG
     // position, entered from the stable rather than from aeWETH.
     id: "provide-liquidity-usdg",
-    name: "Provide liquidity from USDG",
-    tagline: "USDG into the full-range aeWETH/USDG position, shares to you.",
+    name: "Zap in to liquidity from USDG",
+    tagline: "Deposit USDG into the full-range aeWETH/USDG position, shares to you.",
     accent: "lp",
     blocks: [
       ["wallet-balance", { asset: "USDG", amount: "25" }],
@@ -1457,8 +1457,8 @@ export const RECIPES: readonly ZapRecipe[] = [
   {
     // The stable pool's other side: back into ETH exposure from USDG.
     id: "usdg-weth",
-    name: "Buy aeWETH with USDG",
-    tagline: "USDG into aeWETH through the pinned stable pool, one signed step.",
+    name: "Zap in to aeWETH",
+    tagline: "Buy aeWETH with USDG through the pinned stable pool, one signed step.",
     accent: "token",
     blocks: [
       ["wallet-balance", { asset: "USDG", amount: "25" }],
@@ -1472,8 +1472,8 @@ export const RECIPES: readonly ZapRecipe[] = [
     // earns nothing — it turns USDG into a transferable share and back. Its CTA
     // carries the seeding disclosure, because /app refuses an unseeded vault.
     id: "vault-park",
-    name: "Wrap USDG into ozUSDG",
-    tagline: "USDG into the vault's ERC-4626 share. A receipt, not a yield position.",
+    name: "Zap in to ozUSDG",
+    tagline: "Deposit USDG for the vault's ERC-4626 receipt. This is not a yield position.",
     accent: "receipt",
     blocks: [
       ["wallet-balance", { asset: "USDG", amount: "500" }],
@@ -1484,8 +1484,8 @@ export const RECIPES: readonly ZapRecipe[] = [
     // The withdraw leg's other settlement currency: the same ozRANGE shares, out
     // to aeWETH instead of USDG.
     id: "exit-liquidity-weth",
-    name: "Exit liquidity to aeWETH",
-    tagline: "Burn ozRANGE shares back to aeWETH — principal plus accrued fees.",
+    name: "Zap out of liquidity to aeWETH",
+    tagline: "Withdraw ozRANGE shares to aeWETH, including principal and accrued fees.",
     accent: "lp",
     blocks: [
       ["lp-position", { asset: "ozRANGE", amount: "1" }],
@@ -1496,8 +1496,8 @@ export const RECIPES: readonly ZapRecipe[] = [
   },
   {
     id: "dca",
-    name: "Recurring DCA",
-    tagline: "Buy the same aeWETH size every week under one bounded standing intent.",
+    name: "Recurring Zap in",
+    tagline: "Zap the same aeWETH size into 0xZAPS every week under one bounded standing intent.",
     accent: "token",
     blocks: [
       ["recurring-stream", { asset: "WETH", amount: "0.001", cadence: "weekly", runs: 10 }],
@@ -1513,8 +1513,8 @@ export const RECIPES: readonly ZapRecipe[] = [
   },
   {
     id: "price-trigger",
-    name: "Price-triggered buy",
-    tagline: "Buy once when 0xZAPS rises 10%, with a signed 30-day expiry.",
+    name: "Triggered Zap in",
+    tagline: "Zap in once when 0xZAPS rises 10%, with a signed 30-day expiry.",
     accent: "token",
     blocks: [
       ["wallet-balance", { asset: "WETH", amount: "0.001" }],

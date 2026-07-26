@@ -203,7 +203,7 @@ export default async function ZapDetailPage({ params }: Params): Promise<React.J
             <p>
               The reads against Robinhood Chain failed for this address, so nothing about it is claimed here.
               This page is not saying it is a deployed capsule, that it holds anything, or that it has ever
-              run — only that the reads failed. Blockscout reads the same chain independently.
+              executed — only that the reads failed. Blockscout reads the same chain independently.
             </p>
           )}
           <div className={styles.heroActions}>

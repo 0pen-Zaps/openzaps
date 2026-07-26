@@ -10,7 +10,7 @@ import styles from "./docs.module.css";
 export const metadata = pageMetadata({
   title: "Developer docs & security",
   description:
-    "How an OpenZaps policy capsule is drafted, simulated, signed as an EIP-712 intent, submitted, and revoked — and what the capsule refuses to do, what an executor could still try, and what has not been reviewed. Swaps, liquidity, recurring series, and price triggers are live on Robinhood Chain. Deposited funds are at risk.",
+    "How OpenZaps composes routes with execution gas, gas-price, and executor-access policies; reduces them into EIP-712 intents; and simulates, signs, submits, monitors, and revokes each capsule. Swaps, liquidity, recurring series, and price triggers are live on Robinhood Chain. Deposited funds are at risk.",
   path: "/docs",
   ogImage: "/og/docs.png",
   keywords: [
@@ -19,6 +19,8 @@ export const metadata = pageMetadata({
     "simulation API",
     "EIP-712 intent docs",
     "OpenZaps security",
+    "execution policy blocks",
+    "DeFi policy composer",
     "DeFi threat model",
     "smart contract security architecture",
   ],
@@ -27,9 +29,30 @@ export const metadata = pageMetadata({
 const lifecycle = [
   ["1", "Draft policy", "Pick a template and fill the draft fields: authority model, spend ceiling, cadence, adapter, recipient, submitter, and postconditions."],
   ["2", "Simulate", "Deterministic checks run before any wallet prompt. A blocked policy does not proceed. A warned policy proceeds only after review."],
-  ["3", "Review signature", "The typed intent binds chain, owner, recipient, nonce, deadline, policy hash, min-out, relayer fee cap, and gas price. None of them can change after signing."],
+  ["3", "Review signature", "The typed intent binds chain, owner, recipient, nonce, deadline, policy hash, min-out, execution gas, gas-price ceiling, and executor access where the contract supports it. None can change after signing."],
   ["4", "Submit", "The owner submits from their own wallet. The v1.1 policy cannot bind a submitter, so whoever executes chooses the mempool path."],
   ["5", "Monitor and revoke", "Receipts, allowance checks, balance deltas, alerts, and the owner's revoke and exit paths stay attached to the capsule. Its page at /explore/<address> reports what the contract stores and what its own logs say, and nothing else."],
+] as const;
+
+const executionPolicies = [
+  [
+    "Execution gas limit",
+    "maxGas",
+    "Zap now + Automate",
+    "Caps gas available to a Zap. If a design contains more than one gas-limit block, the lowest valid cap wins.",
+  ],
+  [
+    "Gas price cap",
+    "maxFeePerGas",
+    "Zap now + Automate",
+    "Rejects a Zap above the signed fee-per-gas ceiling. Multiple blocks resolve to the lowest valid price.",
+  ],
+  [
+    "Executor access",
+    "executor",
+    "Automate (v3/v3.1)",
+    "Keeps execution open to anyone or restricts it to the owner. Owner only is the tighter result when blocks are combined.",
+  ],
 ] as const;
 
 // The security model used to be its own page; it now lives here as the last
@@ -67,7 +90,7 @@ export default function DocsPage(): React.JSX.Element {
       <section className={`container ${styles.hero}`}>
         <div>
           <span className="eyebrow">Developer docs</span>
-          <h1>Everything an execution can do is fixed before you sign it.</h1>
+          <h1>Everything a Zap can do is fixed before you sign it.</h1>
           <p>
             An OpenZap is a contract that holds funds and executes one policy its owner signed. This page documents the
             policy fields, the simulation API, and the execution lifecycle. Onchain actions are irreversible, so
@@ -91,6 +114,7 @@ export default function DocsPage(): React.JSX.Element {
       <section className={`container ${styles.grid}`}>
         <nav className={styles.toc} aria-label="Documentation sections">
           <a href="#quickstart">Quickstart</a>
+          <a href="#composer">Execution policy composer</a>
           <a href="#token">0xZAPS utility</a>
           <a href="#policy">Policy schema</a>
           <a href="#api">Simulation API</a>
@@ -120,14 +144,12 @@ export default function DocsPage(): React.JSX.Element {
           <section className={styles.section} id="quickstart">
             <h2>Quickstart</h2>
             <p>
-              The product lives at /zap: the Design view is the visual builder, Sign &amp; run is the console that
-              creates, funds, and executes v1.1 capsules, and Automate is the v3 console for recurring and
-              price-triggered capsules — one page, three tabs. The builder compiles a design and names
-              every guard the live policy does not bind; a design that reduces to a deployed route (swaps, the
-              stitched USDG ↔ 0xZAPS route, aeWETH/USDG liquidity provide/withdraw) hands Sign &amp; run a prefilled
-              route, amount, and slippage cap. Anything else saves as a design and cannot be deployed today. An
-              agent, a backend, or a Mini App can call the simulation API instead. Simulation never broadcasts a
-              transaction and never asks for wallet authority.
+              The product lives at /zap: Design is the visual builder, Zap now creates and executes v1.1
+              capsules, and Automate creates v3/v3.1 recurring or price-triggered capsules. The builder compiles a
+              design and names every guard the selected contract does not bind. A deployed route carries its amount,
+              slippage, execution gas, and gas-price cap into Zap now. Automatable designs also carry cadence,
+              Zap count, trigger terms, and executor access into Automate. Anything else saves as a design and cannot
+              deploy today. Simulation never broadcasts a transaction or asks for wallet authority.
             </p>
             <div className={styles.codeBlock}>
               <pre>{`curl -X POST ${SITE_URL}/api/policies/simulate \\
@@ -147,6 +169,50 @@ export default function DocsPage(): React.JSX.Element {
             </div>
           </section>
 
+          <section className={styles.section} id="composer">
+            <h2>Execution policy composer</h2>
+            <p>
+              The block catalog now has three live execution-policy controls. The builder can insert every missing
+              control as one stack, in one history checkpoint. One Undo restores the chain that existed before the
+              stack was added. Each card stays independently editable after insertion.
+            </p>
+            <div className={styles.table}>
+              {executionPolicies.map(([block, field, surface, behavior], index) => (
+                <Reveal className={styles.row} delay={index * 45} key={field}>
+                  <strong>{block}</strong>
+                  <p>
+                    <code>{field}</code> · {surface}. {behavior}
+                  </p>
+                </Reveal>
+              ))}
+            </div>
+            <div className={styles.codeBlock}>
+              <pre>{`Wallet balance
+  → Execution gas limit   3,000,000 gas
+  → Gas price cap         10 gwei
+  → Executor access       Anyone | Owner only
+  → Swap
+  → Send
+
+Zap now handoff:
+  maxGas=3000000&maxFeeGwei=10
+
+Automate handoff:
+  maxGas=3000000&maxFeeGwei=10&executor=owner`}</pre>
+            </div>
+            <p>
+              Gas limit and gas price cap are signed in v1.1 one-shot intents and v3/v3.1 standing intents. Owner-only
+              executor access is enforced by v3/v3.1. The v1.1 one-shot capsule has no submitter restriction, so the
+              builder leaves that field out of its Zap now handoff and shows the limitation before the user proceeds.
+              Invalid or out-of-range handoff values fail closed instead of falling back silently.
+            </p>
+            <div className={styles.heroActions}>
+              <Link className="btn btnPrimary" href="/zap?view=design">
+                Open the composer
+              </Link>
+            </div>
+          </section>
+
           <TokenUtilityPanel id="token" />
 
           <section className={styles.section} id="policy">
@@ -162,6 +228,8 @@ export default function DocsPage(): React.JSX.Element {
                 ["amount / maxSpend / frequency", "Draft spend and cadence fields. The v1.1 capsule binds the single step amount and tracks no cumulative budget or schedule."],
                 ["adapter", "An allowlisted adapter. There is no field for an arbitrary target plus calldata, so there is nothing to point at one."],
                 ["allowedSubmitters", "A draft field. The v1.1 policy cannot bind a submitter, so whoever executes the capsule chooses the path."],
+                ["maxGas / maxFeePerGas", "Signed execution ceilings carried from the composer into one-shot and standing intents. A run outside either cap reverts."],
+                ["executor", "A v3/v3.1 standing-intent field. Zero address leaves submission open; owner-only pins the connected owner wallet. v1.1 does not bind a submitter."],
                 ["postconditions", "Balance-delta, allowance-reset, recipient, and tracked-asset assertions, checked after the adapter returns. A failed assertion reverts the execution."],
               ].map(([field, detail], i) => (
                 <Reveal className={styles.row} delay={i * 45} key={field}>
@@ -220,23 +288,23 @@ export default function DocsPage(): React.JSX.Element {
             <h2>Automation &amp; the executor economy (v3)</h2>
             <p>
               The v3 capsule adds two standing execution types to the one-shot policy. Both are owner-signed once and
-              condition-gated <em>by the contract</em>, so submission is permissionless: any executor can submit a run
-              the capsule owes, and no executor can submit one it does not.
+              condition-gated <em>by the contract</em>, so an eligible executor can submit a Zap the capsule owes, and
+              the chain rejects every Zap it does not.
             </p>
             <div className={styles.twoCol}>
               <article>
                 <h3>Recurring</h3>
                 <p>
-                  One EIP-712 signature authorizes up to <code>maxRuns</code> executions of the frozen route, at least{" "}
-                  <code>interval</code> seconds apart, inside a signed window. Running early reverts
+                  One EIP-712 signature authorizes up to <code>maxRuns</code> Zaps over the frozen route, at least{" "}
+                  <code>interval</code> seconds apart, inside a signed window. Submitting early reverts
                   (<code>IntervalNotElapsed</code>); exhaustion consumes the series; <code>invalidateNonce</code>{" "}
                   cancels it at any time.
                 </p>
                 <p>
                   A series signs no absolute floor. Under v3.1 the owner signs an allowlisted price source and a
-                  slippage band, and the capsule derives each run&apos;s minimum output from that source&apos;s spot{" "}
-                  <em>at execution</em> — so a floor agreed weeks ago still protects the run happening now, and a
-                  series cannot go stale into a revert.
+                  slippage band, and the capsule derives each Zap&apos;s minimum output from that source&apos;s spot{" "}
+                  <em>at execution</em> — so a floor agreed weeks ago still protects the Zap happening now, and a
+                  series does not carry a stale floor into its next Zap.
                 </p>
               </article>
               <article>
@@ -245,15 +313,15 @@ export default function DocsPage(): React.JSX.Element {
                   One signature arms one execution against an allowlisted onchain price source. Until the market moves
                   past the signed threshold the capsule reverts (<code>TriggerNotMet</code>); the submitter cannot
                   supply a price. The spot threshold is an arming condition, not a fair-value oracle — the signed
-                  net-output floor still bounds every run.
+                  net-output floor still bounds every Zap.
                 </p>
               </article>
             </div>
             <p>
-              <strong>Fees.</strong> Each automated run pays 1% of its measured output at settlement: 80% to the
+              <strong>Fees.</strong> Each automated Zap pays 1% of its measured output at settlement: 80% to the
               executor that submitted it, 20% to the protocol lottery pot, converted to 0xZAPS through the pinned
               bounded adapter by a later, permissionless keeper call. Floors are enforced <em>net</em> of the fee —
-              both the absolute minimum-out a price trigger signs and the per-run floor a recurring capsule
+              both the absolute minimum-out a price trigger signs and the per-Zap floor a recurring capsule
               derives from spot. Every fee contribution credits
               lottery tickets to the capsule owner; the pot pays prizes only in 0xZAPS and only to ticket holders —
               there is no owner drain. Winner selection is a deferred, governance-gated decision until a randomness
@@ -269,8 +337,9 @@ export default function DocsPage(): React.JSX.Element {
               change to already-deployed factory bytecode.
             </p>
             <p>
-              Build one in the <Link href="/zap?view=automate">Automate tab</Link>. The signed intent exports as a
-              JSON file any executor can serve; the reference executor daemon lives in{" "}
+              Compose one in the <Link href="/zap?view=design">Design tab</Link>, then review it in{" "}
+              <Link href="/zap?view=automate">Automate</Link>. The signed intent exports as a JSON file an eligible
+              executor can serve; the reference executor daemon lives in{" "}
               <code>executor/</code> in the repository. The v3 contracts are live on Robinhood Chain.
             </p>
           </section>

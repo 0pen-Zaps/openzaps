@@ -100,8 +100,8 @@ const ROUTE_KIND_LABEL: Record<Route["kind"], string> = {
   "swap-route": "two pools, one step",
   "vault-deposit": "vault deposit",
   "vault-redeem": "vault redeem",
-  "lp-deposit": "provide liquidity",
-  "lp-withdraw": "withdraw liquidity",
+  "lp-deposit": "Zap in to liquidity",
+  "lp-withdraw": "Zap out of liquidity",
 };
 
 type BusyAction =
@@ -1328,10 +1328,10 @@ export default function AppPage(): React.JSX.Element {
       : !zap
         ? "2. Create zap"
         : executionComplete
-          ? "Execution confirmed"
+          ? "Zap confirmed"
           : !funded
             ? "3. Fund zap"
-            : "4. Sign & execute";
+            : "4. Sign & Zap";
 
   return (
     <main className={styles.page} id="main">
@@ -1512,7 +1512,7 @@ export default function AppPage(): React.JSX.Element {
           </span>
         </div>
         <div className={styles.tokenActions}>
-          <a className="btn btnPrimary" href={LINKS.buy} target="_blank" rel="noreferrer">Buy on Clanker ↗</a>
+          <a className="btn btnPrimary" href={LINKS.buy} target="_blank" rel="noreferrer">Zap in via Clanker ↗</a>
           <button className="btn btnGhost" onClick={() => void copyTokenAddress()} type="button">Copy address</button>
           <button data-busy={busy === "watch"} className="btn btnGhost" disabled={busy !== null} onClick={() => void watchToken()} type="button">
             {busy === "watch" ? "Opening wallet…" : "Add to wallet"}
@@ -1634,8 +1634,8 @@ export default function AppPage(): React.JSX.Element {
             <FlowStep
               number="2"
               glyph="coins"
-              title={`Fund with ${inputSymbol} — and run it`}
-              detail="Direct ERC-20 transfer only. No standing wallet allowance is created. With a reviewed quote in hand, Fund & run does the transfer and the signed execution back to back, so a funded zap never sits idle."
+              title={`Fund with ${inputSymbol} — then Zap`}
+              detail="Direct ERC-20 transfer only. No standing wallet allowance is created. With a reviewed quote in hand, Fund & Zap does the transfer and signed execution back to back, so a funded capsule never sits idle."
               done={funded}
             >
               {canWrapInput && (
@@ -1651,19 +1651,19 @@ export default function AppPage(): React.JSX.Element {
                   disabled={!zap || !protocolReady || wrongNetwork || funded || busy !== null || chainedRun || reviewedQuote === null || executionComplete}
                   onClick={() => void fundAndRun()}
                   type="button"
-                  title={reviewedQuote === null ? "Request a live quote first — running signs against the minimum you reviewed." : undefined}
+                  title={reviewedQuote === null ? "Request a live quote first — Zapping signs against the minimum you reviewed." : undefined}
                 >
                   <BlockGlyph name="bolt" className={styles.btnGlyph} />
-                  {chainedRun ? (busy === "execute" ? "Running…" : "Funding…") : "Fund & run"}
+                  {chainedRun ? (busy === "execute" ? "Zapping…" : "Funding…") : "Fund & Zap"}
                 </button>
               )}
               <button data-busy={busy === "fund"} className={funded ? "btn btnPrimary" : "btn btnGhost"} disabled={!zap || !protocolReady || wrongNetwork || funded || busy !== null || chainedRun} onClick={() => void fundZap()} type="button">
                 {busy === "fund" && !chainedRun ? "Funding…" : funded ? "Funded" : "Fund only"}
               </button>
             </FlowStep>
-            <FlowStep number="3" glyph="bolt" title="Sign and execute" detail="Requires a reviewed live quote; execution aborts if the price drops below your displayed minimum. The EIP-712 intent expires in ten minutes and caps gas and fee price." done={executionComplete}>
+            <FlowStep number="3" glyph="bolt" title="Sign and Zap" detail="Requires a reviewed live quote; the Zap reverts if the price drops below your displayed minimum. The EIP-712 intent expires in ten minutes and caps gas and fee price." done={executionComplete}>
               <button data-busy={busy === "execute"} className="btn btnPrimary" disabled={!protocolReady || wrongNetwork || !funded || reviewedQuote === null || busy !== null || chainedRun || executionComplete} onClick={() => void executeZap()} type="button">
-                {busy === "execute" ? "Executing…" : executionComplete ? "Execution confirmed" : "Sign & execute"}
+                {busy === "execute" ? "Zapping…" : executionComplete ? "Zap confirmed" : "Sign & Zap"}
               </button>
             </FlowStep>
           </div>

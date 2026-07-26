@@ -218,7 +218,7 @@ export default async function ZapsFeedPage(): Promise<React.JSX.Element> {
                   <span className={styles.listOwner}>owner {shortAddress(zap.owner)}</span>
                   <span className={styles.listPolicy}>{zap.lineage} · policy {shortHex(zap.policyHash)}</span>
                   <span className={styles.listRuns} data-active={zap.executionCount > 0}>
-                    {zap.executionCount === 1 ? "1 execution" : `${zap.executionCount} executions`}
+                    {zap.executionCount === 1 ? "1 Zap" : `${zap.executionCount} Zaps`}
                   </span>
                   <span className={styles.listTime} suppressHydrationWarning>
                     {/* Rendered in the server's timezone (UTC on Vercel) and again in

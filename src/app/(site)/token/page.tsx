@@ -129,7 +129,7 @@ export default function TokenPage(): React.JSX.Element {
           you trade it or add it to a wallet.
         </p>
         <div className={styles.heroActions}>
-          <BuyButton destination="openzaps" label="Buy with OpenZaps" size="lg" />
+          <BuyButton destination="openzaps" label="Zap in with OpenZaps" size="lg" />
           <BuyButton label="Buy on Clanker" size="lg" variant="ghost" />
           <a className="btn btnGhost btnLg" href={LINKS.dexscreener} target="_blank" rel="noreferrer">
             Dexscreener ↗
@@ -186,7 +186,7 @@ export default function TokenPage(): React.JSX.Element {
           ))}
         </div>
         <div className={styles.buyRow}>
-          <BuyButton destination="openzaps" label="Buy with OpenZaps" size="lg" />
+          <BuyButton destination="openzaps" label="Zap in with OpenZaps" size="lg" />
           <BuyButton label="Buy on Clanker" size="lg" variant="ghost" />
         </div>
       </section>
@@ -268,10 +268,10 @@ export default function TokenPage(): React.JSX.Element {
       <section className={`container ${styles.cta}`}>
         <div className={styles.ctaInner}>
           <h2>
-            Check the address. Then trade <span className="gradientText">{TOKEN.symbol}</span>.
+            Check the address. Then Zap in to <span className="gradientText">{TOKEN.symbol}</span>.
           </h2>
           <div className={styles.heroActions}>
-            <BuyButton destination="openzaps" label="Buy with OpenZaps" size="lg" />
+            <BuyButton destination="openzaps" label="Zap in with OpenZaps" size="lg" />
             <BuyButton label="Clanker market" size="lg" variant="ghost" />
           </div>
           <p className={styles.disclaimer}>

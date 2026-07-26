@@ -15,7 +15,7 @@ import appStyles from "./app.module.css";
  * The one product surface: design a zap, sign it, or automate it — same page.
  *
  * Four views, one URL. "Start" is the intent-first entry. "Compose" is the visual builder — the block palette,
- * canvas, and readout that used to live at /build. "Run once" is the policy
+ * canvas, and readout that used to live at /build. "Zap now" is the policy
  * console that creates, funds, and executes v1.1 capsules. "Automate" is the
  * v3 console: recurring and price-triggered capsules whose cadence/condition
  * the contract enforces, executed by permissionless executors for a 1% fee.
@@ -150,8 +150,8 @@ export function UseSurface(): React.JSX.Element {
             className={view === "sign" ? appStyles.segOn : appStyles.seg}
             onClick={() => select("sign")}
           >
-            Run once
-            <em>create, fund, execute</em>
+            Zap now
+            <em>create, fund, Zap</em>
           </button>
           <button
             ref={automateTabRef}

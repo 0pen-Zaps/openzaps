@@ -13,6 +13,7 @@ import styles from "./landing.module.css";
 
 const SECTIONS = [
   { id: "product", label: "Product" },
+  { id: "policies", label: "Policies" },
   { id: "zaps", label: "Zaps" },
   { id: "token", label: "0xZAPS" },
   { id: "developers", label: "Developers" },
@@ -98,7 +99,7 @@ export function LandingNav({ githubUrl }: { githubUrl: string }): React.JSX.Elem
           </a>
         </nav>
         <Link href="/zap" className={styles.navCta} data-magnetic>
-          <span>Launch App</span>
+          <span>Zap now</span>
         </Link>
       </div>
     </header>

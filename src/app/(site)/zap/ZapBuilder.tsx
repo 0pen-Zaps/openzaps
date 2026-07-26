@@ -1197,7 +1197,7 @@ export function ZapBuilder({
           {/* No count in the copy: it went stale the first time a blueprint was
               added, and the row is right there to be counted. */}
           <p>
-            One kind of zap each. <em>Deployable</em> routes can run once; <em>automatable</em> designs bind a
+            One kind of zap each. <em>Deployable</em> routes can Zap now; <em>automatable</em> designs bind a
             cadence or price condition on the live aeWETH ↔ 0xZAPS stack. Load any blueprint, then rebuild it
             piece by piece.
           </p>
@@ -1428,7 +1428,7 @@ export function ZapBuilder({
                 ↷
               </button>
               <button type="button" className={styles.ghostBtn} onClick={previewRun} disabled={compiled.status === "block" || !chain.length}>
-                Preview run
+                Preview Zap
               </button>
               <button
                 type="button"
@@ -1448,7 +1448,7 @@ export function ZapBuilder({
 
           <p className={styles.scopeBanner} role="note">
             <strong>Design here; authorize one tab over.</strong> Deployable one-shot routes hand their exact amount
-            and slippage to Sign &amp; run. A Recurring deposit or Price trigger on the pinned aeWETH ↔ 0xZAPS route
+            and slippage to Zap now. A Recurring deposit or Price trigger on the pinned aeWETH ↔ 0xZAPS route
             hands cadence or threshold to Automate. Every new capsule also shows the fixed creation fee before the
             wallet prompt; nothing is submitted from this canvas.
           </p>
@@ -1780,7 +1780,7 @@ export function ZapBuilder({
             )}
             <p className={styles.quoteNote}>
               {automation.deployable
-                ? "Automated runs retain the live 1% output fee: 80% rewards the executor and 20% enters the existing 0xZAPS conversion pot. "
+                ? "Automated Zaps retain the live 1% output fee: 80% rewards the executor and 20% enters the existing 0xZAPS conversion pot. "
                 : ""}
               The separate creation fee is paid only if capsule creation succeeds and atomically converted through the pinned aeWETH → 0xZAPS adapter.
             </p>
@@ -1887,7 +1887,7 @@ export function ZapBuilder({
             </dl>
             <p className={styles.hashNote}>
               Gas caps bind both one-shot and automated EIP-712 intents. Executor access binds v3/v3.1 automation;
-              Run once discloses an owner-only choice because v1.1 cannot restrict its caller. Missing blocks use the
+              Zap now discloses an owner-only choice because v1.1 cannot restrict its caller. Missing blocks use the
               protocol defaults shown here.
             </p>
             <button
@@ -1995,7 +1995,7 @@ export function ZapBuilder({
                   href={deployHref}
                   onClick={() => trackEvent("builder_deploy_handoff", { route: deployment.routeId })}
                 >
-                  Review &amp; run once →
+                  Review &amp; Zap now →
                 </Link>
               ) : null}
               {automation.deployable && automateHref ? (
@@ -2009,7 +2009,7 @@ export function ZapBuilder({
               ) : null}
               {deployment.deployable ? (
                 <p className={styles.deployNote}>
-                  <strong>Run once</strong> opens with{" "}
+                  <strong>Zap now</strong> opens with{" "}
                   {deployRoute
                     ? `${deployRoute.tokenIn.symbol} → ${deployRoute.tokenOut.symbol}`
                     : "the matching route"}
@@ -2017,7 +2017,7 @@ export function ZapBuilder({
                   {(deployment.slippageBps / 100).toFixed(2)}% signed slippage cap, up to{" "}
                   {deployment.executionPolicy.maxGas.toLocaleString("en-US")} gas, and at most{" "}
                   {deployment.executionPolicy.maxFeePerGasGwei} gwei. Creation, funding, and the final EIP-712
-                  authorization stay in Sign &amp; run.
+                  authorization stay in Zap now.
                 </p>
               ) : null}
               {automation.deployable ? (
@@ -2037,7 +2037,7 @@ export function ZapBuilder({
                 // they drew is protecting funds that nothing is protecting.
                 <div className={styles.unenforced} role="note">
                   <strong>
-                    If you run once, {deployment.unenforcedGuards.length} guard
+                    If you Zap now, {deployment.unenforcedGuards.length} guard
                     {deployment.unenforcedGuards.length === 1 ? " in this design is" : "s in this design are"} not
                     enforced onchain.
                   </strong>
@@ -2060,7 +2060,7 @@ export function ZapBuilder({
               </button>
               {!deployment.deployable ? (
                 <div className={styles.reasons} role="note">
-                  <strong>This design cannot run once on Robinhood Chain today.</strong>
+                  <strong>This design cannot Zap now on Robinhood Chain today.</strong>
                   <ul>
                     {deployment.reasons.map((reason) => (
                       <li key={reason}>{reason}</li>
@@ -2160,13 +2160,13 @@ export function ZapBuilder({
             ) : null}
 
             <Link className={styles.openApp} href={automateHref ?? "/zap?view=sign"}>
-              {automation.deployable ? "Open Automate →" : "Open Sign & run →"}
+              {automation.deployable ? "Open Automate →" : "Open Zap now →"}
             </Link>
           </div>
 
           <p className={styles.disclaimer}>
             The canvas compiles and simulates. It cannot sign, fund, or submit a transaction — that happens one
-            tab over, in <strong>Sign &amp; run</strong>, against whichever deployed routes your design reduces
+            tab over, in <strong>Zap now</strong>, against whichever deployed routes your design reduces
             to: swaps, stitched multi-pool routes, and aeWETH/USDG liquidity provide/withdraw.
           </p>
         </aside>

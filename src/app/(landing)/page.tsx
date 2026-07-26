@@ -7,6 +7,7 @@ import { CHAIN } from "@/lib/config";
 import { CountUp } from "@/components/CountUp";
 import { Reveal } from "@/components/Reveal";
 import { TokenUtilityPanel } from "@/components/TokenUtilityPanel";
+import { BlockGlyph } from "@/app/(site)/zap/BlockGlyph";
 import { compileChain, makeNode } from "@/lib/blocks";
 import { MAX_POLICY_STEPS } from "@/lib/chains";
 import { AgentIntent } from "./AgentIntent";
@@ -51,10 +52,34 @@ const displayFont = Space_Grotesk({
 
 const GITHUB_URL = "https://github.com/0pen-Zaps/openzaps";
 
+const EXECUTION_POLICIES = [
+  {
+    glyph: "fuel",
+    field: "maxGas",
+    title: "Execution gas limit",
+    detail: "Caps the gas available to a signed Zap. A Zap outside the budget reverts.",
+    value: "3,000,000 gas",
+  },
+  {
+    glyph: "fee",
+    field: "maxFeePerGas",
+    title: "Gas price cap",
+    detail: "Rejects execution when the transaction gas price exceeds the signed ceiling.",
+    value: "10 gwei",
+  },
+  {
+    glyph: "key",
+    field: "executor",
+    title: "Executor access",
+    detail: "Keep automation open for liveness, or restrict submission to the owner wallet.",
+    value: "Anyone / Owner",
+  },
+] as const;
+
 export const metadata: Metadata = pageMetadata({
   title: "DeFi, in one action",
   description:
-    "OpenZaps turns a multi-protocol DeFi workflow into a single permissionless transaction — then keeps running it. Design the route, sign a bounded policy capsule once, and let it execute on a cadence or on a price move. Live on " +
+    "OpenZaps turns a multi-protocol DeFi workflow into one bounded Zap. Compose the route with signed gas, fee, and executor limits; Zap now, on a cadence, or on a price move. Live on " +
     `${CHAIN.name}. Deposited funds are at risk.`,
   path: "/",
 });
@@ -69,6 +94,9 @@ export default function LandingPage(): React.JSX.Element {
   // shows, so the output can never drift from the code.
   const devChain = [
     makeNode("wallet-balance", "src", { asset: "USDG", amount: "25" }),
+    makeNode("guard-gas-limit", "gas", { maxGas: 3_000_000 }),
+    makeNode("guard-gas-price", "fee", { maxFeeGwei: 10 }),
+    makeNode("guard-executor", "executor", { access: "Anyone" }),
     makeNode("guard-slippage", "cap", { bps: 50 }),
     makeNode("swap", "leg", { into: "0xZAPS" }),
     makeNode("send", "out"),
@@ -114,16 +142,16 @@ export default function LandingPage(): React.JSX.Element {
               style={{ "--enter-delay": "360ms" } as React.CSSProperties}
             >
               OpenZaps turns a multi-protocol workflow into a single permissionless
-              transaction — then keeps running it. Design the route, sign a bounded
-              policy once, and let it execute on a cadence or on a price move. The
-              capsule enforces the terms onchain; anyone can submit the run.
+              Zap. Compose the route and its execution policy, sign once, and Zap now,
+              on a cadence, or on a price move.
+              The capsule enforces the signed bounds onchain.
             </p>
             <div
               className={`${styles.heroActions} ${styles.heroEnter}`}
               style={{ "--enter-delay": "460ms" } as React.CSSProperties}
             >
               <Link href="/zap" className="btn btnPrimary btnLg" data-magnetic>
-                <span>Launch OpenZaps</span>
+                <span>Start Zapping</span>
               </Link>
               <a href="#zaps" className="btn btnGhost btnLg" data-magnetic>
                 <span>Explore Zaps</span>
@@ -180,6 +208,74 @@ export default function LandingPage(): React.JSX.Element {
           </div>
         </section>
 
+        {/* ===================== COMPOSE EXECUTION POLICY =================== */}
+        <section id="policies" className={styles.section} aria-labelledby="policies-title">
+          <span
+            className={styles.ghostWord}
+            data-depth="1.22"
+            style={{ top: "3%", right: "3%" }}
+            aria-hidden="true"
+          >
+            BOUND
+          </span>
+          <div className="container">
+            <Reveal as="header" className={styles.sectionHead}>
+              <p className={styles.kicker}>Compose execution policy</p>
+              <h2 id="policies-title" className={styles.sectionTitle}>
+                The route says what. The policy sets the limits.
+              </h2>
+              <p className={styles.sectionLead}>
+                Three execution controls now live in the block catalog. Add them together
+                as one policy stack, tune them on the canvas, and carry the resolved values
+                into the signed Zap now or Automate intent.
+              </p>
+            </Reveal>
+
+            <div className={styles.executionPolicyFeature}>
+              <div className={styles.executionPolicyStack}>
+                {EXECUTION_POLICIES.map((policy, index) => (
+                  <Reveal
+                    as="article"
+                    className={styles.executionPolicyCard}
+                    delay={index * 80}
+                    key={policy.field}
+                  >
+                    <div className={styles.executionPolicyIcon} aria-hidden="true">
+                      <span>{String(index + 1).padStart(2, "0")}</span>
+                      <BlockGlyph name={policy.glyph} />
+                    </div>
+                    <div className={styles.executionPolicyCopy}>
+                      <span className={styles.executionPolicyField}>{policy.field}</span>
+                      <h3>{policy.title}</h3>
+                      <p>{policy.detail}</p>
+                    </div>
+                    <strong className={styles.executionPolicyValue}>{policy.value}</strong>
+                  </Reveal>
+                ))}
+              </div>
+
+              <Reveal as="aside" className={styles.executionPolicyResult} delay={260}>
+                <span className={styles.executionPolicyResultKicker}>Atomic compose</span>
+                <strong>3 blocks → 1 explicit policy stack</strong>
+                <ol>
+                  <li>Add every missing execution control in one click.</li>
+                  <li>Undo the whole insertion as one canvas edit.</li>
+                  <li>Review the resolved bounds before the wallet signs.</li>
+                </ol>
+                <Link href="/zap?view=design" className="btn btnPrimary" data-magnetic>
+                  <span>Compose execution policy</span>
+                </Link>
+              </Reveal>
+            </div>
+
+            <p className={styles.executionPolicyCaveat}>
+              Gas limit and gas price cap bind Zap now and Automate intents. Owner-only
+              executor access is enforced by v3/v3.1 automation; the v1.1 one-shot handoff
+              discloses that it cannot restrict the submitter.
+            </p>
+          </div>
+        </section>
+
         {/* ========================= EXAMPLE ZAPS =========================== */}
         <section id="zaps" className={styles.section} aria-labelledby="zaps-title">
           <span className={styles.ghostWord} data-depth="1.35" style={{ top: "2%", left: "6%" }} aria-hidden="true">
@@ -194,7 +290,7 @@ export default function LandingPage(): React.JSX.Element {
               <p className={styles.sectionLead}>
                 Six blueprints from the catalog. Hover a card to see the blocks
                 and protocols underneath; open one and the builder loads this
-                exact chain — live routes sign and run today, designs compile
+                exact chain — live routes sign and Zap today, designs compile
                 and save.
               </p>
             </Reveal>
@@ -211,8 +307,8 @@ export default function LandingPage(): React.JSX.Element {
                 Compile a route. Watch it check itself.
               </h2>
               <p className={styles.sectionLead}>
-                The same compiler that powers the builder, running here. Pick an
-                intent, set an amount, and preview the simulation a capsule runs
+                The same compiler that powers the builder, executing here. Pick an
+                intent, set an amount, and preview the checks a capsule performs
                 before anything is signed.
               </p>
             </Reveal>
@@ -318,11 +414,9 @@ export default function LandingPage(): React.JSX.Element {
                 Agents should express intent, not assemble transactions.
               </h2>
               <p className={styles.sectionLead}>
-                A capsule is the contract between you and your agent: it can
-                decide when to execute, and nothing else. That world is already
-                here — a capsule takes one signed intent and lets any executor
-                fire the run it owes, while the chain refuses every run it does
-                not.
+                A capsule is the contract between you and your agent: it can decide
+                when to execute, and nothing else. An eligible executor can submit
+                the Zap it owes, while the chain refuses every Zap it does not.
               </p>
             </Reveal>
             <AgentIntent plans={plans} />
@@ -395,7 +489,7 @@ export default function LandingPage(): React.JSX.Element {
               <p className={styles.sectionLead}>
                 A designed chain encodes into a URL-safe token. Send it to
                 anyone: the builder decodes it, compiles it, and — if it
-                reduces to a live route — signs and runs it.
+                reduces to a live route — signs and Zaps it.
               </p>
             </Reveal>
             <ShareLinks cards={shareable} />
@@ -410,17 +504,17 @@ export default function LandingPage(): React.JSX.Element {
           <div className={`container ${styles.finalInner}`}>
             <span className={styles.finalPoint} aria-hidden="true" />
             <h2 id="final-title" className={`${styles.finalTitle} ${styles.display}`}>
-              One action is enough.
+              One Zap is enough.
             </h2>
             <p className={styles.finalLead}>
               Execute across DeFi without navigating every layer beneath it.
             </p>
             <div className={styles.finalActions}>
               <Link href="/zap?view=sign" className="btn btnPrimary btnLg" data-magnetic>
-                <span>Launch OpenZaps</span>
+                <span>Zap now</span>
               </Link>
               <Link href="/zap" className="btn btnGhost btnLg" data-magnetic>
-                <span>Build a Zap</span>
+                <span>Compose a Zap</span>
               </Link>
             </div>
           </div>
@@ -440,7 +534,7 @@ const WHY = [
   {
     title: "Permissionless",
     detail:
-      "Anyone designs, shares, and executes Zaps — creation is open to any caller, and no signature but yours can move funds. Routes run only through governance-allowlisted adapters and tokens.",
+      "Anyone designs, shares, and executes Zaps — creation is open to any caller, and no signature but yours can move funds. Zaps execute only through governance-allowlisted adapters and tokens.",
   },
   {
     title: "Composable",
@@ -459,6 +553,6 @@ const WHY = [
     // twice in the developers section, while nothing here covered the standing-authorization model.
     title: "Standing",
     detail:
-      "One signature can authorize a whole series. The capsule enforces the interval, the run count, and a floor priced from live spot — so a zap keeps running without keeping your keys online.",
+      "One signature can authorize a whole series. The capsule enforces the interval, total Zap count, and a floor priced from live spot, so it keeps Zapping without keeping your keys online.",
   },
 ] as const;
