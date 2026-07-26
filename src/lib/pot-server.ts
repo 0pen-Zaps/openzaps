@@ -1,14 +1,9 @@
 import { createPublicClient, http, type Address } from "viem";
 
-import { ACTIVITY_FROM_BLOCK, assetSymbolFor } from "@/lib/activity";
 import {
   POT_FEE_ASSETS,
   potAbi,
-  roundAwardedEvent,
   toPendingAsset,
-  zapsBoughtEvent,
-  type PotAward,
-  type PotConversion,
   type PotSnapshot,
 } from "@/lib/pot";
 import {
@@ -25,6 +20,16 @@ export interface PotPayload {
   readAt: string;
 }
 
+interface PotCore {
+  address: Address;
+  label: string;
+  round: string;
+  prize: string;
+  totalTickets: string;
+  yourTickets: string | null;
+  pending: PotSnapshot["pending"];
+}
+
 const client = createPublicClient({
   chain: robinhoodChain,
   transport: http(ROBINHOOD_RPC_URL, { retryCount: 2, timeout: 15_000 }),
@@ -36,67 +41,55 @@ const POTS: readonly { address: Address; label: string }[] = [
   { address: OPENZAP_V3_CONTRACTS.lotteryPot, label: "v3" },
 ];
 
-/**
- * Read one pot's full state: the round's prize and tickets, the fee assets still
- * awaiting a permissionless conversion, and the conversion / award history.
- *
- * Every number comes from a contract read or an event emitted BY THIS POT — the
- * address filter is what keeps a look-alike contract's events out. Throws on RPC
- * failure so the caller can fail closed rather than render an invented pot.
- */
-async function readPot(
+/** Live state only. Every read is pinned to the same captured head block. */
+async function readPotCore(
   pot: { address: Address; label: string },
   viewer: Address | null,
   head: bigint,
-): Promise<PotSnapshot> {
-  const round = await client.readContract({ address: pot.address, abi: potAbi, functionName: "currentRound" });
+): Promise<PotCore> {
+  const round = await client.readContract({
+    address: pot.address,
+    abi: potAbi,
+    functionName: "currentRound",
+    blockNumber: head,
+  });
 
-  const [prize, totalTickets, yourTickets, balances, boughtLogs, awardLogs] = await Promise.all([
-    client.readContract({ address: pot.address, abi: potAbi, functionName: "roundPrize", args: [round] }),
-    client.readContract({ address: pot.address, abi: potAbi, functionName: "totalTickets", args: [round] }),
+  const [prize, totalTickets, yourTickets, balances] = await Promise.all([
+    client.readContract({
+      address: pot.address,
+      abi: potAbi,
+      functionName: "roundPrize",
+      args: [round],
+      blockNumber: head,
+    }),
+    client.readContract({
+      address: pot.address,
+      abi: potAbi,
+      functionName: "totalTickets",
+      args: [round],
+      blockNumber: head,
+    }),
     viewer
-      ? client.readContract({ address: pot.address, abi: potAbi, functionName: "tickets", args: [round, viewer] })
+      ? client.readContract({
+          address: pot.address,
+          abi: potAbi,
+          functionName: "tickets",
+          args: [round, viewer],
+          blockNumber: head,
+        })
       : Promise.resolve(null),
-    // The open half of the loop: anything the pot holds that is not the prize asset.
     Promise.all(
       POT_FEE_ASSETS.map((asset) =>
-        client.readContract({ address: asset, abi: erc20Abi, functionName: "balanceOf", args: [pot.address] }),
+        client.readContract({
+          address: asset,
+          abi: erc20Abi,
+          functionName: "balanceOf",
+          args: [pot.address],
+          blockNumber: head,
+        }),
       ),
     ),
-    client.getLogs({ address: pot.address, event: zapsBoughtEvent, fromBlock: ACTIVITY_FROM_BLOCK, toBlock: head, strict: true }),
-    client.getLogs({ address: pot.address, event: roundAwardedEvent, fromBlock: ACTIVITY_FROM_BLOCK, toBlock: head, strict: true }),
   ]);
-
-  const conversions: PotConversion[] = boughtLogs
-    .flatMap((log) =>
-      log.args?.caller && log.args?.assetIn && log.args?.amountIn !== undefined && log.args?.zapsOut !== undefined
-        ? [{
-            round: (log.args.round ?? 0n).toString(),
-            caller: log.args.caller,
-            assetIn: log.args.assetIn,
-            symbolIn: assetSymbolFor(log.args.assetIn),
-            amountIn: log.args.amountIn.toString(),
-            zapsOut: log.args.zapsOut.toString(),
-            txHash: log.transactionHash,
-            blockNumber: log.blockNumber.toString(),
-          }]
-        : [],
-    )
-    .reverse();
-
-  const awards: PotAward[] = awardLogs
-    .flatMap((log) =>
-      log.args?.winner && log.args?.prize !== undefined
-        ? [{
-            round: (log.args.round ?? 0n).toString(),
-            winner: log.args.winner,
-            prize: log.args.prize.toString(),
-            txHash: log.transactionHash,
-            blockNumber: log.blockNumber.toString(),
-          }]
-        : [],
-    )
-    .reverse();
 
   return {
     address: pot.address,
@@ -106,14 +99,35 @@ async function readPot(
     totalTickets: totalTickets.toString(),
     yourTickets: yourTickets === null ? null : yourTickets.toString(),
     pending: POT_FEE_ASSETS.map((asset, index) => toPendingAsset(asset, balances[index])),
-    conversions,
-    awards,
   };
 }
 
-/** Both pots at one block, so prize, tickets, and history describe the same moment. */
+/**
+ * Prize, tickets, and held assets are authoritative contract reads at one block.
+ *
+ * Robinhood's public RPC currently rejects the multi-million-block event scan
+ * needed for lifetime conversion/award history and applies a rolling subrequest
+ * quota too small to rebuild it safely inside a request. Explorer, cached, or
+ * partial history is not substituted. Those fields stay explicitly unavailable
+ * until a durable RPC-backed index exists.
+ */
 export async function fetchPots(viewer: Address | null = null): Promise<PotPayload> {
-  const head = await client.getBlockNumber();
-  const pots = await Promise.all(POTS.map((pot) => readPot(pot, viewer, head)));
+  const head = await client.getBlockNumber({ cacheTime: 0 });
+  const headBefore = await client.getBlock({ blockNumber: head });
+  if (!headBefore.hash) throw new Error("RPC head block is missing its canonical hash.");
+
+  const cores = await Promise.all(POTS.map((pot) => readPotCore(pot, viewer, head)));
+  const headAfter = await client.getBlock({ blockNumber: head });
+  if (headAfter.hash !== headBefore.hash) {
+    throw new Error("RPC head block changed during the pot state reads.");
+  }
+
+  const pots: PotSnapshot[] = cores.map((core) => ({
+    ...core,
+    historyStatus: "unavailable",
+    historyHeadBlock: null,
+    conversions: [],
+    awards: [],
+  }));
   return { pots, headBlock: head.toString(), readAt: new Date().toISOString() };
 }

@@ -120,6 +120,13 @@ export interface PotSnapshot {
   yourTickets: string | null;
   /** Non-0xZAPS fee assets awaiting a permissionless buyZaps. */
   pending: PendingFeeAsset[];
+  /**
+   * Event history is a separate authority slice from the live contract reads.
+   * Empty arrays mean "verified empty" only when this field is `verified`.
+   */
+  historyStatus: "verified" | "unavailable";
+  /** Last block covered by conversions/awards, or null when that scan failed. */
+  historyHeadBlock: string | null;
   conversions: PotConversion[];
   awards: PotAward[];
 }
