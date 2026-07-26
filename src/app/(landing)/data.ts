@@ -96,12 +96,12 @@ export function recipeCard(recipe: ZapRecipe): RecipeCard {
 }
 
 const CARD_IDS = [
+  "sell-zaps",
   "stitched-route",
   "provide-liquidity",
   "exit-liquidity",
   "live-route",
   "lp-autocompound",
-  "exit",
 ] as const;
 
 export function landingCards(): RecipeCard[] {
@@ -315,6 +315,11 @@ const AGENT_INTENTS = [
     recipeId: "live-route",
     adapterId: "robinhood-v4-weth-zaps",
     intent: "Zap in to 0xZAPS with 0.05 aeWETH",
+  },
+  {
+    recipeId: "sell-zaps",
+    adapterId: "robinhood-v4-zaps-weth",
+    intent: "Zap 1,000,000 0xZAPS out to aeWETH",
   },
   {
     recipeId: "provide-liquidity",
