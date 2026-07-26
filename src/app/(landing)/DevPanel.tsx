@@ -45,6 +45,31 @@ const CODE_LINES: Line[] = [
     { text: "  " },
     { text: "makeNode", kind: "fn" },
     { text: "(" },
+    { text: "\"guard-gas-limit\"", kind: "str" },
+    { text: ", \"gas\", { maxGas: " },
+    { text: "3_000_000", kind: "num" },
+    { text: " })," },
+  ],
+  [
+    { text: "  " },
+    { text: "makeNode", kind: "fn" },
+    { text: "(" },
+    { text: "\"guard-gas-price\"", kind: "str" },
+    { text: ", \"fee\", { maxFeeGwei: " },
+    { text: "10", kind: "num" },
+    { text: " })," },
+  ],
+  [
+    { text: "  " },
+    { text: "makeNode", kind: "fn" },
+    { text: "(" },
+    { text: "\"guard-executor\"", kind: "str" },
+    { text: ", \"executor\", { access: \"Anyone\" })," },
+  ],
+  [
+    { text: "  " },
+    { text: "makeNode", kind: "fn" },
+    { text: "(" },
     { text: "\"guard-slippage\"", kind: "str" },
     { text: ", " },
     { text: "\"cap\"", kind: "str" },
@@ -97,6 +122,9 @@ const PLAIN_CODE = `import { compileChain, encodeChain, makeNode } from "@/lib/b
 
 const chain = [
   makeNode("wallet-balance", "src", { asset: "USDG", amount: "25" }),
+  makeNode("guard-gas-limit", "gas", { maxGas: 3_000_000 }),
+  makeNode("guard-gas-price", "fee", { maxFeeGwei: 10 }),
+  makeNode("guard-executor", "executor", { access: "Anyone" }),
   makeNode("guard-slippage", "cap", { bps: 50 }),
   makeNode("swap", "leg", { into: "0xZAPS" }),
   makeNode("send", "out"),
@@ -147,7 +175,7 @@ export function DevPanel({ verdict }: { verdict: DevVerdict }): React.JSX.Elemen
     <div ref={panelRef} className={styles.dev} data-code={state}>
       <div className={styles.devCode}>
         <div className={styles.devCodeBar}>
-          <span className="mono">src/lib/blocks.ts · MIT · runs in this page</span>
+          <span className="mono">src/lib/blocks.ts · MIT · executes in this page</span>
           <CopyButton value={PLAIN_CODE} label="Copy" className={styles.devCopy} />
         </div>
         <pre className={styles.devPre}>

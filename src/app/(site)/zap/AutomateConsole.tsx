@@ -540,8 +540,8 @@ export default function AutomateConsole(): React.JSX.Element {
       const owner = requireAccount(account);
       const activeRoute = route;
       if (!activeRoute) throw new Error("Route unavailable.");
-      if (perRunAmount <= 0n) throw new Error("Enter a per-run amount first.");
-      if (mode === "recurring" && (maxRuns < 1 || maxRuns > 1000)) throw new Error("Runs must be between 1 and 1000.");
+      if (perRunAmount <= 0n) throw new Error("Enter a per-Zap amount first.");
+      if (mode === "recurring" && (maxRuns < 1 || maxRuns > 1000)) throw new Error("Zaps must be between 1 and 1000.");
 
       // recurring → v3.1 (relative floor); trigger → v3. Same factory ABI (identical Policy tuple).
       const stack = mode === "recurring" ? OPENZAP_V3_1_CONTRACTS : OPENZAP_V3_CONTRACTS;
@@ -630,7 +630,7 @@ export default function AutomateConsole(): React.JSX.Element {
       `Policy: ${creationResult.policyHash}`,
       `Lineage: ${creationResult.mode === "recurring" ? "v3.1 recurring" : "v3 price trigger"}`,
       `Route: ${resultRoute ? `${resultRoute.tokenIn.symbol} -> ${resultRoute.tokenOut.symbol}` : creationResult.routeId}`,
-      `Per run: ${formatToken(BigInt(creationResult.amountPerRun), resultRoute?.tokenIn.decimals ?? 18)} ${resultRoute?.tokenIn.symbol ?? "tokens"}`,
+      `Per Zap: ${formatToken(BigInt(creationResult.amountPerRun), resultRoute?.tokenIn.decimals ?? 18)} ${resultRoute?.tokenIn.symbol ?? "tokens"}`,
       `Created: ${creationResult.createdAt}`,
     ].join("\n");
     try {
@@ -654,7 +654,7 @@ export default function AutomateConsole(): React.JSX.Element {
       const missing = target - fresh.balance;
       if (missing <= 0n) {
         await applyLoad(record);
-        setNotice("Your zap already holds everything the remaining runs can spend.");
+        setNotice("Your capsule already holds everything the remaining Zaps can spend.");
         return;
       }
       const wallet = await requireWallet(owner);
@@ -750,7 +750,7 @@ export default function AutomateConsole(): React.JSX.Element {
         });
         const signature = await wallet.signTypedData({ account: owner, ...buildRecurringRelativeTypedData(intent) });
         file = serializeIntentFile("recurring-relative", intent, signature);
-        terms = `${interval.label} · ${runsInRecord(record)} runs · ${recurringValidDays ? `expires ${recurringValidDays}d` : "auto expiry"} · ≤${(slippageBps / 100).toFixed(1)}% slip · ${maxExecutionGas.toLocaleString("en-US")} gas · ≤${maxFeePerGasGwei} gwei · ${executorMode === "anyone" ? "open executor" : executorMode === "owner-only" ? "owner only" : "pinned executor"}`;
+        terms = `${interval.label} · ${runsInRecord(record)} Zaps · ${recurringValidDays ? `expires ${recurringValidDays}d` : "auto expiry"} · ≤${(slippageBps / 100).toFixed(1)}% slip · ${maxExecutionGas.toLocaleString("en-US")} gas · ≤${maxFeePerGasGwei} gwei · ${executorMode === "anyone" ? "open executor" : executorMode === "owner-only" ? "owner only" : "pinned executor"}`;
       } else {
         // Trigger is one-shot in a bounded window, so it still signs an absolute minOut from a
         // fresh quote (slippage, then the 1% fee, since the capsule floors NET of the fee).
@@ -763,7 +763,7 @@ export default function AutomateConsole(): React.JSX.Element {
           args: [{ poolKey: recordRoute.quote.poolKey, zeroForOne: recordRoute.quote.zeroForOne, exactAmount: perRun, hookData: "0x" }],
         });
         const minOut = netFloorFromQuote(result[0], slippageBps);
-        if (minOut <= 0n) throw new Error("The route quotes to zero output. Try a larger per-run amount.");
+        if (minOut <= 0n) throw new Error("The route quotes to zero output. Try a larger per-Zap amount.");
 
         // The baseline is read AT SIGNING TIME — the signed condition anchors to the price the
         // user sees now, not one fetched when the page loaded.
@@ -817,8 +817,8 @@ export default function AutomateConsole(): React.JSX.Element {
       setNotice(
         deliveredTo === "relay"
           ? executorMode === "anyone"
-            ? "Signed and published to the executor network — any executor can run it now. Nothing else to do."
-            : "Signed and published. The capsule will accept runs only from the executor bound in this intent."
+            ? "Signed and published to the executor network — any executor can Zap it now. Nothing else to do."
+            : "Signed and published. The capsule will accept Zaps only from the executor bound in this intent."
           : "Standing intent signed. Publish it to an executor below, or export the file.",
       );
       trackEvent("automate_sign", { mode: record.mode, published: deliveredTo === "relay" });
@@ -950,7 +950,7 @@ export default function AutomateConsole(): React.JSX.Element {
       persist(records.map((r) => (
         r.address === record.address ? { ...r, deliveredTo: "relay", relayId: published.id } : r
       )));
-      setNotice("Published to the executor network — any executor can run it now.");
+      setNotice("Published to the executor network — any executor can Zap it now.");
       trackEvent("automate_publish_relay");
     } catch (cause) {
       setError(readableError(cause));
@@ -1185,8 +1185,8 @@ export default function AutomateConsole(): React.JSX.Element {
                 : creationResult.routeId,
             },
             {
-              label: "Per run",
-              value: `${formatToken(BigInt(creationResult.amountPerRun), creationResultRoute?.tokenIn.decimals ?? 18)} ${creationResultRoute?.tokenIn.symbol ?? "tokens"}${creationResult.mode === "recurring" ? ` · ${creationResult.plannedRuns ?? 1} runs planned` : " · one trigger"}`,
+              label: "Per Zap",
+              value: `${formatToken(BigInt(creationResult.amountPerRun), creationResultRoute?.tokenIn.decimals ?? 18)} ${creationResultRoute?.tokenIn.symbol ?? "tokens"}${creationResult.mode === "recurring" ? ` · ${creationResult.plannedRuns ?? 1} Zaps planned` : " · one trigger"}`,
             },
           ]}
           stages={[
@@ -1198,7 +1198,7 @@ export default function AutomateConsole(): React.JSX.Element {
             {
               label: "Fund",
               detail: creationResultFunded
-                ? "Remaining run budget is held."
+                ? "Remaining Zap budget is held."
                 : creationResultActive
                   ? "Deposit only the planned spend."
                   : "Re-open this capsule to continue.",
@@ -1287,7 +1287,7 @@ export default function AutomateConsole(): React.JSX.Element {
           </div>
 
           <div className={styles.formGrid}>
-            <Field label={`Per-run amount (${route?.tokenIn.symbol ?? ""})`}>
+            <Field label={`Per-Zap amount (${route?.tokenIn.symbol ?? ""})`}>
               <input
                 className={styles.input}
                 inputMode="decimal"
@@ -1296,7 +1296,7 @@ export default function AutomateConsole(): React.JSX.Element {
                 disabled={busy !== null || record !== null}
               />
             </Field>
-            <Field label="Who may run it">
+            <Field label="Who may Zap it">
               <select
                 className={styles.input}
                 value={executorMode}
@@ -1366,7 +1366,7 @@ export default function AutomateConsole(): React.JSX.Element {
                     ))}
                   </select>
                 </Field>
-                <Field label={`Total runs (${maxRuns})`}>
+                <Field label={`Total Zaps (${maxRuns})`}>
                   <input
                     className={styles.range}
                     type="range"
@@ -1429,8 +1429,8 @@ export default function AutomateConsole(): React.JSX.Element {
           <p className={styles.execNote} aria-live="polite">
             {executorMode === "anyone" ? (
               <>
-                Open · any executor may submit a run this zap owes and earns 80% of its 1% fee. The capsule still
-                refuses every run it does not owe, so this only decides <em>who races</em>, never what they can do.
+                Open · any executor may submit a Zap this capsule owes and earns 80% of its 1% fee. The capsule still
+                refuses every Zap it does not owe, so this only decides <em>who races</em>, never what they can do.
               </>
             ) : executorMode === "owner-only" && account ? (
               <>
@@ -1456,17 +1456,17 @@ export default function AutomateConsole(): React.JSX.Element {
           {activeMode === "recurring" && (
             <p className={styles.floorPreview} aria-live="polite">
               {spot === null ? (
-                <>Projected floor · spot is unavailable right now — the capsule still enforces your slippage band on-chain every run.</>
+                <>Projected floor · spot is unavailable right now — the capsule still enforces your slippage band onchain for every Zap.</>
               ) : projectedFloor > 0n && route ? (
                 <>
-                  Projected floor · at current spot each run delivers at least{" "}
+                  Projected floor · at current spot each Zap delivers at least{" "}
                   <strong>
                     {formatToken(projectedFloor, route.tokenOut.decimals)} {route.tokenOut.symbol}
                   </strong>{" "}
-                  (−{(slippageBps / 100).toFixed(1)}%). Recomputed from live spot on every run, so it never goes stale.
+                  (−{(slippageBps / 100).toFixed(1)}%). Recomputed from live spot for every Zap, so it never goes stale.
                 </>
               ) : (
-                <>Projected floor · enter a per-run amount to preview each run&apos;s guaranteed minimum.</>
+                <>Projected floor · enter a per-Zap amount to preview each Zap&apos;s guaranteed minimum.</>
               )}
             </p>
           )}
@@ -1589,7 +1589,7 @@ export default function AutomateConsole(): React.JSX.Element {
               title="Sign the standing intent"
               detail={
                 (record?.mode ?? mode) === "recurring"
-                  ? "One EIP-712 signature authorizes the whole series. The zap enforces the interval and the run count."
+                  ? "One EIP-712 signature authorizes the whole series. The capsule enforces the interval and total Zap count."
                   : "One EIP-712 signature arms the trigger. The baseline price is read at signing time, and the zap re-reads the market itself on every attempt."
               }
               done={signed}
@@ -1669,7 +1669,7 @@ export default function AutomateConsole(): React.JSX.Element {
                 value={
                   record.terms ??
                   (record.mode === "recurring"
-                    ? `Recurring · ${runsInRecord(record)} runs · cadence set when you sign`
+                    ? `Recurring · ${runsInRecord(record)} Zaps · cadence set when you sign`
                     : "Price trigger · condition set when you sign")
                 }
                 ok

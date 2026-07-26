@@ -6,13 +6,13 @@
 
 **A zap cannot do anything it was not signed to do.**
 
-Bounded policy capsules for agent-triggered DeFi. A capsule fixes the target, the recipient, the asset, and the calldata *before* it is signed — and nothing that executes it can change them. Sign once, and the chain keeps the terms: a zap can run on a cadence or on a price move, submitted by anyone, without ever widening what it may do.
+Bounded policy capsules for agent-triggered DeFi. A capsule fixes the target, recipient, asset, calldata, and execution policy *before* it is signed. Sign once, and the chain keeps the terms: Zap now, on a cadence, or on a price move without widening what the Zap may do.
 
 [![CI](https://github.com/0pen-Zaps/openzaps/actions/workflows/ci.yml/badge.svg)](https://github.com/0pen-Zaps/openzaps/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-fffc00.svg)](./LICENSE)
 [![Site](https://img.shields.io/badge/live-0xzaps.com-050505.svg)](https://www.0xzaps.com)
 
-[Website](https://www.0xzaps.com) · [App](https://www.0xzaps.com/app) · [Docs](https://www.0xzaps.com/docs) · [Token](https://www.0xzaps.com/token) · [X](https://x.com/0xzaps)
+[Website](https://www.0xzaps.com) · [App](https://www.0xzaps.com/zap) · [Docs](https://www.0xzaps.com/docs) · [Token](https://www.0xzaps.com/token) · [X](https://x.com/0xzaps)
 
 </div>
 
@@ -31,18 +31,19 @@ An **OpenZap** is a contract that holds funds and executes exactly one policy it
 
 The result is pre-committed, tightly bounded authority for a fixed action graph, with an unconditional owner withdraw and revoke path. Not approval-free, and not a universal router — that is the point.
 
-## What runs today
+## What you can Zap today
 
 | | |
 | --- | --- |
 | **Swaps and liquidity** | Five deployable blueprints: buy and sell 0xZAPS, a stitched USDG → 0xZAPS route through two pools in one signed step, and aeWETH/USDG liquidity in and out. |
-| **Recurring zaps** | One signature authorizes a whole series. The capsule enforces the interval and the run count onchain — nothing can run early, twice, or past the end. |
+| **Recurring Zaps** | One signature authorizes a whole series. The capsule enforces the interval and Zap count onchain, so nothing can Zap early, twice, or past the end. |
 | **Price triggers** | Fires once when an allowlisted price source crosses the threshold you signed. The capsule re-reads the market itself on every attempt. |
-| **Per-run floors that cannot go stale** | A recurring series derives its minimum output from the price source's spot *at each run*, so a floor signed weeks ago still protects the run happening now. |
-| **Anyone can submit** | Each run pays a 1% protocol fee from output: 80% to whoever submits it, 20% to the 0xZAPS lottery pot. Owners publish signed intents to a shared pool; executors poll it for work. The pool is untrusted — the capsule re-verifies every field onchain. |
+| **Per-Zap floors that cannot go stale** | A recurring series derives its minimum output from the price source's spot *for each Zap*, so a floor signed weeks ago still protects the Zap happening now. |
+| **Execution policy composition** | Three live blocks bind execution gas, gas price, and executor access. Add the whole stack in one click, edit each bound, and undo the insertion as one canvas change. Gas controls reach one-shot and standing intents; owner-only executor access is enforced by v3/v3.1. |
+| **Anyone can submit** | Each automated Zap pays a 1% protocol fee from output: 80% to whoever submits it, 20% to the 0xZAPS lottery pot. Owners publish signed intents to a shared pool; executors poll it for work. The pool is untrusted, so the capsule re-verifies every field onchain. |
 | **One visible creation fee** | Every capsule created by the current app pays exactly 0.00001 ETH. A gateway calls the existing lineage factory and atomically converts the fee to 0xZAPS through the pinned route; a missed conversion floor reverts creation too. Legacy factories remain directly callable. |
 
-The builder at [`/zap`](https://www.0xzaps.com/zap) designs a zap from typed blocks, tells you plainly whether it reduces to a route the live contracts can carry, and hands a deployable one straight to the console that creates, funds, signs, and runs it.
+The builder at [`/zap`](https://www.0xzaps.com/zap) designs a Zap from typed route and policy blocks, tells you which bounds the selected contract can enforce, and hands a deployable design to Zap now or Automate with its resolved settings intact.
 
 ## Repository layout
 

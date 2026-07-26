@@ -335,7 +335,7 @@ export function PotLive({ initial }: { initial: PotPayload | null }): React.JSX.
                         title={!account ? "Connect a wallet to submit the conversion" : !isRobinhoodChain ? "Switch to Robinhood Chain to submit the conversion" : undefined}
                       >
                         <BlockGlyph name="bolt" className={styles.btnGlyph} />
-                        {busy === `convert:${pot.address}:${entry.asset}` ? "Converting…" : "Buy 0xZAPS"}
+                        {busy === `convert:${pot.address}:${entry.asset}` ? "Zapping fees…" : "Zap fees into 0xZAPS"}
                       </button>
                     </li>
                   ))}

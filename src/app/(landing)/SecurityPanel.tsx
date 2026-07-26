@@ -14,7 +14,7 @@ const GUARANTEES = [
   {
     title: "Owner-signed execution",
     detail:
-      "Only the owner ever signs. A one-shot zap is sent from the owner's wallet; a recurring or price-triggered run can be sent by any executor, and the capsule re-checks every bound before it settles. Nothing executes custodially.",
+      "Only the owner ever signs. A one-shot Zap is sent from the owner's wallet; a recurring or price-triggered Zap can be sent by any executor, and the capsule re-checks every bound before it settles. Nothing executes custodially.",
   },
   {
     title: "Policy fixed before signing",

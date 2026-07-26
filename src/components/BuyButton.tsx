@@ -20,7 +20,7 @@ export function BuyButton({
   const classes = `btn ${variant === "primary" ? "btnPrimary" : "btnGhost"} ${size === "lg" ? "btnLg" : ""} ${className}`.trim();
   const content = (
     <>
-      {label ?? `Buy ${TOKEN.symbol}`}
+      {label ?? (destination === "openzaps" ? `Zap in to ${TOKEN.symbol}` : `Buy ${TOKEN.symbol}`)}
       <span aria-hidden>{destination === "openzaps" ? "→" : "↗"}</span>
     </>
   );

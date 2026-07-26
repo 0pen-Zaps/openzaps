@@ -152,7 +152,7 @@ onchain post-broadcast (factory↔pot binding, price-source allowlisting, live p
   [`contracts/src/v3/README.md`](../contracts/src/v3/README.md). Domain version `"3"`.
 - The reference executor daemon ([`executor/`](../executor/README.md)) runs as LaunchAgent
   `com.openzaps.executor`, watch-only until a gas key is configured.
-- **Pre-external-audit**, like everything on this chain. The app's Sign &amp; run tab deploys v1.1
+- **Pre-external-audit**, like everything on this chain. The app's Zap now tab deploys v1.1
   capsules; the Automate tab deploys v3 capsules against this factory.
 
 ### The v3.1 relative-floor stack — live (2026-07-24)

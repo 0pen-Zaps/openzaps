@@ -3,11 +3,11 @@ import { CHAIN } from "@/lib/config";
 import { pageMetadata, absoluteUrl, SITE_URL, SITE_NAME } from "@/lib/seo";
 
 export const metadata = pageMetadata({
-  title: "Zap — run once, recur, trigger, or compose",
-  description: `Start from an execution intent, then create, fund, sign, execute, monitor, revoke, or recover a bounded zap on ${CHAIN.name} — one-time, recurring, price-triggered, and composed policy capsules. Deposited funds are at risk.`,
+  title: "Zap now, recur, trigger, or compose",
+  description: `Compose a DeFi route with signed gas, gas-price, and executor-access policy blocks, then Zap now, automate, monitor, revoke, or recover it on ${CHAIN.name}. Deposited funds are at risk.`,
   path: "/zap",
   ogImage: "/og/app.png",
-  keywords: ["use OpenZaps", "policy capsule builder", "simulate DeFi policy", "DeFi automation app", "EIP-712 policy review"],
+  keywords: ["use OpenZaps", "policy capsule builder", "execution policy blocks", "simulate DeFi policy", "DeFi automation app", "EIP-712 policy review"],
 });
 
 const appJsonLd = {
@@ -22,7 +22,7 @@ const appJsonLd = {
       operatingSystem: "Web",
       offers: { "@type": "Offer", price: "0", priceCurrency: "USD" },
       publisher: { "@id": `${SITE_URL}/#organization` },
-      description: `Design zaps from typed DeFi blocks, then create, fund, execute, and recover OpenZap policy capsules on ${CHAIN.name} — swaps, stitched multi-pool routes, and aeWETH/USDG liquidity. The recipient is fixed to the capsule owner and the relayer fee cap is zero.`,
+      description: `Design zaps from typed DeFi route and execution-policy blocks, then Zap now, recur, or trigger them on ${CHAIN.name}. Signed intents bind execution gas and gas price; v3/v3.1 can keep executor access open or restrict it to the owner.`,
     },
     {
       "@type": "BreadcrumbList",

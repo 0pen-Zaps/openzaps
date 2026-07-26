@@ -17,7 +17,7 @@ export function DesignHero(): React.JSX.Element {
       <p>
         Every DeFi activity is a block that declares its connectors, so a joint seats only where the shapes
         match. When a design reduces to a deployable route, the readout hands it straight to{" "}
-        <strong>Sign &amp; run</strong> — same page, nothing submitted until you sign.
+        <strong>Zap now</strong> — same page, nothing submitted until you sign.
       </p>
       <div className={buildStyles.legend}>
         {SHAPES.map((shape) => (

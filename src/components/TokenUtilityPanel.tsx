@@ -27,7 +27,7 @@ export function TokenUtilityPanel({ className = "", id }: TokenUtilityPanelProps
           {" "}{TOKEN.symbol} atomically. Every core workflow remains open without pre-holding the token.
         </p>
         <div className={styles.actions}>
-          <BuyButton destination="openzaps" label="Buy with OpenZaps" />
+          <BuyButton destination="openzaps" label={`Zap in to ${TOKEN.symbol}`} />
           <BuyButton label="Clanker market" variant="ghost" />
           <Link href="/token#utilities">Token details →</Link>
         </div>

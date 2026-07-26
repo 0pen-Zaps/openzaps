@@ -34,8 +34,8 @@ const mechanics = [
   },
   {
     n: "02",
-    name: "Counted runs",
-    body: "The deployed contracts have no execution counter, and nonce storage can be flipped for free by design — so the design counts only executions a stateless, discretion-free relay itself submitted and watched succeed. The relay holds nothing, decides nothing, and can be bypassed at will. It is a scorekeeper, not an operator.",
+    name: "Counted Zaps",
+    body: "The deployed contracts have no execution counter, and nonce storage can be flipped for free by design — so the design counts only Zaps a stateless, discretion-free relay submitted and watched succeed. The relay holds nothing, decides nothing, and can be bypassed at will. It is a scorekeeper, not an operator.",
     role: (
       <>
         <b>{TOKEN.symbol}:</b> a small burn to advance a forge level. Levels gate cosmetics only —
@@ -45,11 +45,11 @@ const mechanics = [
   },
   {
     n: "03",
-    name: "Print Run seasons",
-    body: "A season would exist only after someone publicly escrows a fixed 0xZAPS budget onchain. The contract refuses to start unless that budget is at or below what the cheapest possible farming of it would cost in real gas and fees, and unless enough distinct participants have real counted runs. No escrow, no season — the UI shows nothing but an empty state.",
+    name: "Print Zap seasons",
+    body: "A season would exist only after someone publicly escrows a fixed 0xZAPS budget onchain. The contract refuses to start unless that budget is at or below what the cheapest possible farming of it would cost in real gas and fees, and unless enough distinct participants have real counted Zaps. No escrow, no season — the UI shows nothing but an empty state.",
     role: (
       <>
-        <b>{TOKEN.symbol}:</b> streamed to participants in proportion to counted runs, from a
+        <b>{TOKEN.symbol}:</b> streamed to participants in proportion to counted Zaps, from a
         pre-escrowed fixed budget. Compensates performed executions, not balances held.
       </>
     ),
@@ -69,7 +69,7 @@ const mechanics = [
 
 const kept = [
   "Supply earned only through verifiable product use.",
-  "Incentives paid to the people who actually build and run things.",
+  "Incentives paid to the people who actually build and execute Zaps.",
   "Irrevocable, escrow-first pre-commitments as the trust primitive.",
 ] as const;
 
@@ -81,8 +81,8 @@ const deleted = [
 
 const gates = [
   "The full 0xZAPS supply distribution is published before any burn mechanic ships.",
-  "The season and author-award mechanics get a jurisdiction-specific counsel review before any season runs — a gate, not a footnote.",
-  "Every public activity figure labels incentivized runs distinctly, or is not published at all.",
+  "The season and author-award mechanics get a jurisdiction-specific counsel review before any season opens — a gate, not a footnote.",
+  "Every public activity figure labels incentivized Zaps distinctly, or is not published at all.",
   "No randomness, ever: any future mechanic containing a draw, a pack, or a random trait is rejected at design review.",
   "No forward-looking emission promises — “designed, not scheduled” holds until an escrow exists onchain.",
 ] as const;
@@ -100,7 +100,7 @@ export default function SolderworksPage(): React.JSX.Element {
         <p className={styles.lead}>
           A crafting-and-progression layer where the zap builder is the game board: deployed policies become
           collectible Blueprints, real executions become provable progress, and {TOKEN.symbol} pays the people who
-          actually design and run zaps — while the part that holds your funds stays exactly as boring, deterministic,
+          actually design and execute Zaps — while the part that holds your funds stays exactly as boring, deterministic,
           and token-ungated as it is today.
         </p>
         <div className={styles.notLive} role="note">
@@ -203,7 +203,7 @@ export default function SolderworksPage(): React.JSX.Element {
           <div className={styles.flow}>
             <span>Incentive</span>
             <strong>Season streaming</strong>
-            <p>From a pre-escrowed fixed budget, in proportion to counted runs.</p>
+            <p>From a pre-escrowed fixed budget, in proportion to counted Zaps.</p>
           </div>
           <div className={styles.flow}>
             <span>Incentive</span>

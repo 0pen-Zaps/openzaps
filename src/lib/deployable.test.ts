@@ -96,7 +96,7 @@ describe("accepts the live route", () => {
     nodes.splice(2, 0, makeNode("guard-executor", "executor", { access: "Owner only" }));
     const mapping = reduceChainToLiveRoute(nodes);
     expect(mapping.deployable && mapping.unenforcedGuards).toEqual([
-      "Executor access is set to Owner only, but the v1.1 one-shot intent cannot restrict who submits a zero-fee execution. This owner-only choice is enforced by v3/v3.1 automation, not by Run once.",
+      "Executor access is set to Owner only, but the v1.1 one-shot intent cannot restrict who submits a zero-fee execution. This owner-only choice is enforced by v3/v3.1 automation, not by Zap now.",
     ]);
   });
 
