@@ -18,6 +18,7 @@ contract ZapCreationFeePot {
     address public pendingOwner;
     address public immutable ZAPS;
     address public gateway;
+    address public gatewayInstaller;
 
     uint256 public currentRound = 1;
     uint256 public accountedZaps;
@@ -36,6 +37,7 @@ contract ZapCreationFeePot {
     error NotOwner();
     error NotPendingOwner();
     error NotGateway();
+    error NotGatewayBinder();
     error ZeroAddress();
     error GatewayAlreadySet();
     error ZeroAmount();
@@ -61,14 +63,19 @@ contract ZapCreationFeePot {
         if (owner_ == address(0) || zaps_ == address(0)) revert ZeroAddress();
         owner = owner_;
         ZAPS = zaps_;
+        gatewayInstaller = msg.sender;
         emit OwnershipTransferred(address(0), owner_);
     }
 
     /// @notice Bind the only gateway allowed to record already-transferred creation fees.
-    function setGateway(address gateway_) external onlyOwner {
+    /// @dev The constructor caller may complete this one deployment-time action without receiving
+    ///      governance. Its authority is erased as soon as the gateway is bound.
+    function setGateway(address gateway_) external {
         if (gateway_ == address(0)) revert ZeroAddress();
         if (gateway != address(0)) revert GatewayAlreadySet();
+        if (msg.sender != owner && msg.sender != gatewayInstaller) revert NotGatewayBinder();
         gateway = gateway_;
+        gatewayInstaller = address(0);
         emit GatewaySet(gateway_);
     }
 

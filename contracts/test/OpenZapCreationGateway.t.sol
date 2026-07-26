@@ -147,6 +147,26 @@ contract OpenZapCreationGatewayTest is Test {
         assertEq(gateway.CREATION_ADAPTER(), address(feeAdapter));
     }
 
+    function test_deployerCanBindOnceWithoutReceivingGovernance() public {
+        address governance = address(0xCAFE);
+        ZapCreationFeePot unboundPot = new ZapCreationFeePot(governance, address(zaps));
+
+        assertEq(unboundPot.owner(), governance);
+        assertEq(unboundPot.gatewayInstaller(), address(this));
+
+        vm.prank(stranger);
+        vm.expectRevert(ZapCreationFeePot.NotGatewayBinder.selector);
+        unboundPot.setGateway(address(gateway));
+
+        unboundPot.setGateway(address(gateway));
+        assertEq(unboundPot.gateway(), address(gateway));
+        assertEq(unboundPot.gatewayInstaller(), address(0));
+        assertEq(unboundPot.owner(), governance);
+
+        vm.expectRevert(ZapCreationFeePot.GatewayAlreadySet.selector);
+        unboundPot.setGateway(address(0xCA11));
+    }
+
     function test_everyLineageCreatesThroughItsExistingFactoryAndPaysFee() public {
         Policy memory p = _policy();
         for (uint256 i; i < 3; ++i) {

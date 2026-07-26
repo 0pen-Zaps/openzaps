@@ -41,7 +41,9 @@ automation execution fees to its original v3/v3.1 pot.
 
 `ZapCreationFeePot` accepts only already-transferred 0xZAPS from the one-time-bound gateway. Credits
 are balance-backed. It has no sweep or owner-withdraw path; governance can only award the current
-accounted prize to an address that has tickets in that round.
+accounted prize to an address that has tickets in that round. Governance owns the pot from
+construction. The constructor caller has only a one-shot gateway-binding capability, which is erased
+in the binding transaction; it never receives prize or ownership authority.
 
 ## Invariants
 
@@ -59,6 +61,8 @@ accounted prize to an address that has tickets in that round.
   before enabling creation.
 - **I-FEE-9 — honest scope:** old immutable factories remain directly callable. Copy must say every
   *current app-created* capsule pays the fee, not that legacy factory calls are impossible.
+- **I-FEE-10 — no deployer governance:** the pot owner is the pinned governance address from
+  construction, and the deployer's sole binding capability is erased when the gateway is set.
 
 ## Alternatives rejected
 
