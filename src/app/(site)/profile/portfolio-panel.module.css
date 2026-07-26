@@ -1,0 +1,469 @@
+.panel {
+  margin-top: 1rem;
+  border: 1px solid var(--line);
+  background:
+    radial-gradient(circle at 0 0, rgba(156, 186, 255, 0.07), transparent 26rem),
+    var(--bg-2);
+  box-shadow: var(--card-shadow);
+  overflow: hidden;
+}
+
+.head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: clamp(1.1rem, 2.5vw, 1.6rem);
+  border-bottom: 1px solid var(--line-soft);
+}
+
+.head h2 {
+  margin-top: 0.42rem;
+  font-size: clamp(1.45rem, 3.2vw, 2.45rem);
+  font-weight: 550;
+  letter-spacing: -0.04em;
+  line-height: 1.02;
+}
+
+.head p {
+  max-width: 46rem;
+  margin-top: 0.6rem;
+  color: var(--muted-2);
+  font-size: 0.84rem;
+  line-height: 1.55;
+}
+
+.headMeta {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.55rem;
+  flex: 0 0 auto;
+}
+
+.headMeta > span,
+.reading {
+  padding: 0.35rem 0.5rem;
+  border: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 0.65rem;
+  font-weight: 620;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.headMeta > span[data-status="complete"],
+.headMeta > span[data-status="empty"] {
+  border-color: rgba(158, 255, 184, 0.34);
+  color: #9effb8;
+}
+
+.headMeta > span[data-status="partial"] {
+  border-color: rgba(255, 189, 109, 0.38);
+  color: #ffbd6d;
+}
+
+.summaryGrid {
+  display: grid;
+  grid-template-columns: minmax(0, 0.82fr) minmax(22rem, 1.18fr);
+  gap: 1px;
+  background: var(--line-soft);
+}
+
+.valueCard {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-height: 19rem;
+  padding: clamp(1.2rem, 3.2vw, 2rem);
+  background: var(--bg-2);
+}
+
+.valueCard > span {
+  color: var(--muted);
+  font-size: 0.7rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.valueCard strong {
+  margin-top: 0.55rem;
+  font-family: var(--font-jetbrains-mono), ui-monospace, monospace;
+  font-size: clamp(2rem, 5vw, 4.4rem);
+  font-weight: 520;
+  letter-spacing: -0.055em;
+  line-height: 0.94;
+}
+
+.valueCard p {
+  max-width: 32rem;
+  margin-top: 0.8rem;
+  color: var(--muted-2);
+  font-size: 0.8rem;
+  line-height: 1.5;
+}
+
+.valueCard em {
+  width: max-content;
+  margin-top: 1rem;
+  padding: 0.28rem 0.42rem;
+  border: 1px solid rgba(255, 189, 109, 0.36);
+  color: #ffbd6d;
+  font-size: 0.63rem;
+  font-style: normal;
+  font-weight: 620;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+
+.chart {
+  display: grid;
+  grid-template-columns: minmax(13rem, 0.8fr) minmax(11rem, 1fr);
+  gap: 1rem;
+  align-items: center;
+  min-height: 19rem;
+  margin: 0;
+  padding: 1.25rem;
+  background: var(--bg-2);
+}
+
+.chart svg {
+  width: 100%;
+  max-width: 18rem;
+  margin: auto;
+  overflow: visible;
+  transform: rotate(-90deg);
+}
+
+.chartTrack,
+.chartSlice {
+  fill: none;
+  stroke-width: 10;
+}
+
+.chartTrack {
+  stroke: rgba(255, 255, 255, 0.06);
+}
+
+.chartSlice {
+  transition: stroke-width var(--dur-2) var(--ease-standard);
+}
+
+.chartSlice:hover {
+  stroke-width: 12;
+}
+
+.chart text {
+  fill: var(--muted);
+  font-family: var(--font-jetbrains-mono), ui-monospace, monospace;
+  font-size: 6px;
+  letter-spacing: 0.08em;
+  transform: rotate(90deg);
+  transform-origin: 50px 50px;
+}
+
+.chart figcaption {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.chart figcaption div {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 0.5rem;
+  align-items: center;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid var(--line-soft);
+}
+
+.chart figcaption i {
+  width: 0.55rem;
+  height: 0.55rem;
+}
+
+.chart figcaption span {
+  color: var(--muted-2);
+  font-size: 0.72rem;
+}
+
+.chart figcaption strong {
+  font-family: var(--font-jetbrains-mono), ui-monospace, monospace;
+  font-size: 0.68rem;
+}
+
+.holdings {
+  border-top: 1px solid var(--line-soft);
+}
+
+.tableHead,
+.row {
+  display: grid;
+  grid-template-columns: minmax(16rem, 1.25fr) minmax(11rem, 0.72fr) minmax(17rem, 1fr);
+}
+
+.tableHead {
+  padding: 0.65rem 1rem 0.65rem 4.55rem;
+  color: var(--muted);
+  font-size: 0.62rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.row {
+  position: relative;
+  border-top: 1px solid var(--line-soft);
+}
+
+.row > div {
+  min-width: 0;
+  padding: 0.95rem 1rem;
+  border-left: 1px solid var(--line-soft);
+}
+
+.row > div:first-of-type {
+  border-left: 0;
+}
+
+.assetGlyph {
+  --asset-color: var(--accent);
+  position: absolute;
+  top: 0.95rem;
+  left: 1rem;
+  display: grid;
+  place-items: center;
+  width: 2.4rem;
+  height: 2.4rem;
+  border: 1px solid color-mix(in oklab, var(--asset-color) 40%, transparent);
+  background: color-mix(in oklab, var(--asset-color) 9%, transparent);
+  color: var(--asset-color);
+}
+
+.assetGlyph svg {
+  width: 1.1rem;
+}
+
+.assetName {
+  display: grid;
+  gap: 0.18rem;
+  padding-left: 4.55rem !important;
+}
+
+.assetName strong {
+  font-size: 0.9rem;
+  font-weight: 620;
+}
+
+.assetName span,
+.assetName a,
+.assetName code,
+.balance span,
+.valuation > span,
+.valuation a,
+.valuation small {
+  color: var(--muted);
+  font-size: 0.67rem;
+  line-height: 1.4;
+}
+
+.assetName a,
+.valuation a {
+  color: var(--accent-bright);
+  overflow-wrap: anywhere;
+}
+
+.balance,
+.valuation {
+  display: grid;
+  align-content: center;
+  gap: 0.28rem;
+}
+
+.balance strong,
+.valuation strong {
+  font-family: var(--font-jetbrains-mono), ui-monospace, monospace;
+  font-size: 0.76rem;
+  font-weight: 560;
+  overflow-wrap: anywhere;
+}
+
+.valuation[data-status="unpriced"] strong,
+.valuation[data-status="unavailable"] strong {
+  color: #ffbd6d;
+}
+
+.provenance {
+  display: grid;
+  grid-template-columns: auto minmax(12rem, 0.55fr) minmax(18rem, 1fr);
+  gap: 1rem;
+  align-items: start;
+  padding: 0.9rem 1rem;
+  border-top: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.018);
+}
+
+.provenance > span {
+  padding: 0.25rem 0.4rem;
+  border: 1px solid var(--line);
+  color: var(--muted);
+  font-family: var(--font-jetbrains-mono), ui-monospace, monospace;
+  font-size: 0.61rem;
+  white-space: nowrap;
+}
+
+.provenance > span[data-status="live"] {
+  border-color: rgba(158, 255, 184, 0.3);
+  color: #9effb8;
+}
+
+.provenance div {
+  display: grid;
+  gap: 0.25rem;
+}
+
+.provenance strong {
+  font-size: 0.72rem;
+  font-weight: 600;
+}
+
+.provenance small,
+.provenance p {
+  color: var(--muted);
+  font-size: 0.65rem;
+  line-height: 1.45;
+}
+
+.empty,
+.unavailable {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 1rem;
+  align-items: center;
+  min-height: 12rem;
+  padding: clamp(1.2rem, 3vw, 2rem);
+}
+
+.empty > svg,
+.unavailable > svg,
+.noChart > svg {
+  width: 2rem;
+  color: var(--accent);
+}
+
+.empty h3,
+.unavailable h2 {
+  font-size: 1.1rem;
+  font-weight: 560;
+}
+
+.empty p,
+.unavailable p {
+  max-width: 48rem;
+  margin-top: 0.4rem;
+  color: var(--muted-2);
+  font-size: 0.8rem;
+  line-height: 1.5;
+}
+
+.noChart {
+  display: grid;
+  place-items: center;
+  align-content: center;
+  gap: 0.6rem;
+  min-height: 19rem;
+  color: var(--muted);
+  background: var(--bg-2);
+  font-size: 0.75rem;
+}
+
+.skeleton {
+  display: grid;
+  grid-template-columns: 1.2fr 0.8fr 1fr;
+  gap: 1px;
+  min-height: 13rem;
+  background: var(--line-soft);
+}
+
+.skeleton i {
+  background:
+    linear-gradient(100deg, transparent 28%, rgba(255, 255, 255, 0.055) 48%, transparent 68%),
+    var(--bg-2);
+  background-size: 240% 100%;
+  animation: portfolioShimmer 1.4s linear infinite;
+}
+
+@keyframes portfolioShimmer {
+  to { background-position: -240% 0; }
+}
+
+@media (max-width: 900px) {
+  .summaryGrid,
+  .tableHead,
+  .row,
+  .provenance {
+    grid-template-columns: 1fr;
+  }
+
+  .tableHead {
+    display: none;
+  }
+
+  .row {
+    padding-top: 0;
+  }
+
+  .row > div {
+    padding-left: 4.55rem;
+    border-top: 1px solid var(--line-soft);
+    border-left: 0;
+  }
+
+  .assetName {
+    border-top: 0 !important;
+  }
+
+  .chart {
+    grid-template-columns: minmax(12rem, 0.75fr) minmax(10rem, 1fr);
+  }
+}
+
+@media (max-width: 620px) {
+  .head {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .headMeta {
+    align-items: stretch;
+  }
+
+  .chart {
+    grid-template-columns: 1fr;
+  }
+
+  .chart svg {
+    max-width: 14rem;
+  }
+
+  .empty,
+  .unavailable {
+    grid-template-columns: 1fr;
+  }
+
+  .skeleton {
+    grid-template-columns: 1fr;
+  }
+
+  .skeleton i:not(:first-child) {
+    display: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .skeleton i {
+    animation: none;
+  }
+
+  .chartSlice {
+    transition: none;
+  }
+}

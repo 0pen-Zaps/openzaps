@@ -5,6 +5,7 @@ import { Analytics } from "@vercel/analytics/next";
 import "./globals.css";
 import { Spotlight } from "@/components/Spotlight";
 import { JsonLd } from "@/components/JsonLd";
+import { WalletProvider } from "@/components/WalletProvider";
 import { LINKS, TOKEN, TOKEN_LAUNCH, X_HANDLE } from "@/lib/config";
 import {
   SITE_URL,
@@ -184,7 +185,7 @@ export default function RootLayout({
         <a href="#main" className="skipLink">
           Skip to content
         </a>
-        {children}
+        <WalletProvider>{children}</WalletProvider>
         <Spotlight />
         <Analytics />
       </body>

@@ -7,6 +7,7 @@ import { createPublicClient, createWalletClient, custom, http, type Address } fr
 import { BlockGlyph } from "@/app/(site)/zap/BlockGlyph";
 import { resolveRouteById } from "@/lib/routes";
 import { CopyButton } from "@/components/CopyButton";
+import { useWalletSession } from "@/components/WalletProvider";
 import {
   ROBINHOOD_RPC_URL,
   ensureRobinhoodChain,
@@ -52,10 +53,15 @@ const ROUTE_TO_ZAPS: Record<string, string> = {
 };
 
 export function PotLive({ initial }: { initial: PotPayload | null }): React.JSX.Element {
+  const {
+    account,
+    isRobinhoodChain,
+    connect: connectSession,
+    switchToRobinhood,
+  } = useWalletSession();
   const [state, setState] = useState<State>(
     initial ? { status: "ready", data: initial, staleSince: null } : { status: "loading" },
   );
-  const [account, setAccount] = useState<Address | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
@@ -96,19 +102,27 @@ export function PotLive({ initial }: { initial: PotPayload | null }): React.JSX.
     setBusy("connect");
     setError("");
     try {
-      const provider = getInjectedProvider();
-      if (!provider) throw new Error("No injected wallet found in this browser.");
-      const wallet = createWalletClient({ chain: robinhoodChain, transport: custom(provider) });
-      const [address] = await wallet.requestAddresses();
-      await ensureRobinhoodChain(provider);
-      setAccount(address);
+      const address = await connectSession();
       await load(address);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Could not connect.");
     } finally {
       setBusy(null);
     }
-  }, [load]);
+  }, [connectSession, load]);
+
+  const switchWalletNetwork = useCallback(async (): Promise<void> => {
+    setBusy("connect");
+    setError("");
+    try {
+      await switchToRobinhood();
+      setNotice("Wallet switched to Robinhood Chain.");
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Could not switch network.");
+    } finally {
+      setBusy(null);
+    }
+  }, [switchToRobinhood]);
 
   /**
    * Push a pending fee asset into the prize. `buyZaps` is permissionless by design —
@@ -200,10 +214,17 @@ export function PotLive({ initial }: { initial: PotPayload | null }): React.JSX.
     <>
       <section className={`container ${styles.walletBar}`} aria-label="Wallet">
         {account ? (
-          <p className={styles.connected}>
-            <BlockGlyph name="check" className={styles.barGlyph} />
-            Reading tickets for <code>{short(account)}</code>
-          </p>
+          <>
+            <p className={styles.connected}>
+              <BlockGlyph name={isRobinhoodChain ? "check" : "alert"} className={styles.barGlyph} />
+              Reading tickets for <code>{short(account)}</code>
+            </p>
+            {!isRobinhoodChain ? (
+              <button className="btn btnGhost" data-busy={busy === "connect"} disabled={busy !== null} onClick={() => void switchWalletNetwork()} type="button">
+                {busy === "connect" ? "Switching…" : "Switch network"}
+              </button>
+            ) : null}
+          </>
         ) : (
           <>
             <p className={styles.connectHint}>Connect to see your tickets and to convert fees into the prize.</p>
@@ -308,10 +329,10 @@ export function PotLive({ initial }: { initial: PotPayload | null }): React.JSX.
                       <button
                         className="btn btnPrimary"
                         data-busy={busy === `convert:${pot.address}:${entry.asset}`}
-                        disabled={busy !== null || !account}
+                        disabled={busy !== null || !account || !isRobinhoodChain}
                         onClick={() => void convert(pot, entry.asset, BigInt(entry.balance), entry.symbol)}
                         type="button"
-                        title={account ? undefined : "Connect a wallet to submit the conversion"}
+                        title={!account ? "Connect a wallet to submit the conversion" : !isRobinhoodChain ? "Switch to Robinhood Chain to submit the conversion" : undefined}
                       >
                         <BlockGlyph name="bolt" className={styles.btnGlyph} />
                         {busy === `convert:${pot.address}:${entry.asset}` ? "Converting…" : "Buy 0xZAPS"}

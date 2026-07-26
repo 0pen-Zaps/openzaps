@@ -14,6 +14,7 @@ const ZAP = "0x9941dD72373429C36F82D888dbcbab080038f033" as const;
 const OUT = "0xDd90bFa4adC7F4401E611AbaC692D939F9F4CB07" as const;
 const EXECUTOR = "0x0000000000000000000000000000000000000000" as const;
 const HASH = "0xa31514d5c136fd98877eafe2bd715ca507fa3ee28e94194d7dba75d3e0360270" as const;
+const CREATE_TX = `0x${"34".repeat(32)}` as const;
 const SIG = `0x${"ab".repeat(65)}`;
 
 function relativeIntent(): string {
@@ -75,6 +76,7 @@ describe("parseAutomationRecords", () => {
   it("loads a valid row and keeps relay cancellation metadata", () => {
     const parsed = parseAutomationRecords(JSON.stringify([
       record({
+        createTx: CREATE_TX,
         relayId: "0198a941-58d8-7000-8000-000000000001",
         revokedAt: "2026-07-26T00:00:00.000Z",
         revocationTx: `0x${"12".repeat(32)}`,
@@ -82,6 +84,7 @@ describe("parseAutomationRecords", () => {
     ]));
     expect(parsed).toHaveLength(1);
     expect(parsed[0].address).toBe(ZAP);
+    expect(parsed[0].createTx).toBe(CREATE_TX);
     expect(parsed[0].relayId).toBe("0198a941-58d8-7000-8000-000000000001");
     expect(parsed[0].revocationTx).toBe(`0x${"12".repeat(32)}`);
   });

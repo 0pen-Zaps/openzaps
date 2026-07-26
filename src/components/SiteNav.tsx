@@ -6,6 +6,7 @@ import { useEffect, useRef, useState } from "react";
 import { OpenZapMark } from "./OpenZapMark";
 import { BuyButton } from "./BuyButton";
 import { ScrollProgress } from "./ScrollProgress";
+import { useWalletSession } from "./WalletProvider";
 import { TOKEN } from "@/lib/config";
 import styles from "./SiteNav.module.css";
 
@@ -20,8 +21,34 @@ const LINKS = [
 
 export function SiteNav(): React.JSX.Element {
   const pathname = usePathname();
+  const {
+    account,
+    status: walletStatus,
+    providerAvailable,
+    isRobinhoodChain,
+    connect,
+    switchToRobinhood,
+  } = useWalletSession();
   const [condensed, setCondensed] = useState(false);
+  const [walletBusy, setWalletBusy] = useState(false);
+  const [walletError, setWalletError] = useState("");
   const barRef = useRef<HTMLElement>(null);
+
+  const openWallet = async (): Promise<void> => {
+    setWalletBusy(true);
+    setWalletError("");
+    try {
+      if (account && !isRobinhoodChain) {
+        await switchToRobinhood();
+      } else {
+        await connect();
+      }
+    } catch (cause) {
+      setWalletError(cause instanceof Error ? cause.message : "Wallet connection failed.");
+    } finally {
+      setWalletBusy(false);
+    }
+  };
 
   /**
    * Publish this bar's height as `--nav-h` for anything that has to sit below it.
@@ -87,9 +114,40 @@ export function SiteNav(): React.JSX.Element {
             );
           })}
         </div>
-        <BuyButton className={styles.cta} destination="openzaps" />
+        <div className={styles.actions}>
+          {account && isRobinhoodChain ? (
+            <Link className={styles.walletAccount} href="/profile" aria-label={`Open profile for ${account}`}>
+              {shortAddress(account)}
+            </Link>
+          ) : (
+            <button
+              className={styles.walletButton}
+              data-network={account ? "wrong" : "disconnected"}
+              disabled={walletBusy || walletStatus === "checking" || !providerAvailable}
+              onClick={() => void openWallet()}
+              title={walletError || (!providerAvailable && walletStatus !== "checking" ? "No injected EIP-1193 wallet was found." : undefined)}
+              type="button"
+            >
+              {walletBusy
+                ? account ? "Switching…" : "Connecting…"
+                : walletStatus === "checking"
+                  ? "Wallet…"
+                  : account
+                    ? "Switch chain"
+                    : providerAvailable
+                      ? "Connect"
+                      : "No wallet"}
+            </button>
+          )}
+          <BuyButton className={styles.cta} destination="openzaps" />
+        </div>
+        {walletError ? <span className="srOnly" role="alert">{walletError}</span> : null}
       </nav>
       <ScrollProgress />
     </header>
   );
+}
+
+function shortAddress(address: string): string {
+  return `${address.slice(0, 6)}…${address.slice(-4)}`;
 }

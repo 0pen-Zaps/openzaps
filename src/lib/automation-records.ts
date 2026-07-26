@@ -20,6 +20,7 @@ export interface AutomationRecord {
   amountPerRun: string;
   createdAt: string;
   policyHash: Hex;
+  createTx?: Hex;
   plannedRuns?: number;
   terms?: string;
   intentFile?: string;
@@ -179,6 +180,7 @@ function parseRecord(value: unknown): AutomationRecord[] {
       amountPerRun: row.amountPerRun,
       createdAt: typeof row.createdAt === "string" ? row.createdAt : new Date(0).toISOString(),
       policyHash: row.policyHash as Hex,
+      createTx: optionalHash(row.createTx),
       plannedRuns: boundedOptionalNumber(row.plannedRuns, 1, 0xffff_ffff),
       terms: optionalString(row.terms),
       intentFile,
