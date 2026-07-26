@@ -13,11 +13,12 @@ import {
   zeroAddress,
   zeroHash,
   type Address,
-  type EIP1193Provider,
   type Hex,
 } from "viem";
 import { OpenZapMark } from "@/components/OpenZapMark";
+import { useWalletSession } from "@/components/WalletProvider";
 import { BlockGlyph } from "./BlockGlyph";
+import { CreationWorkspace } from "./CreationWorkspace";
 import { trackEvent } from "@/lib/analytics";
 import { LINKS } from "@/lib/config";
 import {
@@ -125,10 +126,7 @@ type ZapHistoryEntry = {
   assetDecimals: number;
 };
 type ZapHistoryState = "loading" | "unavailable" | ZapHistoryEntry[];
-type ObservableProvider = EIP1193Provider & {
-  on?: (event: string, listener: (value: unknown) => void) => void;
-  removeListener?: (event: string, listener: (value: unknown) => void) => void;
-};
+type CreatedZapResult = SavedZapRecord & { createTx: Hex };
 
 const publicClient = createPublicClient({
   chain: robinhoodChain,
@@ -148,12 +146,18 @@ const SAVED_ZAP_ROW: React.CSSProperties = {
 const LEGACY_STORAGE_KEY = "openzaps:robinhood-live-zap:v1";
 const ZAP_STORAGE_KEY = "openzaps:robinhood-live-zaps:v2";
 const TX_STORAGE_KEY = "openzaps:robinhood-transactions:v1";
+const CREATION_WORKSPACE_KEY = "openzaps:creation-workspace:v1";
 
 export default function AppPage(): React.JSX.Element {
   const configured = openZapProtocolConfigured();
   const feeConfigured = openZapCreationFeeConfigured();
-  const [account, setAccount] = useState<Address | null>(null);
-  const [walletChainId, setWalletChainId] = useState<number | null>(null);
+  const {
+    account,
+    chainId: walletChainId,
+    connect: connectSession,
+    disconnect: disconnectSession,
+    switchToRobinhood,
+  } = useWalletSession();
   const [protocolHealth, setProtocolHealth] = useState<HealthState>("checking");
   const [routeId, setRouteId] = useState<string>(DEFAULT_ROUTE_ID);
   // The routes the console may OFFER for a NEW zap: deployed swaps always, and a
@@ -178,6 +182,7 @@ export default function AppPage(): React.JSX.Element {
   const [autoRefreshedAt, setAutoRefreshedAt] = useState<string | null>(null);
   const [zap, setZap] = useState<SavedZapRecord | null>(null);
   const [savedZaps, setSavedZaps] = useState<SavedZapRecord[]>([]);
+  const [creationResult, setCreationResult] = useState<CreatedZapResult | null>(null);
   const [executedZap, setExecutedZap] = useState<Address | null>(null);
   const [manualZap, setManualZap] = useState("");
   // Balances for the SELECTED route's tokens. When a zap is selected the route
@@ -200,9 +205,6 @@ export default function AppPage(): React.JSX.Element {
   const [error, setError] = useState("");
   const [transactions, setTransactions] = useState<TransactionRecord[]>([]);
   const [zapHistory, setZapHistory] = useState<ZapHistoryState>([]);
-  // Wallet event handlers and the async restore flow need the freshest values
-  // without re-subscribing; refs bridge them across stale closures.
-  const accountRef = useRef<Address | null>(null);
   const zapRef = useRef<SavedZapRecord | null>(null);
   const noticeRef = useRef<HTMLDivElement>(null);
   const holderTierRef = useRef<HolderTier>("none");
@@ -215,9 +217,6 @@ export default function AppPage(): React.JSX.Element {
   // auto-select an old capsule over an explicit "build this one" intent.
   const builderImportRef = useRef<"applied" | "rejected" | null>(null);
 
-  useEffect(() => {
-    accountRef.current = account;
-  }, [account]);
 
   useEffect(() => {
     zapRef.current = zap;
@@ -242,23 +241,6 @@ export default function AppPage(): React.JSX.Element {
     setExecutedZap(null);
   }, [resetQuoteState]);
 
-  const resetSessionState = useCallback((): void => {
-    setZap(null);
-    setSavedZaps([]);
-    setExecutedZap(null);
-    resetQuoteState();
-    setTransactions([]);
-    setManualZap("");
-    // Balances belong to the departing account; a new account must never
-    // inherit them (the holder tier derives from the 0xZAPS balance).
-    setWalletInBalance(0n);
-    setWalletOutBalance(0n);
-    setWalletZapsBalance(0n);
-    setNativeBalance(0n);
-    setZapInBalance(0n);
-    setZapOutBalance(0n);
-    setZapNativeBalance(0n);
-  }, [resetQuoteState]);
 
   useEffect(() => {
     const address = zap?.address;
@@ -530,47 +512,6 @@ export default function AppPage(): React.JSX.Element {
     };
   }, [feeConfigured]);
 
-  useEffect(() => {
-    const provider = getInjectedProvider() as ObservableProvider | null;
-    if (!provider) return;
-    let cancelled = false;
-
-    const updateAccounts = (value: unknown): void => {
-      if (cancelled || !Array.isArray(value)) return;
-      const next = value.find((item): item is string => typeof item === "string");
-      const nextAccount = next ? getAddress(next) : null;
-      // Some wallets re-emit accountsChanged with the same account on focus;
-      // wiping state then would strand the user mid-flow with nothing to re-run
-      // the [account] restore effect.
-      if (nextAccount === accountRef.current) return;
-      setAccount(nextAccount);
-      if (!nextAccount) setWalletChainId(null);
-      resetSessionState();
-    };
-    const updateChain = (value: unknown): void => {
-      if (cancelled || typeof value !== "string") return;
-      setWalletChainId(Number.parseInt(value, 16));
-    };
-    const handleDisconnect = (): void => {
-      if (cancelled) return;
-      setAccount(null);
-      setWalletChainId(null);
-      resetSessionState();
-    };
-
-    provider.on?.("accountsChanged", updateAccounts);
-    provider.on?.("chainChanged", updateChain);
-    provider.on?.("disconnect", handleDisconnect);
-    void provider.request({ method: "eth_accounts" }).then(updateAccounts).catch(() => undefined);
-    void provider.request({ method: "eth_chainId" }).then(updateChain).catch(() => undefined);
-
-    return () => {
-      cancelled = true;
-      provider.removeListener?.("accountsChanged", updateAccounts);
-      provider.removeListener?.("chainChanged", updateChain);
-      provider.removeListener?.("disconnect", handleDisconnect);
-    };
-  }, [resetSessionState]);
 
   useEffect(() => {
     if (!account) return;
@@ -620,6 +561,11 @@ export default function AppPage(): React.JSX.Element {
       });
       saveZapList(account, merged);
       setSavedZaps(merged);
+      const receiptAddress = readCreationWorkspace(account);
+      const receipt = receiptAddress
+        ? merged.find((record) => record.address === receiptAddress && record.createTx !== undefined)
+        : undefined;
+      if (receipt?.createTx) setCreationResult({ ...receipt, createTx: receipt.createTx });
       // Always read at maximum retention: the holder tier may not be known yet
       // (balance still loading), and a truncating read followed by a persisting
       // write would permanently destroy a holder's extended history.
@@ -643,17 +589,22 @@ export default function AppPage(): React.JSX.Element {
     setBusy("connect");
     clearMessages();
     try {
-      const provider = getInjectedProvider();
-      if (!provider) throw new Error("No injected wallet found. Install or open MetaMask, Rabby, or another EIP-1193 wallet.");
-      const wallet = createWalletClient({ chain: robinhoodChain, transport: custom(provider) });
-      const addresses = await wallet.requestAddresses();
-      if (!addresses[0]) throw new Error("The wallet did not return an account.");
-      await ensureRobinhoodChain(provider);
-      const nextAccount = getAddress(addresses[0]);
-      setAccount(nextAccount);
-      setWalletChainId(ROBINHOOD_CHAIN_ID);
+      const nextAccount = await connectSession();
       setNotice("Wallet connected to Robinhood Chain.");
       trackEvent("robinhood_wallet_connected", { account: nextAccount });
+    } catch (cause) {
+      setError(readableError(cause));
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function switchWalletNetwork(): Promise<void> {
+    setBusy("connect");
+    clearMessages();
+    try {
+      await switchToRobinhood();
+      setNotice("Wallet switched to Robinhood Chain.");
     } catch (cause) {
       setError(readableError(cause));
     } finally {
@@ -786,7 +737,7 @@ export default function AppPage(): React.JSX.Element {
       if (receipt.status !== "success") throw new Error("Creation gateway transaction reverted.");
 
       const verified = await inspectOwnedZap(publicClient, predicted, owner);
-      const nextZap: SavedZapRecord = {
+      const nextZap: CreatedZapResult = {
         address: verified.address,
         routeId: verified.route.id,
         amountIn: verified.amountIn.toString(),
@@ -795,6 +746,8 @@ export default function AppPage(): React.JSX.Element {
         policyHash: verified.policyHash,
       };
       rememberZap(owner, nextZap);
+      rememberCreationWorkspace(owner, nextZap.address);
+      setCreationResult(nextZap);
       selectZap(nextZap);
       setNotice(
         `Immutable zap created at ${shortAddress(predicted)}. The ${formatToken(OPENZAP_CREATION_FEE, 18)} ETH creation fee converted atomically with the reviewed ${formatToken(creationFeeQuote.minZapsOut, 18)} 0xZAPS floor. Fund the capsule before execution.`,
@@ -1151,16 +1104,8 @@ export default function AppPage(): React.JSX.Element {
   }
 
   async function disconnect(): Promise<void> {
-    const provider = getInjectedProvider();
-    try {
-      await provider?.request({ method: "wallet_revokePermissions", params: [{ eth_accounts: {} }] });
-    } catch {
-      // Not all EIP-1193 wallets support permission revocation; local state still disconnects.
-    }
-    setAccount(null);
-    setWalletChainId(null);
-    resetSessionState();
     clearMessages();
+    await disconnectSession();
   }
 
 
@@ -1229,12 +1174,34 @@ export default function AppPage(): React.JSX.Element {
   }
 
   const startNewZap = useCallback((): void => {
+    if (account) clearCreationWorkspace(account);
+    setCreationResult(null);
     setZap(null);
     setExecutedZap(null);
     resetQuoteState();
     setManualZap("");
     clearMessages();
-  }, [clearMessages, resetQuoteState]);
+  }, [account, clearMessages, resetQuoteState]);
+
+  async function copyCreationResult(): Promise<void> {
+    if (!creationResult) return;
+    const resultRoute = resolveRouteById(creationResult.routeId);
+    const summary = [
+      "OpenZaps creation receipt",
+      `Capsule: ${creationResult.address}`,
+      `Transaction: ${creationResult.createTx}`,
+      `Policy: ${creationResult.policyHash}`,
+      `Route: ${resultRoute ? `${resultRoute.tokenIn.symbol} -> ${resultRoute.tokenOut.symbol}` : creationResult.routeId}`,
+      `Exact input: ${formatToken(BigInt(creationResult.amountIn), resultRoute?.tokenIn.decimals ?? 18)} ${resultRoute?.tokenIn.symbol ?? "tokens"}`,
+      `Created: ${creationResult.createdAt}`,
+    ].join("\n");
+    try {
+      await navigator.clipboard.writeText(summary);
+      setNotice("Creation receipt copied. The capsule address, transaction, policy, and route are included.");
+    } catch {
+      setError("The browser blocked clipboard access. Use the explorer links in the creation receipt instead.");
+    }
+  }
 
   /**
    * One-shot handoff from the Design view (and, via the /build and /app 308s,
@@ -1337,7 +1304,11 @@ export default function AppPage(): React.JSX.Element {
     });
   }, [changeAmount, changeRoute, startNewZap, offeredRoutes, offeredReady]);
 
-  const wrongNetwork = walletChainId !== null && walletChainId !== ROBINHOOD_CHAIN_ID;
+  const wrongNetwork = account !== null && walletChainId !== ROBINHOOD_CHAIN_ID;
+  const creationResultRoute = creationResult ? resolveRouteById(creationResult.routeId) : null;
+  const creationResultActive = creationResult !== null && zap?.address === creationResult.address;
+  const creationResultFunded = creationResultActive && funded;
+  const creationResultExecuted = creationResultActive && executionComplete;
   const stepLabel = !account
     ? "1. Connect wallet"
     : wrongNetwork
@@ -1388,7 +1359,7 @@ export default function AppPage(): React.JSX.Element {
               </a>
               {holderTier !== "none" && <span className={styles.holderChip}>{tierLabel(holderTier)}</span>}
               {wrongNetwork && (
-                <button data-busy={busy === "connect"} className="btn btnPrimary" disabled={busy !== null} onClick={() => void connectWallet()} type="button">
+                <button data-busy={busy === "connect"} className="btn btnPrimary" disabled={busy !== null} onClick={() => void switchWalletNetwork()} type="button">
                   {busy === "connect" ? "Switching…" : "Switch network"}
                 </button>
               )}
@@ -1423,6 +1394,88 @@ export default function AppPage(): React.JSX.Element {
           {error}
         </div>
       )}
+
+      {creationResult ? (
+        <CreationWorkspace
+          eyebrow="Creation receipt · v1.1"
+          title="Your immutable zap is live."
+          detail="The gateway transaction confirmed, the capsule owner and bytecode were verified through Robinhood RPC, and the reviewed creation-fee floor settled atomically. Funding and execution are separate wallet-confirmed steps."
+          facts={[
+            {
+              label: "Capsule",
+              value: shortAddress(creationResult.address),
+              href: explorerAddress(creationResult.address),
+              mono: true,
+            },
+            {
+              label: "Creation transaction",
+              value: shortHash(creationResult.createTx),
+              href: explorerTransaction(creationResult.createTx),
+              mono: true,
+            },
+            {
+              label: "Policy hash",
+              value: shortHash(creationResult.policyHash),
+              mono: true,
+            },
+            {
+              label: "Bounded route",
+              value: creationResultRoute
+                ? `${creationResultRoute.tokenIn.symbol} → ${creationResultRoute.tokenOut.symbol}`
+                : creationResult.routeId,
+            },
+            {
+              label: "Exact input",
+              value: `${formatToken(BigInt(creationResult.amountIn), creationResultRoute?.tokenIn.decimals ?? 18)} ${creationResultRoute?.tokenIn.symbol ?? "tokens"}`,
+            },
+            {
+              label: "Created",
+              value: formatReceiptTime(creationResult.createdAt),
+            },
+          ]}
+          stages={[
+            {
+              label: "Created",
+              detail: "Confirmed and bytecode-verified.",
+              status: "done",
+            },
+            {
+              label: "Fund",
+              detail: creationResultFunded
+                ? "Exact input is held by the capsule."
+                : creationResultActive
+                  ? "Transfer only the route's exact input."
+                  : "Re-open this capsule to continue.",
+              status: creationResultFunded ? "done" : creationResultActive ? "current" : "pending",
+            },
+            {
+              label: "Execute",
+              detail: creationResultExecuted
+                ? "Signed execution confirmed."
+                : creationResultFunded
+                  ? "Review the quote, then sign once."
+                  : "Available after funding.",
+              status: creationResultExecuted ? "done" : creationResultFunded ? "current" : "pending",
+            },
+          ]}
+        >
+          {!creationResultActive ? (
+            <button className="btn btnPrimary" disabled={busy !== null} onClick={() => selectZap(creationResult)} type="button">
+              Open in console
+            </button>
+          ) : !creationResultExecuted ? (
+            <a className="btn btnPrimary" href="#zap-lifecycle">
+              {creationResultFunded ? "Continue to execution" : "Continue to funding"}
+            </a>
+          ) : null}
+          <Link className="btn btnGhost" href={`/explore/${creationResult.address}`}>Onchain page</Link>
+          <Link className="btn btnGhost" href="/profile">View profile</Link>
+          <button className="btn btnGhost" onClick={() => void copyCreationResult()} type="button">Copy receipt</button>
+          <button className={creationResultExecuted ? "btn btnPrimary" : "btn btnGhost"} disabled={busy !== null || chainedRun} onClick={startNewZap} type="button">
+            Create another
+          </button>
+        </CreationWorkspace>
+      ) : null}
 
       <section className={`container ${styles.metrics}`} aria-label="Live protocol metrics">
         <Metric glyph="bridge" label="Network" value={wrongNetwork ? `Wrong chain · ${walletChainId ?? "?"}` : "Robinhood 4663"} />
@@ -1535,12 +1588,12 @@ export default function AppPage(): React.JSX.Element {
             ) : null}
           </div>
 
-          <div className={styles.flow}>
+          <div className={styles.flow} id="zap-lifecycle">
             <FlowStep number="1" glyph="lock" title="Create immutable zap" detail="Policy binds owner, recipient, adapter, spender, input token, and exact amount. The separate fee converts only if creation succeeds; any conversion-floor failure reverts the whole transaction." done={zap !== null}>
               <button data-busy={busy === "create"} className="btn btnPrimary" data-testid="create-zap" disabled={!account || !protocolReady || !feeConfigured || creationFeeQuote === null || wrongNetwork || zap !== null || busy !== null || chainedRun || amountIn <= 0n} onClick={() => void createZap()} type="button">
                 {busy === "create" ? "Creating…" : "Create zap"}
               </button>
-              {zap && <button className="btn btnGhost" disabled={busy !== null || chainedRun} onClick={startNewZap} type="button">Build another</button>}
+
             </FlowStep>
             <FlowStep
               number="2"
@@ -1550,7 +1603,7 @@ export default function AppPage(): React.JSX.Element {
               done={funded}
             >
               {canWrapInput && (
-                <button data-busy={busy === "wrap"} className="btn btnGhost" disabled={!account || busy !== null || chainedRun || amountIn <= 0n || nativeBalance < amountIn} onClick={() => void wrapEth()} type="button">
+                <button data-busy={busy === "wrap"} className="btn btnGhost" disabled={!account || wrongNetwork || busy !== null || chainedRun || amountIn <= 0n || nativeBalance < amountIn} onClick={() => void wrapEth()} type="button">
                   {busy === "wrap" ? "Wrapping…" : "Wrap ETH"}
                 </button>
               )}
@@ -1559,7 +1612,7 @@ export default function AppPage(): React.JSX.Element {
                   data-busy={chainedRun}
                   className="btn btnPrimary"
                   data-testid="fund-and-run"
-                  disabled={!zap || !protocolReady || funded || busy !== null || chainedRun || reviewedQuote === null || executionComplete}
+                  disabled={!zap || !protocolReady || wrongNetwork || funded || busy !== null || chainedRun || reviewedQuote === null || executionComplete}
                   onClick={() => void fundAndRun()}
                   type="button"
                   title={reviewedQuote === null ? "Request a live quote first — running signs against the minimum you reviewed." : undefined}
@@ -1568,12 +1621,12 @@ export default function AppPage(): React.JSX.Element {
                   {chainedRun ? (busy === "execute" ? "Running…" : "Funding…") : "Fund & run"}
                 </button>
               )}
-              <button data-busy={busy === "fund"} className={funded ? "btn btnPrimary" : "btn btnGhost"} disabled={!zap || !protocolReady || funded || busy !== null || chainedRun} onClick={() => void fundZap()} type="button">
+              <button data-busy={busy === "fund"} className={funded ? "btn btnPrimary" : "btn btnGhost"} disabled={!zap || !protocolReady || wrongNetwork || funded || busy !== null || chainedRun} onClick={() => void fundZap()} type="button">
                 {busy === "fund" && !chainedRun ? "Funding…" : funded ? "Funded" : "Fund only"}
               </button>
             </FlowStep>
             <FlowStep number="3" glyph="bolt" title="Sign and execute" detail="Requires a reviewed live quote; execution aborts if the price drops below your displayed minimum. The EIP-712 intent expires in ten minutes and caps gas and fee price." done={executionComplete}>
-              <button data-busy={busy === "execute"} className="btn btnPrimary" disabled={!protocolReady || !funded || reviewedQuote === null || busy !== null || chainedRun || executionComplete} onClick={() => void executeZap()} type="button">
+              <button data-busy={busy === "execute"} className="btn btnPrimary" disabled={!protocolReady || wrongNetwork || !funded || reviewedQuote === null || busy !== null || chainedRun || executionComplete} onClick={() => void executeZap()} type="button">
                 {busy === "execute" ? "Executing…" : executionComplete ? "Execution confirmed" : "Sign & execute"}
               </button>
             </FlowStep>
@@ -1623,7 +1676,7 @@ export default function AppPage(): React.JSX.Element {
                     ))}
                 </div>
                 <button className="btn btnGhost" disabled={busy !== null} onClick={exportCurrentZap} type="button">Export public config</button>
-                <button data-busy={busy === "recover"} className="btn btnGhost" disabled={busy !== null || recoverableBalance === 0n} onClick={() => void recoverFunds()} type="button">
+                <button data-busy={busy === "recover"} className="btn btnGhost" disabled={wrongNetwork || busy !== null || recoverableBalance === 0n} onClick={() => void recoverFunds()} type="button">
                   {busy === "recover" ? "Recovering…" : "Emergency recover"}
                 </button>
               </>
@@ -1729,6 +1782,35 @@ function requireAccount(account: Address | null): Address {
 
 function requireProtocolReady(ready: boolean): void {
   if (!ready) throw new Error("OpenZap contract health is unavailable. Transactions are paused.");
+}
+
+function creationWorkspaceKey(owner: Address): string {
+  return `${CREATION_WORKSPACE_KEY}:${owner.toLowerCase()}`;
+}
+
+function rememberCreationWorkspace(owner: Address, zap: Address): void {
+  try {
+    window.sessionStorage.setItem(creationWorkspaceKey(owner), zap);
+  } catch {
+    // The in-memory receipt still survives until this route unmounts.
+  }
+}
+
+function readCreationWorkspace(owner: Address): Address | null {
+  try {
+    const value = window.sessionStorage.getItem(creationWorkspaceKey(owner));
+    return value ? getAddress(value) : null;
+  } catch {
+    return null;
+  }
+}
+
+function clearCreationWorkspace(owner: Address): void {
+  try {
+    window.sessionStorage.removeItem(creationWorkspaceKey(owner));
+  } catch {
+    // The in-memory result is cleared by the caller either way.
+  }
 }
 
 function saveZapList(owner: Address, records: SavedZapRecord[]): void {

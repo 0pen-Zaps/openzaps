@@ -16,7 +16,9 @@ import {
   type Hex,
 } from "viem";
 import { OpenZapMark } from "@/components/OpenZapMark";
+import { useWalletSession } from "@/components/WalletProvider";
 import { BlockGlyph } from "./BlockGlyph";
+import { CreationWorkspace } from "./CreationWorkspace";
 import { trackEvent } from "@/lib/analytics";
 import {
   INTERVAL_PRESETS,
@@ -74,6 +76,7 @@ import {
   ensureRobinhoodChain,
   erc20Abi,
   explorerAddress,
+  explorerTransaction,
   getInjectedProvider,
   lotteryPotAbi,
   openZapCreationFeeConfigured,
@@ -127,6 +130,9 @@ interface TriggerStatus {
 }
 
 type AutomationStatus = SeriesStatus | TriggerStatus;
+type CreatedAutomationResult = AutomationRecord & { createTx: Hex };
+
+const AUTOMATION_CREATION_WORKSPACE_KEY = "openzaps:automation-creation-workspace:v1";
 
 /**
  * Everything the status panel knows about ONE capsule, tagged with its address so a slow
@@ -158,7 +164,12 @@ export default function AutomateConsole(): React.JSX.Element {
     () => readAutomationHandoff(new URLSearchParams(searchParams.toString())),
     [searchParams],
   );
-  const [account, setAccount] = useState<Address | null>(null);
+  const {
+    account,
+    chainId: walletChainId,
+    connect: connectSession,
+    switchToRobinhood,
+  } = useWalletSession();
   const [busy, setBusy] = useState<BusyAction>(null);
   const [notice, setNotice] = useState(
     handoff
@@ -197,6 +208,7 @@ export default function AutomateConsole(): React.JSX.Element {
   const [validDays, setValidDays] = useState(handoff?.mode === "trigger" ? handoff.validDays ?? 30 : 30);
 
   const [records, setRecords] = useState<AutomationRecord[]>([]);
+  const [creationResult, setCreationResult] = useState<CreatedAutomationResult | null>(null);
   const [selected, setSelected] = useState<Address | null>(null);
   const [loaded, setLoaded] = useState<LoadedState | null>(null);
   const [pot, setPot] = useState<PotStatus | null>(null);
@@ -211,6 +223,26 @@ export default function AutomateConsole(): React.JSX.Element {
   const [executorHealth, setExecutorHealth] = useState<ExecutorHealth | null>(null);
   const [intakeToken, setIntakeToken] = useState("");
   const loadEpochRef = useRef(0);
+
+  useEffect(() => {
+    let cancelled = false;
+    // Passive restoration reads only existing permissions (`eth_accounts`) in
+    // the provider. Populate this account's local automations without opening
+    // a wallet prompt.
+    void Promise.resolve().then(() => {
+      if (cancelled) return;
+      const next = account ? readAutomationRecords(account) : [];
+      setRecords(next);
+      const receiptAddress = account ? readAutomationCreationWorkspace(account) : null;
+      const receipt = receiptAddress
+        ? next.find((candidate) => candidate.address === receiptAddress && candidate.createTx !== undefined)
+        : undefined;
+      if (receipt?.createTx) setCreationResult({ ...receipt, createTx: receipt.createTx });
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [account]);
 
   const route: Route | null = useMemo(() => resolveRouteById(routeId), [routeId]);
   const interval = INTERVAL_PRESETS.find((p) => p.id === intervalId) ?? INTERVAL_PRESETS[2];
@@ -330,22 +362,27 @@ export default function AutomateConsole(): React.JSX.Element {
     setBusy("connect");
     setError("");
     try {
-      const provider = getInjectedProvider();
-      if (!provider) throw new Error("No injected wallet found. Install a wallet extension first.");
-      await ensureRobinhoodChain(provider);
-      const wallet = createWalletClient({ chain: robinhoodChain, transport: custom(provider) });
-      const [address] = await wallet.requestAddresses();
-      if (!address) throw new Error("The wallet returned no account.");
-      const owner = getAddress(address);
-      setAccount(owner);
-      setRecords(readAutomationRecords(owner));
+      await connectSession();
       trackEvent("automate_connect");
     } catch (cause) {
       setError(readableError(cause));
     } finally {
       setBusy(null);
     }
-  }, []);
+  }, [connectSession]);
+
+  const switchWalletNetwork = useCallback(async (): Promise<void> => {
+    setBusy("connect");
+    setError("");
+    try {
+      await switchToRobinhood();
+      setNotice("Wallet switched to Robinhood Chain.");
+    } catch (cause) {
+      setError(readableError(cause));
+    } finally {
+      setBusy(null);
+    }
+  }, [switchToRobinhood]);
 
   const persist = useCallback(
     (next: AutomationRecord[]) => {
@@ -516,16 +553,19 @@ export default function AutomateConsole(): React.JSX.Element {
         throw new Error("Deployed zap bytecode does not match the expected implementation. Do not fund it.");
       }
 
-      const next: AutomationRecord = {
+      const next: CreatedAutomationResult = {
         address: predicted,
         routeId: activeRoute.id,
         mode,
         amountPerRun: perRunAmount.toString(),
         createdAt: new Date().toISOString(),
         policyHash,
+        createTx: hash,
         plannedRuns: mode === "recurring" ? maxRuns : undefined,
       };
       persist([next, ...records].slice(0, MAX_SAVED_AUTOMATIONS));
+      rememberAutomationCreationWorkspace(owner, predicted);
+      setCreationResult(next);
       setSelected(predicted);
       setNotice(
         `${mode === "recurring" ? "v3.1" : "v3"} zap created and verified at ${shortAddress(predicted)}. The ${formatToken(OPENZAP_CREATION_FEE, 18)} ETH fee converted with the reviewed ${formatToken(creationFeeQuote.minZapsOut, 18)} 0xZAPS floor. Fund it next.`,
@@ -548,6 +588,36 @@ export default function AutomateConsole(): React.JSX.Element {
     records,
     route,
   ]);
+
+  const startAnotherAutomation = useCallback((): void => {
+    if (account) clearAutomationCreationWorkspace(account);
+    setCreationResult(null);
+    setSelected(null);
+    setLoaded(null);
+    setNotice("");
+    setError("");
+  }, [account]);
+
+  const copyCreationResult = useCallback(async (): Promise<void> => {
+    if (!creationResult) return;
+    const resultRoute = resolveRouteById(creationResult.routeId);
+    const summary = [
+      "OpenZaps automation creation receipt",
+      `Capsule: ${creationResult.address}`,
+      `Transaction: ${creationResult.createTx}`,
+      `Policy: ${creationResult.policyHash}`,
+      `Lineage: ${creationResult.mode === "recurring" ? "v3.1 recurring" : "v3 price trigger"}`,
+      `Route: ${resultRoute ? `${resultRoute.tokenIn.symbol} -> ${resultRoute.tokenOut.symbol}` : creationResult.routeId}`,
+      `Per run: ${formatToken(BigInt(creationResult.amountPerRun), resultRoute?.tokenIn.decimals ?? 18)} ${resultRoute?.tokenIn.symbol ?? "tokens"}`,
+      `Created: ${creationResult.createdAt}`,
+    ].join("\n");
+    try {
+      await navigator.clipboard.writeText(summary);
+      setNotice("Automation creation receipt copied with its capsule, transaction, policy, and terms.");
+    } catch {
+      setError("The browser blocked clipboard access. Use the explorer links in the creation receipt instead.");
+    }
+  }, [creationResult]);
 
   const fundCapsule = useCallback(async () => {
     setBusy("fund");
@@ -959,8 +1029,15 @@ export default function AutomateConsole(): React.JSX.Element {
 
   // ---- render ----
 
+  const wrongNetwork = account !== null && walletChainId !== ROBINHOOD_CHAIN_ID;
+  const creationResultRoute = creationResult ? resolveRouteById(creationResult.routeId) : null;
+  const creationResultActive = creationResult !== null && record?.address === creationResult.address;
+  const creationResultFunded = creationResultActive && funded;
+  const creationResultSigned = creationResultActive && signed;
   const stepLabel = !account
     ? "1. Connect wallet"
+    : wrongNetwork
+      ? "2. Switch network"
     : !record
       ? "2. Create zap"
       : !funded
@@ -1016,9 +1093,16 @@ export default function AutomateConsole(): React.JSX.Element {
         </div>
         <div className={styles.wallet}>
           {account ? (
-            <a className={styles.addr} href={explorerAddress(account)} target="_blank" rel="noreferrer">
-              {shortAddress(account)}
-            </a>
+            <>
+              <a className={styles.addr} href={explorerAddress(account)} target="_blank" rel="noreferrer">
+                {shortAddress(account)}
+              </a>
+              {wrongNetwork ? (
+                <button data-busy={busy === "connect"} className="btn btnPrimary" disabled={busy !== null} onClick={() => void switchWalletNetwork()} type="button">
+                  {busy === "connect" ? "Switching…" : "Switch network"}
+                </button>
+              ) : null}
+            </>
           ) : (
             <button data-busy={busy === "connect"} className="btn btnPrimary" disabled={busy !== null} onClick={() => void connectWallet()} type="button">
               {busy === "connect" ? "Connecting…" : "Connect wallet"}
@@ -1034,6 +1118,88 @@ export default function AutomateConsole(): React.JSX.Element {
           {error}
         </div>
       )}
+
+      {creationResult ? (
+        <CreationWorkspace
+          eyebrow={`Creation receipt · ${creationResult.mode === "recurring" ? "v3.1" : "v3"}`}
+          title="Your automation capsule is live."
+          detail="The gateway transaction confirmed and the clone runtime matched the expected implementation before funding. The capsule now holds the immutable route; funding and the standing EIP-712 authorization remain separate wallet actions."
+          facts={[
+            {
+              label: "Capsule",
+              value: shortAddress(creationResult.address),
+              href: explorerAddress(creationResult.address),
+              mono: true,
+            },
+            {
+              label: "Creation transaction",
+              value: shortHex(creationResult.createTx),
+              href: explorerTransaction(creationResult.createTx),
+              mono: true,
+            },
+            {
+              label: "Policy hash",
+              value: shortHex(creationResult.policyHash),
+              mono: true,
+            },
+            {
+              label: "Lineage",
+              value: creationResult.mode === "recurring" ? "v3.1 · recurring series" : "v3 · price trigger",
+            },
+            {
+              label: "Bounded route",
+              value: creationResultRoute
+                ? `${creationResultRoute.tokenIn.symbol} → ${creationResultRoute.tokenOut.symbol}`
+                : creationResult.routeId,
+            },
+            {
+              label: "Per run",
+              value: `${formatToken(BigInt(creationResult.amountPerRun), creationResultRoute?.tokenIn.decimals ?? 18)} ${creationResultRoute?.tokenIn.symbol ?? "tokens"}${creationResult.mode === "recurring" ? ` · ${creationResult.plannedRuns ?? 1} runs planned` : " · one trigger"}`,
+            },
+          ]}
+          stages={[
+            {
+              label: "Created",
+              detail: "Confirmed and runtime-verified.",
+              status: "done",
+            },
+            {
+              label: "Fund",
+              detail: creationResultFunded
+                ? "Remaining run budget is held."
+                : creationResultActive
+                  ? "Deposit only the planned spend."
+                  : "Re-open this capsule to continue.",
+              status: creationResultFunded ? "done" : creationResultActive ? "current" : "pending",
+            },
+            {
+              label: "Authorize",
+              detail: creationResultSigned
+                ? "Standing intent signed and inspectable."
+                : creationResultFunded
+                  ? "Review terms, then sign EIP-712."
+                  : "Available after funding.",
+              status: creationResultSigned ? "done" : creationResultFunded ? "current" : "pending",
+            },
+          ]}
+        >
+          {!creationResultActive ? (
+            <button className="btn btnPrimary" disabled={busy !== null} onClick={() => setSelected(creationResult.address)} type="button">
+              Open in console
+            </button>
+          ) : !creationResultSigned ? (
+            <a className="btn btnPrimary" href="#automation-lifecycle">
+              {creationResultFunded ? "Continue to authorization" : "Continue to funding"}
+            </a>
+          ) : null}
+          <Link className="btn btnGhost" href={`/explore/${creationResult.address}`}>Onchain page</Link>
+          <Link className="btn btnGhost" href="/profile">View profile</Link>
+          <button className="btn btnGhost" onClick={() => void copyCreationResult()} type="button">Copy receipt</button>
+          <button className={creationResultSigned ? "btn btnPrimary" : "btn btnGhost"} disabled={busy !== null} onClick={startAnotherAutomation} type="button">
+            Create another
+          </button>
+        </CreationWorkspace>
+      ) : null}
 
       <section className={`container ${styles.metrics}`} aria-label="Automation metrics">
         <Metric glyph="repeat" label="Execution type" value={record ? (record.mode === "recurring" ? "Recurring" : "Price trigger") : mode === "recurring" ? "Recurring" : "Price trigger"} />
@@ -1268,7 +1434,7 @@ export default function AutomateConsole(): React.JSX.Element {
             ) : null}
           </div>
 
-          <div className={styles.flow}>
+          <div className={styles.flow} id="automation-lifecycle">
             <FlowStep number="1" glyph="plug" title="Connect wallet" detail="Robinhood Chain (4663), injected wallet." done={account !== null}>
               {!account && (
                 <button data-busy={busy === "connect"} className="btn btnPrimary" disabled={busy !== null} onClick={() => void connectWallet()} type="button">
@@ -1288,7 +1454,7 @@ export default function AutomateConsole(): React.JSX.Element {
                 <button
                   data-busy={busy === "create"}
                   className="btn btnPrimary"
-                  disabled={busy !== null || !account || !configured || !feeConfigured || creationFeeQuote === null || perRunAmount <= 0n}
+                  disabled={busy !== null || !account || wrongNetwork || !configured || !feeConfigured || creationFeeQuote === null || perRunAmount <= 0n}
                   onClick={() => void createCapsule()}
                   type="button"
                 >
@@ -1338,7 +1504,7 @@ export default function AutomateConsole(): React.JSX.Element {
                 </p>
               )}
               {record && balanceKnown && !funded && (
-                <button data-busy={busy === "fund"} className="btn btnPrimary" disabled={busy !== null || funding.status === "short"} onClick={() => void fundCapsule()} type="button">
+                <button data-busy={busy === "fund"} className="btn btnPrimary" disabled={wrongNetwork || busy !== null || funding.status === "short"} onClick={() => void fundCapsule()} type="button">
                   {busy === "fund" ? "Funding…" : "Fund"}
                 </button>
               )}
@@ -1364,7 +1530,7 @@ export default function AutomateConsole(): React.JSX.Element {
                 <button
                   data-busy={busy === "sign"}
                   className="btn btnPrimary"
-                  disabled={busy !== null || !executorValid || (activeMode === "recurring" && !recurringWindowSufficient)}
+                  disabled={wrongNetwork || busy !== null || !executorValid || (activeMode === "recurring" && !recurringWindowSufficient)}
                   onClick={() => void signIntent()}
                   type="button"
                 >
@@ -1470,11 +1636,11 @@ export default function AutomateConsole(): React.JSX.Element {
                   {busy === "refresh" ? "Refreshing…" : "Refresh"}
                 </button>
                 {signed && status && !status.consumed && (
-                  <button data-busy={busy === "cancel"} className="btn btnGhost" disabled={busy !== null} onClick={() => void cancelAutomation()} type="button">
+                  <button data-busy={busy === "cancel"} className="btn btnGhost" disabled={wrongNetwork || busy !== null} onClick={() => void cancelAutomation()} type="button">
                     {busy === "cancel" ? "Cancelling…" : "Cancel automation"}
                   </button>
                 )}
-                <button data-busy={busy === "recover"} className="btn btnGhost" disabled={busy !== null} onClick={() => void recoverFunds()} type="button">
+                <button data-busy={busy === "recover"} className="btn btnGhost" disabled={wrongNetwork || busy !== null} onClick={() => void recoverFunds()} type="button">
                   {busy === "recover" ? "Recovering…" : "Recover funds"}
                 </button>
               </div>
@@ -1524,6 +1690,39 @@ export default function AutomateConsole(): React.JSX.Element {
 }
 
 // ---- module helpers (mirror Console.tsx conventions) ----
+
+function automationCreationWorkspaceKey(owner: Address): string {
+  return `${AUTOMATION_CREATION_WORKSPACE_KEY}:${owner.toLowerCase()}`;
+}
+
+function rememberAutomationCreationWorkspace(owner: Address, zap: Address): void {
+  try {
+    window.sessionStorage.setItem(automationCreationWorkspaceKey(owner), zap);
+  } catch {
+    // The in-memory receipt still survives until this route unmounts.
+  }
+}
+
+function readAutomationCreationWorkspace(owner: Address): Address | null {
+  try {
+    const value = window.sessionStorage.getItem(automationCreationWorkspaceKey(owner));
+    return value ? getAddress(value) : null;
+  } catch {
+    return null;
+  }
+}
+
+function clearAutomationCreationWorkspace(owner: Address): void {
+  try {
+    window.sessionStorage.removeItem(automationCreationWorkspaceKey(owner));
+  } catch {
+    // The in-memory receipt is cleared by the caller either way.
+  }
+}
+
+function shortHex(value: Hex): string {
+  return `${value.slice(0, 10)}…${value.slice(-8)}`;
+}
 
 function runsInRecord(record: AutomationRecord): number {
   if (record.mode === "trigger") return 1;

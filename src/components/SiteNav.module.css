@@ -122,6 +122,62 @@
   z-index: 1;
 }
 
+.actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex: 0 0 auto;
+}
+
+.walletButton,
+.walletAccount {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 38px;
+  padding: 0 0.8rem;
+  border: 1px solid var(--line);
+  border-radius: 0;
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--fg);
+  font-family: var(--font-jetbrains-mono), ui-monospace, monospace;
+  font-size: 0.69rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+  transition:
+    border-color var(--dur-2) var(--ease-standard),
+    background var(--dur-2) var(--ease-standard),
+    color var(--dur-2) var(--ease-standard);
+}
+
+.walletButton:not(:disabled):hover,
+.walletAccount:hover {
+  border-color: rgba(255, 252, 0, 0.55);
+  background: rgba(255, 252, 0, 0.08);
+  color: var(--accent-bright);
+}
+
+.walletButton[data-network="wrong"] {
+  border-color: rgba(255, 181, 71, 0.5);
+  color: #ffd08a;
+}
+
+.walletButton:disabled {
+  cursor: not-allowed;
+  opacity: 0.56;
+}
+
+.walletAccount::before {
+  width: 0.42rem;
+  height: 0.42rem;
+  margin-right: 0.42rem;
+  border-radius: 50%;
+  background: var(--accent-bright);
+  box-shadow: 0 0 10px rgba(255, 252, 0, 0.5);
+  content: "";
+}
+
 .links a:hover {
   color: var(--fg);
 }
@@ -176,7 +232,7 @@
     order: 1;
   }
 
-  .cta {
+  .actions {
     order: 2;
   }
 
