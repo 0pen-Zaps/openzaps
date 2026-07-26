@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { isAddress, getAddress } from "viem";
+import { getAddress, isAddress } from "viem";
 
 import { fetchPots } from "@/lib/pot-server";
 

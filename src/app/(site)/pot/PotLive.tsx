@@ -261,8 +261,9 @@ export function PotLive({ initial }: { initial: PotPayload | null }): React.JSX.
         const held = pot.pending.filter((entry) => BigInt(entry.balance) > 0n);
         const convertible = held.filter((entry) => isConvertible(entry.asset));
         const stranded = held.filter((entry) => !isConvertible(entry.asset));
-        const converted = lifetimeZapsBought(pot.conversions);
-        const awarded = lifetimeAwarded(pot.awards);
+        const historyVerified = pot.historyStatus === "verified";
+        const converted = historyVerified ? lifetimeZapsBought(pot.conversions) : null;
+        const awarded = historyVerified ? lifetimeAwarded(pot.awards) : null;
         const empty = BigInt(pot.prize) === 0n && BigInt(pot.totalTickets) === 0n;
 
         return (
@@ -301,16 +302,25 @@ export function PotLive({ initial }: { initial: PotPayload | null }): React.JSX.
               <div>
                 <dt>Converted to 0xZAPS</dt>
                 <dd>
-                  <strong>{formatPotAmount(converted.toString())}</strong> lifetime
+                  <strong>{converted === null ? "—" : formatPotAmount(converted.toString())}</strong>
+                  <span className={styles.sub}>{historyVerified ? "lifetime" : "history RPC unavailable"}</span>
                 </dd>
               </div>
               <div>
                 <dt>Paid to winners</dt>
                 <dd>
-                  <strong>{formatPotAmount(awarded.toString())}</strong> lifetime
+                  <strong>{awarded === null ? "—" : formatPotAmount(awarded.toString())}</strong>
+                  <span className={styles.sub}>{historyVerified ? "lifetime" : "history RPC unavailable"}</span>
                 </dd>
               </div>
             </dl>
+
+            {!historyVerified && (
+              <p className={styles.stale} role="status">
+                Prize, ticket, and held-asset reads above are verified at block {Number(data.headBlock).toLocaleString("en-US")}.{" "}
+                Conversion and winner history is hidden because its full RPC log scan did not verify.
+              </p>
+            )}
 
             {/* The open half of the loop. A fee that arrives as aeWETH or USDG is not
                 prize yet — someone has to convert it, and anyone may. */}
@@ -375,7 +385,7 @@ export function PotLive({ initial }: { initial: PotPayload | null }): React.JSX.
               </p>
             </div>
 
-            {pot.conversions.length > 0 && (
+            {historyVerified && pot.conversions.length > 0 && (
               <div className={styles.history}>
                 <h3>Conversions</h3>
                 <div className={styles.scroller}>
@@ -409,7 +419,7 @@ export function PotLive({ initial }: { initial: PotPayload | null }): React.JSX.
               </div>
             )}
 
-            {pot.awards.length > 0 && (
+            {historyVerified && pot.awards.length > 0 && (
               <div className={styles.history}>
                 <h3>Winners</h3>
                 <div className={styles.scroller}>
@@ -481,8 +491,9 @@ export function PotLive({ initial }: { initial: PotPayload | null }): React.JSX.
           </article>
         </div>
         <p className={styles.foot}>
-          Read at block {Number(data.headBlock).toLocaleString("en-US")}. Every figure is a contract read or an event
-          this pot emitted — verify any of it on{" "}
+          Live state read at block {Number(data.headBlock).toLocaleString("en-US")}. Prize, tickets, and held assets are
+          block-pinned contract reads; lifetime figures appear only after the pot&apos;s emitted events verify through that
+          block. Verify any of it on{" "}
           <Link href="/explore">Explore</Link> or straight from the explorer links above.
         </p>
       </section>
