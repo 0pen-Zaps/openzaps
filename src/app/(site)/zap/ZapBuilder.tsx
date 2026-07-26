@@ -1409,7 +1409,7 @@ export function ZapBuilder({
 
           <p className={styles.scopeBanner} role="note">
             <strong>Design here; authorize one tab over.</strong> Deployable one-shot routes hand their exact amount
-            and slippage to Sign &amp; run. A Recurring deposit or Price band on the pinned aeWETH ↔ 0xZAPS route
+            and slippage to Sign &amp; run. A Recurring deposit or Price trigger on the pinned aeWETH ↔ 0xZAPS route
             hands cadence or threshold to Automate. Every new capsule also shows the fixed creation fee before the
             wallet prompt; nothing is submitted from this canvas.
           </p>
@@ -2075,8 +2075,8 @@ export function ZapBuilder({
               </div>
             ) : null}
 
-            <Link className={styles.openApp} href="/zap?view=sign">
-              Open Sign &amp; run →
+            <Link className={styles.openApp} href={automateHref ?? "/zap?view=sign"}>
+              {automation.deployable ? "Open Automate →" : "Open Sign & run →"}
             </Link>
           </div>
 

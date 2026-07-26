@@ -427,8 +427,9 @@ export const BLOCKS: readonly LegoBlock[] = [
     name: "Spend ceiling",
     kind: "guard",
     category: "guard",
-    blurb: "Designed to cap total outflow. Not enforced onchain.",
-    detail: "Designed to cap total outflow across every run. The v1.1 policy tracks no cumulative budget, so this is not enforced onchain. The only bound a deployed capsule carries is the single step amount you sign.",
+    blurb: "Bound total outflow for an automated series.",
+    detail:
+      "Automate validates fixed amount × signed runs against this cap. One-shot policies keep it design-only because v1.1 has no cumulative budget.",
     accepts: null,
     emits: null,
     glyph: "gauge",
@@ -481,8 +482,9 @@ export const BLOCKS: readonly LegoBlock[] = [
     name: "Time window",
     kind: "guard",
     category: "guard",
-    blurb: "Designed to bound when execution may happen. Not enforced onchain.",
-    detail: "Designed to bound execution to a cadence and a deadline. The v1.1 policy has no expiry or cadence field, so a deployed capsule stays executable until you withdraw or recover it.",
+    blurb: "Bind an automated intent to a signed expiry.",
+    detail:
+      "Automate binds this expiry into the recurring or trigger intent. One-shot policies keep it design-only because v1.1 has no deadline.",
     accepts: null,
     emits: null,
     glyph: "clock",
