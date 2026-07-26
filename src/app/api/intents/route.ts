@@ -1,7 +1,9 @@
 import { NextResponse, type NextRequest } from "next/server";
 import {
   createPublicClient,
+  getAddress,
   http,
+  isAddress,
   isAddressEqual,
   recoverTypedDataAddress,
   type Address,
@@ -217,7 +219,12 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   }
   const status = request.nextUrl.searchParams.get("status");
   const filter = status === "open" || status === "consumed" ? `&status=eq.${status}` : "";
-  const res = await fetch(sb(`${TABLE}?select=*&order=created_at.desc&limit=500${filter}`), {
+  const ownerParam = request.nextUrl.searchParams.get("owner");
+  if (ownerParam !== null && !isAddress(ownerParam)) {
+    return NextResponse.json({ error: "owner must be a valid address.", intents: [] }, { status: 400 });
+  }
+  const ownerFilter = ownerParam === null ? "" : `&owner=eq.${getAddress(ownerParam)}`;
+  const res = await fetch(sb(`${TABLE}?select=*&order=created_at.desc&limit=500${filter}${ownerFilter}`), {
     headers: sbHeaders(),
     cache: "no-store",
   });

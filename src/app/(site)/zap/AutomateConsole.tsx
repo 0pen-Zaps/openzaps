@@ -34,7 +34,13 @@ import {
   readAutomationHandoff,
   type AutomationMode,
 } from "@/lib/automate";
-import { publishIntent, type RelaySubmission } from "@/lib/relay";
+import {
+  MAX_SAVED_AUTOMATIONS,
+  readAutomationRecords,
+  saveAutomationRecords,
+  type AutomationRecord,
+} from "@/lib/automation-records";
+import { consumeIntent, publishIntent, type RelaySubmission } from "@/lib/relay";
 import {
   EXEC_FEE_BPS,
   EXECUTOR_SHARE_BPS,
@@ -86,8 +92,6 @@ import styles from "./app.module.css";
 
 const publicClient = createPublicClient({ chain: robinhoodChain, transport: http(ROBINHOOD_RPC_URL) });
 
-const STORAGE_KEY = "openzap:v3:automations";
-const MAX_SAVED_AUTOMATIONS = 5;
 // ETH left unwrapped so the wrap + transfer can still pay for gas. Robinhood Chain is an L2 with
 // cheap gas; 0.0005 ETH covers both txs comfortably while staying negligible against a real deposit.
 const WRAP_GAS_RESERVE = 500_000_000_000_000n; // 0.0005 ETH
@@ -101,24 +105,6 @@ const INTAKE_TOKEN_STORAGE_KEY = "openzap:executor:intake-token";
 interface ExecutorHealth {
   executing: boolean;
   chainId: number;
-}
-
-/** A signed automation, persisted locally. The intent file IS the artifact the executor consumes. */
-interface AutomationRecord {
-  address: Address;
-  routeId: string;
-  mode: AutomationMode;
-  amountPerRun: string; // raw units, decimal string
-  createdAt: string;
-  policyHash: Hex;
-  /** Recurring only: run count chosen at creation, the funding-math input until signing. */
-  plannedRuns?: number;
-  /** Human summary of the SIGNED terms (cadence/condition), set at signing. */
-  terms?: string;
-  /** Set once the standing intent is signed: the exact executor intent-file JSON. */
-  intentFile?: string;
-  /** Set once handed to a local executor, so the UI stops implying it still needs delivery. */
-  deliveredTo?: string;
 }
 
 interface SeriesStatus {
@@ -352,7 +338,7 @@ export default function AutomateConsole(): React.JSX.Element {
       if (!address) throw new Error("The wallet returned no account.");
       const owner = getAddress(address);
       setAccount(owner);
-      setRecords(readAutomations(owner));
+      setRecords(readAutomationRecords(owner));
       trackEvent("automate_connect");
     } catch (cause) {
       setError(readableError(cause));
@@ -364,7 +350,7 @@ export default function AutomateConsole(): React.JSX.Element {
   const persist = useCallback(
     (next: AutomationRecord[]) => {
       setRecords(next);
-      if (account) saveAutomations(account, next);
+      if (account) saveAutomationRecords(account, next);
     },
     [account],
   );
@@ -720,14 +706,18 @@ export default function AutomateConsole(): React.JSX.Element {
       // relay is down or not yet configured, the intent is still signed and the manual publish /
       // file-export / local-executor fallbacks below still work.
       let deliveredTo: string | undefined;
+      let relayId: string | undefined;
       try {
-        await publishIntent(JSON.parse(file) as RelaySubmission);
+        const published = await publishIntent(JSON.parse(file) as RelaySubmission);
         deliveredTo = "relay";
+        relayId = published.id;
       } catch {
         // Relay unavailable — fall through to the fallbacks.
       }
       // Persisting swaps in a NEW record object, so the status effect reloads on its own.
-      persist(records.map((r) => (r.address === record.address ? { ...r, intentFile: file, terms, deliveredTo } : r)));
+      persist(records.map((r) => (
+        r.address === record.address ? { ...r, intentFile: file, terms, deliveredTo, relayId } : r
+      )));
       setNotice(
         deliveredTo === "relay"
           ? "Signed and published to the executor network — any executor can run it now. Nothing else to do."
@@ -854,8 +844,10 @@ export default function AutomateConsole(): React.JSX.Element {
     setError("");
     try {
       if (!record?.intentFile) throw new Error("Sign the intent first.");
-      await publishIntent(JSON.parse(record.intentFile) as RelaySubmission);
-      persist(records.map((r) => (r.address === record.address ? { ...r, deliveredTo: "relay" } : r)));
+      const published = await publishIntent(JSON.parse(record.intentFile) as RelaySubmission);
+      persist(records.map((r) => (
+        r.address === record.address ? { ...r, deliveredTo: "relay", relayId: published.id } : r
+      )));
       setNotice("Published to the executor network — any executor can run it now.");
       trackEvent("automate_publish_relay");
     } catch (cause) {
@@ -915,7 +907,17 @@ export default function AutomateConsole(): React.JSX.Element {
         args: [id],
       });
       const hash = await wallet.writeContract(request);
-      await publicClient.waitForTransactionReceipt({ hash });
+      const receipt = await publicClient.waitForTransactionReceipt({ hash });
+      if (receipt.status !== "success") {
+        throw new Error("The cancellation transaction reverted. The automation remains valid.");
+      }
+      if (record.relayId) await consumeIntent(record.relayId, "").catch(() => false);
+      const revoked: AutomationRecord = {
+        ...record,
+        revokedAt: new Date().toISOString(),
+        revocationTx: hash,
+      };
+      persist(records.map((candidate) => candidate.address === record.address ? revoked : candidate));
       await applyLoad(record);
       setNotice("Automation cancelled on-chain. The signed intent can never execute again.");
       trackEvent("automate_cancel");
@@ -924,7 +926,7 @@ export default function AutomateConsole(): React.JSX.Element {
     } finally {
       setBusy(null);
     }
-  }, [account, applyLoad, record]);
+  }, [account, applyLoad, persist, record, records]);
 
   const recoverFunds = useCallback(async () => {
     setBusy("recover");
@@ -941,7 +943,10 @@ export default function AutomateConsole(): React.JSX.Element {
         args: [[...recordRoute.trackedAssets]],
       });
       const hash = await wallet.writeContract(request);
-      await publicClient.waitForTransactionReceipt({ hash });
+      const receipt = await publicClient.waitForTransactionReceipt({ hash });
+      if (receipt.status !== "success") {
+        throw new Error("The recovery transaction reverted. No funds were recovered.");
+      }
       await applyLoad(record);
       setNotice("Emergency exit complete — every tracked asset returned to the owner wallet.");
       trackEvent("automate_recover");
@@ -1685,49 +1690,6 @@ async function requireWallet(account: Address) {
 function requireAccount(account: Address | null): Address {
   if (!account) throw new Error("Connect a wallet first.");
   return account;
-}
-
-function saveAutomations(owner: Address, records: AutomationRecord[]): void {
-  try {
-    window.localStorage.setItem(`${STORAGE_KEY}:${owner.toLowerCase()}`, JSON.stringify(records));
-  } catch {
-    // Persistence is optional; on-chain state stays authoritative.
-  }
-}
-
-function readAutomations(owner: Address): AutomationRecord[] {
-  try {
-    const raw = window.localStorage.getItem(`${STORAGE_KEY}:${owner.toLowerCase()}`);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw) as unknown;
-    if (!Array.isArray(parsed)) return [];
-    return parsed.flatMap((value) => {
-      if (!value || typeof value !== "object") return [];
-      const r = value as Record<string, unknown>;
-      if (typeof r.address !== "string" || typeof r.routeId !== "string" || typeof r.amountPerRun !== "string") return [];
-      if (r.mode !== "recurring" && r.mode !== "trigger") return [];
-      if (typeof r.policyHash !== "string" || !/^0x[0-9a-fA-F]{64}$/.test(r.policyHash)) return [];
-      try {
-        if (BigInt(r.amountPerRun) <= 0n) return [];
-        return [{
-          address: getAddress(r.address),
-          routeId: r.routeId,
-          mode: r.mode,
-          amountPerRun: r.amountPerRun,
-          createdAt: typeof r.createdAt === "string" ? r.createdAt : new Date(0).toISOString(),
-          policyHash: r.policyHash as Hex,
-          plannedRuns: typeof r.plannedRuns === "number" && r.plannedRuns >= 1 ? Math.trunc(r.plannedRuns) : undefined,
-          terms: typeof r.terms === "string" ? r.terms : undefined,
-          intentFile: typeof r.intentFile === "string" ? r.intentFile : undefined,
-          deliveredTo: typeof r.deliveredTo === "string" ? r.deliveredTo : undefined,
-        } satisfies AutomationRecord];
-      } catch {
-        return [];
-      }
-    });
-  } catch {
-    return [];
-  }
 }
 
 function sanitizeDecimal(value: string): string {

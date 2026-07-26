@@ -216,7 +216,7 @@ export default async function ZapsFeedPage(): Promise<React.JSX.Element> {
                 <Link className={styles.listLink} href={`/explore/${zap.address}`}>
                   <code className={styles.listAddress}>{shortAddress(zap.address)}</code>
                   <span className={styles.listOwner}>owner {shortAddress(zap.owner)}</span>
-                  <span className={styles.listPolicy}>policy {shortHex(zap.policyHash)}</span>
+                  <span className={styles.listPolicy}>{zap.lineage} · policy {shortHex(zap.policyHash)}</span>
                   <span className={styles.listRuns} data-active={zap.executionCount > 0}>
                     {zap.executionCount === 1 ? "1 execution" : `${zap.executionCount} executions`}
                   </span>

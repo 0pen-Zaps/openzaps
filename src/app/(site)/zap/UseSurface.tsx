@@ -7,14 +7,15 @@ import Console from "./Console";
 import AutomateConsole from "./AutomateConsole";
 import { ZapBuilder } from "./ZapBuilder";
 import { DesignHero } from "./DesignHero";
+import { ZapLauncher } from "./ZapLauncher";
 import buildStyles from "./build.module.css";
 import appStyles from "./app.module.css";
 
 /**
  * The one product surface: design a zap, sign it, or automate it — same page.
  *
- * Three views, one URL. "Design" is the visual builder — the block palette,
- * canvas, and readout that used to live at /build. "Sign & run" is the policy
+ * Four views, one URL. "Start" is the intent-first entry. "Compose" is the visual builder — the block palette,
+ * canvas, and readout that used to live at /build. "Run once" is the policy
  * console that creates, funds, and executes v1.1 capsules. "Automate" is the
  * v3 console: recurring and price-triggered capsules whose cadence/condition
  * the contract enforces, executed by permissionless executors for a 1% fee.
@@ -37,13 +38,14 @@ import appStyles from "./app.module.css";
  * is what makes the sign console read the handoff query at the right moment.
  */
 
-type View = "design" | "sign" | "automate";
+type View = "start" | "design" | "sign" | "automate";
 
-const VIEW_ORDER: readonly View[] = ["design", "sign", "automate"];
+const VIEW_ORDER: readonly View[] = ["start", "design", "sign", "automate"];
 
 /** What the URL says the visible view should be, or null when it is silent. */
 function impliedView(params: URLSearchParams): View | null {
   const view = params.get("view");
+  if (view === "start") return "start";
   if (view === "sign") return "sign";
   if (view === "design") return "design";
   if (view === "automate") return "automate";
@@ -58,16 +60,18 @@ export function UseSurface(): React.JSX.Element {
   const searchParams = useSearchParams();
   const router = useRouter();
   const pathname = usePathname();
+  const startTabRef = useRef<HTMLButtonElement>(null);
   const designTabRef = useRef<HTMLButtonElement>(null);
   const signTabRef = useRef<HTMLButtonElement>(null);
   const automateTabRef = useRef<HTMLButtonElement>(null);
   const tabRefs: Record<View, React.RefObject<HTMLButtonElement | null>> = {
+    start: startTabRef,
     design: designTabRef,
     sign: signTabRef,
     automate: automateTabRef,
   };
 
-  const view: View = impliedView(new URLSearchParams(searchParams.toString())) ?? "design";
+  const view: View = impliedView(new URLSearchParams(searchParams.toString())) ?? "start";
   // Passed down (and used as a key) so a client-side navigation carrying a new
   // share token re-seeds the builder instead of showing the stale canvas.
   const shareToken = searchParams.get("d");
@@ -108,6 +112,20 @@ export function UseSurface(): React.JSX.Element {
           onKeyDown={onTablistKeyDown}
         >
           <button
+            ref={startTabRef}
+            type="button"
+            role="tab"
+            id="use-tab-start"
+            aria-selected={view === "start"}
+            aria-controls="use-panel-start"
+            tabIndex={view === "start" ? 0 : -1}
+            className={view === "start" ? appStyles.segOn : appStyles.seg}
+            onClick={() => select("start")}
+          >
+            Start
+            <em>choose an intent</em>
+          </button>
+          <button
             ref={designTabRef}
             type="button"
             role="tab"
@@ -118,8 +136,8 @@ export function UseSurface(): React.JSX.Element {
             className={view === "design" ? appStyles.segOn : appStyles.seg}
             onClick={() => select("design")}
           >
-            Design
-            <em>drag blocks into a zap</em>
+            Compose
+            <em>connect policy blocks</em>
           </button>
           <button
             ref={signTabRef}
@@ -132,7 +150,7 @@ export function UseSurface(): React.JSX.Element {
             className={view === "sign" ? appStyles.segOn : appStyles.seg}
             onClick={() => select("sign")}
           >
-            Sign &amp; run
+            Run once
             <em>create, fund, execute</em>
           </button>
           <button
@@ -152,6 +170,14 @@ export function UseSurface(): React.JSX.Element {
         </div>
       </div>
 
+      <div
+        id="use-panel-start"
+        role="tabpanel"
+        aria-labelledby="use-tab-start"
+        hidden={view !== "start"}
+      >
+        {view === "start" ? <ZapLauncher /> : null}
+      </div>
       <div
         id="use-panel-design"
         role="tabpanel"
