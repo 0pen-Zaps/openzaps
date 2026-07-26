@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { automationHandoff, reduceChainToAutomation } from "@/lib/automation-design";
 import { makeNode, RECIPES, type ChainNode } from "@/lib/blocks";
 import { readAutomationHandoff } from "@/lib/automate";
+import { DEFAULT_EXECUTION_POLICY } from "@/lib/execution-policy";
 
 function chain(...entries: Array<[string, Record<string, string | number>?]>): ChainNode[] {
   return entries.map(([id, params], index) => makeNode(id, `n${index}`, params));
@@ -27,6 +28,7 @@ describe("reduceChainToAutomation", () => {
       expect(entry.imported?.amount, entry.id).toBe(entry.result.amountIn);
       expect(entry.imported?.slippageBps, entry.id).toBe(entry.result.slippageBps);
       expect(entry.imported?.validDays, entry.id).toBe(entry.result.validDays);
+      expect(entry.imported?.executionPolicy, entry.id).toEqual(entry.result.executionPolicy);
     }
   });
 
@@ -49,6 +51,7 @@ describe("reduceChainToAutomation", () => {
       intervalId: "weekly",
       maxRuns: 12,
       validDays: null,
+      executionPolicy: DEFAULT_EXECUTION_POLICY,
     });
     if (!result.deployable) throw new Error("expected automation mapping");
     const params = new URL(automationHandoff(result), "https://0xzaps.com").searchParams;
@@ -61,6 +64,9 @@ describe("reduceChainToAutomation", () => {
       bps: "100",
       interval: "weekly",
       runs: "12",
+      maxGas: "3000000",
+      maxFeeGwei: "10",
+      executor: "anyone",
     });
   });
 
@@ -84,7 +90,30 @@ describe("reduceChainToAutomation", () => {
       slippageBps: 200,
       thresholdId: "down25",
       validDays: 30,
+      executionPolicy: DEFAULT_EXECUTION_POLICY,
     });
+  });
+
+  it("maps the execution-policy trio into an automation handoff", () => {
+    const result = reduceChainToAutomation(
+      chain(
+        ["recurring-stream", { asset: "WETH", amount: "0.001", cadence: "daily", runs: 5 }],
+        ["guard-gas-limit", { maxGas: 1_500_000 }],
+        ["guard-gas-price", { maxFeeGwei: 3 }],
+        ["guard-executor", { access: "Owner only" }],
+        ["swap", { into: "0xZAPS", venue: "Uniswap v4" }],
+        ["send", { recipient: "owner wallet" }],
+      ),
+    );
+    expect(result.deployable).toBe(true);
+    if (!result.deployable) throw new Error("expected automation mapping");
+    expect(result.executionPolicy).toEqual({
+      maxGas: 1_500_000,
+      maxFeePerGasGwei: 3,
+      executorAccess: "owner-only",
+    });
+    const imported = readAutomationHandoff(new URL(automationHandoff(result), "https://0xzaps.com").searchParams);
+    expect(imported?.executionPolicy).toEqual(result.executionPolicy);
   });
 
   it("refuses a route for which the automation stack has no price source", () => {

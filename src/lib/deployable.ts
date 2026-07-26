@@ -12,6 +12,7 @@ import {
   type AdapterSpec,
 } from "@/lib/chains";
 import { parseRouterAmount, type ZapDirection } from "@/lib/openzap";
+import { resolveExecutionPolicy, type ExecutionPolicy } from "@/lib/execution-policy";
 
 /**
  * The bridge between the visual builder and what Robinhood Chain will actually
@@ -90,6 +91,7 @@ export type LivePolicyMapping =
       /** Step 1's amount — the pull the owner funds and signs. */
       amountIn: string;
       slippageBps: number;
+      executionPolicy: ExecutionPolicy;
       /**
        * The direction `/app` would sign, or `null` when this policy is not a
        * single bounded swap and therefore has no such thing.
@@ -119,6 +121,7 @@ export type LiveRouteMapping =
       direction: ZapDirection | null;
       amountIn: string;
       slippageBps: number;
+      executionPolicy: ExecutionPolicy;
       unenforcedGuards: string[];
     }
   | { deployable: false; reasons: string[] };
@@ -171,6 +174,10 @@ function unenforcedGuardNote(block: LegoBlock, node: ChainNode): string | null {
       return "Human gate is designed but not enforced: the v1.1 policy has no per-run approval step. The signed policy is the only authority, bounded by its amount.";
     case "guard-spend":
       return `Spend ceiling (${node.params.cap ?? "?"}) is designed but not enforced: the v1.1 policy tracks no cumulative budget. The only onchain bound is the single step amount you sign.`;
+    case "guard-executor":
+      return node.params.access === "Owner only"
+        ? "Executor access is set to Owner only, but the v1.1 one-shot intent cannot restrict who submits a zero-fee execution. This owner-only choice is enforced by v3/v3.1 automation, not by Run once."
+        : null;
     default:
       return null;
   }
@@ -188,6 +195,8 @@ export function reduceChainToLivePolicy(
 ): LivePolicyMapping {
   const reasons: string[] = [];
   const unenforcedGuards: string[] = [];
+  const executionPolicy = resolveExecutionPolicy(chain);
+  if (!executionPolicy.ok) reasons.push(...executionPolicy.reasons);
 
   // Read once per call, never cached across calls: an env change must not need
   // a reload to be believed, and the whole point of the registry is that this
@@ -415,7 +424,14 @@ export function reduceChainToLivePolicy(
     reasons.push(`This design does not compile, so it cannot be deployed: ${issue.message}`);
   }
 
-  if (reasons.length > 0 || !source || amountIn === null || steps.length === 0 || steps.length !== actions.length) {
+  if (
+    reasons.length > 0
+    || !source
+    || amountIn === null
+    || steps.length === 0
+    || steps.length !== actions.length
+    || !executionPolicy.ok
+  ) {
     return {
       deployable: false,
       reasons: reasons.length > 0 ? reasons : ["This design does not reduce to the live aeWETH ↔ 0xZAPS route."],
@@ -428,6 +444,7 @@ export function reduceChainToLivePolicy(
     outAsset: steps[steps.length - 1].tokenOut,
     amountIn: steps[0].amountIn,
     slippageBps,
+    executionPolicy: executionPolicy.policy,
     // Only a lone bounded swap has a direction the app page can sign; a
     // multi-step policy has no single one, and saying "buy" about it would be
     // describing a fraction of what gets signed.
@@ -701,6 +718,7 @@ export function reduceChainToLiveRoute(
     direction: policy.direction,
     amountIn: policy.amountIn,
     slippageBps: policy.slippageBps,
+    executionPolicy: policy.executionPolicy,
     // Notices first, ahead of the guard disclosures, and concatenated rather
     // than dropped: this is the array the CTA renders verbatim, and anything
     // material about the policy has to reach it even if it arrives from a

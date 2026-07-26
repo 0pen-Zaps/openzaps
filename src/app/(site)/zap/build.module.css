@@ -971,6 +971,72 @@
   background: linear-gradient(90deg, #ff7a90, #ffa0b0);
 }
 
+.policyStack {
+  padding: 0.7rem;
+  border: 1px solid var(--line-soft);
+  background: rgba(255, 252, 0, 0.035);
+}
+
+.policyGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.3rem;
+}
+
+.policyGrid div {
+  display: grid;
+  gap: 0.08rem;
+  min-width: 0;
+  padding: 0.38rem;
+  border: 1px solid var(--line-soft);
+  background: rgba(0, 0, 0, 0.16);
+}
+
+.policyGrid dt {
+  color: var(--muted-2);
+  font-size: 0.62rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.policyGrid dd {
+  overflow: hidden;
+  color: var(--text);
+  font-family: var(--font-jetbrains-mono), ui-monospace, monospace;
+  font-size: 0.69rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.composePolicyBtn {
+  width: 100%;
+  padding: 0.46rem 0.6rem;
+  border: 1px solid rgba(255, 252, 0, 0.35);
+  background: rgba(255, 252, 0, 0.1);
+  color: var(--accent-bright);
+  font-family: inherit;
+  font-size: 0.72rem;
+  cursor: pointer;
+}
+
+.composePolicyBtn:hover:not(:disabled) {
+  border-color: rgba(255, 252, 0, 0.65);
+  background: rgba(255, 252, 0, 0.15);
+}
+
+.composePolicyBtn:disabled {
+  border-color: var(--line-soft);
+  color: var(--muted-2);
+  background: rgba(255, 255, 255, 0.025);
+  cursor: default;
+}
+
+.policyUndo {
+  color: var(--muted-2);
+  font-size: 0.63rem;
+  text-align: center;
+}
+
 /* Unguarded risks, each with the piece that closes it. Sits under the meter
    because the meter is what raised the question. */
 .gaps {

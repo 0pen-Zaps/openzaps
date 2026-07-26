@@ -61,6 +61,13 @@ import {
   randomHex32,
   randomNonce,
 } from "@/lib/openzap";
+import {
+  MAX_EXECUTION_FEE_GWEI,
+  MAX_EXECUTION_GAS_UNITS,
+  MIN_EXECUTION_FEE_GWEI,
+  MIN_EXECUTION_GAS_UNITS,
+  type ExecutorAccess,
+} from "@/lib/execution-policy";
 import { BOUNDED_SWAP_IDS } from "@/lib/chains";
 import { quoteCreationFee, type CreationFeeQuote } from "@/lib/route-quote";
 import { resolveRouteById, type Route } from "@/lib/routes";
@@ -100,6 +107,7 @@ const publicClient = createPublicClient({ chain: robinhoodChain, transport: http
 const WRAP_GAS_RESERVE = 500_000_000_000_000n; // 0.0005 ETH
 
 type BusyAction = "connect" | "create" | "fund" | "sign" | "cancel" | "recover" | "refresh" | "send" | "publish" | null;
+type ExecutorMode = ExecutorAccess | "custom";
 
 /** The reference daemon's localhost intake (executor/intake.mjs). Probed only after signing. */
 const EXECUTOR_INTAKE_URL = "http://127.0.0.1:8477";
@@ -186,8 +194,16 @@ export default function AutomateConsole(): React.JSX.Element {
   const [slippageBps, setSlippageBps] = useState(
     handoff?.slippageBps ?? defaultSlippageBps(handoff?.mode ?? "recurring"),
   );
-  /** Who may submit a run. Empty = open to anyone, which is the liveness default. */
-  const [pinnedExecutor, setPinnedExecutor] = useState("");
+  const [maxExecutionGas, setMaxExecutionGas] = useState(
+    handoff?.executionPolicy.maxGas ?? MAX_EXECUTION_GAS_UNITS,
+  );
+  const [maxFeePerGasGwei, setMaxFeePerGasGwei] = useState(
+    handoff?.executionPolicy.maxFeePerGasGwei ?? MAX_EXECUTION_FEE_GWEI,
+  );
+  const [executorMode, setExecutorMode] = useState<ExecutorMode>(
+    handoff?.executionPolicy.executorAccess ?? "anyone",
+  );
+  const [customExecutor, setCustomExecutor] = useState("");
 
   /** Switch execution type AND reset slippage to that mode's default (recurring needs a wider band).
    *  No-op when the mode is unchanged, so re-clicking the active tab never clobbers a manual slider. */
@@ -323,9 +339,15 @@ export default function AutomateConsole(): React.JSX.Element {
     fundingTokenAddress !== null && fundingTokenAddress.toLowerCase() === ROBINHOOD_ASSETS.weth.toLowerCase();
   // A pinned executor must be a real address or the signed intent would name a
   // submitter that can never match, silently bricking the series.
-  const executorPin = pinnedExecutor.trim();
-  const executorValid = executorPin === "" || isAddress(executorPin);
-  const executorForIntent = executorPin !== "" && isAddress(executorPin) ? getAddress(executorPin) : null;
+  const executorPin = executorMode === "owner-only"
+    ? account ?? ""
+    : executorMode === "custom"
+      ? customExecutor.trim()
+      : "";
+  const executorValid = executorMode === "anyone"
+    || (executorMode === "owner-only" ? account !== null : isAddress(executorPin));
+  const executorForIntent = executorMode !== "anyone" && isAddress(executorPin) ? getAddress(executorPin) : null;
+  const maxFeePerGas = BigInt(maxFeePerGasGwei) * 1_000_000_000n;
 
   const funding = isWethFunding
     ? planWethFunding({ needed: fundingNeeded, wethBalance: walletBalanceForToken, ethBalance, gasReserve: WRAP_GAS_RESERVE })
@@ -711,6 +733,8 @@ export default function AutomateConsole(): React.JSX.Element {
         // and a multi-run series can never go stale. The user's slippage % IS the signed tolerance.
         const intent = draftRecurringRelativeIntent({
           executor: executorForIntent,
+          maxGas: BigInt(maxExecutionGas),
+          maxFeePerGas,
           zap: record.address,
           chainId: ROBINHOOD_CHAIN_ID,
           seriesId: randomNonce(),
@@ -726,7 +750,7 @@ export default function AutomateConsole(): React.JSX.Element {
         });
         const signature = await wallet.signTypedData({ account: owner, ...buildRecurringRelativeTypedData(intent) });
         file = serializeIntentFile("recurring-relative", intent, signature);
-        terms = `${interval.label} · ${runsInRecord(record)} runs · ${recurringValidDays ? `expires ${recurringValidDays}d` : "auto expiry"} · ≤${(slippageBps / 100).toFixed(1)}% slip`;
+        terms = `${interval.label} · ${runsInRecord(record)} runs · ${recurringValidDays ? `expires ${recurringValidDays}d` : "auto expiry"} · ≤${(slippageBps / 100).toFixed(1)}% slip · ${maxExecutionGas.toLocaleString("en-US")} gas · ≤${maxFeePerGasGwei} gwei · ${executorMode === "anyone" ? "open executor" : executorMode === "owner-only" ? "owner only" : "pinned executor"}`;
       } else {
         // Trigger is one-shot in a bounded window, so it still signs an absolute minOut from a
         // fresh quote (slippage, then the 1% fee, since the capsule floors NET of the fee).
@@ -753,6 +777,8 @@ export default function AutomateConsole(): React.JSX.Element {
         const condition = feedConditionForZapsMove(threshold.moveBps, threshold.rises);
         const intent = draftTriggerIntent({
           executor: executorForIntent,
+          maxGas: BigInt(maxExecutionGas),
+          maxFeePerGas,
           zap: record.address,
           chainId: ROBINHOOD_CHAIN_ID,
           nonce: randomNonce(),
@@ -769,7 +795,7 @@ export default function AutomateConsole(): React.JSX.Element {
         });
         const signature = await wallet.signTypedData({ account: owner, ...buildTriggerTypedData(intent) });
         file = serializeIntentFile("trigger", intent, signature);
-        terms = `${threshold.label} · valid ${validDays}d`;
+        terms = `${threshold.label} · valid ${validDays}d · ${maxExecutionGas.toLocaleString("en-US")} gas · ≤${maxFeePerGasGwei} gwei · ${executorMode === "anyone" ? "open executor" : executorMode === "owner-only" ? "owner only" : "pinned executor"}`;
       }
 
       // Auto-publish to the shared relay so the owner never has to move a file. Best-effort: if the
@@ -790,7 +816,9 @@ export default function AutomateConsole(): React.JSX.Element {
       )));
       setNotice(
         deliveredTo === "relay"
-          ? "Signed and published to the executor network — any executor can run it now. Nothing else to do."
+          ? executorMode === "anyone"
+            ? "Signed and published to the executor network — any executor can run it now. Nothing else to do."
+            : "Signed and published. The capsule will accept runs only from the executor bound in this intent."
           : "Standing intent signed. Publish it to an executor below, or export the file.",
       );
       trackEvent("automate_sign", { mode: record.mode, published: deliveredTo === "relay" });
@@ -802,7 +830,11 @@ export default function AutomateConsole(): React.JSX.Element {
   }, [
     account,
     executorForIntent,
+    executorMode,
     interval,
+    maxExecutionGas,
+    maxFeePerGas,
+    maxFeePerGasGwei,
     persist,
     record,
     recordRoute,
@@ -1267,20 +1299,21 @@ export default function AutomateConsole(): React.JSX.Element {
             <Field label="Who may run it">
               <select
                 className={styles.input}
-                value={executorPin === "" ? "open" : "pinned"}
-                onChange={(event) => setPinnedExecutor(event.target.value === "open" ? "" : " ")}
+                value={executorMode}
+                onChange={(event) => setExecutorMode(event.target.value as ExecutorMode)}
                 disabled={busy !== null || signed}
               >
-                <option value="open">Anyone (recommended)</option>
-                <option value="pinned">Only one executor</option>
+                <option value="anyone">Anyone (recommended)</option>
+                <option value="owner-only">Connected owner wallet only</option>
+                <option value="custom">Custom executor</option>
               </select>
             </Field>
-            {executorPin !== "" && (
+            {executorMode === "custom" && (
               <Field label="Executor address">
                 <input
                   className={styles.input}
-                  value={executorPin === " " ? "" : executorPin}
-                  onChange={(event) => setPinnedExecutor(event.target.value || " ")}
+                  value={customExecutor}
+                  onChange={(event) => setCustomExecutor(event.target.value)}
                   placeholder="0x…"
                   spellCheck={false}
                   disabled={busy !== null || signed}
@@ -1297,6 +1330,30 @@ export default function AutomateConsole(): React.JSX.Element {
                 step={5}
                 value={slippageBps}
                 onChange={(event) => setSlippageBps(Number(event.target.value))}
+                disabled={busy !== null || signed}
+              />
+            </Field>
+            <Field label={`Execution gas limit (${maxExecutionGas.toLocaleString("en-US")})`}>
+              <input
+                className={styles.range}
+                type="range"
+                min={MIN_EXECUTION_GAS_UNITS}
+                max={MAX_EXECUTION_GAS_UNITS}
+                step={50_000}
+                value={maxExecutionGas}
+                onChange={(event) => setMaxExecutionGas(Number(event.target.value))}
+                disabled={busy !== null || signed}
+              />
+            </Field>
+            <Field label={`Gas price cap (${maxFeePerGasGwei} gwei)`}>
+              <input
+                className={styles.range}
+                type="range"
+                min={MIN_EXECUTION_FEE_GWEI}
+                max={MAX_EXECUTION_FEE_GWEI}
+                step={1}
+                value={maxFeePerGasGwei}
+                onChange={(event) => setMaxFeePerGasGwei(Number(event.target.value))}
                 disabled={busy !== null || signed}
               />
             </Field>
@@ -1370,11 +1427,18 @@ export default function AutomateConsole(): React.JSX.Element {
           ) : null}
 
           <p className={styles.execNote} aria-live="polite">
-            {executorPin === "" ? (
+            {executorMode === "anyone" ? (
               <>
                 Open · any executor may submit a run this zap owes and earns 80% of its 1% fee. The capsule still
                 refuses every run it does not owe, so this only decides <em>who races</em>, never what they can do.
               </>
+            ) : executorMode === "owner-only" && account ? (
+              <>
+                Owner only · the intent binds <code>{account}</code>. Every other submitter reverts, so no executor
+                network can keep the automation live for you.
+              </>
+            ) : executorMode === "owner-only" ? (
+              <>Connect the owner wallet before signing an owner-only execution policy.</>
             ) : executorValid ? (
               <>
                 Pinned · only <code>{executorPin.trim()}</code> may submit. If it goes offline the series stalls
@@ -1383,6 +1447,10 @@ export default function AutomateConsole(): React.JSX.Element {
             ) : (
               <>That is not a valid address. Signing would name a submitter no wallet can match, stalling the series.</>
             )}
+          </p>
+          <p className={styles.execNote}>
+            Every signed run also rejects a transaction above {maxExecutionGas.toLocaleString("en-US")} gas or{" "}
+            {maxFeePerGasGwei} gwei.
           </p>
 
           {activeMode === "recurring" && (

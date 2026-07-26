@@ -23,6 +23,7 @@ import {
 } from "@/lib/automate";
 import { computeExecutorFeeSplit } from "@/lib/executions";
 import { MAX_EXECUTION_FEE_PER_GAS, MAX_EXECUTION_GAS } from "@/lib/openzap";
+import { DEFAULT_EXECUTION_POLICY } from "@/lib/execution-policy";
 
 const ZAP = "0x9941dD72373429C36F82D888dbcbab080038f033" as Address;
 const ADDR = "0x70997970C51812dc3A010C7d01b50e0d17dc79C8" as Address;
@@ -48,6 +49,7 @@ describe("readAutomationHandoff", () => {
       maxRuns: 12,
       thresholdId: "up10",
       validDays: null,
+      executionPolicy: DEFAULT_EXECUTION_POLICY,
     });
   });
 
@@ -62,6 +64,14 @@ describe("readAutomationHandoff", () => {
       days: "90",
     });
     expect(readAutomationHandoff(trigger)?.thresholdId).toBe("down25");
+    trigger.set("maxGas", "1750000");
+    trigger.set("maxFeeGwei", "4");
+    trigger.set("executor", "owner");
+    expect(readAutomationHandoff(trigger)?.executionPolicy).toEqual({
+      maxGas: 1_750_000,
+      maxFeePerGasGwei: 4,
+      executorAccess: "owner-only",
+    });
     expect(readAutomationHandoff(new URLSearchParams("src=build&mode=trigger"))).toBeNull();
     trigger.set("route", "robinhood-v4-weth-usdg");
     expect(readAutomationHandoff(trigger)).toBeNull();
@@ -143,6 +153,35 @@ describe("intent drafting", () => {
     expect(it_.deadline).toBe(1_000_000n + 30n * 86_400n);
     expect(it_.thresholdBps).toBe(1_000);
     expect(it_.above).toBe(true);
+  });
+
+  it("carries custom execution caps into every signed intent and rejects unsafe bounds", () => {
+    const it_ = draftTriggerIntent({
+      zap: ZAP,
+      chainId: 4663,
+      nonce: 8n,
+      nowSec: 1_000_000n,
+      validDays: 30,
+      priceSource: ADDR,
+      baselinePriceX96: 1n,
+      thresholdBps: 500,
+      above: false,
+      recipient: ADDR,
+      policyHash: HASH,
+      outAsset: ADDR,
+      minOut: 1n,
+      maxGas: 1_500_000n,
+      maxFeePerGas: 3_000_000_000n,
+    });
+    expect(it_.maxGas).toBe(1_500_000n);
+    expect(it_.maxFeePerGas).toBe(3_000_000_000n);
+    expect(() => draftTriggerIntent({
+      ...it_,
+      chainId: 4663,
+      nowSec: 1_000_000n,
+      validDays: 30,
+      maxGas: MAX_EXECUTION_GAS + 1n,
+    })).toThrow("Execution gas limit");
   });
 });
 

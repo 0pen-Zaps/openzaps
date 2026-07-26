@@ -1,4 +1,10 @@
 import { policyHash, type SimulationCheck } from "@/lib/policy";
+import {
+  MAX_EXECUTION_FEE_GWEI,
+  MAX_EXECUTION_GAS_UNITS,
+  MIN_EXECUTION_FEE_GWEI,
+  MIN_EXECUTION_GAS_UNITS,
+} from "@/lib/execution-policy";
 
 /**
  * The DeFi lego catalog behind the visual zap builder.
@@ -522,6 +528,75 @@ export const BLOCKS: readonly LegoBlock[] = [
     maturity: "live",
     params: [],
   },
+  {
+    id: "guard-gas-limit",
+    name: "Execution gas limit",
+    kind: "guard",
+    category: "guard",
+    blurb: "Cap the gas budget available to a signed run.",
+    detail:
+      "Binds maxGas into the EIP-712 execution intent. The capsule rejects a transaction that arrives with more gas available than this cap, bounding how much work an executor can ask the signed run to perform.",
+    accepts: null,
+    emits: null,
+    glyph: "fuel",
+    gas: 0,
+    maturity: "live",
+    params: [
+      {
+        key: "maxGas",
+        label: "Maximum gas",
+        type: "number",
+        value: MAX_EXECUTION_GAS_UNITS,
+        min: MIN_EXECUTION_GAS_UNITS,
+        max: MAX_EXECUTION_GAS_UNITS,
+        step: 50_000,
+        suffix: " gas",
+      },
+    ],
+  },
+  {
+    id: "guard-gas-price",
+    name: "Gas price cap",
+    kind: "guard",
+    category: "guard",
+    blurb: "Reject a run when fee per gas is above your ceiling.",
+    detail:
+      "Binds maxFeePerGas into the EIP-712 execution intent. The capsule compares the transaction's effective gas price to this signed ceiling and reverts above it.",
+    accepts: null,
+    emits: null,
+    glyph: "fee",
+    gas: 0,
+    maturity: "live",
+    params: [
+      {
+        key: "maxFeeGwei",
+        label: "Maximum fee per gas",
+        type: "number",
+        value: MAX_EXECUTION_FEE_GWEI,
+        min: MIN_EXECUTION_FEE_GWEI,
+        max: MAX_EXECUTION_FEE_GWEI,
+        step: 1,
+        suffix: " gwei",
+      },
+    ],
+  },
+  {
+    id: "guard-executor",
+    name: "Executor access",
+    kind: "guard",
+    category: "guard",
+    blurb: "Leave execution open or restrict automated runs to the owner.",
+    detail:
+      "Automated v3 and v3.1 intents bind this choice onchain: Anyone maximizes liveness; Owner only rejects every other submitter. The v1.1 one-shot intent cannot restrict its caller, so an owner-only choice is disclosed rather than silently implied there.",
+    accepts: null,
+    emits: null,
+    glyph: "key",
+    gas: 0,
+    maturity: "live",
+    params: [
+      { key: "access", label: "Who may execute", type: "select", value: "Anyone", options: ["Anyone", "Owner only"] },
+    ],
+  },
 
   // ---- sinks -------------------------------------------------------------
   {
@@ -825,6 +900,53 @@ export function canInsert(chain: readonly ChainNode[], block: LegoBlock, index: 
   // A block that lands mid-chain also has to seat the piece that follows it.
   const next = nextConsumer(chain, index);
   return next === null || next.kind === "source" ? true : next.accepts === block.emits;
+}
+
+export type BlockStackComposition = {
+  chain: ChainNode[];
+  added: ChainNode[];
+  rejected: string[];
+};
+
+/**
+ * Add several catalog blocks at their deepest compatible seats as one edit.
+ *
+ * The returned chain is assembled incrementally, so every later block is fit
+ * against the blocks already added. Callers can commit it once, which makes a
+ * whole policy stack one undo step instead of a burst of unrelated mutations.
+ */
+export function composeBlockStack(
+  chain: readonly ChainNode[],
+  blockIds: readonly string[],
+  nextUid: () => string,
+): BlockStackComposition {
+  const composed = [...chain];
+  const added: ChainNode[] = [];
+  const rejected: string[] = [];
+
+  for (const blockId of blockIds) {
+    const block = getBlock(blockId);
+    if (!block) {
+      rejected.push(blockId);
+      continue;
+    }
+    let seat: number | null = null;
+    for (let index = composed.length; index >= 0; index--) {
+      if (canInsert(composed, block, index)) {
+        seat = index;
+        break;
+      }
+    }
+    if (seat === null) {
+      rejected.push(blockId);
+      continue;
+    }
+    const node = makeNode(blockId, nextUid());
+    composed.splice(seat, 0, node);
+    added.push(node);
+  }
+
+  return { chain: composed, added, rejected };
 }
 
 function hasSource(chain: readonly ChainNode[]): boolean {
@@ -1382,6 +1504,9 @@ export const RECIPES: readonly ZapRecipe[] = [
       ["guard-spend", { cap: 1 }],
       ["guard-slippage", { bps: 200 }],
       ["guard-window", { expiry: "90 days" }],
+      ["guard-gas-limit"],
+      ["guard-gas-price"],
+      ["guard-executor", { access: "Anyone" }],
       ["swap", { into: "0xZAPS", venue: "Uniswap v4" }],
       ["send"],
     ],
@@ -1396,6 +1521,9 @@ export const RECIPES: readonly ZapRecipe[] = [
       ["guard-slippage", { bps: 200 }],
       ["price-trigger", { condition: "up10" }],
       ["guard-window", { expiry: "30 days" }],
+      ["guard-gas-limit"],
+      ["guard-gas-price"],
+      ["guard-executor", { access: "Anyone" }],
       ["swap", { into: "0xZAPS", venue: "Uniswap v4" }],
       ["send"],
     ],

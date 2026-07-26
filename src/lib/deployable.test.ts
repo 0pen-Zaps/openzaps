@@ -21,6 +21,7 @@ import {
   reduceChainToLivePolicy,
   reduceChainToLiveRoute,
 } from "@/lib/deployable";
+import { DEFAULT_EXECUTION_POLICY } from "@/lib/execution-policy";
 
 type Spec = [string, Record<string, ParamValue>?];
 
@@ -53,6 +54,7 @@ describe("accepts the live route", () => {
       direction: "buy",
       amountIn: "0.05",
       slippageBps: 50,
+      executionPolicy: DEFAULT_EXECUTION_POLICY,
       unenforcedGuards: [],
     });
   });
@@ -71,6 +73,31 @@ describe("accepts the live route", () => {
       ["swap", { into: "0xZAPS", venue: "Uniswap v4" }],
     );
     expect(reduceChainToLiveRoute(nodes).deployable).toBe(true);
+  });
+
+  it("carries execution gas and fee caps into the one-shot handoff", () => {
+    const nodes = buyChain();
+    nodes.splice(
+      2,
+      0,
+      makeNode("guard-gas-limit", "gas", { maxGas: 1_500_000 }),
+      makeNode("guard-gas-price", "fee", { maxFeeGwei: 3 }),
+    );
+    const mapping = reduceChainToLiveRoute(nodes);
+    expect(mapping.deployable && mapping.executionPolicy).toEqual({
+      maxGas: 1_500_000,
+      maxFeePerGasGwei: 3,
+      executorAccess: "anyone",
+    });
+  });
+
+  it("discloses that owner-only executor access is automation-only", () => {
+    const nodes = buyChain();
+    nodes.splice(2, 0, makeNode("guard-executor", "executor", { access: "Owner only" }));
+    const mapping = reduceChainToLiveRoute(nodes);
+    expect(mapping.deployable && mapping.unenforcedGuards).toEqual([
+      "Executor access is set to Owner only, but the v1.1 one-shot intent cannot restrict who submits a zero-fee execution. This owner-only choice is enforced by v3/v3.1 automation, not by Run once.",
+    ]);
   });
 
   it("falls back to the app's default slippage when no cap is designed", () => {
@@ -1029,14 +1056,15 @@ describe("with the real vault adapter configured", () => {
 
   it("leaves the live route, and every guard disclosure on it, untouched", () => {
     configureVaultDeposit();
-    // The route the app already signs must be byte-identical, now with its
-    // route id carried alongside the legacy direction.
+    // The route the app already signs keeps the same route fields and now also
+    // carries its previously implicit execution-intent defaults explicitly.
     expect(reduceChainToLiveRoute(buyChain())).toEqual({
       deployable: true,
       routeId: "robinhood-v4-weth-zaps",
       direction: "buy",
       amountIn: "0.05",
       slippageBps: 50,
+      executionPolicy: DEFAULT_EXECUTION_POLICY,
       unenforcedGuards: [],
     });
   });

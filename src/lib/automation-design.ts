@@ -3,6 +3,7 @@ import { getBlock, makeNode, type ChainNode } from "@/lib/blocks";
 import { reduceChainToLiveRoute } from "@/lib/deployable";
 import { parseRouterAmount } from "@/lib/openzap";
 import { resolveRouteById } from "@/lib/routes";
+import { writeExecutionPolicyParams, type ExecutionPolicy } from "@/lib/execution-policy";
 
 export type AutomationDesign =
   | {
@@ -14,6 +15,7 @@ export type AutomationDesign =
       intervalId: "daily" | "weekly" | "monthly";
       maxRuns: number;
       validDays: 7 | 30 | 90 | null;
+      executionPolicy: ExecutionPolicy;
     }
   | {
       deployable: true;
@@ -23,6 +25,7 @@ export type AutomationDesign =
       slippageBps: number;
       thresholdId: string;
       validDays: 7 | 30 | 90;
+      executionPolicy: ExecutionPolicy;
     }
   | { deployable: false; reasons: string[] };
 
@@ -91,8 +94,23 @@ export function reduceChainToAutomation(chain: readonly ChainNode[]): Automation
   const mode = recurring.length === 1 ? "recurring" : "trigger";
   const supportedGuards =
     mode === "recurring"
-      ? new Set(["guard-slippage", "guard-spend", "guard-window"])
-      : new Set(["guard-slippage", "guard-spend", "guard-window", "price-trigger"]);
+      ? new Set([
+          "guard-slippage",
+          "guard-spend",
+          "guard-window",
+          "guard-gas-limit",
+          "guard-gas-price",
+          "guard-executor",
+        ])
+      : new Set([
+          "guard-slippage",
+          "guard-spend",
+          "guard-window",
+          "price-trigger",
+          "guard-gas-limit",
+          "guard-gas-price",
+          "guard-executor",
+        ]);
   const unsupported = chain.filter(
     (node) => getBlock(node.blockId)?.kind === "guard" && !supportedGuards.has(node.blockId),
   );
@@ -141,6 +159,7 @@ export function reduceChainToAutomation(chain: readonly ChainNode[]): Automation
       intervalId: cadence as "daily" | "weekly" | "monthly",
       maxRuns: runs,
       validDays: validDays ?? null,
+      executionPolicy: route.executionPolicy,
     };
   }
 
@@ -165,6 +184,7 @@ export function reduceChainToAutomation(chain: readonly ChainNode[]): Automation
     slippageBps: route.slippageBps,
     thresholdId,
     validDays,
+    executionPolicy: route.executionPolicy,
   };
 }
 
@@ -213,5 +233,6 @@ export function automationHandoff(design: Extract<AutomationDesign, { deployable
     params.set("threshold", design.thresholdId);
     params.set("days", String(design.validDays));
   }
+  writeExecutionPolicyParams(params, design.executionPolicy);
   return `/zap?${params.toString()}`;
 }

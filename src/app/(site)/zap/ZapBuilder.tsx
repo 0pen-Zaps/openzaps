@@ -13,6 +13,7 @@ import {
   SHAPE_COLOR,
   SHAPE_LABEL,
   canInsert,
+  composeBlockStack,
   compileChain,
   decodeChain,
   decodeDesign,
@@ -28,6 +29,11 @@ import {
   type ZapRecipe,
 } from "@/lib/blocks";
 import { reduceChainToLiveRoute } from "@/lib/deployable";
+import {
+  DEFAULT_EXECUTION_POLICY,
+  EXECUTION_POLICY_BLOCK_IDS,
+  resolveExecutionPolicy,
+} from "@/lib/execution-policy";
 
 import { automationHandoff, reduceChainToAutomation } from "@/lib/automation-design";
 import { builderQuoteEconomics } from "@/lib/build-quote";
@@ -884,15 +890,23 @@ export function ZapBuilder({
   // `route` is the route identity `/app` resolves and signs; `dir` is kept only
   // for backward-compatibility with the bounded pair (older links carry it and
   // no route id). Amount is the decimal string in the token's own units.
-  // `view=sign` flips the surface to the console in place; the rest of the
-  // query is byte-identical to the old cross-page handoff, so the console's
-  // importer and pre-merge bookmarks both keep working.
+  // `view=sign` flips the surface to the console in place. The established
+  // route/amount/bps keys stay compatible; explicit gas controls are additive.
   const oneShotHandoffAllowed = !(automation.deployable && automation.mode === "trigger");
-  const deployHref = deployment.deployable && oneShotHandoffAllowed
-    ? `/zap?view=sign&src=build&route=${encodeURIComponent(deployment.routeId)}${
-        deployment.direction ? `&dir=${deployment.direction}` : ""
-      }&amount=${encodeURIComponent(deployment.amountIn)}&bps=${deployment.slippageBps}`
-    : null;
+  let deployHref: string | null = null;
+  if (deployment.deployable && oneShotHandoffAllowed) {
+    const params = new URLSearchParams({
+      view: "sign",
+      src: "build",
+      route: deployment.routeId,
+      amount: deployment.amountIn,
+      bps: String(deployment.slippageBps),
+      maxGas: String(deployment.executionPolicy.maxGas),
+      maxFeeGwei: String(deployment.executionPolicy.maxFeePerGasGwei),
+    });
+    if (deployment.direction) params.set("dir", deployment.direction);
+    deployHref = `/zap?${params.toString()}`;
+  }
   /** The resolved route the handoff would sign, for naming its tokens honestly. */
   const deployRoute = useMemo(
     () => (deployment.deployable ? resolveRouteById(deployment.routeId) : null),
@@ -903,6 +917,31 @@ export function ZapBuilder({
     () => (automation.deployable ? resolveRouteById(automation.routeId) : null),
     [automation],
   );
+
+  const executionPolicyResolution = useMemo(() => resolveExecutionPolicy(chain), [chain]);
+  const executionPolicy = executionPolicyResolution.ok
+    ? executionPolicyResolution.policy
+    : DEFAULT_EXECUTION_POLICY;
+  const missingExecutionPolicyIds = useMemo(
+    () => EXECUTION_POLICY_BLOCK_IDS.filter((blockId) => !chain.some((node: ChainNode) => node.blockId === blockId)),
+    [chain],
+  );
+  const composeExecutionPolicy = useCallback((): void => {
+    const result = composeBlockStack(chain, missingExecutionPolicyIds, nextUid);
+    if (result.added.length === 0) {
+      flash(
+        missingExecutionPolicyIds.length === 0
+          ? "All three execution-policy blocks are already explicit."
+          : "Add a source before composing the execution-policy stack.",
+      );
+      return;
+    }
+    commit(result.chain);
+    setOpenUid(result.added[result.added.length - 1].uid);
+    const names = result.added.map((node) => getBlock(node.blockId)?.name ?? node.blockId).join(", ");
+    announce(`Composed ${result.added.length} execution-policy blocks as one edit: ${names}.`);
+    trackEvent("builder_policy_stack_composed", { blocks: result.added.length });
+  }, [announce, chain, commit, flash, missingExecutionPolicyIds]);
 
   // Feature 1: the builder now prices the route it is about to hand off, plus
   // the fixed native creation fee's atomic aeWETH -> 0xZAPS conversion. The
@@ -1825,6 +1864,47 @@ export function ZapBuilder({
             </p>
           </div>
 
+          <div className={`${styles.meter} ${styles.policyStack}`} aria-label="Execution policy stack">
+            <div className={styles.meterHead}>
+              <span>Execution policy</span>
+              <strong>
+                {EXECUTION_POLICY_BLOCK_IDS.length - missingExecutionPolicyIds.length}/{EXECUTION_POLICY_BLOCK_IDS.length} explicit
+              </strong>
+            </div>
+            <dl className={styles.policyGrid}>
+              <div>
+                <dt>Gas limit</dt>
+                <dd>{executionPolicy.maxGas.toLocaleString("en-US")}</dd>
+              </div>
+              <div>
+                <dt>Gas price</dt>
+                <dd>≤ {executionPolicy.maxFeePerGasGwei} gwei</dd>
+              </div>
+              <div>
+                <dt>Executor</dt>
+                <dd>{executionPolicy.executorAccess === "owner-only" ? "Owner only" : "Anyone"}</dd>
+              </div>
+            </dl>
+            <p className={styles.hashNote}>
+              Gas caps bind both one-shot and automated EIP-712 intents. Executor access binds v3/v3.1 automation;
+              Run once discloses an owner-only choice because v1.1 cannot restrict its caller. Missing blocks use the
+              protocol defaults shown here.
+            </p>
+            <button
+              type="button"
+              className={styles.composePolicyBtn}
+              onClick={composeExecutionPolicy}
+              disabled={missingExecutionPolicyIds.length === 0}
+            >
+              {missingExecutionPolicyIds.length === 0
+                ? "Execution policy explicit ✓"
+                : missingExecutionPolicyIds.length === EXECUTION_POLICY_BLOCK_IDS.length
+                  ? `Compose all ${EXECUTION_POLICY_BLOCK_IDS.length} policy blocks`
+                  : `Compose remaining ${missingExecutionPolicyIds.length}`}
+            </button>
+            <span className={styles.policyUndo}>Inserted together · one undo restores the previous chain.</span>
+          </div>
+
           {/* Every issue the compiler raised, not the first one. The "Connector
               fit" check below can only ever quote a single message, so a chain
               with three broken joints used to report one and leave the other
@@ -1933,15 +2013,19 @@ export function ZapBuilder({
                   {deployRoute
                     ? `${deployRoute.tokenIn.symbol} → ${deployRoute.tokenOut.symbol}`
                     : "the matching route"}
-                  , {deployment.amountIn} {deployRoute ? deployRoute.tokenIn.symbol : ""}, and a{" "}
-                  {(deployment.slippageBps / 100).toFixed(2)}% signed slippage cap. Creation, funding, and the
-                  final EIP-712 authorization stay in Sign &amp; run.
+                  , {deployment.amountIn} {deployRoute ? deployRoute.tokenIn.symbol : ""}, a{" "}
+                  {(deployment.slippageBps / 100).toFixed(2)}% signed slippage cap, up to{" "}
+                  {deployment.executionPolicy.maxGas.toLocaleString("en-US")} gas, and at most{" "}
+                  {deployment.executionPolicy.maxFeePerGasGwei} gwei. Creation, funding, and the final EIP-712
+                  authorization stay in Sign &amp; run.
                 </p>
               ) : null}
               {automation.deployable ? (
                 <p className={styles.deployNote}>
                   <strong>{automation.mode === "recurring" ? "Recurring" : "Price-triggered"}</strong> handoff
-                  preserves this route, amount, and slippage
+                  preserves this route, amount, slippage, {automation.executionPolicy.maxGas.toLocaleString("en-US")} gas,
+                  a {automation.executionPolicy.maxFeePerGasGwei} gwei ceiling, and{" "}
+                  {automation.executionPolicy.executorAccess === "owner-only" ? "owner-only execution" : "open execution"}
                   {automation.mode === "recurring"
                     ? `, then binds ${automation.maxRuns} runs on the ${automation.intervalId} cadence.`
                     : `, then binds ${automation.thresholdId.startsWith("up") ? "a rise" : "a fall"} of ${automation.thresholdId.replace(/\D/g, "")}% for ${automation.validDays} days.`}
