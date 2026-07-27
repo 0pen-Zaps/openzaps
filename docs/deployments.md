@@ -238,6 +238,19 @@ Simulated against live chain state and rehearsed end to end on a fork of it (202
 then smoke, both green; the smoke script was also confirmed to REJECT a build pointed at the wrong
 stake token, so it is a gate rather than a formality.
 
+One command does the whole thing, and refuses to report success unless the smoke passes:
+
+```bash
+cd contracts && ./script/golive-overdraw.sh --account nodar-deployer
+```
+
+It deploys, reads the address back out of the contract, runs the smoke, and writes the address to
+`/tmp/overdraw-deployed.txt`. A failed smoke exits non-zero and writes nothing — verified by
+pointing a deployment at a fake stake token on a fork and confirming the gate held. Signer flags are
+passed straight through, so `--ledger` or `--trezor` work identically; no key is read or echoed.
+
+The same three steps by hand:
+
 ```bash
 cd contracts
 
