@@ -14,15 +14,20 @@ import {
   EXEC_FEE_BPS,
   EXECUTOR_SHARE_BPS,
   buildRecurringRelativeTypedData,
+  buildRecurringStackTypedData,
   buildRecurringTypedData,
   buildTriggerTypedData,
   computeExecutorFeeSplit,
+  computeStackSplit,
   isTriggerArmed,
+  isValidStackBps,
   nextRunAt,
   serializeIntentFile,
+  slippageClearsFee,
   triggerBoundX96,
   type RecurringIntent,
   type RecurringRelativeIntent,
+  type RecurringStackIntent,
   type TriggerIntent,
 } from "@/lib/executions";
 
@@ -233,11 +238,132 @@ describe("typed data builders", () => {
     expect(rel).not.toBe(rec);
   });
 
+  const RECURRING_STACK_TYPEHASH = keccak256(
+    stringToHex(
+      "RecurringStackIntent(address zap,uint256 chainId,uint256 seriesId,uint64 validAfter,uint64 deadline,uint64 interval,uint32 maxRuns,address recipient,address executor,uint256 maxGas,uint256 maxFeePerGas,bytes32 policyHash,address outAsset,address priceSource,uint32 maxSlippageBps,address stackPriceSource,uint32 stackBps)",
+    ),
+  );
+
+  const stack: RecurringStackIntent = {
+    ...relative,
+    maxSlippageBps: 500,
+    stackPriceSource: ADDR,
+    stackBps: 500,
+  };
+
+  function manualStackDigest(it_: RecurringStackIntent): Hex {
+    // Domain version "3.2" — distinct from both "3" and "3.1".
+    const domainSeparator = keccak256(
+      encodeAbiParameters(
+        [{ type: "bytes32" }, { type: "bytes32" }, { type: "bytes32" }, { type: "uint256" }, { type: "address" }],
+        [DOMAIN_TYPEHASH, keccak256(stringToHex("OpenZap")), keccak256(stringToHex("3.2")), it_.chainId, it_.zap],
+      ),
+    );
+    const structHash = keccak256(
+      encodeAbiParameters(
+        [
+          { type: "bytes32" }, { type: "address" }, { type: "uint256" }, { type: "uint256" }, { type: "uint64" },
+          { type: "uint64" }, { type: "uint64" }, { type: "uint32" }, { type: "address" }, { type: "address" },
+          { type: "uint256" }, { type: "uint256" }, { type: "bytes32" }, { type: "address" }, { type: "address" },
+          { type: "uint32" }, { type: "address" }, { type: "uint32" },
+        ],
+        [
+          RECURRING_STACK_TYPEHASH, it_.zap, it_.chainId, it_.seriesId, it_.validAfter, it_.deadline, it_.interval,
+          it_.maxRuns, it_.recipient, it_.executor, it_.maxGas, it_.maxFeePerGas, it_.policyHash, it_.outAsset,
+          it_.priceSource, it_.maxSlippageBps, it_.stackPriceSource, it_.stackBps,
+        ],
+      ),
+    );
+    return keccak256(`0x1901${domainSeparator.slice(2)}${structHash.slice(2)}` as Hex);
+  }
+
+  it("stack typed data hashes to the same digest the v3.2 capsule computes (domain 3.2)", () => {
+    expect(hashTypedData(buildRecurringStackTypedData(stack))).toBe(manualStackDigest(stack));
+  });
+
+  it("a v3.1 relative signature cannot be replayed as a stacking authorization", () => {
+    // Identical schedule, route, and recipient — but stacking diverts output the relative signer
+    // never agreed to, so the two MUST hash differently under every circumstance.
+    expect(hashTypedData(buildRecurringStackTypedData(stack))).not.toBe(
+      hashTypedData(buildRecurringRelativeTypedData(relative)),
+    );
+  });
+
+  it("stack digest changes with the slice and the conversion source", () => {
+    const digest = hashTypedData(buildRecurringStackTypedData(stack));
+    expect(hashTypedData(buildRecurringStackTypedData({ ...stack, stackBps: 501 }))).not.toBe(digest);
+    expect(hashTypedData(buildRecurringStackTypedData({ ...stack, stackPriceSource: ZAP }))).not.toBe(digest);
+  });
+
   it("trigger typed data changes with every authority-bearing field", () => {
     const digest = hashTypedData(buildTriggerTypedData(trigger));
     expect(hashTypedData(buildTriggerTypedData({ ...trigger, above: false }))).not.toBe(digest);
     expect(hashTypedData(buildTriggerTypedData({ ...trigger, thresholdBps: 999 }))).not.toBe(digest);
     expect(hashTypedData(buildTriggerTypedData({ ...trigger, priceSource: ZAP }))).not.toBe(digest);
+  });
+});
+
+describe("computeStackSplit", () => {
+  it("carves the protocol fee FIRST, then the slice from what remains", () => {
+    // 1_000_000 out → 1% fee = 10_000 (8_000 executor / 2_000 pot), post-fee 990_000.
+    // 5% slice of 990_000 = 49_500 → recipient 940_500.
+    const split = computeStackSplit(1_000_000n, 500);
+    expect(split.fee).toBe(10_000n);
+    expect(split.executorCut).toBe(8_000n);
+    expect(split.potCut).toBe(2_000n);
+    expect(split.net).toBe(990_000n);
+    expect(split.stackIn).toBe(49_500n);
+    expect(split.toRecipient).toBe(940_500n);
+  });
+
+  it("conserves value exactly — nothing is created or lost by stacking", () => {
+    for (const out of [1n, 7n, 12_345n, 999_999_999_999n, 10n ** 24n]) {
+      for (const bps of [1, 100, 500, 2_500, 9_999]) {
+        const s = computeStackSplit(out, bps);
+        expect(s.executorCut + s.potCut + s.stackIn + s.toRecipient).toBe(out);
+      }
+    }
+  });
+
+  it("leaves the executor and pot fee untouched by the slice size", () => {
+    // Stacking must never change what the executor earns, or executors would prefer some series.
+    const base = computeExecutorFeeSplit(1_000_000n);
+    for (const bps of [1, 500, 9_999]) {
+      const s = computeStackSplit(1_000_000n, bps);
+      expect(s.executorCut).toBe(base.executorCut);
+      expect(s.potCut).toBe(base.potCut);
+    }
+  });
+
+  it("floors the slice to zero on dust, which the capsule rejects rather than silently no-ops", () => {
+    // 99 post-fee wei at 1 bps rounds to 0 — StackSliceUnderflow on-chain.
+    expect(computeStackSplit(100n, 1).stackIn).toBe(0n);
+  });
+});
+
+describe("slippageClearsFee", () => {
+  it("rejects any band at or inside the 1% protocol fee", () => {
+    // The floor is GROSS-derived but NET-enforced, so these bands brick every run of the series.
+    // This is the exact live v3.1 failure the v3.2 capsule now refuses to sign at all.
+    expect(slippageClearsFee(0)).toBe(false);
+    expect(slippageClearsFee(50)).toBe(false);
+    expect(slippageClearsFee(100)).toBe(false); // EXEC_FEE_BPS itself — the trap value
+  });
+
+  it("accepts a band above the fee and below 100%", () => {
+    expect(slippageClearsFee(101)).toBe(true);
+    expect(slippageClearsFee(500)).toBe(true);
+    expect(slippageClearsFee(9_999)).toBe(true);
+    expect(slippageClearsFee(10_000)).toBe(false); // would disable the floor entirely
+  });
+});
+
+describe("isValidStackBps", () => {
+  it("requires a real slice strictly between 0% and 100%", () => {
+    expect(isValidStackBps(0)).toBe(false); // that's a RecurringRelativeIntent, not a stack
+    expect(isValidStackBps(1)).toBe(true);
+    expect(isValidStackBps(9_999)).toBe(true);
+    expect(isValidStackBps(10_000)).toBe(false); // would divert the recipient's entire leg
   });
 });
 

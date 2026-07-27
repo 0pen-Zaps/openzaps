@@ -19,9 +19,11 @@ import {
 import {
   RECURRING_INTENT_TYPES,
   RECURRING_RELATIVE_INTENT_TYPES,
+  RECURRING_STACK_INTENT_TYPES,
   TRIGGER_INTENT_TYPES,
   openZapV3Domain,
   openZapV3_1Domain,
+  openZapV3_2Domain,
 } from "@/lib/executions";
 import { ROBINHOOD_CHAIN_ID, ROBINHOOD_RPC_URL, openZapV3Abi, robinhoodChain } from "@/lib/robinhood";
 
@@ -77,12 +79,19 @@ function rateLimited(req: NextRequest): boolean {
 const TYPES: Record<RelayIntentKind, { types: object; primaryType: string }> = {
   recurring: { types: RECURRING_INTENT_TYPES, primaryType: "RecurringIntent" },
   "recurring-relative": { types: RECURRING_RELATIVE_INTENT_TYPES, primaryType: "RecurringRelativeIntent" },
+  "recurring-stack": { types: RECURRING_STACK_INTENT_TYPES, primaryType: "RecurringStackIntent" },
   trigger: { types: TRIGGER_INTENT_TYPES, primaryType: "TriggerIntent" },
 };
 
-/** v3.1 relative-floor intents sign under domain version "3.1"; everything else under "3". */
+/**
+ * Each lineage verifies signatures under its OWN domain version, so recovering an intent under the
+ * wrong one yields a different address and the authority check fails closed. Stacking intents are
+ * "3.2", relative-floor "3.1", everything else "3".
+ */
 function domainFor(kind: RelayIntentKind, chainId: number, zap: Address) {
-  return kind === "recurring-relative" ? openZapV3_1Domain(chainId, zap) : openZapV3Domain(chainId, zap);
+  if (kind === "recurring-stack") return openZapV3_2Domain(chainId, zap);
+  if (kind === "recurring-relative") return openZapV3_1Domain(chainId, zap);
+  return openZapV3Domain(chainId, zap);
 }
 
 /** Convert the string/bool intent into the typed message viem needs (fields are already bounded). */

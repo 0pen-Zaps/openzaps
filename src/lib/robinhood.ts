@@ -196,6 +196,31 @@ export function openZapV3_1Configured(): boolean {
 }
 
 /**
+ * The v3.2 stacking stack. Superset of v3.1: adds `executeRecurringStack`, which diverts an
+ * owner-signed `stackBps` slice of each run's post-fee output into 0xZAPS and stakes it to the
+ * lottery pot as the owner's tickets. Signs under EIP-712 domain version "3.2"; like v3.1 it needs
+ * its OWN lottery pot, because `ZapLotteryPot.setFactory` is one-shot.
+ *
+ * NOT YET DEPLOYED. Every address defaults to the zero address on purpose: `openZapV3_2Configured()`
+ * therefore returns false, and the Automate surface must gate the stacking option behind it. Offering
+ * a creation path into an undeployed lineage would fail-open — the user would pay a wallet
+ * interaction for a transaction that cannot succeed. Fill these in (or set the env vars) only once
+ * `docs/deployments.md` records a verified v3.2 deployment with its own pot wired via `setFactory`.
+ */
+export const OPENZAP_V3_2_CONTRACTS = {
+  implementation: optionalAddress(process.env.NEXT_PUBLIC_OPENZAP_V3_2_IMPLEMENTATION, zeroAddress),
+  factory: optionalAddress(process.env.NEXT_PUBLIC_OPENZAP_V3_2_FACTORY, zeroAddress),
+  lotteryPot: optionalAddress(process.env.NEXT_PUBLIC_OPENZAP_V3_2_LOTTERY_POT, zeroAddress),
+  priceSourceRegistry: optionalAddress(process.env.NEXT_PUBLIC_OPENZAP_V3_2_PRICE_SOURCE_REGISTRY, zeroAddress),
+  /** IOrientedPriceSource for the main leg — same shape v3.1 uses. */
+  orientedPriceSource: optionalAddress(process.env.NEXT_PUBLIC_OPENZAP_V3_2_ORIENTED_PRICE_SOURCE, zeroAddress),
+} as const;
+
+export function openZapV3_2Configured(): boolean {
+  return Object.values(OPENZAP_V3_2_CONTRACTS).every((address) => address !== zeroAddress);
+}
+
+/**
  * Universal app-creation fee gateway. The immutable gateway calls the already-live v1.1/v3/v3.1
  * factories, then converts the exact native creation fee through the pinned aeWETH -> 0xZAPS route.
  * Deployed and independently read back on Robinhood Chain at blocks 19,539,599–19,539,642. Env
