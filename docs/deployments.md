@@ -199,6 +199,132 @@ aeWETH→0xZAPS adapter with a caller-reviewed minimum output, and credits a sep
   independently read back. It held zero ETH, aeWETH, 0xZAPS, and zero adapter allowance after deployment.
 - The existing automated execution fee remains separate: 1% per run, split 80% executor / 20% to
   the original v3 or v3.1 automation pot.
+### ZapDraw (`ZapOverdraw`) — **LIVE on 4663**
+
+| | |
+|---|---|
+| Contract | `contracts/src/game/ZapOverdraw.sol` |
+| Deploy script | `contracts/script/DeployOverdraw.s.sol` |
+| Tests | `contracts/test/ZapOverdraw.t.sol` (28 unit/fuzz), `src/lib/overdraw.test.ts` (15) |
+| Address on 4663 | [`0xb1C9e106a85Ad26603BA3AC89fFa4bE29E6C5336`](https://robinhoodchain.blockscout.com/address/0xb1C9e106a85Ad26603BA3AC89fFa4bE29E6C5336) |
+| Deployer | `0x5a52D4B820Ae7F02880d270562950918ACb14aA2` (governance) |
+| App surface | `/zapdraw`, gated on `NEXT_PUBLIC_OVERDRAW_ADDRESS` |
+
+> **The product is ZapDraw; the contract is `ZapOverdraw`.** The name was settled after the contract
+> was already immutable onchain, so the two differ on purpose. Contract-bound identifiers keep the
+> deployed name — `ZapOverdraw`, `NEXT_PUBLIC_OVERDRAW_ADDRESS`, `overdrawAbi` — because they must
+> match what is actually deployed. Everything user-facing says ZapDraw. `/overdraw` and
+> `/overdraw/how` 308-redirect to the `/zapdraw` equivalents; both were briefly live and sitemapped.
+
+**Live state, read from chain 2026-07-27:**
+
+| Immutable | Value |
+|---|---|
+| `stake` | `0xDd90bFa4adC7F4401E611AbaC692D939F9F4CB07` (0xZAPS, 18 dp) |
+| `rakeRecipient` | `0x5a52D4B820Ae7F02880d270562950918ACb14aA2` |
+| `entryFee` | `1_000_000e18` — 1,000,000 0xZAPS (≈ 0.00073 aeWETH when quoted at deploy) |
+| `commitWindow` / `revealWindow` | 21,600 s / 21,600 s (6 h each) |
+| `rakeBps` / `keeperBps` | 200 / 50 |
+
+`SmokeOverdraw.s.sol` passed against the deployed address: stake is the canonical 0xZAPS, fee bounds
+hold, rake is non-zero so the carry pool can drain, windows are survivable, `BPS`/`MAX_SEATS`/
+`MIN_REVEALS` are 10000/64/2, the carry pool is backed by the balance, and round 1 opened unsettled
+with its commit window running.
+
+A standalone sealed-bid game staked in 0xZAPS. Players pay a fixed entry, commit a hashed "draw"
+(a bps claim on the round's capacity), reveal it, and settlement pays the ascending draws in order
+until the capacity is exhausted — everyone after that is cut. Undelivered capacity returns to a
+carry pool that later rounds draw on.
+
+Two economic properties are load-bearing and are enforced by tests, not by comments:
+
+* **A table sweep is never profitable.** An attacker holding every seat controls every draw, so
+  they can always be served in full and take the whole capacity — and if they call `settle` the
+  keeper reward returns to them too. Their profit is exactly `released − rake`. `releasableCarry()`
+  caps `released` at the round's own rake, so the profit is never positive at any seat count.
+  Without that cap, a carry above ~2% of two entries would have made a two-address sweep pay.
+  Consequence, stated plainly: the pool drains no faster than the rake, so it is a slow rebate
+  rather than a jackpot, and `rakeBps == 0` is refused because it would freeze the pool forever.
+* **Ties are not a race.** Equal draws are separated by `keccak256(round, player)`, fixed before the
+  round opens — not by reveal order. A reveal-order tiebreak would have made every tie a latency
+  auction that a bot wins against a human, and on a single-sequencer chain would have let the
+  block producer choose the winner by reordering reveals already in the mempool.
+
+It is **not part of the protocol**. It is not an adapter, is not allowlisted in the
+`AdapterRegistry`, holds no policy capsule, and no zap route can reach it. A bug in it cannot touch
+capsule funds, and deploying it changes nothing about the live v1.1/v3 sets above.
+
+### Go-live runbook
+
+Simulated against live chain state and rehearsed end to end on a fork of it (2026-07-27): deploy,
+then smoke, both green; the smoke script was also confirmed to REJECT a build pointed at the wrong
+stake token, so it is a gate rather than a formality.
+
+One command does the whole thing, and refuses to report success unless the smoke passes:
+
+```bash
+cd contracts && ./script/golive-overdraw.sh --account nodar-deployer
+```
+
+It deploys, reads the address back out of the contract, runs the smoke, and writes the address to
+`/tmp/overdraw-deployed.txt`. A failed smoke exits non-zero and writes nothing — verified by
+pointing a deployment at a fake stake token on a fork and confirming the gate held. Signer flags are
+passed straight through, so `--ledger` or `--trezor` work identically; no key is read or echoed.
+
+The same three steps by hand:
+
+```bash
+cd contracts
+
+# 1. Simulate. No key, no broadcast — proves the constructor guards pass against live state.
+OVERDRAW_RAKE_RECIPIENT=0x5a52D4B820Ae7F02880d270562950918ACb14aA2 \
+forge script script/DeployOverdraw.s.sol:DeployOverdraw \
+  --rpc-url https://rpc.mainnet.chain.robinhood.com \
+  --sender <deployer address>
+
+# 2. Broadcast. Signer from the keystore; never a key on the command line.
+OVERDRAW_RAKE_RECIPIENT=0x5a52D4B820Ae7F02880d270562950918ACb14aA2 \
+forge script script/DeployOverdraw.s.sol:DeployOverdraw \
+  --rpc-url https://rpc.mainnet.chain.robinhood.com \
+  --account nodar-deployer --broadcast
+
+# 3. Verify the DEPLOYED contract, not the broadcast log.
+OVERDRAW_ADDRESS=0x<deployed> \
+forge script script/SmokeOverdraw.s.sol:SmokeOverdraw \
+  --rpc-url https://rpc.mainnet.chain.robinhood.com
+```
+
+Only once step 3 prints `SMOKE PASSED` does `NEXT_PUBLIC_OVERDRAW_ADDRESS` get set in Vercel and the
+site redeployed. Until then `/overdraw` fails closed and nobody can send the game a token.
+
+Defaults the script applies, all permanent once broadcast:
+
+| Parameter | Value | Why |
+|---|---|---|
+| `stake` | 0xZAPS `0xDd90…CB07` | verified live: 18 dp, 100B supply |
+| `rakeRecipient` | `0x5a52…4aA2` (governance) | a live user-controlled address; also the carry's release valve |
+| `entryFee` | `1,000,000` 0xZAPS | ≈ `0.00073` aeWETH quoted against the pinned pool on 2026-07-27 — a couple of dollars a seat |
+| `commitWindow` / `revealWindow` | 6 h / 6 h | an unrevealed seat forfeits, so the window must be survivable |
+| `rakeBps` / `keeperBps` | 200 / 50 | rake doubles as the carry drain rate; zero is refused |
+
+Estimated deployment cost: **1,736,917 gas ≈ 0.000139 ETH** at 0.08 gwei.
+
+Two things gate it, in this order:
+
+1. ~~**Broadcast.**~~ Done — see the address above.
+2. ~~**`NEXT_PUBLIC_OVERDRAW_ADDRESS` in Vercel.**~~ Set on Production 2026-07-27.
+
+**The kill switch:** removing `NEXT_PUBLIC_OVERDRAW_ADDRESS` and redeploying returns `/zapdraw` to
+its fail-closed state — no address, no table, nothing for a wallet to approve. That is the fastest
+way to take the game off the site; the contract stays live onchain regardless, because it has no
+pause and no admin.
+
+Verified locally end to end on an anvil node at chain 4663 (2026-07-26): four seats at 1,000 stake,
+draws 10/25/30/50%, revealed out of order. Capacity settled at 3,900 (4,000 fees − 80 rake − 20
+keeper); paid 390 / 975 / 1,170; the 50% draw was cut; 1,365 returned to the pool; contract balance
+matched credits + pool + open-round fees exactly. A second run grew the pool to 3,744 and confirmed
+a following two-seat round could release only 40 — the rake it pays. **Pre-external-audit, like
+everything else here.**
 
 ## Base mainnet (chainId 8453)
 

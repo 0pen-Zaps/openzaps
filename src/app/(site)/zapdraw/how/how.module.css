@@ -1,0 +1,492 @@
+.page {
+  position: relative;
+  z-index: 1;
+}
+
+.hero {
+  padding: clamp(2.2rem, 5vw, 4rem) 0 0;
+  max-width: 46rem;
+}
+
+.eyebrow {
+  font-size: 0.72rem;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+
+.title {
+  margin-top: 0.8rem;
+  font-size: clamp(2.4rem, 8vw, 4.6rem);
+  font-weight: 600;
+  line-height: 0.98;
+  letter-spacing: -0.02em;
+}
+
+.lead {
+  margin-top: 1rem;
+  color: var(--text);
+  font-size: clamp(1rem, 1.5vw, 1.18rem);
+  line-height: 1.6;
+}
+
+/* ------------------------------------------------------------------ film */
+
+.film {
+  margin-top: clamp(2rem, 5vw, 3.2rem);
+  border: 1px solid var(--line);
+  padding: clamp(1.1rem, 3vw, 2rem);
+  display: grid;
+  gap: clamp(1.2rem, 3vw, 2rem);
+}
+
+.head {
+  display: grid;
+  gap: 0.6rem;
+}
+
+.step {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.72rem;
+  letter-spacing: 0.2em;
+  color: var(--accent);
+}
+
+.caption {
+  font-size: clamp(1.7rem, 5.5vw, 3.2rem);
+  font-weight: 600;
+  line-height: 1.02;
+  letter-spacing: -0.02em;
+  text-wrap: balance;
+  min-height: 1.02em;
+}
+
+.captionSub {
+  color: var(--muted);
+  font-size: clamp(0.86rem, 1.4vw, 1rem);
+  line-height: 1.55;
+  min-height: 1.55em;
+}
+
+.captionSub strong {
+  color: var(--accent-bright);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ------------------------------------------------------------------- bus */
+
+.stage {
+  display: grid;
+  gap: clamp(1rem, 2.6vw, 1.6rem);
+}
+
+.busWrap {
+  display: grid;
+  gap: 0.5rem;
+  opacity: 0;
+  transition: opacity var(--dur-3) var(--ease-standard);
+  /* The greedy claim is drawn past the end of the bar on purpose. Clip here so
+     that overhang can never become horizontal scroll on the page itself. */
+  overflow: hidden;
+}
+
+.busWrap[data-on="true"] {
+  opacity: 1;
+}
+
+.busLabel {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 1rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.7rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.busTotal {
+  color: var(--accent);
+  font-size: clamp(1rem, 2.4vw, 1.4rem);
+  font-weight: 600;
+  letter-spacing: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+/* The bar itself. `overflow: visible` is load-bearing: the whole point of the
+   cut scene is that the greedy draw visibly sticks out past the end. */
+.bus {
+  position: relative;
+  /* Deliberately not full width: the empty strip to the right IS the "past the
+     end of the bus" space that the unservable claim runs into. */
+  width: 78%;
+  height: clamp(2.6rem, 7vw, 3.6rem);
+  border: 1px solid var(--line);
+  background: var(--bg-2);
+  overflow: visible;
+}
+
+.segments {
+  position: absolute;
+  inset: 0;
+  display: flex;
+}
+
+.seg {
+  position: relative;
+  width: 0;
+  background: var(--accent);
+  border-right: 1px solid var(--bg);
+  transition: width var(--dur-4) var(--ease-emphasis);
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+}
+
+.seg[data-fill="true"] {
+  width: var(--w);
+}
+
+.segTag {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.66rem;
+  font-weight: 700;
+  color: var(--bg);
+  white-space: nowrap;
+  opacity: 0;
+  transition: opacity var(--dur-2) var(--ease-standard) var(--dur-3);
+}
+
+.seg[data-fill="true"] .segTag {
+  opacity: 1;
+}
+
+/* The draw that does not fit: dashed, unfilled, and deliberately longer than
+   the space left on the bar. */
+.ghost {
+  position: absolute;
+  top: -1px;
+  bottom: -1px;
+  border: 1px dashed var(--accent-dim);
+  background: repeating-linear-gradient(
+    -45deg,
+    rgba(255, 252, 0, 0.09) 0 6px,
+    transparent 6px 12px
+  );
+  display: grid;
+  place-items: center;
+  opacity: 0;
+  transform: scaleX(0.2);
+  transform-origin: left center;
+  transition: opacity var(--dur-3) var(--ease-standard), transform var(--dur-4) var(--ease-emphasis);
+}
+
+.ghost[data-on="true"] {
+  opacity: 1;
+  transform: scaleX(1);
+}
+
+.ghostTag {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.66rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: var(--accent-bright);
+  white-space: nowrap;
+}
+
+/* Where the current runs out. */
+.endStop {
+  position: absolute;
+  top: -0.5rem;
+  bottom: -0.5rem;
+  width: 2px;
+  background: var(--accent-bright);
+  opacity: 0;
+  transition: opacity var(--dur-2) var(--ease-standard);
+}
+
+.endStop[data-on="true"] {
+  opacity: 1;
+}
+
+.endStopTag {
+  position: absolute;
+  /* Above the bar. Safe from the capacity total because the bar stops at 78%
+     while the total is right-aligned to the full width. */
+  top: -1.35rem;
+  left: 50%;
+  transform: translateX(-50%);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.6rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--accent-bright);
+  white-space: nowrap;
+}
+
+/* Narrow screens have no room for the label beside the capacity total. The
+   marker line still shows where the bus ends, which is the load-bearing part. */
+@media (max-width: 46rem) {
+  .endStopTag {
+    display: none;
+  }
+}
+
+/* ----------------------------------------------------------------- seats */
+
+.seats {
+  position: relative;
+  --rowH: 3.5rem;
+  height: calc(4 * var(--rowH));
+}
+
+@media (max-width: 40rem) {
+  .seats {
+    --rowH: 4.1rem;
+  }
+}
+
+.seat {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: calc(var(--rowH) - 0.5rem);
+  transform: translateY(calc(var(--rank) * var(--rowH)));
+  transition: transform var(--dur-4) var(--ease-emphasis), opacity var(--dur-3) var(--ease-standard);
+  display: grid;
+  grid-template-columns: 2.2rem minmax(0, 1fr) auto;
+  align-items: center;
+  gap: clamp(0.6rem, 2vw, 1.1rem);
+  border: 1px solid var(--line);
+  padding: 0 clamp(0.6rem, 2vw, 1rem);
+  background: var(--bg);
+}
+
+.seat[data-state="cut"] {
+  border-color: var(--line-soft);
+  opacity: 0.55;
+}
+
+.seat[data-state="served"] {
+  border-color: var(--accent-dim);
+}
+
+.badge {
+  width: 1.9rem;
+  height: 1.9rem;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--line);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: var(--muted);
+}
+
+.seat[data-state="served"] .badge {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--bg);
+}
+
+/* The draw, as a bar that grows out of the seat row. */
+.drawBar {
+  position: relative;
+  height: 0.65rem;
+  background: var(--line-soft);
+}
+
+.drawFill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 0;
+  background: var(--accent-deep);
+  transition: width var(--dur-4) var(--ease-emphasis), background var(--dur-2) var(--ease-standard);
+}
+
+.drawFill[data-on="true"] {
+  width: var(--w);
+}
+
+.seat[data-state="served"] .drawFill {
+  background: var(--accent);
+}
+
+.readout {
+  display: flex;
+  align-items: baseline;
+  gap: clamp(0.5rem, 2vw, 1rem);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.pct {
+  font-size: clamp(0.95rem, 2.2vw, 1.25rem);
+  font-weight: 600;
+  min-width: 3.4rem;
+  text-align: right;
+}
+
+.sealed {
+  color: var(--muted-2);
+}
+
+.amount {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.78rem;
+  color: var(--muted);
+  min-width: 5.2rem;
+  text-align: right;
+}
+
+.seat[data-state="served"] .amount {
+  color: var(--accent);
+}
+
+.seat[data-state="cut"] .amount {
+  text-decoration: line-through;
+}
+
+@media (max-width: 34rem) {
+  .amount {
+    display: none;
+  }
+}
+
+/* -------------------------------------------------------------- controls */
+
+.controls {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  flex-wrap: wrap;
+}
+
+.btn {
+  appearance: none;
+  border: 1px solid var(--line);
+  background: transparent;
+  color: var(--fg);
+  font: inherit;
+  font-size: 0.82rem;
+  min-height: 2.6rem;
+  min-width: 2.9rem;
+  padding: 0 0.85rem;
+  cursor: pointer;
+  transition: border-color var(--dur-1) var(--ease-standard), color var(--dur-1) var(--ease-standard);
+}
+
+.btn:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.play {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--bg);
+  font-weight: 600;
+}
+
+.play:hover:not(:disabled) {
+  background: var(--accent-bright);
+  border-color: var(--accent-bright);
+  color: var(--bg);
+}
+
+.dots {
+  display: flex;
+  gap: 0.35rem;
+  margin-left: auto;
+}
+
+.dot {
+  appearance: none;
+  border: 0;
+  padding: 0;
+  width: 1.5rem;
+  height: 0.3rem;
+  background: var(--line);
+  cursor: pointer;
+  transition: background var(--dur-1) var(--ease-standard);
+}
+
+.dot[data-on="true"] {
+  background: var(--accent);
+}
+
+.dot[data-done="true"] {
+  background: var(--accent-dim);
+}
+
+/* --------------------------------------------------------------- outcome */
+
+.ledger {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 9rem), 1fr));
+  gap: 0.8rem;
+  opacity: 0;
+  transition: opacity var(--dur-3) var(--ease-standard);
+}
+
+.ledger[data-on="true"] {
+  opacity: 1;
+}
+
+.cell {
+  border-top: 1px solid var(--line);
+  padding-top: 0.6rem;
+  display: grid;
+  gap: 0.2rem;
+}
+
+.cellK {
+  font-size: 0.66rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.cellV {
+  font-size: clamp(1rem, 2.4vw, 1.35rem);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.cellV[data-tone="win"] {
+  color: var(--accent);
+}
+
+.foot {
+  margin-top: clamp(2.4rem, 6vw, 4rem);
+  padding-bottom: clamp(3rem, 8vw, 6rem);
+  display: grid;
+  gap: 0.9rem;
+  max-width: 44rem;
+}
+
+.footTitle {
+  font-size: clamp(1.3rem, 3.4vw, 1.8rem);
+  font-weight: 600;
+}
+
+.footBody {
+  color: var(--muted);
+  line-height: 1.65;
+  font-size: 0.92rem;
+  text-wrap: pretty;
+}
+
+.footLink {
+  color: var(--accent);
+  font-weight: 600;
+}

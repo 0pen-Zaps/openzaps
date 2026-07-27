@@ -85,6 +85,26 @@ export const STATIC_PAGE_SEO = {
     changeFrequency: "daily",
     priority: 0.7,
   },
+  zapdraw: {
+    title: "ZapDraw: A Sealed-Draw Game Played in 0xZAPS",
+    description:
+      "Pay the entry in 0xZAPS, secretly claim a share of the round's pot, and the modest are paid first. Draw too much and the bus runs dry before it reaches you.",
+    path: "/zapdraw",
+    ogImage: "/og/app.png",
+    // The rules never change, but the round rolls on a wall clock, so the live
+    // half of the page is different every day.
+    changeFrequency: "daily",
+    priority: 0.6,
+  },
+  zapdrawHow: {
+    title: "How A ZapDraw Round Plays Out",
+    description:
+      "Watch one round of ZapDraw step by step: four sealed claims on a shared pot, opened together, paid smallest first, and the greedy one cut when it runs out.",
+    path: "/zapdraw/how",
+    ogImage: "/og/app.png",
+    changeFrequency: "monthly",
+    priority: 0.55,
+  },
   legal: {
     title: "Security Risks & Token Disclosures",
     description:

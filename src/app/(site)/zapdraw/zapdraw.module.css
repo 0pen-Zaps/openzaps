@@ -1,0 +1,437 @@
+.page {
+  position: relative;
+  z-index: 1;
+}
+
+/* ---------------------------------------------------------------- hero */
+
+.hero {
+  padding: clamp(2.5rem, 6vw, 5rem) 0 0;
+  max-width: 52rem;
+}
+
+.eyebrow {
+  font-size: 0.72rem;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+
+.title {
+  margin-top: 0.9rem;
+  font-size: clamp(3rem, 11vw, 6.5rem);
+  font-weight: 600;
+  line-height: 0.95;
+  letter-spacing: -0.02em;
+}
+
+.lead {
+  margin-top: 1.2rem;
+  color: var(--text);
+  font-size: clamp(1.05rem, 1.6vw, 1.28rem);
+  line-height: 1.6;
+  text-wrap: pretty;
+}
+
+.heroLink {
+  color: var(--accent);
+  font-weight: 600;
+  border-bottom: 1px solid var(--accent-dim);
+  padding-bottom: 0.1rem;
+}
+
+.heroLink:hover {
+  color: var(--accent-bright);
+  border-bottom-color: var(--accent-bright);
+}
+
+.lead strong {
+  color: var(--accent-bright);
+  font-weight: 600;
+}
+
+/* ---------------------------------------------------------------- table */
+
+.table {
+  margin-top: clamp(2.5rem, 6vw, 4rem);
+  display: grid;
+  gap: 1.1rem;
+}
+
+.bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.8rem;
+  padding-bottom: 0.8rem;
+  border-bottom: 1px solid var(--line);
+}
+
+.barMain {
+  display: flex;
+  align-items: baseline;
+  gap: 0.9rem;
+}
+
+.round {
+  font-size: clamp(1.4rem, 3vw, 2rem);
+  font-weight: 600;
+}
+
+.phase {
+  font-size: 0.7rem;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  padding: 0.28rem 0.6rem;
+  border: 1px solid var(--line);
+  color: var(--muted);
+}
+
+.phase[data-phase="commit"] {
+  color: var(--bg);
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.phase[data-phase="reveal"] {
+  color: var(--accent);
+  border-color: var(--accent-dim);
+}
+
+.barClock {
+  font-size: 0.85rem;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------------------------------------------------------------- panels */
+
+.grid {
+  display: grid;
+  gap: 1.1rem;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 20rem), 1fr));
+}
+
+.panel,
+.seal,
+.queue {
+  border: 1px solid var(--line);
+  padding: clamp(1.1rem, 2.6vw, 1.6rem);
+  display: grid;
+  gap: 0.9rem;
+  align-content: start;
+}
+
+.panelTitle {
+  font-size: 0.74rem;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--muted);
+  font-weight: 500;
+}
+
+.facts {
+  display: grid;
+  gap: 0.7rem;
+}
+
+.facts > div {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+  border-bottom: 1px solid var(--line-soft);
+  padding-bottom: 0.55rem;
+}
+
+.facts dt {
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.facts dd {
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.big {
+  font-size: clamp(1.2rem, 2.6vw, 1.6rem);
+  font-weight: 600;
+  color: var(--accent);
+}
+
+.win {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.86rem;
+}
+
+/* ---------------------------------------------------------------- form */
+
+.form {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.label {
+  font-size: 0.85rem;
+  color: var(--text);
+}
+
+.drawRow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.9rem;
+}
+
+.input {
+  width: 100%;
+  accent-color: var(--accent);
+}
+
+.drawValue {
+  font-variant-numeric: tabular-nums;
+  font-size: clamp(1.1rem, 2.4vw, 1.5rem);
+  font-weight: 600;
+  color: var(--accent);
+  min-width: 4.5rem;
+  text-align: right;
+}
+
+.projection {
+  font-size: 0.85rem;
+  color: var(--muted);
+  line-height: 1.55;
+}
+
+.projection strong {
+  color: var(--fg);
+  font-weight: 600;
+}
+
+.primary {
+  appearance: none;
+  border: 1px solid var(--accent);
+  background: var(--accent);
+  color: var(--bg);
+  font: inherit;
+  font-weight: 600;
+  padding: 0.7rem 1.1rem;
+  cursor: pointer;
+  transition: background var(--dur-1) var(--ease-standard), color var(--dur-1) var(--ease-standard);
+}
+
+.primary:hover:not(:disabled) {
+  background: var(--accent-bright);
+  border-color: var(--accent-bright);
+}
+
+.primary:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* ---------------------------------------------------------------- notes */
+
+.note,
+.fine {
+  font-size: 0.85rem;
+  color: var(--muted);
+  line-height: 1.6;
+}
+
+.fine {
+  font-size: 0.78rem;
+  color: var(--muted-2);
+}
+
+.fine a,
+.note a {
+  color: var(--accent-dim);
+  word-break: break-all;
+}
+
+.notice {
+  font-size: 0.87rem;
+  color: var(--text);
+  border-left: 2px solid var(--accent);
+  padding-left: 0.8rem;
+  line-height: 1.6;
+}
+
+.notice a {
+  color: var(--accent);
+}
+
+.warn {
+  font-size: 0.87rem;
+  color: var(--accent-bright);
+  border-left: 2px solid var(--accent-deep);
+  padding-left: 0.8rem;
+  line-height: 1.6;
+}
+
+/* ---------------------------------------------------------------- seal */
+
+.sealBlob {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.75rem;
+  line-height: 1.5;
+  color: var(--text);
+  background: var(--bg-2);
+  border: 1px solid var(--line);
+  padding: 0.8rem;
+  overflow-x: auto;
+  white-space: pre;
+}
+
+/* ---------------------------------------------------------------- queue */
+
+.rows {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.86rem;
+  font-variant-numeric: tabular-nums;
+  display: block;
+  overflow-x: auto;
+}
+
+.rows th {
+  text-align: left;
+  font-weight: 500;
+  color: var(--muted);
+  font-size: 0.72rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  padding: 0.4rem 0.8rem 0.4rem 0;
+  border-bottom: 1px solid var(--line);
+  white-space: nowrap;
+}
+
+.rows td {
+  padding: 0.5rem 0.8rem 0.5rem 0;
+  border-bottom: 1px solid var(--line-soft);
+  white-space: nowrap;
+}
+
+.rows tr[data-me="true"] td {
+  color: var(--accent-bright);
+}
+
+.served {
+  color: var(--accent);
+}
+
+.cut {
+  color: var(--muted-2);
+  text-decoration: line-through;
+}
+
+/* ---------------------------------------------------------------- closed */
+
+.closed {
+  margin-top: clamp(2.5rem, 6vw, 4rem);
+  border: 1px solid var(--line);
+  padding: clamp(1.4rem, 3.5vw, 2.4rem);
+  display: grid;
+  gap: 0.9rem;
+  max-width: 46rem;
+}
+
+.closedTag {
+  font-size: 0.7rem;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+
+.closedTitle {
+  font-size: clamp(1.4rem, 3.4vw, 2rem);
+  font-weight: 600;
+  line-height: 1.15;
+}
+
+.closedBody {
+  color: var(--text);
+  line-height: 1.65;
+  font-size: 0.95rem;
+  text-wrap: pretty;
+}
+
+/* ---------------------------------------------------------------- rules */
+
+.rules {
+  margin-top: clamp(3rem, 7vw, 5rem);
+  display: grid;
+  gap: 1.1rem;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 17rem), 1fr));
+}
+
+.rule {
+  border-top: 1px solid var(--line);
+  padding-top: 1rem;
+  display: grid;
+  gap: 0.5rem;
+  align-content: start;
+}
+
+.ruleN {
+  font-size: 0.72rem;
+  letter-spacing: 0.2em;
+  color: var(--accent);
+}
+
+.ruleTitle {
+  font-size: 1.05rem;
+  font-weight: 600;
+}
+
+.ruleBody {
+  color: var(--muted);
+  font-size: 0.88rem;
+  line-height: 1.65;
+  text-wrap: pretty;
+}
+
+.sectionTitle {
+  margin-top: clamp(3rem, 7vw, 5rem);
+  font-size: clamp(1.6rem, 4vw, 2.4rem);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.lastSection {
+  padding-bottom: clamp(3rem, 8vw, 6rem);
+}
+
+.risks {
+  margin-top: 1.4rem;
+  display: grid;
+  gap: 0.9rem;
+  max-width: 52rem;
+}
+
+.risk {
+  display: grid;
+  gap: 0.3rem;
+  border-left: 2px solid var(--accent-deep);
+  padding-left: 0.9rem;
+}
+
+.riskTitle {
+  font-weight: 600;
+  font-size: 0.95rem;
+}
+
+.riskBody {
+  color: var(--muted);
+  font-size: 0.88rem;
+  line-height: 1.65;
+  text-wrap: pretty;
+}
