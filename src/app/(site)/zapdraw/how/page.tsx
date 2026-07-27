@@ -2,7 +2,7 @@ import Link from "next/link";
 
 import { JsonLd } from "@/components/JsonLd";
 import { STATIC_PAGE_SEO, breadcrumbJsonLd, pageMetadata, webPageJsonLd } from "@/lib/seo";
-import { RoundFilm } from "./RoundFilm";
+import { Walkthrough } from "./Walkthrough";
 import styles from "./how.module.css";
 
 export const metadata = pageMetadata({
@@ -31,12 +31,17 @@ export default function HowPage(): React.JSX.Element {
       <header className={`container ${styles.hero}`}>
         <p className={styles.eyebrow}>ZapDraw · one round, start to finish</p>
         <h1 className={styles.title}>Watch a round.</h1>
-        <p className={styles.lead}>Eight steps. Real numbers. No reading required.</p>
+        <p className={styles.lead}>Scroll it. Real numbers, no reading required.</p>
       </header>
 
-      <div className="container">
-        <RoundFilm />
-      </div>
+      <section className={`container ${styles.rule}`}>
+        <p className={styles.ruleLine}>
+          The bus pays a claim <strong>in full, or not at all.</strong> A claim it cannot cover
+          completely is paid nothing — and the money it could not cover stays on the bus.
+        </p>
+      </section>
+
+      <Walkthrough />
 
       <section className={`container ${styles.foot}`}>
         <h2 className={styles.footTitle}>That is the whole game.</h2>

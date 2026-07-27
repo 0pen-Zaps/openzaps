@@ -1,0 +1,328 @@
+/* THE RUN — a pinned traverse along one round's bus.
+   Only mounted when motion is allowed and the viewport can hold it; every other
+   reader gets the stepper in RoundFilm, which carries the same explanation. */
+
+.section {
+  position: relative;
+  /* Scroll distance the traverse is spread over. Tuned by eye, not derived —
+     the progress mapping below is height-independent, so this is safe to retune. */
+  height: 340vh;
+}
+
+.sticky {
+  position: sticky;
+  top: var(--nav-h, 4.4rem);
+  height: calc(100svh - var(--nav-h, 4.4rem));
+  display: grid;
+  align-content: center;
+  gap: clamp(1rem, 2.5vw, 1.8rem);
+  overflow: hidden;
+}
+
+.head {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.eyebrow {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.68rem;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+
+.caption {
+  font-size: clamp(1.5rem, 4.2vw, 2.8rem);
+  font-weight: 600;
+  line-height: 1.02;
+  letter-spacing: -0.02em;
+  min-height: 1.02em;
+  text-wrap: balance;
+}
+
+.sub {
+  color: var(--muted);
+  font-size: clamp(0.85rem, 1.4vw, 1rem);
+  line-height: 1.5;
+  min-height: 1.5em;
+}
+
+.sub strong {
+  color: var(--accent-bright);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Holds every animated custom property, so a frame costs one style write here
+   plus one on the rail rather than a React render. */
+.stage {
+  display: grid;
+  gap: clamp(0.9rem, 2.2vw, 1.5rem);
+}
+
+/* ------------------------------------------------------------- viewport */
+
+.viewport {
+  position: relative;
+  height: clamp(11rem, 30vh, 18rem);
+  overflow: hidden;
+}
+
+/* Parallax back layer: a field that drifts at a fraction of the rail's rate, so
+   the rail reads as travelling through space rather than sliding on a flat plane. */
+.field {
+  position: absolute;
+  inset: -20% -50%;
+  background-image: linear-gradient(90deg, var(--line-soft) 1px, transparent 1px);
+  background-size: 4rem 100%;
+  opacity: 0.5;
+  transform: translate3d(calc(var(--cam) * 0.35), 0, 0);
+  will-change: transform;
+}
+
+/* The rail carries every quantity, so it is the one layer whose geometry is
+   data. It travels at rate 1.0 and is only ever scaled on X. */
+.rail {
+  position: absolute;
+  top: 50%;
+  left: 0;
+  width: 150%;
+  transform: translate3d(var(--cam), -50%, 0) scaleX(var(--squeeze, 1));
+  transform-origin: left center;
+  will-change: transform;
+}
+
+.bed {
+  position: relative;
+  height: clamp(2.4rem, 6vh, 3.4rem);
+  border: 1px solid var(--line);
+  background: var(--bg-2);
+}
+
+/* A paid claim snaps solid in one step the instant the head clears its far edge.
+   There is deliberately no width transition: a bar that grows would say the claim
+   was paid gradually, and the rule this page exists to teach is all-or-nothing. */
+.seg {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: var(--x);
+  width: var(--w);
+  border-right: 1px solid var(--bg);
+  background: transparent;
+  display: grid;
+  place-items: center;
+}
+
+.seg[data-paid="true"] {
+  background: var(--accent);
+}
+
+.segTag {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.66rem;
+  font-weight: 700;
+  color: var(--bg);
+  opacity: 0;
+  white-space: nowrap;
+  /* Counter the rail's horizontal squeeze so type never distorts. */
+  transform: scaleX(calc(1 / var(--squeeze, 1)));
+}
+
+.seg[data-paid="true"] .segTag {
+  opacity: 1;
+}
+
+/* The refused claim. Drawn at the size it asked for, running past the end stop. */
+.ghost {
+  position: absolute;
+  top: -1px;
+  bottom: -1px;
+  left: var(--x);
+  width: var(--w);
+  border: 1px dashed var(--accent-dim);
+  background: repeating-linear-gradient(-45deg, rgba(255, 252, 0, 0.09) 0 6px, transparent 6px 12px);
+  display: grid;
+  place-items: center;
+  transform-origin: left center;
+  transform: scaleX(var(--unroll, 0)) translateY(var(--drop, 0));
+  opacity: var(--ghostOpacity, 0);
+}
+
+.ghostTag {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.66rem;
+  font-weight: 700;
+  color: var(--accent-bright);
+  white-space: nowrap;
+  transform: scaleX(calc(1 / (var(--unroll, 1) * var(--squeeze, 1))));
+}
+
+/* What the bus could still deliver when the refused claim arrived. Detaches and
+   docks as the carry, because it is untouched money rather than a leftover. */
+.remainder {
+  position: absolute;
+  top: -1px;
+  bottom: -1px;
+  left: var(--x);
+  width: var(--w);
+  border: 1px solid var(--accent-dim);
+  background: rgba(255, 252, 0, 0.07);
+  display: grid;
+  place-items: center;
+  opacity: var(--remOpacity, 0);
+  transform: translateY(var(--dock, 0));
+}
+
+.remTag {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.64rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: var(--accent-bright);
+  white-space: nowrap;
+  transform: scaleX(calc(1 / var(--squeeze, 1)));
+}
+
+/* Where the current stops. Fixed to the rail, so it travels with the quantities. */
+.endStop {
+  position: absolute;
+  top: -0.7rem;
+  bottom: -0.7rem;
+  left: 100%;
+  width: 2px;
+  background: var(--accent-bright);
+}
+
+.endStopTag {
+  position: absolute;
+  top: -1.3rem;
+  left: 0.3rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.58rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--accent-bright);
+  white-space: nowrap;
+  transform: scaleX(calc(1 / var(--squeeze, 1)));
+}
+
+/* Brackets. Both are on screen together so "asked" and "left" are comparable at
+   a glance; the ask spans the WHOLE claim, never only the part that overran. */
+.bracket {
+  position: absolute;
+  left: var(--x);
+  width: var(--w);
+  height: 0.5rem;
+  border: 1px solid var(--accent-dim);
+  border-bottom: 0;
+  opacity: var(--bracketOpacity, 0);
+}
+
+.bracketAsk {
+  top: -1.9rem;
+  border-color: var(--accent-bright);
+}
+
+.bracketLeft {
+  bottom: -1.9rem;
+  border: 1px solid var(--accent-dim);
+  border-top: 0;
+}
+
+.bracketTag {
+  position: absolute;
+  left: 50%;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.62rem;
+  font-weight: 700;
+  white-space: nowrap;
+  transform: translateX(-50%) scaleX(calc(1 / var(--squeeze, 1)));
+}
+
+.bracketAsk .bracketTag {
+  bottom: calc(100% + 0.15rem);
+  color: var(--accent-bright);
+}
+
+.bracketLeft .bracketTag {
+  top: calc(100% + 0.15rem);
+  color: var(--muted);
+}
+
+/* The fixed head: where payment has reached. Screen-space, never on the rail. */
+.headLine {
+  position: absolute;
+  top: 8%;
+  bottom: 8%;
+  left: var(--headX);
+  width: 1px;
+  background: var(--accent-bright);
+  opacity: 0.7;
+}
+
+.headLabel {
+  position: absolute;
+  top: -0.1rem;
+  left: 0.35rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.56rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--accent-bright);
+  white-space: nowrap;
+}
+
+/* ------------------------------------------------------------------ CTA */
+
+.cta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.9rem;
+  opacity: var(--ctaOpacity, 0);
+  transform: translateY(calc((1 - var(--ctaOpacity, 0)) * 0.6rem));
+  pointer-events: var(--ctaEvents, none);
+}
+
+/* Solid yellow, sized like a paid segment: by the time it appears, nine beats
+   have taught that a solid yellow block is money that actually arrived. */
+.ctaButton {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  border: 1px solid var(--accent);
+  background: var(--accent);
+  color: var(--bg);
+  font-weight: 600;
+  font-size: 1rem;
+  padding: 0.8rem 1.4rem;
+  text-decoration: none;
+  transition: background var(--dur-1) var(--ease-standard);
+}
+
+.ctaButton:hover {
+  background: var(--accent-bright);
+  border-color: var(--accent-bright);
+}
+
+.ctaNote {
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+/* ------------------------------------------------------------- progress */
+
+.progress {
+  position: relative;
+  height: 2px;
+  background: var(--line);
+}
+
+.progressFill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: calc(var(--p, 0) * 100%);
+  background: var(--accent);
+}
