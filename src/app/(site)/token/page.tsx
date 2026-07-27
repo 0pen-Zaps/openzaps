@@ -51,7 +51,7 @@ const utility: readonly { title: string; body: string; danger?: boolean }[] = [
   },
   {
     title: "App conveniences at a balance threshold",
-    body: "Hold 100,000+ 0xZAPS in the connected wallet and the app auto-refreshes live quotes, keeps 50 saved zaps instead of 20, retains 100 receipts instead of 20, and enables receipt JSON export. At 1,000,000+ the saved-zap limit is 100. The app reads the balance; the contracts never do.",
+    body: "Hold 100,000+ 0xZAPS in the connected wallet and the app auto-refreshes live quotes, keeps 50 saved Zaps instead of 20, retains 100 receipts instead of 20, and enables receipt JSON export. At 1,000,000+ the saved-Zap limit is 100. The app reads the balance; the contracts never do.",
   },
   {
     title: "Wallet-readable ERC-20",
@@ -82,7 +82,7 @@ const faqs = [
   },
   {
     q: "Do I need the token to use OpenZaps?",
-    a: "No. Creating, funding, executing, and recovering a Zap contract all work without holding 0xZAPS. Holding 100,000+ 0xZAPS turns on app conveniences — auto-refreshing quotes, more saved zaps and receipts, and receipt JSON export — which the app checks against the connected wallet's balance. The contracts do not read it.",
+    a: "No. Creating, funding, executing, and recovering a Zap contract all work without holding 0xZAPS. Holding 100,000+ 0xZAPS turns on app conveniences — auto-refreshing quotes, more saved Zaps and receipts, and receipt JSON export — which the app checks against the connected wallet's balance. The contracts do not read it.",
   },
   {
     q: "Are the contracts audited?",

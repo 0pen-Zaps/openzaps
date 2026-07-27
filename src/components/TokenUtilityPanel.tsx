@@ -23,7 +23,7 @@ export function TokenUtilityPanel({ className = "", id }: TokenUtilityPanelProps
         <p>
           OpenZaps can buy {TOKEN.symbol} through its pinned aeWETH → {TOKEN.symbol} route. Every Zap contract created
           by the current app converts its visible 0.00001 ETH creation fee into {TOKEN.symbol} atomically. A connected
-          wallet holding 100,000+ {TOKEN.symbol} also gets auto-refreshing quotes, more saved zaps and receipts, and
+          wallet holding 100,000+ {TOKEN.symbol} also gets auto-refreshing quotes, more saved Zaps and receipts, and
           receipt JSON export. Every core workflow stays open without holding the token.
         </p>
         <div className={styles.actions}>
@@ -47,7 +47,7 @@ export function TokenUtilityPanel({ className = "", id }: TokenUtilityPanelProps
         <div>
           <span>100,000+</span>
           <strong>Holder conveniences</strong>
-          <p>Auto-refresh quotes, 50 saved zaps, 100 receipts, JSON export.</p>
+          <p>Auto-refresh quotes, 50 saved Zaps, 100 receipts, JSON export.</p>
         </div>
         <div>
           <span>1,000,000+</span>
