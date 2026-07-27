@@ -289,6 +289,14 @@ export function ZapDrawTable(): React.JSX.Element {
   const projection = state ? waterfall(state.draws, capacity, state.round) : null;
   const wrongChain = account !== null && !isRobinhoodChain;
 
+  // An empty round genuinely has a capacity of zero, but rendering a big accent
+  // "0 0xZAPS" as the first thing a visitor sees reads as broken rather than as
+  // an open table. Show instead what taking a seat would put on the bus.
+  const perSeat = state
+    ? (state.entryFee * BigInt(BPS - state.rakeBps - state.keeperBps)) / BigInt(BPS)
+    : 0n;
+  const emptyTable = state !== null && state.seats === 0 && capacity === 0n;
+
   const drawBps = Number.parseInt(drawInput, 10);
   const drawValid = Number.isInteger(drawBps) && drawBps >= 1 && drawBps <= BPS;
   const wouldTake = drawValid ? (capacity * BigInt(drawBps)) / BigInt(BPS) : 0n;
@@ -555,7 +563,9 @@ export function ZapDrawTable(): React.JSX.Element {
           <dl className={styles.facts}>
             <div>
               <dt>Capacity</dt>
-              <dd className={styles.big}>{state ? `${fmt(capacity)} 0xZAPS` : "—"}</dd>
+              <dd className={styles.big}>
+                {!state ? "—" : emptyTable ? "Empty" : `${fmt(capacity)} 0xZAPS`}
+              </dd>
             </div>
             <div>
               <dt>Seats taken</dt>
@@ -585,6 +595,14 @@ export function ZapDrawTable(): React.JSX.Element {
               pocket the pool on top.
             </p>
           ) : null}
+          {emptyTable ? (
+            <p className={styles.note}>
+              Nobody has sat down yet. Each seat puts <strong>{fmt(perSeat)} 0xZAPS</strong> on the bus —
+              the {fmt(state.entryFee)} entry less the {((state.rakeBps + state.keeperBps) / 100).toFixed(2)}%
+              that leaves as rake and keeper reward.
+            </p>
+          ) : null}
+
           {state && state.reveals < MIN_REVEALS ? (
             <p className={styles.note}>
               A round needs {MIN_REVEALS} revealed draws before the bus discharges at all. Below that the whole
