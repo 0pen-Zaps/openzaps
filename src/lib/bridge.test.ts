@@ -9,6 +9,8 @@ import {
   buildBridgeDeposit,
   fetchBridgeQuote,
   findBridgeRoute,
+  MAX_BRIDGE_SPREAD_BPS,
+  quoteIsStale,
   type BridgeQuote,
 } from "@/lib/bridge";
 import { ROBINHOOD_ASSETS, ROBINHOOD_CHAIN_ID } from "@/lib/robinhood";
@@ -124,6 +126,30 @@ describe("fetchBridgeQuote", () => {
     await expect(fetchBridgeQuote(ROUTE, 100_000_000n, fetchReturning(body))).rejects.toThrow(/zero output/);
   });
 
+  /**
+   * The floor. Without it every value in [1, inputAmount] is accepted verbatim
+   * as the exact output the relayer must deliver, so a crafted 1-unit quote
+   * takes the whole deposit and returns dust. Bounding only the "more output
+   * than input" direction guards the side that costs nobody anything.
+   */
+  it("refuses a quote that keeps more than the route's maximum spread", async () => {
+    const body = quoteBody({ outputAmount: "1" }); // 100 USDC in, 0.000001 USDG out
+    await expect(fetchBridgeQuote(ROUTE, 100_000_000n, fetchReturning(body))).rejects.toThrow(
+      new RegExp(`above the ${MAX_BRIDGE_SPREAD_BPS} bps`),
+    );
+  });
+
+  it("accepts a spread exactly at the cap and refuses one past it", async () => {
+    // 300 bps of 100 USDC (6dp) is 3,000,000 units, so the boundary output is
+    // 97 USDG exactly. The comparison is `>`, so the cap itself is allowed.
+    const atCap = quoteBody({ outputAmount: String(100_000_000 - 3_000_000) });
+    const ok = await fetchBridgeQuote(ROUTE, 100_000_000n, fetchReturning(atCap));
+    expect(bridgeFeeBps(ok)).toBe(MAX_BRIDGE_SPREAD_BPS);
+
+    const pastCap = quoteBody({ outputAmount: String(100_000_000 - 3_010_000) }); // 301 bps
+    await expect(fetchBridgeQuote(ROUTE, 100_000_000n, fetchReturning(pastCap))).rejects.toThrow(/Refusing to deposit/);
+  });
+
   it("surfaces the bridge's own too-low signal", async () => {
     const body = quoteBody({ isAmountTooLow: true });
     await expect(fetchBridgeQuote(ROUTE, 1n, fetchReturning(body))).rejects.toThrow(/minimum deposit/);
@@ -185,5 +211,14 @@ describe("bridgeFeeBps", () => {
   it("reports the kept spread in basis points", async () => {
     // 100 USDC in, 99.928619 out => 71.381 kept => 7 bps, truncated.
     expect(bridgeFeeBps(await validQuote())).toBe(7);
+  });
+});
+
+describe("quoteIsStale", () => {
+  it("is fresh before the fill deadline and stale from the deadline onward", async () => {
+    const quote = await validQuote();
+    expect(quoteIsStale(quote, quote.fillDeadline - 1)).toBe(false);
+    expect(quoteIsStale(quote, quote.fillDeadline)).toBe(true);
+    expect(quoteIsStale(quote, quote.fillDeadline + 3_600)).toBe(true);
   });
 });

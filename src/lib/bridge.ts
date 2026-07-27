@@ -74,6 +74,15 @@ export const ACROSS_SPOKE_POOL = {
 
 export const ACROSS_API_BASE = "https://app.across.to/api";
 
+/**
+ * The widest spread this route will accept between what leaves Base and what
+ * lands on 4663, in basis points. A live USDC → USDG quote keeps single-digit
+ * bps; 300 leaves a wide margin for congestion while still refusing anything
+ * that would quietly eat a material share of the deposit. See the check in
+ * `fetchBridgeQuote` for why an upper bound alone is not enough.
+ */
+export const MAX_BRIDGE_SPREAD_BPS = 300;
+
 /** A bridge leg we are willing to offer, with both ends pinned. */
 export type BridgeRoute = {
   readonly id: string;
@@ -253,6 +262,28 @@ export async function fetchBridgeQuote(
     throw new BridgeQuoteError("The bridge quote claims more output than input, which cannot be right.");
   }
 
+  /**
+   * THE FLOOR. Without this, every value in [1, inputAmount] is accepted and
+   * copied verbatim into `depositV3` as the exact output the relayer must
+   * deliver — so a crafted `outputAmount` of 1 unit takes the entire deposit
+   * and hands back dust. The upper bound above guards the direction that costs
+   * nobody anything; this guards the direction that costs the user everything.
+   *
+   * Every other value-moving quote in this codebase is bounded by a floor
+   * before signing (the creation-fee conversion floor, the capsule's `minOut`,
+   * the 500 bps cap on `guard-slippage`). The bridge is the one hop the policy
+   * cannot re-check afterwards, which makes it the last place to leave
+   * unbounded. Both legs are 6-decimal stablecoins moving over a liquidity
+   * bridge, so a spread beyond this cap is not a market condition — it is a
+   * broken or hostile response, and it fails closed.
+   */
+  const keptBps = ((inputAmount - outputAmount) * 10_000n) / inputAmount;
+  if (keptBps > BigInt(MAX_BRIDGE_SPREAD_BPS)) {
+    throw new BridgeQuoteError(
+      `The bridge quote keeps ${keptBps} bps of the deposit, above the ${MAX_BRIDGE_SPREAD_BPS} bps this route will accept. Refusing to deposit.`,
+    );
+  }
+
   const limits = (data.limits ?? {}) as Record<string, unknown>;
 
   return {
@@ -419,6 +450,19 @@ export async function ensureBaseChain(provider: EIP1193Provider): Promise<void> 
     });
     await provider.request({ method: "wallet_switchEthereumChain", params: [{ chainId: expected }] });
   }
+}
+
+/**
+ * Has this quote aged out?
+ *
+ * Across prices a quote at a block and a relayer will not fill past
+ * `fillDeadline`. A quote held on screen while the user reads is fine; one
+ * deposited against after it expired is a transaction that reverts or sits
+ * unfilled, so the deposit path re-checks this rather than trusting that the
+ * quote was fresh when it was fetched.
+ */
+export function quoteIsStale(quote: BridgeQuote, nowSeconds: number = Math.floor(Date.now() / 1000)): boolean {
+  return nowSeconds >= quote.fillDeadline;
 }
 
 /** The fee the bridge keeps, in basis points of the input. For disclosure only. */

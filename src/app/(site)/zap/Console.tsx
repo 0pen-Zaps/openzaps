@@ -16,6 +16,7 @@ import {
   type Hex,
 } from "viem";
 import { OpenZapMark } from "@/components/OpenZapMark";
+import { BridgeFundPanel } from "./BridgeFundPanel";
 import { useWalletSession } from "@/components/WalletProvider";
 import { BlockGlyph } from "./BlockGlyph";
 import { CreationWorkspace } from "./CreationWorkspace";
@@ -1526,6 +1527,13 @@ export default function AppPage(): React.JSX.Element {
             <a className="btn btnPrimary" href="#zap-lifecycle">
               {creationResultFunded ? "Continue to execution" : "Continue to funding"}
             </a>
+          ) : null}
+          {/* The capsule exists and its address is already fixed, so it can be
+              funded from Base as easily as from a 4663 wallet. The panel is
+              handed the route's OWN input token and refuses itself when the
+              bridge's delivered asset is not the one this policy spends. */}
+          {creationResultActive && !creationResultFunded && creationResultRoute ? (
+            <BridgeFundPanel capsule={creationResult.address} fundingAsset={creationResultRoute.tokenIn.address} />
           ) : null}
           <Link className="btn btnGhost" href={`/explore/${creationResult.address}`}>Onchain page</Link>
           <Link className="btn btnGhost" href="/profile">View profile</Link>

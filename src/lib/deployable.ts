@@ -254,8 +254,11 @@ export function reduceChainToLivePolicy(
       parseRouterAmount(raw);
       amountIn = raw;
     } catch (error) {
+      // Named from the block that actually failed. There are three source
+      // blocks now, so a hardcoded "Wallet balance" would point a user at a
+      // card that is not on their canvas.
       reasons.push(
-        `Wallet balance amount ${raw ? `"${raw}"` : "is empty and"} cannot be deployed: ${error instanceof Error ? error.message : String(error)}`,
+        `${source.block.name} amount ${raw ? `"${raw}"` : "is empty and"} cannot be deployed: ${error instanceof Error ? error.message : String(error)}`,
       );
     }
   }

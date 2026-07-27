@@ -16,7 +16,6 @@ import {
   type Hex,
 } from "viem";
 import { OpenZapMark } from "@/components/OpenZapMark";
-import { BridgeFundPanel } from "./BridgeFundPanel";
 import { useWalletSession } from "@/components/WalletProvider";
 import { BlockGlyph } from "./BlockGlyph";
 import { CreationWorkspace } from "./CreationWorkspace";
@@ -1231,12 +1230,11 @@ export default function AutomateConsole(): React.JSX.Element {
           <button className={creationResultSigned ? "btn btnPrimary" : "btn btnGhost"} disabled={busy !== null} onClick={startAnotherAutomation} type="button">
             Create another
           </button>
-          {/* The capsule exists and its address is fixed, so it can be funded
-              from another chain as easily as from this one. Offered only before
-              funding lands, because after that the next step is authorization. */}
-          {creationResultActive && !creationResultFunded ? (
-            <BridgeFundPanel capsule={creationResult.address} />
-          ) : null}
+          {/* No Fund-from-Base panel here on purpose. Automation capsules are
+              created only against BOUNDED_SWAP_IDS (aeWETH-in or 0xZAPS-in), and
+              the bridge delivers USDG — which such a capsule could never spend
+              and whose recovery is not covered by its trackedAssets. The panel
+              lives on the Zap now console, where a USDG-in route exists. */}
         </CreationWorkspace>
       ) : null}
 
