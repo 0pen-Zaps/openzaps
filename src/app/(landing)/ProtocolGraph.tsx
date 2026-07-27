@@ -20,7 +20,7 @@ const POSITIONS: Record<string, { x: number; y: number }> = {
   morpho: { x: 26, y: 72 },
   aave: { x: 42, y: 86 },
   compound: { x: 78, y: 22 },
-  "canonical-bridge": { x: 88, y: 48 },
+  "across": { x: 88, y: 48 },
   "wrapped-native": { x: 68, y: 10 },
 };
 

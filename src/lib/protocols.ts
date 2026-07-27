@@ -24,7 +24,7 @@ export type ProtocolId =
   | "morpho"
   | "aave"
   | "compound"
-  | "canonical-bridge"
+  | "across"
   | "wrapped-native";
 
 export type ProtocolInfo = { readonly id: ProtocolId; readonly name: string };
@@ -42,7 +42,12 @@ const PROTOCOL_NAME: Record<ProtocolId, string> = {
   morpho: "Morpho",
   aave: "Aave",
   compound: "Compound",
-  "canonical-bridge": "Canonical bridge",
+  // NOT "canonical bridge", which this is not and could not be: Base and
+  // Robinhood Chain are sibling Ethereum L2s (OP Stack and Arbitrum Nitro), so
+  // the canonical path between them runs Base → 7-day withdrawal → Ethereum →
+  // Robinhood. Across is a liquidity bridge that fills in about a second, and
+  // naming it plainly is what keeps its trust assumption visible.
+  across: "Across",
   "wrapped-native": "Wrapped native",
 };
 
@@ -115,7 +120,7 @@ export function protocolsForAction(blockId: string, params: Readonly<Record<stri
       return [info("wrapped-native")];
 
     case "bridge":
-      return [info("canonical-bridge")];
+      return [info("across")];
 
     // The catalog's gauge and fee sources are v4-adjacent placeholders until
     // a real gauge adapter names something more specific — `split`, which

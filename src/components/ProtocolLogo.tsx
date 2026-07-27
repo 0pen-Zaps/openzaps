@@ -65,7 +65,7 @@ const MARK: Record<ProtocolId, React.JSX.Element> = {
     </g>
   ),
   // Neutral arch: span plus piers, no brand to borrow.
-  "canonical-bridge": (
+  "across": (
     <path
       d="M6.2 16.4 L6.2 13.2 A5.8 5.8 0 0 1 17.8 13.2 L17.8 16.4"
       fill="none"

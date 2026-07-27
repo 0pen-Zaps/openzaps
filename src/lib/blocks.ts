@@ -241,19 +241,25 @@ export const BLOCKS: readonly LegoBlock[] = [
   },
   {
     id: "bridge",
-    name: "Bridge",
-    kind: "action",
+    name: "Bridge in",
+    kind: "source",
     category: "bridge",
-    blurb: "Move the balance to another chain.",
+    blurb: "Fund the zap from another chain.",
     detail:
-      "Hands off to a canonical bridge with a fixed destination recipient. The zap treats the far side as untrusted until the arrival attestation lands.",
-    accepts: "token",
+      "The zap's address is deterministic, so a bridge can deliver straight into it before anything executes — arrival IS the funding. The bridge runs OUTSIDE the capsule and is not bound by the policy: a bridge is not a step, because settlement measures one token balance on THIS chain and a transfer that lands elsewhere cannot be measured at all. What the policy binds is everything after the funds arrive. Across delivers USDG from Base in about a second.",
+    accepts: null,
     emits: "token",
     glyph: "bridge",
-    gas: 168_000,
-    maturity: "review",
+    gas: 0,
+    maturity: "live",
     params: [
-      { key: "chain", label: "Destination", type: "select", value: "Base", options: ["Base", "Arbitrum", "Optimism", "Robinhood Chain"] },
+      { key: "from", label: "From chain", type: "select", value: "Base", options: ["Base"] },
+      // `asset` is what LANDS on 4663, not what leaves Base, because every block
+      // below this one seats against the arriving token. Bridging Base USDC
+      // delivers USDG; aeWETH is deliberately absent — see `src/lib/bridge.ts`,
+      // which documents why a wrapped-native delivery arrives as unroutable ETH.
+      { key: "asset", label: "Arrives as", type: "select", value: "USDG", options: ["USDG"] },
+      { key: "amount", label: "Amount", type: "amount", value: "100", placeholder: "100" },
     ],
   },
   {
@@ -1568,11 +1574,20 @@ export const RECIPES: readonly ZapRecipe[] = [
     ],
   },
   {
+    // Was "Bridge & deposit": wallet-balance → bridge → supply → hold, of which
+    // FOUR blocks could never deploy (the bridge as a step, the unenforceable
+    // window and private-submission guards, and a hold the core cannot express).
+    // What replaces it is the route that is actually live end to end.
     id: "bridge-deposit",
-    name: "Bridge & deposit",
-    tagline: "Move to another chain and park it in a market.",
-    accent: "receipt",
-    blocks: [["wallet-balance"], ["guard-window"], ["guard-private"], ["bridge"], ["supply"], ["hold"]],
+    name: "Bridge in & Zap",
+    tagline: "Fund from Base and buy 0xZAPS on arrival.",
+    accent: "token",
+    blocks: [
+      ["bridge", { from: "Base", asset: "USDG", amount: "100" }],
+      ["swap", { venue: "Uniswap v4", into: "0xZAPS" }],
+      ["guard-slippage"],
+      ["send"],
+    ],
   },
   {
     id: "exit",
