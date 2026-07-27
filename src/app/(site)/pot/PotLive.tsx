@@ -160,7 +160,7 @@ export function PotLive({ initial }: { initial: PotPayload | null }): React.JSX.
         }
         if (floor <= 0n) {
           throw new Error(
-            "No single-pool quote is available for this asset, so a safe minimum output cannot be set here. The executor keeper converts it on its own cadence.",
+            "No single-pool quote is available for this asset, so a safe minimum output cannot be set here and nothing was submitted. buyZaps stays open to any caller that supplies its own floor.",
           );
         }
 
@@ -220,8 +220,8 @@ export function PotLive({ initial }: { initial: PotPayload | null }): React.JSX.
         <div className={styles.alert} role="alert">
           <BlockGlyph name="alert" className={styles.msgGlyph} />
           <p>
-            The RPC reads for the pot failed, so nothing is shown. A prize or a ticket count rendered
-            from a failed read would be a claim about the chain that nobody verified.
+            The RPC reads for both pots failed, so nothing is shown. A prize or a ticket count
+            rendered from a failed read would be a claim about the chain that nobody verified.
           </p>
         </div>
       </section>
@@ -288,7 +288,10 @@ export function PotLive({ initial }: { initial: PotPayload | null }): React.JSX.
         const historyVerified = pot.historyStatus === "verified";
         const converted = historyVerified ? lifetimeZapsBought(pot.conversions) : null;
         const awarded = historyVerified ? lifetimeAwarded(pot.awards) : null;
-        const empty = BigInt(pot.prize) === 0n && BigInt(pot.totalTickets) === 0n;
+        // `share` is null for two different reasons, and the caption has to name the
+        // right one: nobody is connected, or the round has no tickets to be a share of.
+        const noTickets = BigInt(pot.totalTickets) === 0n;
+        const empty = BigInt(pot.prize) === 0n && noTickets;
 
         return (
           <section className={styles.potBlock} key={pot.address} aria-label={`${pot.label} lottery pot`}>
@@ -322,7 +325,11 @@ export function PotLive({ initial }: { initial: PotPayload | null }): React.JSX.
                   <strong>{share === null ? "—" : `${(share * 100).toFixed(2)}%`}</strong>
                 </dd>
                 <dd className={styles.statNote}>
-                  {share === null ? "connect a wallet to read your tickets" : "of the fees this round collected"}
+                  {share !== null
+                    ? "of the fees this round collected"
+                    : noTickets
+                      ? "this round has collected no fees yet"
+                      : "connect a wallet to read your tickets"}
                 </dd>
               </div>
               <div className={styles.statCard}>
@@ -346,8 +353,9 @@ export function PotLive({ initial }: { initial: PotPayload | null }): React.JSX.
             {!historyVerified && (
               <p className={`${styles.stale} ${styles.staleRow}`} role="status">
                 <BlockGlyph name="alert" className={styles.msgGlyph} />
-                Prize, ticket, and held-asset reads above are verified at block {Number(data.headBlock).toLocaleString("en-US")}.{" "}
-                Conversion and winner history is hidden because its full RPC log scan did not verify.
+                Prize, ticket, and held-asset reads are verified at block {Number(data.headBlock).toLocaleString("en-US")}.{" "}
+                Conversion and winner history is hidden: the public RPC will not serve the full log scan those figures
+                need, and partial or explorer-sourced history is not substituted for it.
               </p>
             )}
 
@@ -500,14 +508,14 @@ export function PotLive({ initial }: { initial: PotPayload | null }): React.JSX.
           <article className={styles.ruleCard}>
             <h3>Where the prize comes from</h3>
             <p>
-              Every automated Zap pays 1% of its output: 80% to the executor that submitted it, 20% here. When a run
-              settles in 0xZAPS the pot is credited directly; in any other asset it waits for a conversion.
+              Every automated Zap pays 1% of its output: 80% to the executor that submitted it, 20% here. A fee that
+              arrives as 0xZAPS becomes prize immediately; a fee in any other asset waits for a conversion.
             </p>
           </article>
           <article className={styles.ruleCard}>
             <h3>What a ticket is</h3>
             <p>
-              The raw fee amount your zap contributed, credited to the round. Counts are summed across assets of
+              The raw fee amount your Zap contributed, credited to the round. Counts are summed across assets of
               different decimals, so a share is contribution <em>weight</em> — not odds, and not a probability.
               Tickets are keyed per round: once a round is awarded they confer nothing, and you have to contribute
               again to be eligible in the next one.

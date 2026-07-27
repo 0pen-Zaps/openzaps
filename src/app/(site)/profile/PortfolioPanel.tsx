@@ -72,7 +72,7 @@ export function PortfolioPanel({ status, data, error, onRetry }: PortfolioPanelP
     <section className={styles.panel} aria-labelledby="portfolio-heading">
       <header className={styles.head}>
         <h2 id="portfolio-heading">Holdings</h2>
-        <span className={styles.hint}>read straight from this wallet</span>
+        <span className={styles.hint}>read straight from Robinhood Chain</span>
         <div className={styles.headMeta}>
           <span data-status={data.valuationStatus}>{valuationLabel(data.valuationStatus)}</span>
           <button className={styles.panelBtn} data-busy={status === "loading"} disabled={status === "loading"} onClick={onRetry} type="button">

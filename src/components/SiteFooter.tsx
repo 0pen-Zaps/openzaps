@@ -35,16 +35,20 @@ export function SiteFooter(): React.JSX.Element {
           </p>
         </div>
 
+        {/* h2, not h3. The app shell renders this footer under every screen,
+            and a screen whose only heading is its h1 — the disconnected My
+            zaps state, for one — then jumped straight to h3, breaking the
+            document outline on a route that had done nothing wrong. */}
         <nav className={styles.cols} aria-label="Footer">
           <div className={styles.col}>
-            <h3>Product</h3>
+            <h2>Product</h2>
             <Link href="/zap">Zap</Link>
             <Link href="/explore">Explore</Link>
             <Link href="/docs">Developer docs</Link>
             <Link href="/roadmap">Roadmap</Link>
           </div>
           <div className={styles.col}>
-            <h3>Build</h3>
+            <h2>Build</h2>
             <a href={LINKS.contractSource} target="_blank" rel="noreferrer">
               Contract source
             </a>
@@ -55,7 +59,7 @@ export function SiteFooter(): React.JSX.Element {
             <Link href="/zap">Visual builder</Link>
           </div>
           <div className={styles.col}>
-            <h3>Token</h3>
+            <h2>Token</h2>
             <Link href="/token">{TOKEN.symbol} token</Link>
             <Link href={LINKS.buyWithOpenZaps}>Zap in with OpenZaps</Link>
             <a href={LINKS.buy} target="_blank" rel="noreferrer">

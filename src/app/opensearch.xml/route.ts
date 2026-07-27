@@ -5,7 +5,7 @@ export const dynamic = "force-static";
 const xml = `<?xml version="1.0" encoding="UTF-8"?>
 <OpenSearchDescription xmlns="http://a9.com/-/spec/opensearch/1.1/">
   <ShortName>${SITE_NAME} Zaps</ShortName>
-  <Description>Open a verified OpenZaps policy capsule by contract address</Description>
+  <Description>Open a verified OpenZaps Zap by contract address</Description>
   <InputEncoding>UTF-8</InputEncoding>
   <Language>en-US</Language>
   <AdultContent>false</AdultContent>

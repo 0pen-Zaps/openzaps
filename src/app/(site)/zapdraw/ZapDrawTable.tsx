@@ -149,7 +149,7 @@ const PHASE_COPY: Record<Phase, { label: string; hint: string }> = {
   },
   settle: {
     label: "Settle",
-    hint: "The windows are closed. Anyone can discharge the bus and collect the keeper reward; the next round opens the moment they do.",
+    hint: "The windows are closed. Anyone can discharge the bus and is credited the keeper reward for doing it; the next round opens the moment they do.",
   },
 };
 
@@ -564,8 +564,8 @@ export function ZapDrawTable(): React.JSX.Element {
 
       {rpcDown ? (
         <p className={styles.banner} data-tone="warn" role="status">
-          Robinhood RPC is unreachable, so the numbers below are the last good read and may be stale. Nothing
-          here is showing you a zero it invented.
+          Robinhood RPC is unreachable. The numbers below are the last good read and may be stale; where no
+          read has landed they stay blank. Nothing here is showing you a zero it invented.
         </p>
       ) : null}
 
@@ -755,12 +755,12 @@ export function ZapDrawTable(): React.JSX.Element {
                         <output className={styles.drawValue}>{drawValid ? (drawBps / 100).toFixed(2) : "—"}%</output>
                       </div>
                       <p className={styles.projection}>
-                        At today&apos;s capacity that draw asks for <strong>{fmt(wouldTake)} 0xZAPS</strong>.{" "}
+                        At the capacity on the bus now, that draw asks for <strong>{fmt(wouldTake)} 0xZAPS</strong>.{" "}
                         {queuePosition ? (
                           <span className={queuePosition.wouldSurvive ? styles.verdictOk : styles.verdictBad}>
                             {queuePosition.wouldSurvive
-                              ? "Against the draws revealed so far it would be served — but every reveal after this one changes that."
-                              : "Against the draws revealed so far the bus would already be dry before it reached you."}
+                              ? "No draw is open yet, so there is nothing to rank you against — what the rest of the table opens decides whether the bus reaches you."
+                              : "The draws already open would leave the bus dry before it reached you."}
                           </span>
                         ) : null}
                       </p>
@@ -789,7 +789,9 @@ export function ZapDrawTable(): React.JSX.Element {
                           </button>
                         )}
                         <span className={styles.actionHint}>
-                          Approves exactly one entry — never an unbounded allowance.
+                          {allowance < state.entryFee
+                            ? "Approves exactly one entry — never an unbounded allowance."
+                            : "Spends the one entry you approved and leaves no standing allowance."}
                         </span>
                       </div>
                       {balance < state.entryFee ? (

@@ -10,7 +10,7 @@ import { RoundFilm } from "./RoundFilm";
  *
  * The scroll traverse is only mounted when motion is permitted AND the viewport
  * can hold a pinned stage. Everyone else gets the stepper, which walks the same
- * eight beats under their own control.
+ * round under their own control.
  *
  * BOTH SNAPSHOT TO THE STEPPER ON THE SERVER — `useReducedMotionPreference`
  * returns `true` and `useWideViewport` returns `false` before hydration — so the

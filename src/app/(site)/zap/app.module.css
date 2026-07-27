@@ -1,22 +1,26 @@
 /* ── Console stylesheet ───────────────────────────────────────────────────
-   Two layers, one file, because two screens import it.
+   The "Zap now" console grammar: cards on --panel, one hairline, one shadow,
+   and every number in the mono face. Console.tsx and TransactionLifecycle.tsx
+   are the only callers.
 
-   Layer 1 (".screen" and everything under the "Zap now" banners) is the
-   redesigned console grammar: cards on --panel, one hairline, one shadow, and
-   numbers in the mono face. Console.tsx is the only caller.
+   It briefly carried a second layer — .page/.workspace/.builder/.flowStep and
+   friends — kept alive so AutomateConsole could go on rendering the
+   pre-redesign class names while it was mid-redesign. Automate has its own
+   module now, so that layer was removed: 92 rules and 43 class names that
+   nothing could apply. An orphaned stylesheet layer is worse than dead code,
+   because the next reader takes it for the current design.
 
-   Layer 2 is the older grammar — .page/.workspace/.builder/.flowStep and
-   friends — which AutomateConsole.tsx still renders. Not one of those class
-   names may be renamed or removed while that screen is mid-redesign: a rename
-   here silently unstyles half of Automate. What DID change is every colour in
-   it. The whole file used to be hardcoded `rgba(255,255,255,0.035)` panels and
-   `#ffadad` errors, which only ever worked on a black ground; under Ivory —
-   the default theme, and the one a JS-disabled visitor gets — those fills
-   vanish and the status hexes stop meeting contrast. Everything is on tokens
-   now, so both screens theme.
-
+   Every colour in here used to be hardcoded — `rgba(255,255,255,0.035)`
+   panels, `#ffadad` errors — which only ever worked on a black ground. Under
+   Ivory, the default theme and the one a JS-disabled visitor gets, those fills
+   vanish and the status hexes stop meeting contrast. Everything is on tokens.
    The single documented exception to "no hardcoded colour" in this repo is
-   src/lib/blocks.ts. There is none in here.
+   src/lib/blocks.ts; there is none in here.
+
+   Keyframes are declared in this file even where globals.css has an identical
+   copy: Turbopack scopes `animation-name` per module, so a reference to a
+   keyframe defined elsewhere resolves to nothing and the element silently never
+   animates. src/app/css-animations.test.ts fails if that regresses.
    ──────────────────────────────────────────────────────────────────────── */
 
 /* ═══════════════════════════════════════════════════════════════════════
@@ -709,17 +713,6 @@
   font-size: 12px;
 }
 
-.stepWarn {
-  margin-top: 12px;
-  padding: 10px 12px;
-  border: 1px solid var(--danger-line);
-  border-radius: var(--r-ctl);
-  background: var(--danger-wash);
-  color: var(--danger-ink);
-  font-size: 12.5px;
-  line-height: 1.5;
-}
-
 .stepNumeral {
   display: grid;
   place-items: center;
@@ -1144,63 +1137,6 @@
   white-space: nowrap;
 }
 
-/* ═══════════════════════════════════════════════════════════════════════
-   2 · Shared console grammar — still rendered by AutomateConsole.tsx.
-   Names frozen; colours moved onto tokens.
-   ═══════════════════════════════════════════════════════════════════════ */
-
-.page {
-  position: relative;
-  z-index: 1;
-  padding: clamp(1.25rem, 3vw, 2.25rem) 0 5rem;
-}
-
-.appHead {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 1.2rem;
-  padding: clamp(1.2rem, 3vw, 2rem) 0 1.25rem;
-}
-
-.titleRow {
-  display: flex;
-  align-items: flex-start;
-  gap: 0.95rem;
-  max-width: 62rem;
-}
-
-.headMark {
-  width: 2.6rem;
-  height: 2.6rem;
-  flex: 0 0 auto;
-}
-
-.titleRow h1 {
-  margin-top: 0.2rem;
-  font-family: var(--font-serif), Georgia, serif;
-  font-size: clamp(1.9rem, 4vw, 2.4rem);
-  font-weight: 500;
-  line-height: 1.05;
-  letter-spacing: -0.02em;
-  text-wrap: balance;
-}
-
-.titleRow p {
-  max-width: 56ch;
-  margin-top: 0.6rem;
-  color: var(--ink-2);
-  font-size: 0.9rem;
-  line-height: 1.55;
-}
-
-.wallet {
-  display: flex;
-  align-items: center;
-  gap: 0.55rem;
-  padding-top: 0.2rem;
-}
-
 .addr {
   height: 28px;
   display: inline-flex;
@@ -1262,114 +1198,6 @@
   vertical-align: -0.2em;
 }
 
-.metrics {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 1px;
-  overflow: hidden;
-  border: 1px solid var(--line);
-  border-radius: var(--r-card);
-  background: var(--line-soft);
-}
-
-.metric {
-  min-height: 5.4rem;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  gap: 0.4rem;
-  padding: 1rem;
-  background: var(--panel);
-}
-
-.metric strong {
-  color: var(--ink);
-  font-family: var(--font-mono), ui-monospace, monospace;
-  font-size: clamp(0.95rem, 2vw, 1.15rem);
-  font-weight: 600;
-  overflow-wrap: anywhere;
-}
-
-.metric span {
-  display: flex;
-  align-items: center;
-  gap: 0.35rem;
-  color: var(--ink-3);
-  font-size: 0.78rem;
-}
-
-.tokenTools {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 1rem;
-  margin-top: 1rem;
-  padding: 0.9rem 1rem;
-  border: 1px solid var(--line);
-  border-radius: var(--r-card);
-  background: var(--panel);
-}
-
-.tokenTools > div:first-child {
-  min-width: 0;
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
-  gap: 0.2rem 0.7rem;
-  align-items: center;
-}
-
-.tokenTools span {
-  grid-column: 1 / -1;
-  color: var(--ink-3);
-  font-size: 0.72rem;
-}
-
-.tokenTools strong {
-  color: var(--ink);
-  font-size: 1rem;
-}
-
-.tokenTools code {
-  min-width: 0;
-  color: var(--ink-2);
-  font-family: var(--font-mono), ui-monospace, monospace;
-  font-size: 0.72rem;
-  overflow-wrap: anywhere;
-}
-
-.tokenActions {
-  display: flex;
-  flex: 0 0 auto;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-  gap: 0.5rem;
-}
-
-.workspace {
-  display: grid;
-  grid-template-columns: minmax(0, 1.48fr) minmax(19rem, 0.82fr);
-  gap: 1rem;
-  align-items: start;
-  margin-top: 1rem;
-}
-
-.builder,
-.review {
-  border: 1px solid var(--line);
-  border-radius: var(--r-card);
-  background: var(--panel);
-  box-shadow: var(--sh-1);
-  padding: clamp(1rem, 2vw, 1.4rem);
-}
-
-.builderTop {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 1rem;
-  margin-bottom: 1.15rem;
-}
-
 .builderTop h2,
 .review h2,
 .receiptHead h2 {
@@ -1379,222 +1207,10 @@
   letter-spacing: -0.01em;
 }
 
-.builderTop p {
-  max-width: 43rem;
-  margin-top: 0.45rem;
-  color: var(--ink-2);
-  font-size: 0.88rem;
-  line-height: 1.55;
-}
-
-.cardHead,
-.liveBadge {
-  display: inline-flex;
-  align-items: center;
-  min-height: 1.6rem;
-  padding: 0 0.55rem;
-  margin-bottom: 0.7rem;
-  border-radius: var(--r-pill);
-  background: var(--chip);
-  color: var(--ink-3);
-  font-size: 0.68rem;
-  font-weight: 600;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-}
-
-.liveBadge {
-  min-width: max-content;
-  color: var(--zap-wash-ink);
-  background: var(--zap-wash);
-}
-
-.segment {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 0.55rem;
-}
-
-/* Two stacked radio groups (execution type, then direction) otherwise read as one four-option list —
-   most visible on a phone, where both collapse to a single column. */
-.segment + .segment {
-  margin-top: 1rem;
-}
-
-/* The mark that carries a segment's meaning (repeat = cadence, band = price move). */
-.segGlyph {
-  width: 1.15rem;
-  height: 1.15rem;
-  color: var(--ink-3);
-}
-
-.segOn .segGlyph {
-  color: var(--ink);
-}
-
-.seg,
-.segOn {
-  min-height: 4.4rem;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  gap: 0.25rem;
-  padding: 0.8rem;
-  border: 1px solid var(--line);
-  border-radius: var(--r-ctl);
-  background: var(--panel-2);
-  color: var(--ink-2);
-  font-size: 0.88rem;
-  font-weight: 600;
-  text-align: left;
-  cursor: pointer;
-}
-
-.segOn {
-  border-color: var(--zap-line);
-  background: var(--zap-tint);
-  color: var(--ink);
-}
-
-.seg em,
-.segOn em {
-  color: var(--ink-3);
-  font-size: 0.72rem;
-  font-style: normal;
-  font-weight: 400;
-}
-
-.seg:disabled,
-.segOn:disabled {
-  cursor: not-allowed;
-  opacity: 0.62;
-}
-
-.formGrid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 0.8rem;
-  margin-top: 1rem;
-}
-
-/* Relative-floor readout: an indicative, live-spot preview of each run's guaranteed minimum. */
-.floorPreview {
-  margin-top: 0.9rem;
-  padding: 0.7rem 0.85rem;
-  border: 1px solid var(--zap-line);
-  border-radius: var(--r-ctl);
-  background: var(--zap-tint);
-  color: var(--ink-2);
-  font-size: 0.8rem;
-  line-height: 1.5;
-}
-
-.floorPreview strong {
-  color: var(--ink);
-  font-family: var(--font-mono), ui-monospace, monospace;
-  font-variant-numeric: tabular-nums;
-  font-weight: 600;
-}
-
-/* Wallet-balance funding preflight: neutral when covered, warning-tinted when the wallet is short. */
-.fundCheck {
-  margin: 0 0 0.7rem;
-  padding: 0.6rem 0.8rem;
-  border: 1px solid var(--line);
-  border-radius: var(--r-ctl);
-  background: var(--panel-2);
-  color: var(--ink-2);
-  font-size: 0.8rem;
-  line-height: 1.5;
-}
-
-.fundCheck strong {
-  color: var(--ink);
-  font-family: var(--font-mono), ui-monospace, monospace;
-  font-variant-numeric: tabular-nums;
-  font-weight: 600;
-}
-
-.fundShort {
-  border-color: var(--danger-line);
-  background: var(--danger-wash);
-  color: var(--danger-ink);
-}
-
-.fundShort strong {
-  color: var(--danger);
-}
-
-.field {
-  min-width: 0;
-}
-
-.field > span,
-.loadZap label,
-.currentZap > span {
-  display: block;
-  margin-bottom: 0.45rem;
-  color: var(--ink-3);
-  font-size: 0.78rem;
-}
-
-.input {
-  width: 100%;
-  height: 2.6rem;
-  padding: 0 0.75rem;
-  border: 1px solid var(--line);
-  border-radius: var(--r-ctl);
-  background: var(--panel-2);
-  color: var(--ink);
-  font-family: inherit;
-  font-size: 0.9rem;
-}
-
-.input:focus {
-  border-color: var(--line-hover);
-  background: var(--panel);
-}
-
-.input:disabled {
-  opacity: 0.62;
-}
-
 .range {
   width: 100%;
   height: 2.2rem;
   accent-color: var(--zap-deep);
-}
-
-.quoteBox {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr)) auto;
-  gap: 0.7rem;
-  align-items: end;
-  margin-top: 1rem;
-  padding: 0.9rem;
-  border: 1px solid var(--zap-line);
-  border-radius: var(--r-card-sm);
-  background: var(--zap-tint);
-}
-
-.quoteBox div {
-  min-width: 0;
-}
-
-.quoteBox span,
-.currentZap small {
-  display: block;
-  color: var(--ink-3);
-  font-size: 0.72rem;
-}
-
-.quoteBox strong {
-  display: block;
-  margin-top: 0.3rem;
-  color: var(--ink);
-  font-family: var(--font-mono), ui-monospace, monospace;
-  font-size: 0.78rem;
-  overflow-wrap: anywhere;
 }
 
 .creationFeeBox {
@@ -1650,90 +1266,12 @@
   text-decoration: underline;
 }
 
-.flow {
-  display: grid;
-  gap: 0.7rem;
-  margin-top: 1rem;
-}
-
-.flowStep {
-  display: grid;
-  grid-template-columns: 2rem minmax(0, 1fr);
-  gap: 0.75rem;
-  padding: 0.9rem;
-  border: 1px solid var(--line-soft);
-  border-radius: var(--r-card-sm);
-  background: var(--panel-2);
-}
-
-.flowStep > span {
-  width: 2rem;
-  height: 2rem;
-  display: grid;
-  place-items: center;
-  border: 1px solid var(--line);
-  border-radius: 50%;
-  color: var(--ink-3);
-  font-family: var(--font-mono), ui-monospace, monospace;
-  font-size: 0.78rem;
-}
-
-.flowStep[data-done="true"] > span {
-  border-color: transparent;
-  color: var(--ok);
-  background: var(--ok-wash);
-}
-
-.flowStep strong {
-  display: flex;
-  align-items: center;
-  gap: 0.45rem;
-  color: var(--ink);
-  font-size: 0.92rem;
-}
-
-/* Step meaning at a glance. Inherits the title colour; the accent lands once the step is done. */
-.stepGlyph {
-  flex: none;
-  width: 1.05rem;
-  height: 1.05rem;
-  color: var(--ink-3);
-}
-
-.flowStep[data-done="true"] .stepGlyph {
-  color: var(--ok);
-}
-
-/* The counter badge's completion mark, sized to the circle it sits in. */
-.stepMark {
-  width: 1.05rem;
-  height: 1.05rem;
-}
-
 /* Icon inside a button label (e.g. the bolt on Fund & run). */
 .btnGlyph {
   width: 1rem;
   height: 1rem;
   margin-right: 0.4rem;
   vertical-align: -0.18em;
-}
-
-.flowStep p {
-  margin-top: 0.3rem;
-  color: var(--ink-2);
-  font-size: 0.8rem;
-  line-height: 1.45;
-}
-
-.flowActions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.5rem;
-  margin-top: 0.7rem;
-}
-
-.review h2 {
-  margin-bottom: 1rem;
 }
 
 .verifyList {
@@ -1809,95 +1347,6 @@
   padding-right: 16px;
 }
 
-.currentZap,
-.loadZap {
-  margin-top: 1rem;
-  padding-top: 1rem;
-  border-top: 1px solid var(--line-soft);
-}
-
-.currentZap > a {
-  display: block;
-  margin-bottom: 0.7rem;
-  font-family: var(--font-mono), ui-monospace, monospace;
-  font-size: 0.72rem;
-  overflow-wrap: anywhere;
-}
-
-.currentZap > div {
-  display: flex;
-  justify-content: space-between;
-  gap: 0.75rem;
-  padding: 0.45rem 0;
-  border-bottom: 1px solid var(--line-softer);
-}
-
-.currentZap > div strong {
-  color: var(--ink);
-  font-family: var(--font-mono), ui-monospace, monospace;
-  font-size: 0.74rem;
-  text-align: right;
-}
-
-.currentZap p {
-  color: var(--ink-3);
-  font-size: 0.82rem;
-}
-
-.currentZap button,
-.loadZap button {
-  margin-top: 0.75rem;
-}
-
-.savedZaps {
-  display: grid;
-  gap: 0.45rem;
-  margin-top: 1rem;
-  padding-top: 1rem;
-  border-top: 1px solid var(--line-soft);
-}
-
-.savedZaps > span {
-  margin-bottom: 0.1rem;
-  color: var(--ink-3);
-  font-size: 0.78rem;
-}
-
-.savedZap,
-.savedZapActive {
-  min-width: 0;
-  min-height: 44px; /* thumb-sized: this list is the only way to switch between zaps */
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.65rem;
-  padding: 0.6rem 0.7rem;
-  border: 1px solid var(--line);
-  border-radius: var(--r-ctl);
-  color: var(--ink-2);
-  background: var(--panel-2);
-  cursor: pointer;
-  text-align: left;
-}
-
-.savedZapActive {
-  border-color: var(--zap-line);
-  background: var(--zap-tint);
-  color: var(--ink);
-}
-
-.savedZap strong,
-.savedZapActive strong {
-  font-size: 0.78rem;
-}
-
-.savedZap code,
-.savedZapActive code {
-  color: var(--ink-3);
-  font-family: var(--font-mono), ui-monospace, monospace;
-  font-size: 0.68rem;
-}
-
 .holderChip {
   display: inline-flex;
   align-items: center;
@@ -1911,68 +1360,11 @@
   white-space: nowrap;
 }
 
-.utilStatus {
-  grid-column: 1 / -1;
-  color: var(--ink-2);
-  font-size: 0.76rem;
-  line-height: 1.5;
-}
-
-.utilStatus a {
-  color: var(--link);
-  text-decoration: underline;
-  text-underline-offset: 2px;
-}
-
-.autoRefreshed {
-  grid-column: 1 / -1;
-  color: var(--ink-3);
-  font-size: 0.72rem;
-  line-height: 1.4;
-}
-
-.zapHistory {
-  display: grid;
-  gap: 0.35rem;
-  margin-top: 0.5rem;
-  padding-top: 0.6rem;
-  border-top: 1px solid var(--line-soft);
-}
-
-.zapHistory small {
-  color: var(--ink-3);
-}
-
-.zapHistory span {
-  color: var(--ink-3);
-  font-size: 0.78rem;
-}
-
-.zapHistory a {
-  color: var(--link);
-  font-size: 0.78rem;
-}
-
 .empty {
   padding: 18px;
   color: var(--ink-3);
   font-size: 12.5px;
   text-align: center;
-}
-
-/* Explains what the "who may run it" choice actually changes onchain. */
-.execNote {
-  margin-top: 0.7rem;
-  padding: 0.55rem 0.8rem;
-  border-left: 2px solid var(--line);
-  color: var(--ink-2);
-  font-size: 0.78rem;
-  line-height: 1.5;
-}
-
-.execNote code {
-  font-family: var(--font-mono), ui-monospace, monospace;
-  overflow-wrap: anywhere;
 }
 
 /* ═══════════════════════════════════════════════════════════════════════
@@ -2171,17 +1563,6 @@
   animation: zpulse 2.4s var(--ease-standard) infinite;
 }
 
-.liveBadge::before {
-  display: inline-block;
-  width: 0.4rem;
-  height: 0.4rem;
-  margin-right: 0.4rem;
-  content: "";
-  border-radius: 50%;
-  background: currentColor;
-  animation: zpulse 2.4s var(--ease-standard) infinite;
-}
-
 @keyframes zpulse {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.35; }
@@ -2241,56 +1622,6 @@
 .quoteBox strong {
   font-variant-numeric: tabular-nums;
   transition: color var(--dur-2) var(--ease-standard);
-}
-
-.autoRefreshed {
-  animation: noticeIn var(--dur-3) var(--ease-emphasis) both;
-}
-
-/* ---- legacy flow-step motion (Automate) ---- */
-
-.flowStep {
-  position: relative;
-  transition:
-    border-color var(--dur-3) var(--ease-standard),
-    background var(--dur-3) var(--ease-standard);
-}
-
-.flowStep > span {
-  transition:
-    border-color var(--dur-3) var(--ease-standard),
-    background var(--dur-3) var(--ease-standard),
-    color var(--dur-2) var(--ease-standard);
-}
-
-.flowStep[data-done="true"] {
-  border-color: var(--line);
-  background: var(--panel);
-}
-
-.seg,
-.segOn {
-  position: relative;
-  transition:
-    color var(--dur-2) var(--ease-standard),
-    background var(--dur-3) var(--ease-standard),
-    border-color var(--dur-2) var(--ease-standard);
-}
-
-.savedZap,
-.savedZapActive,
-.metric {
-  transition:
-    border-color var(--dur-2) var(--ease-standard),
-    background var(--dur-2) var(--ease-standard);
-}
-
-.savedZap:hover {
-  border-color: var(--line-hover);
-}
-
-.metric:hover {
-  background: var(--panel-2);
 }
 
 /* ═══════════════════════════════════════════════════════════════════════
@@ -2510,23 +1841,6 @@
     white-space: normal;
   }
 
-  /* ---- legacy grammar (Automate) ---- */
-
-  .workspace,
-  .metrics,
-  .segment,
-  .formGrid,
-  .quoteBox {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
-  .appHead,
-  .titleRow,
-  .tokenTools {
-    align-items: flex-start;
-    flex-direction: column;
-  }
-
   .creationFeeBox {
     grid-template-columns: minmax(0, 1fr);
     align-items: stretch;
@@ -2591,13 +1905,5 @@
   .tokenActions {
     align-items: flex-start;
     flex-direction: column;
-  }
-
-  .flowActions,
-  .flowActions > *,
-  .quoteBox > button,
-  .currentZap > button,
-  .loadZap > button {
-    width: 100%;
   }
 }

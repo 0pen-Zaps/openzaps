@@ -32,13 +32,15 @@ const appJsonLd = {
       browserRequirements: `A wallet compatible with ${CHAIN.name} is required for onchain execution.`,
       featureList: [
         "Bounded one-transaction DeFi zaps",
+        "Visual composer for typed route and execution-policy blocks",
         "Recurring and price-triggered policy execution",
         "Deterministic policy simulation",
         "EIP-712 wallet signatures",
         "Immutable target, asset, recipient, and calldata constraints",
         "Onchain receipts, nonce invalidation, and emergency recovery",
       ],
-      description: `Design zaps from typed DeFi route and execution-policy blocks, then Zap now, recur, or trigger them on ${CHAIN.name}. Signed intents bind execution gas and gas price; v3/v3.1 can keep executor access open or restrict it to the owner.`,
+      // The four surfaces the page actually mounts, in sidebar order.
+      description: `Four surfaces on one page: Start picks the outcome, Compose builds the route and its execution policy from typed blocks, Zap now creates and runs a bounded v1.1 Zap contract, and Automate signs recurring or price-triggered ones on ${CHAIN.name}. Signed intents bind execution gas and gas price; v3/v3.1 can keep executor access open or restrict it to the owner.`,
     },
     breadcrumbJsonLd("/zap", "Zap"),
   ],

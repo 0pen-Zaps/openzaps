@@ -40,7 +40,7 @@ const lifecycle = [
   ["2", "Simulate", "Deterministic checks run before any wallet prompt. A blocked policy does not proceed. A warned policy proceeds only after review."],
   ["3", "Review signature", "The typed intent binds chain, owner, recipient, nonce, deadline, policy hash, min-out, execution gas, gas-price ceiling, and executor access where the contract supports it. None can change after signing."],
   ["4", "Submit", "The owner submits from their own wallet. The v1.1 policy cannot bind a submitter, so whoever executes chooses the mempool path."],
-  ["5", "Monitor and recover", "Receipts, allowance checks, balance deltas, alerts, nonce invalidation, and the owner's emergency-exit path stay attached to the Zap. Its page at /explore/<address> reports what the contract stores and what its own logs say, and nothing else."],
+  ["5", "Monitor and recover", "Receipts, allowance checks, balance deltas, nonce invalidation, and the owner's emergency-exit path stay attached to the Zap. Nothing watches it for you and no alert is delivered. Its page at /explore/<address> reports what the contract stores and what its own logs say, and nothing else."],
 ] as const;
 
 const executionPolicies = [
@@ -80,7 +80,7 @@ const threats = [
   ["MEV / sandwiching", "A searcher who sees the pending execution can move the pool price against it. The signed minimum output and the ten-minute intent deadline bound what that is worth; the Zap cannot hide the transaction, because the policy cannot bind a submitter."],
   ["Approval leakage", "An adapter that kept an allowance could spend from the Zap again later. The approval is the exact step amount and is reset to zero on both paths, and a residual allowance fails the postcondition."],
   ["Scope drift", "A submitter who edits a policy field before broadcasting produces a different policy hash, and the Zap rejects the intent. A chain-aware nonce and the typed-data domain make an intent signed elsewhere useless here."],
-  ["Relayer optionality", "A relayer can delay, censor, or pick a bad moment inside the signed limits. It cannot take a fee on the live route: the policy commits a relayer fee cap of zero. The owner can always submit the transaction themselves."],
+  ["Relayer optionality", "A relayer can delay, censor, or pick a bad moment inside the signed limits. Every deployed policy commits a relayer fee cap of zero, so no submitter can bill the Zap through the policy; a v3/v3.1 automated run instead pays a fixed 1% of its measured output, 80% of it to the executor that submitted it. The owner can always submit the transaction themselves."],
   ["Oracle manipulation", "The v1.1 policy has no oracle precondition, so a design that depends on a price band is not enforced by it. Protective exits stay blocked in v1 for that reason."],
 ] as const;
 
@@ -114,10 +114,16 @@ export default function DocsPage(): React.JSX.Element {
 
       <article className={styles.article}>
         <h1 className={styles.title}>A Zap cannot do anything it was not signed to do.</h1>
+        {/* "A Zap", matching the h1 directly above it. This read "An OpenZap",
+            which named the same object a third way in consecutive sentences —
+            after the title said Zap and before §Security model defines it as
+            the policy capsule the factory deploys. OpenZap stays the contract's
+            name in the source (openzap.ts, OpenZapV3_1); the prose has one word
+            for it. */}
         <p className={styles.lede}>
-          An OpenZap is a contract that holds funds and executes one policy its owner signed. This page documents the
-          policy fields, the simulation API, and the execution lifecycle. Onchain actions are irreversible, so deposit
-          only what you can afford to lose.
+          A Zap is a contract that holds funds and executes one policy its owner signed. This page documents the policy
+          fields, the simulation API, and the execution lifecycle. Onchain actions are irreversible, so deposit only
+          what you can afford to lose.
         </p>
         <div className={styles.actions}>
           <Link className={styles.primaryBtn} href="/zap">
@@ -356,7 +362,7 @@ Automate handoff:
             factory bytecode.
           </p>
           <p className={styles.prose}>
-            Compose one in <Link href="/zap?view=design">Compose</Link>, then review it in{" "}
+            Build one in <Link href="/zap?view=design">Compose</Link>, then review it in{" "}
             <Link href="/zap?view=automate">Automate</Link>. The signed intent exports as a JSON file an eligible
             executor can serve; the reference executor daemon lives in <code>executor/</code> in the repository. The v3
             contracts are live on Robinhood Chain.
@@ -412,8 +418,8 @@ if (review.status === "block") throw new Error("policy blocked")`}</pre>
           <p className={styles.prose}>
             A Zap — the immutable policy capsule the factory deploys — holds funds and accepts owner-signed intents
             that rehash to the policy frozen at creation. The adapter, the spender, the recipient, the input token, and
-            the exact amount are fixed at that moment. An executor picks the moment and nothing else. The status card
-            below is read from config: the contracts are{" "}
+            the exact amount are fixed at that moment. An executor picks the moment and nothing else. The status here is
+            read from config, not written by hand: the contracts are{" "}
             <strong>{STATUS.preAudit ? "live and not externally audited" : "externally audited"}</strong>.
           </p>
           <p className={styles.prose}>

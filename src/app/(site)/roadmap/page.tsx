@@ -28,7 +28,7 @@ const phases = [
   [
     "Beta",
     "Private submission and monitoring",
-    "Private submission, receipt monitoring, and alert delivery. None of that is built. Permissionless executor submission is: a recurring or triggered intent either pins one executor or leaves it open to anyone, signed intents publish to a shared relay executors poll, and the owner can always submit a run themselves.",
+    "Private submission, receipt monitoring, and alert delivery. None of that is built: the console lists the transactions you signed in it, and nothing watches a Zap for you or sends a notification. Permissionless executor submission is built: a recurring or triggered intent either pins one executor or leaves it open to anyone, signed intents publish to a shared relay executors poll, and the owner can always submit a run themselves.",
   ],
   [
     "Network",
@@ -65,7 +65,7 @@ export default function RoadmapPage(): React.JSX.Element {
           Read docs
         </Link>
         <Link className={styles.ghostBtn} href="/docs#security">
-          Security gates
+          Security model
         </Link>
         <span className={styles.metaChip}>
           <b>Current release</b>

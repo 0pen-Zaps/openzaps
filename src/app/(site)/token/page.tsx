@@ -30,24 +30,24 @@ const steps = [
   {
     n: "01",
     title: "Choose a verified buy path",
-    body: `Use OpenZaps' pinned aeWETH → ${TOKEN.symbol} route or the official Clanker market linked from this site.`,
+    body: `Use OpenZaps' pinned aeWETH → ${TOKEN.symbol} route or the official Clanker market linked on this page.`,
   },
   {
     n: "02",
     title: "Verify the contract",
-    body: `Match the token contract exactly: ${TOKEN_LAUNCH.contract}. A ticker and a logo cost nothing to copy, and anyone can deploy a lookalike. The address is the only thing that tells them apart.`,
+    body: `Match the token contract exactly: ${TOKEN_LAUNCH.contract}. A ticker and a logo cost nothing to copy, so check every character of the address, not the first four.`,
   },
   {
     n: "03",
     title: "Review and sign in your wallet",
-    body: `Check the exact input, quote, minimum output, destination, and every ${TOKEN_LAUNCH.network} transaction before confirming. OpenZaps shows its bounded policy before execution; Clanker uses its supported market flow.`,
+    body: `Check the exact input, quote, minimum output, and destination on every ${TOKEN_LAUNCH.network} transaction before confirming. OpenZaps shows its bounded policy before execution; Clanker uses its supported market flow.`,
   },
 ] as const;
 
 const utility: readonly { title: string; body: string; danger?: boolean }[] = [
   {
-    title: "The asset in the first live route",
-    body: "The first live v1.1 adapter is bound to a single pinned Robinhood v4 pool: aeWETH ↔ 0xZAPS. It cannot route to another token, spender, hook, or DEX. A second pinned pool (aeWETH ↔ USDG) is live and does not involve 0xZAPS — each adapter is welded to exactly one pool.",
+    title: "The asset in the pinned live routes",
+    body: "The bounded adapter is welded to one Uniswap v4 pool — aeWETH ↔ 0xZAPS, both directions, one deployed contract — and cannot route to another token, spender, hook, or DEX. Two stitched adapters trade 0xZAPS against USDG, one per direction, by pairing that pool with the hookless aeWETH ↔ USDG one. Every pool an adapter may touch is a constructor immutable, so an execution cannot wander off them.",
   },
   {
     title: "App conveniences at a balance threshold",
@@ -55,7 +55,7 @@ const utility: readonly { title: string; body: string; danger?: boolean }[] = [
   },
   {
     title: "Wallet-readable ERC-20",
-    body: `Use the exact ${TOKEN_LAUNCH.network} address, ${TOKEN.decimals} decimals, and the add-to-wallet utility on this page. Wallet support varies.`,
+    body: `Use the exact ${TOKEN_LAUNCH.network} address, ${TOKEN.decimals} decimals, and the add-to-wallet button on this page. Wallet support varies.`,
   },
   {
     title: "What it does not grant",
@@ -82,11 +82,11 @@ const faqs = [
   },
   {
     q: "Do I need the token to use OpenZaps?",
-    a: "No. Creating, funding, executing, and recovering a Zap all work without holding 0xZAPS. Holding 100,000+ 0xZAPS turns on app conveniences — auto-refreshing quotes, more saved zaps and receipts, and receipt JSON export — which the app checks against the connected wallet's balance. The contracts do not read it.",
+    a: "No. Creating, funding, executing, and recovering a Zap contract all work without holding 0xZAPS. Holding 100,000+ 0xZAPS turns on app conveniences — auto-refreshing quotes, more saved zaps and receipts, and receipt JSON export — which the app checks against the connected wallet's balance. The contracts do not read it.",
   },
   {
     q: "Are the contracts audited?",
-    a: "No external audit is published for the OpenZap v1.1 protocol contracts. Deposited funds are at risk. Onchain actions are irreversible.",
+    a: "No external audit is published for any of the OpenZaps protocol contracts. Deposited funds are at risk. Onchain actions are irreversible.",
   },
 ] as const;
 
@@ -137,9 +137,9 @@ export default function TokenPage(): React.JSX.Element {
         <div className={styles.col}>
           <h1 className={`${styles.title} gradientText`}>{TOKEN.symbol}</h1>
           <p className={styles.lede}>
-            The ERC-20 paired with aeWETH in the first route the live contracts could execute. It confers no yield,
-            equity, revenue claim, governance, or protocol access — every core workflow works without holding it.
-            Verify the exact contract on {TOKEN_LAUNCH.network} before you trade it or add it to a wallet.
+            The ERC-20 paired with aeWETH in the protocol&apos;s first live route. It confers no yield, equity, revenue
+            claim, governance, or protocol access — every core workflow works without holding it. Verify the exact
+            contract on {TOKEN_LAUNCH.network} before you trade it or add it to a wallet.
           </p>
 
           <section className={styles.facts} id="token" aria-label={`${TOKEN.symbol} token facts`}>
@@ -179,8 +179,8 @@ export default function TokenPage(): React.JSX.Element {
           </section>
 
           <p className={styles.verifyNote}>
-            Always verify the network and the full contract address on the site before trading. The token is separate
-            from the protocol contracts. Not financial advice. No TVL, yield, or return is implied.
+            Always match the network and the full contract address against this page before trading. The token is
+            separate from the protocol contracts. Not financial advice. No TVL, yield, or return is implied.
           </p>
         </div>
 
@@ -215,7 +215,7 @@ export default function TokenPage(): React.JSX.Element {
             <div className={styles.railList}>
               <span>· The creation fee converts into it</span>
               <span>· The lottery pot holds it</span>
-              <span>· The pinned live route trades it</span>
+              <span>· The pinned live routes trade it</span>
             </div>
           </section>
         </aside>
@@ -243,7 +243,7 @@ export default function TokenPage(): React.JSX.Element {
         <header className={styles.sectionHead}>
           <h2 className={styles.sectionTitle}>Only the utility that exists today</h2>
           <span className={styles.sectionNote}>
-            Everything here is live in the app right now. None of it is a protocol right.
+            All of it live today, in the contracts or in the app. None of it is a protocol right.
           </span>
         </header>
         <div className={styles.rows}>

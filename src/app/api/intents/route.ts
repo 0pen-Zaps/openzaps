@@ -140,7 +140,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   try {
     owner = await publicClient.readContract({ address: zap, abi: openZapV3Abi, functionName: "owner" });
   } catch {
-    return NextResponse.json({ error: "Zap not found on-chain (no v3 capsule at that address)." }, { status: 422 });
+    return NextResponse.json({ error: "Zap not found on-chain (no v3 Zap contract at that address)." }, { status: 422 });
   }
 
   // The dynamic (per-kind) typed-data shape defeats viem's strict generics; coerce the whole arg.

@@ -19,21 +19,21 @@ export function TokenUtilityPanel({ className = "", id }: TokenUtilityPanelProps
     <section className={`${styles.panel} ${className}`.trim()} id={id} aria-labelledby={id ? `${id}-title` : undefined}>
       <div className={styles.copy}>
         <span className={styles.eyebrow}>Live {TOKEN.symbol} utility</span>
-        <h2 id={id ? `${id}-title` : undefined}>Trade it. Build with it. Unlock conveniences.</h2>
+        <h2 id={id ? `${id}-title` : undefined}>Trade it. Fees convert into it. Hold it for app conveniences.</h2>
         <p>
-          OpenZaps can buy {TOKEN.symbol} through its pinned aeWETH → {TOKEN.symbol} route. A connected wallet holding
-          100,000+ {TOKEN.symbol} also gets auto-refreshing quotes, more saved zaps and receipts, and receipt JSON
-          export. Every Zap created by the current app also converts its visible 0.00001 ETH creation fee into
-          {" "}{TOKEN.symbol} atomically. Every core workflow remains open without pre-holding the token.
+          OpenZaps can buy {TOKEN.symbol} through its pinned aeWETH → {TOKEN.symbol} route. Every Zap contract created
+          by the current app converts its visible 0.00001 ETH creation fee into {TOKEN.symbol} atomically. A connected
+          wallet holding 100,000+ {TOKEN.symbol} also gets auto-refreshing quotes, more saved zaps and receipts, and
+          receipt JSON export. Every core workflow stays open without holding the token.
         </p>
         <div className={styles.actions}>
           <BuyButton destination="openzaps" label={`Zap in to ${TOKEN.symbol}`} />
-          <BuyButton label="Clanker market" variant="ghost" />
+          <BuyButton label="Buy on Clanker" variant="ghost" />
           <Link href="/token#utilities">Token details →</Link>
         </div>
       </div>
 
-      <div className={styles.utility} aria-label={`${TOKEN.symbol} utility levels`}>
+      <div className={styles.utility} aria-label={`Where ${TOKEN.symbol} is used and what holding it unlocks`}>
         <div>
           <span>Live route</span>
           <strong>aeWETH → {TOKEN.symbol}</strong>

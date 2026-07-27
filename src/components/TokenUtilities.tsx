@@ -34,7 +34,9 @@ export function TokenUtilities({ className = "" }: { className?: string }): Reac
       await ensureRobinhoodChain(provider);
       const image = new URL("/0xzaps-token.png", window.location.origin).href;
       const added = await watchZapsAsset(provider, image);
-      setMessage(added ? "0xZAPS was added to your wallet." : "Wallet closed the add-token request.");
+      // A user decline REJECTS the request and lands in the catch below, so a
+      // non-true result is a wallet that acknowledged nothing — not a decline.
+      setMessage(added ? "0xZAPS was added to your wallet." : "Wallet did not confirm the add. Check your token list.");
     } catch (cause) {
       setError(readableError(cause));
     } finally {

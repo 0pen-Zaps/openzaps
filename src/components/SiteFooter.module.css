@@ -68,7 +68,7 @@
   gap: 0.7rem;
 }
 
-.col h3 {
+.col h2 {
   margin-bottom: 0.3rem;
   color: var(--ink-3);
   font-family: var(--font-mono), ui-monospace, monospace;

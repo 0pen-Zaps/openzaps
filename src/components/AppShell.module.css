@@ -377,6 +377,17 @@
   animation: zpulse 2.4s ease-in-out infinite;
 }
 
+/* Declared HERE even though globals.css has an identical `zpulse`. Turbopack
+   scopes `animation-name` per CSS Module, so a reference to a keyframe defined
+   in globals resolves to nothing — and it fails silently: the property is
+   dropped, `animationName` computes to `none`, and the dot just sits there
+   looking like a live indicator. Every module that animates declares its own;
+   see the guard in src/app/css-animations.test.ts. */
+@keyframes zpulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
+
 /* ── Main column ───────────────────────────────────────────────────────── */
 
 .column {
@@ -557,6 +568,10 @@
   height: 18px;
 }
 
+/* The one deliberate colour literal in this file. A scrim's job is to dim what
+   is behind it, and dimming is darkening in every theme — a token that inverts
+   with the palette would brighten the page on the light themes instead of
+   pushing it back. */
 .drawerScrim {
   display: none;
   position: fixed;

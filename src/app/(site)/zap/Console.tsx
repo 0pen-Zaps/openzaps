@@ -103,6 +103,20 @@ const ROUTE_KIND_LABEL: Record<Route["kind"], string> = {
   "lp-withdraw": "Zap out of liquidity",
 };
 
+/**
+ * What the on-screen estimate actually came from, per the route's real quote
+ * source — not per `kind`. A stitched `swap-route` is two pool quotes and has no
+ * vault in it, so the old swap/vault split announced it as a "Vault preview";
+ * an LP route is a pool quote AND a vault preview, and says so.
+ */
+function quoteSourceLabel(route: Route | null): string {
+  if (route === null) return "Quote";
+  const source = route.quote.source;
+  if (source === "v4" || source === "v4-route") return "Pool quote";
+  if (source === "erc4626-deposit" || source === "erc4626-redeem") return "Vault preview";
+  return "Pool quote + vault preview";
+}
+
 type BusyAction =
   | "connect"
   | "quote"
@@ -571,7 +585,7 @@ export default function AppPage(): React.JSX.Element {
       // (balance still loading), and a truncating read followed by a persisting
       // write would permanently destroy a holder's extended history.
       setTransactions(readTransactions(account, MAX_RECEIPT_RETENTION));
-      if (!rpcHealthy) setNotice("Saved zaps could not be verified right now — Robinhood RPC is unreachable. They remain saved.");
+      if (!rpcHealthy) setNotice("Saved Zaps could not be verified right now — Robinhood RPC is unreachable. They remain saved.");
       const firstVerified = merged.find((record) => verified.has(record.address));
       // An import from the builder is an explicit "start a new zap" — selecting
       // a saved capsule here would overwrite the imported direction and amount
@@ -637,9 +651,7 @@ export default function AppPage(): React.JSX.Element {
         setReviewedQuote(amountOut);
         setAutoRefreshedAt(null);
         setNotice(
-          route.kind === "swap"
-            ? "Live pool quote loaded. The signed minimum is enforced after the adapter returns."
-            : "Vault preview loaded. The signed minimum output is enforced by OpenZap after the vault call.",
+          `${quoteSourceLabel(route)} loaded. The signed minimum output is enforced by the Zap after the adapter returns.`,
         );
       }
       return amountOut;
@@ -672,7 +684,7 @@ export default function AppPage(): React.JSX.Element {
   const refreshCreationFeeQuote = useCallback(async (): Promise<CreationFeeQuote | null> => {
     if (!feeConfigured) {
       setCreationFeeQuote(null);
-      setCreationFeeError("Creation-fee gateway is not configured. New zap creation is paused.");
+      setCreationFeeError("Creation-fee gateway is not configured. New Zap creation is paused.");
       return null;
     }
     try {
@@ -737,9 +749,9 @@ export default function AppPage(): React.JSX.Element {
       const owner = requireAccount(account);
       requireProtocolReady(protocolReady);
       if (!feeConfigured || OPENZAP_CREATION_FEE_CONTRACTS.gateway === zeroAddress) {
-        throw new Error("Creation-fee gateway is not configured. New zap creation is paused.");
+        throw new Error("Creation-fee gateway is not configured. New Zap creation is paused.");
       }
-      if (!creationFeeQuote) throw new Error("Review a creation-fee conversion quote before creating this zap.");
+      if (!creationFeeQuote) throw new Error("Review a creation-fee conversion quote before creating this Zap.");
       if (!route) throw new Error("Select a deployed route first.");
       // Fail closed: never create a capsule for a route that is not offered —
       // an undeployed adapter, or a vault whose totalSupply is 0 (grief-able).
@@ -1007,7 +1019,7 @@ export default function AppPage(): React.JSX.Element {
       });
       const { hash, status } = await submitAndConfirm(
         owner,
-        `${tokenIn.symbol} → ${tokenOut.symbol} zap`,
+        `${tokenIn.symbol} → ${tokenOut.symbol} Zap`,
         () => wallet.writeContract(request),
       );
       if (status !== "success") throw new Error("Zap execution reverted.");
@@ -1059,7 +1071,7 @@ export default function AppPage(): React.JSX.Element {
       );
       if (status !== "success") throw new Error("Recovery transaction reverted.");
       setNotice(
-        `Tracked ${verifiedZap.route.tokenIn.symbol} and ${verifiedZap.route.tokenOut.symbol} balances returned to the zap owner.`,
+        `Tracked ${verifiedZap.route.tokenIn.symbol} and ${verifiedZap.route.tokenOut.symbol} balances returned to the Zap owner.`,
       );
       trackEvent("robinhood_zap_recovered", { zap: verifiedZap.address, tx: hash });
     } catch (cause) {
@@ -1087,7 +1099,7 @@ export default function AppPage(): React.JSX.Element {
       };
       rememberZap(owner, record);
       selectZap(record);
-      setNotice(`Loaded verified zap ${shortAddress(address)}.`);
+      setNotice(`Loaded verified Zap ${shortAddress(address)}.`);
     } catch (cause) {
       setError(readableError(cause));
     } finally {
@@ -1104,7 +1116,9 @@ export default function AppPage(): React.JSX.Element {
       await navigator.clipboard.writeText(zap.address);
       setNotice("Zap address copied.");
     } catch {
-      setError("Clipboard access was unavailable. Copy the address from the Zap panel instead.");
+      // Every address on this screen is truncated for reading, so "copy it from
+      // the panel" is not an instruction anyone can follow. The explorer link is.
+      setError("Clipboard access was unavailable. Open the Zap on the explorer and copy its address there.");
     }
   }
 
@@ -1334,7 +1348,7 @@ export default function AppPage(): React.JSX.Element {
       setMaxExecutionGas(imported.executionPolicy.maxGas);
       setMaxFeePerGasGwei(imported.executionPolicy.maxFeePerGasGwei);
       setNotice(
-        `Imported from the builder: ${imported.route.tokenIn.symbol} → ${imported.route.tokenOut.symbol}, ${imported.amount} ${imported.route.tokenIn.symbol}, ${(imported.bps / 100).toFixed(2)}% max slippage, ${imported.executionPolicy.maxGas.toLocaleString("en-US")} gas, and ${imported.executionPolicy.maxFeePerGasGwei} gwei. Nothing has been created — check the numbers, then press Create zap.`,
+        `Imported from the builder: ${imported.route.tokenIn.symbol} → ${imported.route.tokenOut.symbol}, ${imported.amount} ${imported.route.tokenIn.symbol}, ${(imported.bps / 100).toFixed(2)}% max slippage, ${imported.executionPolicy.maxGas.toLocaleString("en-US")} gas, and ${imported.executionPolicy.maxFeePerGasGwei} gwei. Nothing has been created — check the numbers, then press Create the Zap.`,
       );
       trackEvent("robinhood_builder_import", { route: imported.routeId });
     });
@@ -1367,19 +1381,24 @@ export default function AppPage(): React.JSX.Element {
   // "Zap balance" appears with the Zap, never as a pre-emptive zero.
   const verifications: readonly VerifyCheck[] = [
     {
-      label: "Factory health",
-      value: protocolReady ? "RPC reads ready" : protocolHealth,
+      // Not "Factory health": this row is the whole protocol check — the
+      // factory version and implementation, bytecode at the adapter, registry,
+      // allowlist, fee gateway and pot, and the gateway's own fee config.
+      label: "Protocol health",
+      value: protocolReady ? "Contracts and gateway verified" : protocolHealth,
       href: configured ? explorerAddress(OPENZAP_CONTRACTS.factory) : undefined,
       ok: protocolReady,
     },
     {
-      label: "Pool-bound adapter",
+      // A vault or LP route has no pool of its own, so this cannot claim to be
+      // pool-bound. It is the adapter the selected route resolves to.
+      label: "Route adapter",
       value: route ? shortAddress(route.adapter) : "—",
       href: route ? explorerAddress(route.adapter) : undefined,
       ok: route !== null,
     },
     { label: "Settles through", value: settlementLabel, ok: route !== null },
-    { label: "Router allowance", value: "Cleared after every call", ok: true },
+    { label: "Adapter allowance", value: "Exact amount, reset to zero", ok: true },
     { label: "Permit2 allowance", value: "Cleared after every swap", ok: true },
     { label: "Output protection", value: "Signed minOut in OpenZap", ok: true },
     ...(zap
@@ -1411,7 +1430,9 @@ export default function AppPage(): React.JSX.Element {
         <p>
           {protocolReady ? (
             <>
-              Pool-bound {routePairLabel} creation is open through factory{" "}
+              {/* Not "pool-bound": the offered set includes ERC-4626 vault and
+                  full-range LP routes, which have no pool of their own. */}
+              {routePairLabel} creation is open through factory{" "}
               <a href={explorerAddress(OPENZAP_CONTRACTS.factory)} target="_blank" rel="noreferrer">
                 {shortAddress(OPENZAP_CONTRACTS.factory)}
               </a>
@@ -1427,12 +1448,12 @@ export default function AppPage(): React.JSX.Element {
         <div>
           <h1 className={styles.title}>Zap now</h1>
           <p className={styles.lede}>
-            Create an immutable Zap, fund only its exact input, sign the output floor, and execute. A Zap cannot do
-            anything it was not signed to do.
+            Create an immutable Zap contract, fund only its exact input, sign the output floor, and execute. A Zap
+            cannot do anything it was not signed to do.
           </p>
         </div>
         <div className={styles.headAside}>
-          <span className={styles.lineageChip}>v1.1 · one-time nonce</span>
+          <span className={styles.lineageChip}>v1.1 · one-shot nonce</span>
           {holderTier !== "none" && <span className={styles.holderChip}>{tierLabel(holderTier)}</span>}
           {account && (
             <>
@@ -1533,7 +1554,7 @@ export default function AppPage(): React.JSX.Element {
         >
           {!creationResultActive ? (
             <button className="btn btnPrimary" disabled={busy !== null} onClick={() => selectZap(creationResult)} type="button">
-              Open in console
+              Re-open this Zap
             </button>
           ) : !creationResultExecuted ? (
             <a className="btn btnPrimary" href="#zap-lifecycle">
@@ -1551,10 +1572,13 @@ export default function AppPage(): React.JSX.Element {
 
       <div className={styles.grid}>
         <div className={styles.col}>
-          <section className={`${styles.card} ${styles.signingCard}`} aria-label="Build a live zap">
+          <section className={`${styles.card} ${styles.signingCard}`} aria-label="What you are signing">
             <div className={styles.cardBar}>
               <h2 className={styles.cardTitle}>What you are signing</h2>
-              <span className={styles.cardNote}>— frozen at creation, enforced by the Zap</span>
+              {/* Not "frozen at creation": the route and amount are, but the
+                  slippage and gas bounds in this same card are signed per
+                  execution and stay editable after the Zap exists. */}
+              <span className={styles.cardNote}>— enforced by the Zap, not by this page</span>
               <button
                 className={`${styles.cardAction} ${styles.cardActionEnd}`}
                 disabled={zap !== null}
@@ -1642,11 +1666,12 @@ export default function AppPage(): React.JSX.Element {
                 <span className={styles.legHintLive}>
                   {quote === null
                     ? "Request a live quote to see the floor you would sign."
-                    : `${route?.kind === "swap" ? "Quote" : "Vault preview"} ${formatToken(quote, outDecimals)} · floor is what the Zap enforces`}
+                    : `${quoteSourceLabel(route)} ${formatToken(quote, outDecimals)} · floor is what the Zap enforces`}
                 </span>
                 {autoRefreshedAt && (
                   <span className={styles.legHint}>
-                    Auto-updated {autoRefreshedAt} — your signed floor stays at the quote you last requested.
+                    Auto-updated {autoRefreshedAt} — signing takes a fresh quote and stops if it has fallen below the
+                    minimum you reviewed.
                   </span>
                 )}
               </div>
@@ -1798,7 +1823,8 @@ export default function AppPage(): React.JSX.Element {
               ) : (
                 <>
                   <p className={styles.stepBody}>
-                    Connecting only reads addresses and balances. Nothing is created, approved or signed by it.
+                    Connecting reads addresses and balances, and asks your wallet to switch to Robinhood Chain{" "}
+                    {ROBINHOOD_CHAIN_ID}. Nothing is created, approved or signed by it.
                   </p>
                   <div className={styles.stepActions}>
                     <button
@@ -1820,8 +1846,13 @@ export default function AppPage(): React.JSX.Element {
               state={stepStateFor(2)}
               title={zap ? "Zap created" : "Create the Zap"}
               detail={
+                // A Zap loaded by address carries no creation transaction of
+                // ours, so claiming the app's creation fee was paid for it would
+                // be a fact about a transaction this browser never saw.
                 zap
-                  ? `${shortAddress(zap.address)} · fee ${formatToken(OPENZAP_CREATION_FEE, 18)} ETH paid`
+                  ? zap.createTx
+                    ? `${shortAddress(zap.address)} · fee ${formatToken(OPENZAP_CREATION_FEE, 18)} ETH paid`
+                    : `${shortAddress(zap.address)} · verified onchain`
                   : "The factory deploys one contract with the policy above frozen into it."
               }
               link={
@@ -1944,7 +1975,11 @@ export default function AppPage(): React.JSX.Element {
                 <button className="btn btnGhost" disabled={!zap} onClick={() => void copyZapAddress()} type="button">
                   Copy Zap address
                 </button>
-                <span className={styles.actionNote}>≈ 1 wallet confirmation</span>
+                {/* Fund only is one confirmation; "Fund & Zap" runs the funding
+                    transfer, the EIP-712 signature, and the execution. */}
+                <span className={styles.actionNote}>
+                  ≈ 1 wallet confirmation to fund · Fund &amp; Zap adds the signature and one more confirmation
+                </span>
               </div>
             </Step>
 
@@ -1982,14 +2017,16 @@ export default function AppPage(): React.JSX.Element {
               <h2 className={styles.cardTitle}>This Zap&apos;s log</h2>
               {zap && (
                 <Link className={styles.cardLink} href={`/explore/${zap.address}`}>
-                  Open in Explore ↗
+                  Open in Explore →
                 </Link>
               )}
             </div>
 
+            {/* "From the rail" would only be true on a wide screen: the two
+                columns stack on a phone, where Your Zaps ends up below this. */}
             {zap === null ? (
               <p className={styles.logEmpty}>
-                No Zap loaded — create one above, or open an existing Zap from the rail.
+                No Zap loaded — create one above, or pick one under Your Zaps.
               </p>
             ) : (
               <>
@@ -2159,7 +2196,7 @@ export default function AppPage(): React.JSX.Element {
               <h2 className={styles.cardTitle}>Your Zaps</h2>
             </div>
             {savedZaps.length > 0 ? (
-              <div aria-label="Verified zap history" className={styles.zapList} role="group">
+              <div aria-label="Saved verified Zaps" className={styles.zapList} role="group">
                 {savedZaps.map((record) => {
                   const active = zap?.address === record.address;
                   const recordRoute = resolveRouteById(record.routeId);
@@ -2182,7 +2219,7 @@ export default function AppPage(): React.JSX.Element {
                         <code className={styles.zapItemMeta}>{shortAddress(record.address)}</code>
                       </button>
                       <Link
-                        aria-label={`Open the onchain page for zap ${record.address}`}
+                        aria-label={`Open the onchain page for Zap ${record.address}`}
                         className={styles.zapItemLink}
                         href={`/explore/${record.address}`}
                       >
@@ -2214,15 +2251,25 @@ export default function AppPage(): React.JSX.Element {
                 onClick={() => void loadExistingZap()}
                 type="button"
               >
-                {busy === "load" ? "Loading…" : "Load verified zap"}
+                {busy === "load" ? "Loading…" : "Load verified Zap"}
               </button>
             </div>
           </section>
 
           <section className={`${styles.sunkCard} ${styles.reuseCard}`}>
             <h2 className={styles.sunkTitle}>Do it again, later</h2>
-            <p className={styles.sunkNote}>Everything above is a design you can keep. Reuse it without rebuilding.</p>
+            {/* Not "everything above": this card sits in the right-hand rail, so
+                nothing is above it on a wide screen. Name the design instead. */}
+            {/* Not "a Zap runs once": v1.1 consumes one NONCE per execution, so
+                a refunded Zap can run again on a newly signed intent. */}
+            <p className={styles.sunkNote}>
+              One signature, one run. Start the next Zap on the same route, amount, and bounds, or keep this one&apos;s
+              config for your records.
+            </p>
             <div className={styles.reuseList}>
+              {/* This clears the selected Zap and leaves the route, amount, and
+                  bounds in place. It does not create anything — Create the Zap
+                  still does that — so it cannot promise a duplicate. */}
               <button
                 className={styles.reuseRow}
                 disabled={busy !== null || chainedRun}
@@ -2230,20 +2277,28 @@ export default function AppPage(): React.JSX.Element {
                 type="button"
               >
                 <BlockGlyph name="copy" className={styles.reuseGlyph} />
-                Duplicate as a new Zap
+                Start a new Zap, same design
               </button>
               {/* Labelled for what it is. There is no template store behind
-                  this — it is the same public-config JSON download. */}
+                  this — it is the same public-config JSON download as the Zap
+                  panel's, and it needs a created Zap to have anything to write. */}
               <button className={styles.reuseRow} disabled={!zap} onClick={exportCurrentZap} type="button">
                 <BlockGlyph name="download" className={styles.reuseGlyph} />
-                Save this design (JSON)
+                Download this Zap&apos;s config (JSON)
               </button>
+              {/* A real handoff, not three ignored params. `readAutomationHandoff`
+                  rejects anything without `src=build` AND a `mode`, so the
+                  previous href carried route/amount/bps that Automate silently
+                  dropped — the one thing worse than not carrying a design over
+                  is appearing to. It also only accepts BOUNDED_SWAP_IDS, so a
+                  vault or LP route still lands on an empty Automate; that is the
+                  same outcome as before, reached honestly. */}
               <Link
                 className={styles.reuseRow}
-                href={`/zap?view=automate&route=${routeId}&amount=${amount}&bps=${slippageBps}`}
+                href={`/zap?view=automate&src=build&mode=recurring&route=${routeId}&amount=${amount}&bps=${slippageBps}&interval=daily&runs=10`}
               >
                 <BlockGlyph name="repeat" className={styles.reuseGlyph} />
-                Make this recurring
+                Set up a recurring Zap
               </Link>
             </div>
           </section>
@@ -2252,10 +2307,10 @@ export default function AppPage(): React.JSX.Element {
             <h2 className={styles.sunkTitle}>Holder conveniences</h2>
             <p className={styles.sunkNote}>
               {!account
-                ? "Holding 100,000+ 0xZAPS turns on app conveniences: auto-refreshing quotes, more saved zaps and receipts, and receipt JSON export."
+                ? "Holding 100,000+ 0xZAPS turns on app conveniences: auto-refreshing quotes, more saved Zaps and receipts, and receipt JSON export."
                 : holderTier === "none"
-                  ? "Hold 100,000+ 0xZAPS in this wallet to turn on auto-refreshing quotes, more saved zaps and receipts, and receipt JSON export."
-                  : `${tierLabel(holderTier)} conveniences active: auto-refreshing quotes, more saved zaps and receipts, and receipt JSON export.`}
+                  ? "Hold 100,000+ 0xZAPS in this wallet to turn on auto-refreshing quotes, more saved Zaps and receipts, and receipt JSON export."
+                  : `${tierLabel(holderTier)} conveniences active: auto-refreshing quotes, more saved Zaps and receipts, and receipt JSON export.`}
               {" "}
               <Link href="/token#utilities">Details →</Link>
             </p>

@@ -135,7 +135,7 @@ export function ActivityFeed({ initial }: { initial: ActivityPayload | null }): 
         )}
       </section>
 
-      <section className={styles.card} aria-label="Live zap transactions">
+      <section className={styles.card} aria-label="Onchain activity">
         <div className={styles.cardHead}>
           <h2 className={styles.cardTitle} ref={headingRef} tabIndex={-1}>
             Onchain activity
@@ -170,7 +170,7 @@ export function ActivityFeed({ initial }: { initial: ActivityPayload | null }): 
 
         {state.status === "loading" && (
           <>
-            <p className={styles.empty}>Reading creations, executions, and recoveries from chain logs…</p>
+            <p className={styles.empty}>Reading creations, Zaps, AutoZaps, and recoveries from chain logs…</p>
             {/* Shaped placeholders in the feed's real geometry, so the rows do not
                 jump when the first payload lands. Negative, index-derived delays
                 start each bar mid-cycle: the shimmer travels down the list
@@ -189,7 +189,7 @@ export function ActivityFeed({ initial }: { initial: ActivityPayload | null }): 
 
         {state.status === "unavailable" && (
           <div className={styles.unavailable} role="alert">
-            <p>Live activity is unavailable right now — the Robinhood RPC log query failed. Nothing is shown rather than showing stale or fabricated rows.</p>
+            <p>Live activity is unavailable right now — the Robinhood RPC log query failed. Nothing is shown instead of stale or fabricated rows.</p>
             <button
               className={styles.ghostBtn}
               onClick={() => {
@@ -254,7 +254,7 @@ export function ActivityFeed({ initial }: { initial: ActivityPayload | null }): 
           Zap, AutoZap, and recovery rows are read only from Zaps recorded in a factory&apos;s own
           ZapCreated log — v1.1, v3, and v3.1 — so events emitted by non-canonical contracts never reach this
           feed. An AutoZap row is a Zap an executor submitted against a standing authorization its owner
-          signed. View any zap directly on{" "}
+          signed. Each row opens its own transaction; the v1.1 factory is on{" "}
           <a href={explorerAddress(OPENZAP_CONTRACTS.factory)} target="_blank" rel="noreferrer">
             Blockscout ↗
           </a>

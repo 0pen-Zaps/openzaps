@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useId } from "react";
 
 import { BlockGlyph } from "./BlockGlyph";
 import { readDesignLibrary, type SavedDesign } from "@/lib/designs";
@@ -38,7 +38,7 @@ const OPTIONS = [
     glyph: "repeat",
     label: "Recurring",
     title: "Repeat a fixed amount on schedule",
-    detail: "Choose cadence, total runs, expiry, and slippage. The Zap enforces every run.",
+    detail: "Choose cadence, total Zaps, expiry, and slippage. The Zap recomputes each run's floor from live spot.",
     meta: "v3.1 · replaceable series",
     href: `/zap?view=automate&src=build&mode=recurring&route=${ROUTE}&amount=0.01&bps=100&interval=daily&runs=10`,
     accent: "recurring",
@@ -47,7 +47,7 @@ const OPTIONS = [
     glyph: "band",
     label: "Price trigger",
     title: "Fire once after a one-sided move",
-    detail: "Set rises or falls, threshold, validity window, and a net output floor before signing.",
+    detail: "Pick the price move, the validity window, and a slippage band. The floor comes from a fresh quote at signing.",
     meta: "v3 · revocable nonce",
     href: `/zap?view=automate&src=build&mode=trigger&route=${ROUTE}&amount=0.01&bps=100&threshold=up10&days=30`,
     accent: "trigger",
@@ -59,13 +59,32 @@ const OPTIONS = [
     label: "Compose",
     title: "Build the route and its execution policy",
     detail: "Connect the route, add gas, gas-price, and executor controls as one stack, then review the resolved bounds.",
-    meta: "atomic policy stack · one-step undo",
+    meta: "atomic policy stack · undone in one step",
     href: "/zap?view=design",
     accent: "compose",
   },
 ] as const;
 
-export function ZapLauncher(): React.JSX.Element {
+/**
+ * `idScope` distinguishes the two instances of this screen that coexist on /zap.
+ *
+ * `page.tsx` renders it as the Suspense fallback — that is what puts the h1 and
+ * the intent copy into the statically prerendered HTML, since `UseSurface` reads
+ * search params and bails the boundary to the client — and `UseSurface` then
+ * renders it again as the default view. Both end up in the streamed markup, so
+ * hardcoded ids gave two elements the same name and an `aria-labelledby` could
+ * resolve to the inert copy in React's hidden holder.
+ *
+ * `useId()` alone does not fix it: it is derived from position in the tree, and
+ * the two instances sit at equivalent positions, so React hands both the same
+ * value. The fallback therefore names itself.
+ */
+export function ZapLauncher({ idScope }: { idScope?: string } = {}): React.JSX.Element {
+  const generated = useId();
+  const base = idScope ?? generated;
+  const reuseId = `${base}-reuse`;
+  const intentId = `${base}-intent`;
+
   return (
     <main className={styles.screen} id="main" data-screen-label="Start">
       <div className={styles.hero}>
@@ -88,19 +107,19 @@ export function ZapLauncher(): React.JSX.Element {
         </aside>
       </div>
 
-      <section className={styles.section} aria-labelledby="reuse-heading">
+      <section className={styles.section} aria-labelledby={reuseId}>
         <div className={styles.sectionHead}>
-          <h2 id="reuse-heading" className={styles.sectionTitle}>
+          <h2 id={reuseId} className={styles.sectionTitle}>
             Run one you already trust
           </h2>
-          <span className={styles.sectionNote}>Your saved designs, newest first.</span>
+          <span className={styles.sectionNote}>Saved on this device, newest first — up to three.</span>
         </div>
         <SavedDesigns />
       </section>
 
-      <section id="start-new" aria-labelledby="intent-heading">
+      <section aria-labelledby={intentId}>
         <div className={styles.sectionHead}>
-          <h2 id="intent-heading" className={styles.sectionTitle}>
+          <h2 id={intentId} className={styles.sectionTitle}>
             Or start something new
           </h2>
           <span className={styles.sectionNote}>Nothing is submitted from this screen.</span>
@@ -179,7 +198,7 @@ function SavedDesigns(): React.JSX.Element {
     return (
       <div className={styles.reuseGrid}>
         <p className={styles.reuseNotice} role="status">
-          Nothing saved yet. Designs you save in the composer land here, ready to run again.
+          Nothing saved yet. Designs you save in the composer land here, ready to reopen and run.
         </p>
       </div>
     );

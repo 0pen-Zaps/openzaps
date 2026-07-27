@@ -116,10 +116,15 @@ function verifiedZapSeo(zap: Address, payload: ZapDetailPayload): {
   path: string;
 } {
   const { policy, stats } = payload;
+  // Capital Z, and "Zap contract" for the fallback: this string renders in the
+  // meta description, so it is what a social card says out loud. The keywords
+  // below still carry "policy capsule" — those already rank and nobody reads
+  // them — but the sentence a person sees should use the word the rest of the
+  // site uses for this object.
   const route =
     policy.matchesLiveRoute && policy.inputSymbol && policy.outputSymbol
-      ? `${policy.inputSymbol} → ${policy.outputSymbol} DeFi zap`
-      : "OpenZaps policy capsule";
+      ? `${policy.inputSymbol} → ${policy.outputSymbol} DeFi Zap`
+      : "OpenZaps Zap contract";
   const executions = stats.executionCount === 1 ? "1 execution" : `${stats.executionCount} executions`;
 
   return {

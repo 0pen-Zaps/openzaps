@@ -557,7 +557,7 @@ export default function AutomateConsole(): React.JSX.Element {
       const activeRoute = route;
       if (!activeRoute) throw new Error("Route unavailable.");
       if (perRunAmount <= 0n) throw new Error("Enter a per-Zap amount first.");
-      if (mode === "recurring" && (maxRuns < 1 || maxRuns > 1000)) throw new Error("Zaps must be between 1 and 1000.");
+      if (mode === "recurring" && (maxRuns < 1 || maxRuns > 1000)) throw new Error("Total Zaps must be between 1 and 1000.");
 
       // recurring → v3.1 (relative floor); trigger → v3. Same factory ABI (identical Policy tuple).
       const stack = mode === "recurring" ? OPENZAP_V3_1_CONTRACTS : OPENZAP_V3_CONTRACTS;
@@ -588,7 +588,7 @@ export default function AutomateConsole(): React.JSX.Element {
         publicClient.readContract({ address: predicted, abi: openZapV3Abi, functionName: "policyHash" }),
       ]);
       if (code !== expectedCloneRuntime(stack.implementation)) {
-        throw new Error("Deployed zap bytecode does not match the expected implementation. Do not fund it.");
+        throw new Error("Deployed Zap bytecode does not match the expected implementation. Do not fund it.");
       }
 
       const next: CreatedAutomationResult = {
@@ -606,7 +606,7 @@ export default function AutomateConsole(): React.JSX.Element {
       setCreationResult(next);
       setSelected(predicted);
       setNotice(
-        `${mode === "recurring" ? "v3.1" : "v3"} zap created and verified at ${shortAddress(predicted)}. The ${formatToken(OPENZAP_CREATION_FEE, 18)} ETH fee converted with the reviewed ${formatToken(creationFeeQuote.minZapsOut, 18)} 0xZAPS floor. Fund it next.`,
+        `${mode === "recurring" ? "v3.1" : "v3"} Zap created and verified at ${shortAddress(predicted)}. The ${formatToken(OPENZAP_CREATION_FEE, 18)} ETH fee converted with the reviewed ${formatToken(creationFeeQuote.minZapsOut, 18)} 0xZAPS floor. Fund it next.`,
       );
       trackEvent("automate_create", { mode, fee: OPENZAP_CREATION_FEE.toString() });
     } catch (cause) {
@@ -662,7 +662,7 @@ export default function AutomateConsole(): React.JSX.Element {
     setError("");
     try {
       const owner = requireAccount(account);
-      if (!record || !recordRoute) throw new Error("Create a zap first.");
+      if (!record || !recordRoute) throw new Error("Create a Zap first.");
       // Fresh reads, never React state: a stale balance here is a double-funding, not a stale pixel.
       const fresh = await loadAutomationStatus(record, recordRoute);
       if (fresh.balance === null) throw new Error("Zap balance is unreadable right now. Try again.");
@@ -670,7 +670,7 @@ export default function AutomateConsole(): React.JSX.Element {
       const missing = target - fresh.balance;
       if (missing <= 0n) {
         await applyLoad(record);
-        setNotice("This Zap already holds everything the remaining Zaps can spend.");
+        setNotice("This Zap already holds everything its remaining runs can spend.");
         return;
       }
       const wallet = await requireWallet(owner);
@@ -723,7 +723,7 @@ export default function AutomateConsole(): React.JSX.Element {
       const hash = await wallet.writeContract(request);
       await publicClient.waitForTransactionReceipt({ hash });
       await applyLoad(record);
-      setNotice(`Funded ${formatToken(missing, recordRoute.tokenIn.decimals)} ${recordRoute.tokenIn.symbol} into the zap.`);
+      setNotice(`Funded ${formatToken(missing, recordRoute.tokenIn.decimals)} ${recordRoute.tokenIn.symbol} into the Zap.`);
       trackEvent("automate_fund");
     } catch (cause) {
       setError(readableError(cause));
@@ -737,7 +737,7 @@ export default function AutomateConsole(): React.JSX.Element {
     setError("");
     try {
       const owner = requireAccount(account);
-      if (!record || !recordRoute) throw new Error("Create a zap first.");
+      if (!record || !recordRoute) throw new Error("Create a Zap first.");
       if (recordRoute.quote.source !== "v4") throw new Error("Automation supports the bounded pool routes only.");
       const wallet = await requireWallet(owner);
       const nowSec = BigInt(Math.floor(Date.now() / 1000));
@@ -834,8 +834,8 @@ export default function AutomateConsole(): React.JSX.Element {
         deliveredTo === "relay"
           ? executorMode === "anyone"
             ? "Signed and published to the executor network — any executor can Zap it now. Nothing else to do."
-            : "Signed and published. This Zap will accept Zaps only from the executor bound in this intent."
-          : "Standing intent signed. Publish it to an executor below, or export the file.",
+            : "Signed and published. This Zap will accept runs only from the executor bound in this intent."
+          : "Standing intent signed. Publish it to the executor network, or download the file for an executor you run.",
       );
       trackEvent("automate_sign", { mode: record.mode, published: deliveredTo === "relay" });
     } catch (cause) {
@@ -1037,7 +1037,7 @@ export default function AutomateConsole(): React.JSX.Element {
       };
       persist(records.map((candidate) => candidate.address === record.address ? revoked : candidate));
       await applyLoad(record);
-      setNotice("Automation cancelled on-chain. The signed intent can never execute again.");
+      setNotice("Automation cancelled onchain. The signed intent can never execute again.");
       trackEvent("automate_cancel");
     } catch (cause) {
       setError(readableError(cause));
@@ -1051,7 +1051,7 @@ export default function AutomateConsole(): React.JSX.Element {
     setError("");
     try {
       const owner = requireAccount(account);
-      if (!record || !recordRoute) throw new Error("No zap selected.");
+      if (!record || !recordRoute) throw new Error("No Zap selected.");
       const wallet = await requireWallet(owner);
       const { request } = await publicClient.simulateContract({
         account: owner,
@@ -1085,7 +1085,9 @@ export default function AutomateConsole(): React.JSX.Element {
   const stepLabel = !account
     ? "1. Connect wallet"
     : wrongNetwork
-      ? "2. Switch network"
+      // Unnumbered on purpose: switching networks is the wrong-network banner's
+      // action, not one of the four numbered lifecycle steps.
+      ? "Switch network"
     : !record
       ? "2. Create Zap"
       : !funded
@@ -1167,7 +1169,7 @@ export default function AutomateConsole(): React.JSX.Element {
     : !signed
       ? "created — fund and sign to arm"
       : status === null
-        ? "series state unavailable — refresh"
+        ? "state unavailable — refresh"
         : status.kind === "recurring"
           ? status.consumed
             ? "finished or cancelled"
@@ -1197,7 +1199,7 @@ export default function AutomateConsole(): React.JSX.Element {
         <h1 className={styles.title}>Automate</h1>
         <p className={styles.lede}>
           One signature authorizes a whole series. The Zap enforces the interval and the count onchain, so
-          nothing can Zap early, twice, or past the end.
+          nothing can run early, twice, or past the end.
         </p>
       </header>
 
@@ -1299,7 +1301,7 @@ export default function AutomateConsole(): React.JSX.Element {
                     onClick={() => setSelected(creationResult.address)}
                     type="button"
                   >
-                    Open in console
+                    Re-open this Zap
                   </button>
                 ) : !creationResultSigned ? (
                   <a className={styles.btnPrimary} href="#automation-lifecycle">
@@ -1354,15 +1356,26 @@ export default function AutomateConsole(): React.JSX.Element {
             <div className={styles.body}>
               <p className={styles.summary} aria-live="polite">
                 {activeMode === "recurring" ? (
-                  <>
-                    Zap <strong>{summaryAmount} {inSymbol}</strong> into <strong>{outSymbol}</strong>,{" "}
-                    <strong>{interval.label.toLowerCase()}</strong>, <strong>{recurringRuns} times</strong>, never
-                    worse than <strong>{slipPct}%</strong> off spot.
-                  </>
+                  // A one-run series has no cadence to state: the interval never gates a
+                  // series that ends on its first run, and "every day, 1 times" is neither
+                  // true nor English.
+                  recurringRuns === 1 ? (
+                    <>
+                      Zap <strong>{summaryAmount} {inSymbol}</strong> into <strong>{outSymbol}</strong> once, never
+                      worse than <strong>{slipPct}%</strong> off spot.
+                    </>
+                  ) : (
+                    <>
+                      Zap <strong>{summaryAmount} {inSymbol}</strong> into <strong>{outSymbol}</strong>,{" "}
+                      <strong>{interval.label.toLowerCase()}</strong>, <strong>{recurringRuns} times</strong>, never
+                      worse than <strong>{slipPct}%</strong> off spot.
+                    </>
+                  )
                 ) : (
                   <>
                     Zap <strong>{summaryAmount} {inSymbol}</strong> into <strong>{outSymbol}</strong> once, when{" "}
-                    <strong>{threshold.label}</strong>, valid <strong>{validDays} days</strong>, never worse than{" "}
+                    <strong>{threshold.label}</strong>, valid{" "}
+                    <strong>{validDays} {validDays === 1 ? "day" : "days"}</strong>, never worse than{" "}
                     <strong>{slipPct}%</strong> off the quote.
                   </>
                 )}
@@ -1511,9 +1524,8 @@ export default function AutomateConsole(): React.JSX.Element {
                 <p className={styles.note} aria-live="polite">
                   {executorMode === "anyone" ? (
                     <>
-                      Anyone · any executor may submit a run this Zap owes and earns 80% of its 1% fee. The Zap
-                      still refuses every run it does not owe, so this only decides <em>who races</em>, never what
-                      they can do.
+                      Anyone · any executor may submit a run this Zap owes, and earns 80% of the 1% fee for it. The
+                      Zap still refuses every run it does not owe.
                     </>
                   ) : executorMode === "owner-only" && account ? (
                     <>
@@ -1524,12 +1536,12 @@ export default function AutomateConsole(): React.JSX.Element {
                     <>Connect the owner wallet before signing an owner-only execution policy.</>
                   ) : executorValid ? (
                     <>
-                      Pinned · only <code>{executorPin.trim()}</code> may submit. If it goes offline the series
-                      stalls until you submit a run yourself — Anyone is the more reliable choice unless you run
-                      your own executor.
+                      Pinned · only <code>{executorPin.trim()}</code> may submit; every other submitter reverts. If
+                      it stops submitting, nothing runs until it resumes — Anyone is the more reliable choice unless
+                      this is an executor you control.
                     </>
                   ) : (
-                    <>That is not a valid address. Signing would name a submitter no wallet can match, stalling the series.</>
+                    <>That is not a valid address. Signing would name a submitter no wallet can match, so nothing could ever run.</>
                   )}
                 </p>
               </div>
@@ -1577,8 +1589,8 @@ export default function AutomateConsole(): React.JSX.Element {
                     />
                   </Field>
                   <p className={styles.advancedNote}>
-                    Every signed Zap also rejects a transaction above {maxExecutionGas.toLocaleString("en-US")} gas
-                    or {maxFeePerGasGwei} gwei.
+                    The Zap also rejects any run submitted with more than{" "}
+                    {maxExecutionGas.toLocaleString("en-US")} gas, or above {maxFeePerGasGwei} gwei.
                   </p>
                 </div>
               </details>
@@ -1597,19 +1609,19 @@ export default function AutomateConsole(): React.JSX.Element {
                     {spot === null ? (
                       <>
                         Projected floor · spot is unavailable right now — the Zap still enforces your slippage band
-                        onchain for every Zap.
+                        onchain on every run.
                       </>
                     ) : projectedFloor > 0n && route ? (
                       <>
-                        Each Zap&apos;s floor is recomputed from live spot at the moment it runs, minus your{" "}
+                        Each run&apos;s floor is recomputed from live spot at the moment it lands, minus your{" "}
                         {slipPct}% — at today&apos;s spot that is at least{" "}
                         <strong>
                           {formatToken(projectedFloor, route.tokenOut.decimals)} {route.tokenOut.symbol}
                         </strong>
-                        , so a series signed today still protects the Zap that happens in nine weeks.
+                        , so a series signed today protects its last run as tightly as its first.
                       </>
                     ) : (
-                      <>Projected floor · enter a per-Zap amount to preview each Zap&apos;s guaranteed minimum.</>
+                      <>Projected floor · enter a per-Zap amount to preview each run&apos;s guaranteed minimum.</>
                     )}
                   </p>
                 </div>
@@ -1726,7 +1738,7 @@ export default function AutomateConsole(): React.JSX.Element {
                           {recordRoute.tokenIn.symbol} this step transfers.
                         </>
                       ) : (
-                        <>Wallet balance unavailable — the funding transfer will still verify on-chain.</>
+                        <>Wallet balance unavailable — the funding transfer will still verify onchain.</>
                       )}
                     </p>
                   ) : null}
@@ -1760,7 +1772,7 @@ export default function AutomateConsole(): React.JSX.Element {
                   title="Sign the standing intent"
                   detail={
                     activeMode === "recurring"
-                      ? "One EIP-712 signature authorizes the whole series. The Zap enforces the interval and total Zap count."
+                      ? "One EIP-712 signature authorizes the whole series. The Zap enforces the interval and the total run count."
                       : "One EIP-712 signature arms the trigger. The baseline price is read at signing time, and the Zap re-reads the market itself on every attempt."
                   }
                   state={stepStateAt(3)}
@@ -1809,10 +1821,10 @@ export default function AutomateConsole(): React.JSX.Element {
               {signed ? (
                 <p className={styles.note}>
                   Signing publishes your intent to the shared executor network automatically — no files, no setup.
-                  The buttons above are fallbacks: run your own executor and point it at the network, or hand the
+                  The buttons in step 4 are fallbacks: run your own executor and point it at the network, or hand the
                   file to any executor directly. Any executor can submit the runs this Zap owes; none can change what
-                  those runs do, and if no executor serves it, nothing runs. Cancel any time from the rail; cancellation is
-                  on-chain and final.
+                  those runs do, and if no executor serves it, nothing runs. Cancel any time from Your automations;
+                  cancellation is onchain and final.
                 </p>
               ) : null}
             </div>
@@ -1863,8 +1875,8 @@ export default function AutomateConsole(): React.JSX.Element {
               </div>
             </div>
             <p className={styles.execFoot}>
-              The pool is untrusted. Every field an executor submits is re-verified onchain, so the worst a bad
-              actor can do is waste their own gas.
+              The executor pool is untrusted. Every field an executor submits is re-verified onchain, so the worst a
+              bad actor can do is waste their own gas.
               <span className={styles.execRisk}>Depositing funds can result in total loss.</span>
             </p>
           </section>
@@ -1904,16 +1916,29 @@ export default function AutomateConsole(): React.JSX.Element {
                     delivered to your local executor
                   </span>
                 ) : null}
+                {/* The chip alone says "watch-only" and nothing about what that costs you.
+                    A daemon with no key simulates every run and broadcasts none, so an
+                    intent delivered to it never executes. */}
+                {!executorHealth.executing ? (
+                  <span className={styles.stepCaption}>
+                    Watch-only: no executor key is configured, so this daemon simulates runs and never broadcasts
+                    one. It will hold the intent, not execute it.
+                  </span>
+                ) : null}
               </div>
             </section>
           ) : null}
         </div>
 
         <div className={styles.col}>
-          <section className={styles.card} aria-label="Automation status">
+          <section className={styles.card} aria-label="Your automations">
             <div className={styles.railHead}>
               <h2 className={styles.railTitle}>Your automations</h2>
-              <Link href="/profile" className={styles.railAll}>All</Link>
+              {/* The visible word is one glance-sized "All"; the label spells out where
+                  it goes, for anyone reading the link list out of context. */}
+              <Link href="/profile" className={styles.railAll} aria-label="All automations in your profile">
+                All
+              </Link>
             </div>
 
             {record ? (
@@ -2011,7 +2036,8 @@ export default function AutomateConsole(): React.JSX.Element {
               </>
             ) : (
               <p className={styles.railEmpty}>
-                No automation yet. Configure one on the left — the Zap, not the executor, holds every bound.
+                No automation yet. Create one and its state shows up here — the Zap, not the executor, holds every
+                bound.
               </p>
             )}
 

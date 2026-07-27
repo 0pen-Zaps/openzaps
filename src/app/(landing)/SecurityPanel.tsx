@@ -14,12 +14,12 @@ const GUARANTEES = [
   {
     title: "Owner-signed execution",
     detail:
-      "Only the owner ever signs. A one-shot Zap is sent from the owner's wallet; a recurring or price-triggered Zap can be sent by any executor, and the capsule re-checks every bound before it settles. Nothing executes custodially.",
+      "Only the owner ever signs. A one-shot Zap is sent from the owner's wallet; a recurring or price-triggered Zap can be sent by any executor, and the Zap re-checks every bound before it settles. Nothing executes custodially.",
   },
   {
     title: "Policy fixed before signing",
     detail:
-      "Target, recipient, asset, and calldata shape are welded into the capsule. Execution cannot redirect them.",
+      "Target, recipient, asset, and calldata shape are welded into the Zap. Execution cannot redirect them.",
   },
   {
     title: "Deterministic simulation first",
@@ -29,7 +29,7 @@ const GUARANTEES = [
   {
     title: "Minimum-out enforced onchain",
     detail:
-      "The slippage cap (10–500 bps) sets the minimum output signed into each execution intent — the capsule reverts the trade if net output lands below it.",
+      "The slippage cap (10–500 bps) sets the minimum output signed into each execution intent — the Zap reverts the trade if net output lands below it.",
   },
   {
     title: "Bounded amounts and gas",
@@ -39,12 +39,12 @@ const GUARANTEES = [
   {
     title: "Recovery path",
     detail:
-      "Funds stranded in a capsule are recoverable by the owner at any time — no permission needed.",
+      "Funds stranded in a Zap are recoverable by the owner at any time — no permission needed.",
   },
 ] as const;
 
 const INSPECTIONS = [
-  { step: "Factory log check", detail: "the capsule was created by the canonical factory" },
+  { step: "Factory log check", detail: "the Zap was created by the canonical factory" },
   { step: "EIP-1167 runtime match", detail: "bytecode is the expected minimal clone" },
   { step: "Policy rehash", detail: "stored hash matches the recomputed policy" },
   { step: "Route comparison", detail: "steps checked against the live route registry" },
@@ -67,7 +67,7 @@ export function SecurityPanel(): React.JSX.Element {
       <aside className={styles.securityAside}>
         <div className={styles.securityInspect}>
           <span className={`${styles.demoRouteKicker} mono`}>
-            what /explore verifies per capsule
+            what /explore verifies per Zap
           </span>
           <ol className={styles.securityInspectList}>
             {INSPECTIONS.map((item, i) => (

@@ -385,7 +385,7 @@ export function ZapBuilder({
    *
    * Every structural edit — add, remove, move, duplicate, load, import, undo —
    * is visible as a card appearing or sliding, and audible as nothing at all.
-   * The arrow buttons were the worst of it: pressing "Move Swap up" left a
+   * The arrow buttons were the worst of it: pressing "Move Swap one step earlier" left a
    * screen reader with no way to know whether it had moved, or how far it could
    * still go. Each message carries the resulting count or position, which is
    * also what keeps two consecutive edits from producing identical text that a
@@ -520,7 +520,7 @@ export function ZapBuilder({
         flash(
           block.kind === "source"
             ? "A chain starts from exactly one source — remove the current one first."
-            : `${block.name} needs ${block.accepts ? SHAPE_LABEL[block.accepts] : "a source"} above it. Add the block that produces it.`,
+            : `${block.name} needs ${block.accepts ? SHAPE_LABEL[block.accepts] : "a source"} before it. Add the block that produces it.`,
         );
         return;
       }
@@ -572,7 +572,7 @@ export function ZapBuilder({
       next.splice(from + delta, 0, node);
       commit(next);
       announce(
-        `${getBlock(node.blockId)?.name ?? "Block"} moved ${delta < 0 ? "up" : "down"} to position ${
+        `${getBlock(node.blockId)?.name ?? "Block"} moved ${delta < 0 ? "earlier" : "later"} to position ${
           from + delta + 1
         } of ${next.length}.`,
       );
@@ -592,7 +592,7 @@ export function ZapBuilder({
   );
 
   /**
-   * Copy a placed block, settings and all, directly below itself.
+   * Copy a placed block, settings and all, directly after itself.
    *
    * Routed through `canInsert` like every other placement: a second source, or
    * a second copy of a block whose shape only seats once, would otherwise be
@@ -606,7 +606,7 @@ export function ZapBuilder({
       const block = getBlock(node.blockId);
       if (!block) return;
       if (!canInsert(chain, block, index + 1)) {
-        flash(`A second ${block.name} does not seat below this one.`);
+        flash(`A second ${block.name} does not seat after this one.`);
         return;
       }
       const copy = makeNode(node.blockId, nextUid(), node.params);
@@ -1538,7 +1538,10 @@ export function ZapBuilder({
                 <div className={styles.empty} data-over={dropIndex === 0}>
                   <BlockGlyph name="wallet" className={styles.emptyGlyph} />
                   <strong>Drop a source here</strong>
-                  <span>Every chain starts with one — a wallet balance, a recurring deposit, or pending rewards.</span>
+                  <span>
+                    Every chain starts with one — a wallet balance, LP shares you already hold, a recurring
+                    deposit, or pending rewards.
+                  </span>
                 </div>
               ) : null}
 
@@ -1629,7 +1632,7 @@ export function ZapBuilder({
                           type="button"
                           onClick={() => moveNode(node.uid, -1)}
                           disabled={!canMove(node.uid, -1)}
-                          aria-label={`Move ${block.name} up`}
+                          aria-label={`Move ${block.name} one step earlier`}
                         >
                           <BlockGlyph name="chevronUp" />
                         </button>
@@ -1637,7 +1640,7 @@ export function ZapBuilder({
                           type="button"
                           onClick={() => moveNode(node.uid, 1)}
                           disabled={!canMove(node.uid, 1)}
-                          aria-label={`Move ${block.name} down`}
+                          aria-label={`Move ${block.name} one step later`}
                         >
                           <BlockGlyph name="chevronDown" />
                         </button>
@@ -1766,7 +1769,7 @@ export function ZapBuilder({
               <div className={styles.policyHead}>
                 <BlockGlyph name="lock" />
                 <strong>Execution policy</strong>
-                <span className={styles.policyHint}>added as one stack · undo removes all three</span>
+                <span className={styles.policyHint}>added as one stack · one undo removes them all</span>
                 <button
                   type="button"
                   className={styles.policyCompose}
@@ -1810,8 +1813,8 @@ export function ZapBuilder({
             </section>
 
             <p className={styles.canvasNote}>
-              Drag a block from the left to add it. Anything the selected contract cannot enforce is flagged before
-              you hand off.
+              Drag a block from the palette to place it, or tap it to add it at the last position that takes it.
+              Anything the live contracts cannot enforce is named in Hand it off.
             </p>
 
             {/* What the highlight travelling along the row is actually on.
@@ -1855,20 +1858,18 @@ export function ZapBuilder({
             </div>
             <div className={styles.row}>
               <span>Blocks</span>
-              <strong>
-                {chain.length === 0
-                  ? "empty canvas"
-                  : `${chain.length} · ${allSeated ? "all connected" : `${jointCount - seatedJoints} not seated`}`}
-              </strong>
+              <strong>{chain.length === 0 ? "empty canvas" : chain.length}</strong>
             </div>
+            {/* One joint per block — whether that block accepts what reaches it
+                — so this counts blocks, not the connectors drawn between them. */}
             <div className={styles.row}>
-              <span>Connectors fit</span>
+              <span>Blocks seated</span>
               <strong className={jointCount === 0 ? undefined : allSeated ? styles.ok : styles.danger}>
                 {jointCount === 0 ? "none yet" : allSeated ? `all ${jointCount}` : `${seatedJoints} of ${jointCount}`}
               </strong>
             </div>
             <div className={styles.row}>
-              <span>Guards enforced</span>
+              <span>Guard coverage</span>
               <strong className={styles.mono}>{compiled.guardScore}%</strong>
             </div>
             <div className={styles.row}>
@@ -1885,7 +1886,9 @@ export function ZapBuilder({
 
           <section className={`${styles.card} ${styles.handoff}`}>
             <h2>Hand it off</h2>
-            <p className={styles.handoffLede}>The exact amount, floor, and bounds travel with it.</p>
+            <p className={styles.handoffLede}>
+              A handoff carries the route, the exact amount, the slippage cap, and the gas bounds.
+            </p>
             <div className={styles.handoffActions}>
               {deployment.deployable && deployHref ? (
                 <Link
@@ -1940,7 +1943,7 @@ export function ZapBuilder({
                       ? "owner-only execution"
                       : "open execution"}
                     {automation.mode === "recurring"
-                      ? `, then binds ${automation.maxRuns} runs on the ${automation.intervalId} cadence.`
+                      ? `, then binds ${automation.maxRuns} runs of this Zap on the ${automation.intervalId} cadence.`
                       : `, then binds ${automation.thresholdId.startsWith("up") ? "a rise" : "a fall"} of ${automation.thresholdId.replace(/\D/g, "")}% for ${automation.validDays} days.`}
                   </p>
                 ) : null}
@@ -1949,14 +1952,16 @@ export function ZapBuilder({
                   // or counting these would let someone deploy believing a guard
                   // they drew is protecting funds that nothing is protecting.
                   <div className={styles.unenforced} role="note">
+                    {/* Counted as disclosures, not as guards: this list also
+                        carries the vault-seeding note and the dropped-slippage
+                        note, and calling those "guards" would be a miscount. */}
                     <strong>
-                      If you Zap now, {deployment.unenforcedGuards.length} guard
-                      {deployment.unenforcedGuards.length === 1 ? " in this design is" : "s in this design are"} not
-                      enforced onchain.
+                      Read before you Zap now: {deployment.unenforcedGuards.length} disclosure
+                      {deployment.unenforcedGuards.length === 1 ? "" : "s"} about this handoff.
                     </strong>
                     <p>
                       The one-shot policy binds owner, recipient, adapter, spender, input token, exact amount, and
-                      minimum output. Choosing that path keeps those bounds and drops the rest:
+                      minimum output. Anything this design states beyond those bounds is not enforced onchain:
                     </p>
                     <ul>
                       {deployment.unenforcedGuards.map((guard) => (
@@ -2004,7 +2009,7 @@ export function ZapBuilder({
               <p>
                 The canvas compiles and simulates. It cannot sign, fund, or submit a transaction — that happens in{" "}
                 <strong>Zap now</strong>, against whichever deployed routes your design reduces to: swaps, stitched
-                multi-pool routes, and aeWETH/USDG liquidity provide/withdraw.
+                multi-pool routes, aeWETH/USDG liquidity provide/withdraw, and the ozUSDG vault deposit.
               </p>
             </details>
           </section>
@@ -2162,14 +2167,14 @@ export function ZapBuilder({
                 </div>
               </div>
             ) : (
-              <p className={styles.quoteStatus}>Choose a deployable or automatable blueprint to price it here.</p>
+              <p className={styles.quoteStatus}>Compose a deployable or automatable design to price it here.</p>
             )}
             <p className={styles.quoteNote}>
               {automation.deployable
                 ? "Automated Zaps retain the live 1% output fee: 80% rewards the executor and 20% enters the existing 0xZAPS conversion pot. "
                 : ""}
-              The separate creation fee is paid only if the Zap&rsquo;s creation succeeds and atomically converted
-              through the pinned aeWETH → 0xZAPS adapter.
+              The separate creation fee is charged only if the Zap&rsquo;s creation succeeds, and it is converted
+              through the pinned aeWETH → 0xZAPS adapter in the same transaction.
             </p>
           </section>
 

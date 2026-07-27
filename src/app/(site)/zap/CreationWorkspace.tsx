@@ -68,7 +68,7 @@ export function CreationWorkspace({
         ))}
       </dl>
 
-      <ol className={styles.stages} aria-label="Zap continuation">
+      <ol className={styles.stages} aria-label="Zap progress after creation">
         {stages.map((stage, index) => (
           <li data-status={stage.status} key={stage.label}>
             <span>{stage.status === "done" ? <BlockGlyph name="tick" /> : index + 1}</span>

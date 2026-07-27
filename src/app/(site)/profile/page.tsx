@@ -7,7 +7,7 @@ export const metadata = {
   ...pageMetadata({
     title: "My zaps",
     description:
-      "Connect a wallet to inspect its confirmed OpenZaps history, monitor recurring and price-triggered authorizations, and access supported recovery controls.",
+      "Connect a wallet to inspect its confirmed OpenZaps history, monitor recurring and price-triggered authorizations, and revoke or recover from the Zaps it owns.",
     path: "/profile",
     ogImage: "/og/app.png",
   }),

@@ -252,8 +252,7 @@ export function ZapLive({
 
         {policy.stepCount !== "1" && (
           <p className={styles.note}>
-            The Zap declares {policy.stepCount} steps. Only step 0 is shown: it is the only one this snapshot
-            read. The rest are not guessed at.
+            The Zap declares {policy.stepCount} steps. Only step 0 is drawn here. The rest are not guessed at.
           </p>
         )}
 
@@ -388,7 +387,8 @@ export function ZapLive({
               </li>
             </ul>
             <span className={styles.totalsNote}>
-              Custody balances at block {Number(data.headBlock).toLocaleString("en-US")}.
+              Custody balances at block {Number(data.headBlock).toLocaleString("en-US")}. aeWETH, 0xZAPS, and ETH are
+              the only balances this snapshot reads, so this is not a full inventory of what the Zap holds.
             </span>
           </div>
         </div>
@@ -855,14 +855,14 @@ function capsuleLineage(version: string): { title: string; detail: string } {
     return {
       title: "Automated · v3.1",
       detail:
-        "Can hold a recurring series whose per-Zap floor is derived from an allowlisted price source for each Zap, or a one-shot price trigger. Any eligible executor may submit a run it owes.",
+        "Can hold a recurring series whose per-run floor is derived from an allowlisted price source at execution, or a one-shot price trigger. Any eligible executor may submit a run this Zap owes.",
     };
   }
   if (version.startsWith("3")) {
     return {
       title: "Automated · v3",
       detail:
-        "Can hold a recurring series or a one-shot price trigger. Any eligible executor may submit a run it owes; the chain refuses every run it does not.",
+        "Can hold a recurring series or a one-shot price trigger. Any eligible executor may submit a run this Zap owes; the chain refuses every run it does not.",
     };
   }
   return {

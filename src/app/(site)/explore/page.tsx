@@ -70,10 +70,11 @@ export default async function ZapsFeedPage(): Promise<React.JSX.Element> {
 
       <section className={styles.hero}>
         <div>
-          <h1 className={styles.heroTitle}>Explore every DeFi zap, straight from the chain.</h1>
+          <h1 className={styles.heroTitle}>Explore every DeFi Zap, straight from the chain.</h1>
           <p className={styles.heroLede}>
-            Creations, executions, and recoveries are read directly from Robinhood Chain logs. An execution counts
-            only when it comes from a zap the canonical factory deployed. No indexer, no estimates.
+            Creations, Zaps, AutoZaps, and recoveries are read directly from Robinhood Chain logs. An execution
+            counts only when the Zap contract that emitted it was deployed by one of the canonical factories. No
+            indexer, no estimates.
           </p>
         </div>
         <aside className={styles.heroCard}>
@@ -99,7 +100,7 @@ export default async function ZapsFeedPage(): Promise<React.JSX.Element> {
           {rangeVault === null ? (
             <>
               <strong>unavailable</strong>
-              <span>ozRANGE position — RPC read failed</span>
+              <span>ozRANGE holdings — RPC read failed</span>
             </>
           ) : (
             <>
@@ -125,7 +126,7 @@ export default async function ZapsFeedPage(): Promise<React.JSX.Element> {
                   ? ` · ${Number((rangeVault.burnedShares * 1000n) / rangeVault.totalShares) / 10}% burned`
                   : ""}
               </strong>
-              <span>ozRANGE shares · burned share is the permanent seed</span>
+              <span>ozRANGE shares · the burned portion is the permanent seed</span>
             </>
           )}
         </div>
@@ -166,7 +167,7 @@ export default async function ZapsFeedPage(): Promise<React.JSX.Element> {
           <h2 className={styles.cardTitle}>Deployed Zaps</h2>
           <span className={styles.cardSub}>
             {page === null
-              ? "deployed by the factory, or not listed"
+              ? "unavailable — the log query failed"
               : page.rows.length === 0
                 ? "no Zap has been deployed yet"
                 : page.truncated
@@ -185,7 +186,7 @@ export default async function ZapsFeedPage(): Promise<React.JSX.Element> {
             {page !== null && (
               <span className={styles.liveChip}>
                 <i className={styles.liveDot} />
-                polling logs
+                re-read every 5 min
               </span>
             )}
           </span>
@@ -195,7 +196,7 @@ export default async function ZapsFeedPage(): Promise<React.JSX.Element> {
           <div className={styles.unavailable} role="alert">
             <p>
               The Robinhood RPC log query failed, so this list is unavailable. An empty list would be a claim that the
-              factory has deployed nothing. Nothing is shown instead.
+              canonical factories have deployed nothing. Nothing is shown instead.
             </p>
             <a
               className={styles.ghostBtn}
@@ -203,7 +204,7 @@ export default async function ZapsFeedPage(): Promise<React.JSX.Element> {
               target="_blank"
               rel="noreferrer"
             >
-              Read the factory directly ↗
+              Read the v1.1 factory directly ↗
             </a>
           </div>
         ) : page.rows.length === 0 ? (
@@ -247,11 +248,11 @@ export default async function ZapsFeedPage(): Promise<React.JSX.Element> {
         )}
 
         <p className={styles.cardFoot}>
-          An address reaches this list one way: the canonical factory&apos;s own ZapCreated log names it. What a Zap
-          does is stored in the Zap, not here — open a row to read the policy it committed to and every execution it
-          has logged.
+          An address reaches this list one way: a canonical factory&apos;s own ZapCreated log names it — v1.1, v3, or
+          v3.1. What a Zap does is stored in the Zap, not here — open a row to read the policy it committed to and the
+          Executed and EmergencyExit logs it has emitted.
           {page?.truncated
-            ? " The rest are onchain and readable from the factory. This page does not list them."
+            ? " The rest are onchain and readable from the factories. This page does not list them."
             : ""}
         </p>
       </section>
@@ -278,7 +279,7 @@ export default async function ZapsFeedPage(): Promise<React.JSX.Element> {
         </div>
         <p className={styles.cardFoot}>
           Six source-verified contracts on Robinhood Blockscout. The expansion adapters and the v3 / v3.1 automation
-          factories are deployed alongside them — every address is listed in the deployments doc.
+          factories are deployed alongside them; their addresses are not listed on this page.
         </p>
         <p className={styles.cardFoot}>
           Depositing funds can result in total loss. Onchain actions are irreversible.{" "}

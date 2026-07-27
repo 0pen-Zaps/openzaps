@@ -105,7 +105,7 @@ export default function ZapDrawPage(): React.JSX.Element {
         <aside className={styles.newHere}>
           <span className={styles.newHereTag}>NEW HERE</span>
           <strong className={styles.newHereLine}>
-            Four sealed claims, opened together, paid smallest first.
+            Sealed draws, opened together, paid smallest first.
           </strong>
           <Link href="/zapdraw/how" className={styles.newHereLink}>
             Watch a round play out &rarr;

@@ -11,8 +11,8 @@ export const metadata = pageMetadata({
 
 const risks = [
   ["No external audit", "The contracts and the interface have not been externally audited. They should not be treated as production-cleared for real funds. Depositing funds can result in total loss."],
-  ["Onchain irreversibility", "Transactions, approvals, swaps, and deposits cannot be reversed by OpenZaps once submitted onchain. Once it executes, it cannot be undone."],
-  ["Relayer risk", "A relayer may fail, censor, delay, or submit at an unfavorable time inside the signed constraints."],
+  ["Onchain irreversibility", "Transactions, approvals, swaps, and deposits cannot be reversed by OpenZaps once they are submitted onchain. Once an execution lands, nothing here can undo it."],
+  ["Relayer and executor risk", "A relayer, or any executor eligible to submit a recurring or triggered Zap, may fail, censor, delay, or submit at an unfavorable time inside the signed constraints. If no executor serves an intent, nothing runs. Each automated run also pays a fixed 1% of its measured output as a protocol fee."],
   ["Market risk", "Slippage, liquidity, oracle movement, MEV, token volatility, and gas spikes can cause losses."],
   ["Token risk", `${TOKEN.symbol} is an ERC-20. It does not represent equity, revenue, yield, a redemption right, or a guarantee of protocol access. No return is implied.`],
   ["User responsibility", "Users must review wallet prompts, policy fields, amounts and spend limits, recipients, fees, and revocation paths before signing."],
@@ -36,7 +36,7 @@ export default function LegalPage(): React.JSX.Element {
       <div className={styles.actions}>
         <span className={styles.metaChip}>
           <b>Transaction posture</b>
-          Wallet-confirmed broadcasts only
+          Owner-signed intents only
         </span>
       </div>
 

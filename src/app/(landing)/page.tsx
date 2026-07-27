@@ -173,7 +173,7 @@ export default function LandingPage(): React.JSX.Element {
             >
               OpenZaps turns a multi-step DeFi workflow into one bounded Zap.
               Compose the route and its execution policy, review the wallet confirmation,
-              then Zap now, on a cadence, or on a price move. The capsule enforces the signed bounds onchain.
+              then Zap now, on a cadence, or on a price move. The Zap contract enforces the signed bounds onchain.
             </p>
             <div
               className={`${styles.heroActions} ${styles.heroEnter}`}
@@ -337,7 +337,7 @@ export default function LandingPage(): React.JSX.Element {
               </h2>
               <p className={styles.sectionLead}>
                 The same compiler that powers the builder, executing here. Pick an
-                intent, set an amount, and preview the checks a capsule performs
+                intent, set an amount, and preview the checks a Zap performs
                 before anything is signed.
               </p>
             </Reveal>
@@ -443,7 +443,7 @@ export default function LandingPage(): React.JSX.Element {
                 Agents should express intent, not assemble transactions.
               </h2>
               <p className={styles.sectionLead}>
-                A capsule is the contract between you and your agent: it can decide
+                A Zap is the contract between you and your agent: it can decide
                 when to execute, and nothing else. An eligible executor can submit
                 the Zap it owes, while the chain refuses every Zap it does not.
               </p>
@@ -531,7 +531,7 @@ export default function LandingPage(): React.JSX.Element {
             <Reveal as="header" className={styles.sectionHead}>
               <p className={styles.kicker}>OpenZaps FAQ</p>
               <h2 id="faq-title" className={styles.sectionTitle}>
-                DeFi zaps, policy capsules, and wallet control.
+                DeFi Zaps, immutable policies, and wallet control.
               </h2>
               <p className={styles.sectionLead}>
                 Start with the protocol model, then inspect the <Link href="/docs">developer and security docs</Link>,
@@ -595,7 +595,7 @@ const WHY = [
   },
   {
     title: "Transparent",
-    detail: "Every capsule's policy, provenance, and executions are public and re-verifiable on /explore.",
+    detail: "Every Zap's policy, provenance, and executions are public and re-verifiable on /explore.",
   },
   {
     title: "Bounded",
@@ -606,6 +606,6 @@ const WHY = [
     // twice in the developers section, while nothing here covered the standing-authorization model.
     title: "Standing",
     detail:
-      "One signature can authorize a whole series. The capsule enforces the interval, total Zap count, and a floor priced from live spot, so it keeps Zapping without keeping your keys online.",
+      "One signature can authorize a whole series. The Zap enforces the interval, the total number of runs, and a floor priced from live spot, so it keeps running without keeping your keys online.",
   },
 ] as const;

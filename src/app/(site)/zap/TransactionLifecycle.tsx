@@ -24,13 +24,16 @@ const STEPS = [
   },
   {
     id: "verify",
+    // "Postconditions" belongs to the contract: the Zap asserts those onchain,
+    // inside the execution. What happens after a receipt is the app reading the
+    // result back — the nonce, the balances, the owner and policy of a new Zap.
     title: "Receipt verify",
-    detail: "Receipt status closes the broadcast loop; Zap actions then read their postconditions.",
+    detail: "Receipt status closes the broadcast loop; the result is then read back onchain.",
   },
 ] as const;
 
 function summary(activity: TransactionLifecycleState | null): string {
-  if (!activity) return "No wallet write is active. Every submission will trace these four boundaries.";
+  if (!activity) return "No wallet write is active. Every submission traces these four stages.";
   if (activity.stage === "wallet") return `${activity.label}: waiting for wallet review.`;
   if (activity.stage === "not-submitted") return `${activity.label}: nothing was submitted onchain.`;
   if (activity.stage === "submitted") return `${activity.label}: submitted and waiting for a receipt.`;
@@ -53,8 +56,10 @@ export function TransactionLifecycle({
   return (
     <section className={styles.lifecycle} aria-labelledby="transaction-lifecycle-title">
       <div className={styles.lifecycleHead}>
+        {/* Not "execution": this traces every wallet write on the screen —
+            wrapping, funding, recovery — not only the Zap's execution. */}
         <h3 id="transaction-lifecycle-title" className={styles.lifecycleTitle}>
-          Execution flight recorder
+          Transaction flight recorder
         </h3>
         <p className={styles.lifecycleSummary} aria-live="polite">{summary(activity)}</p>
       </div>

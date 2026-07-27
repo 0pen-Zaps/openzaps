@@ -32,14 +32,14 @@ export default function HowPage(): React.JSX.Element {
       <header className={styles.head}>
         <span className={styles.eyebrow}>ZapDraw · one round, start to finish</span>
         <h1 className={styles.title}>Watch a round.</h1>
-        <p className={styles.lead}>Scroll it. Real numbers, no reading required.</p>
+        <p className={styles.lead}>Step by step, in real numbers. No reading required.</p>
       </header>
 
       <section className={styles.rule}>
         <Glyph name="alert" className={styles.ruleIcon} />
         <p className={styles.ruleLine}>
-          The bus pays a claim <strong>in full, or not at all.</strong> A claim it cannot cover
-          completely is paid nothing — and the money it could not cover stays on the bus.
+          The bus pays a draw <strong>in full, or not at all.</strong> A draw it cannot cover
+          completely is paid nothing — and the money it could not be paid from stays on the bus.
         </p>
       </section>
 
@@ -48,7 +48,7 @@ export default function HowPage(): React.JSX.Element {
       <section className={styles.foot}>
         <h2 className={styles.footTitle}>That is the whole game.</h2>
         <p className={styles.footBody}>
-          Claim a small slice and you are almost certainly paid it. Claim a big one and you are paid a lot —
+          Draw a small slice and you are almost certainly paid it. Draw a big one and you are paid a lot —
           but only if enough of the table left room for you. Everyone chooses in secret, at the same time, and
           nothing but the other players decides how it lands.
         </p>

@@ -38,8 +38,8 @@ import s from "./busrun.module.css";
  * elsewhere: it is `aria-hidden`, holds no focusable node except the final CTA,
  * and is only mounted when motion is permitted and the viewport can hold it.
  * Everyone else — reduced motion, Calm, phones, short windows, no JS — gets the
- * stepper, which carries the identical beats. The static path is the primary
- * deliverable here, not a fallback.
+ * stepper, which teaches the same round from the same numbers. The static path
+ * is the primary deliverable here, not a fallback.
  */
 
 
@@ -62,8 +62,8 @@ function scrollportOf(el: HTMLElement): HTMLElement | null {
 type Beat = { readonly cap: string; readonly sub: React.ReactNode };
 
 const BEATS: readonly Beat[] = [
-  { cap: "One bus.", sub: <>Everything this round can pay: <strong>{tokens(DEMO.capacity)}</strong>.</> },
-  { cap: "Claims are paid smallest first.", sub: "Each one in full, the moment the bus reaches it." },
+  { cap: "One bus.", sub: <>Everything this round can pay: <strong>{tokens(DEMO.capacity)} 0xZAPS</strong>.</> },
+  { cap: "Draws are paid smallest first.", sub: "Each one in full, the moment the bus reaches it." },
   {
     cap: "Three are paid.",
     sub: (
@@ -277,10 +277,10 @@ export function BusRun(): React.JSX.Element | null {
 
           <div className={s.cta}>
             <Link href="/zapdraw" className={s.ctaButton}>
-              Zap in to a round &rarr;
+              Take a seat &rarr;
             </Link>
             <span className={s.ctaNote}>
-              {tokens(DEMO.entry)} 0xZAPS a seat. Your claim stays sealed until you open it.
+              Every seat costs the same. Your draw stays sealed until you open it.
             </span>
           </div>
 
