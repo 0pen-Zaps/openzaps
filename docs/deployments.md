@@ -199,6 +199,56 @@ aeWETH→0xZAPS adapter with a caller-reviewed minimum output, and credits a sep
   independently read back. It held zero ETH, aeWETH, 0xZAPS, and zero adapter allowance after deployment.
 - The existing automated execution fee remains separate: 1% per run, split 80% executor / 20% to
   the original v3 or v3.1 automation pot.
+### OVERDRAW (`ZapOverdraw`) — written and tested, **NOT DEPLOYED**
+
+| | |
+|---|---|
+| Contract | `contracts/src/game/ZapOverdraw.sol` |
+| Deploy script | `contracts/script/DeployOverdraw.s.sol` |
+| Tests | `contracts/test/ZapOverdraw.t.sol` (28 unit/fuzz), `src/lib/overdraw.test.ts` (15) |
+| Address on 4663 | **none — not broadcast** |
+| App surface | `/overdraw`, gated on `NEXT_PUBLIC_OVERDRAW_ADDRESS` |
+
+A standalone sealed-bid game staked in 0xZAPS. Players pay a fixed entry, commit a hashed "draw"
+(a bps claim on the round's capacity), reveal it, and settlement pays the ascending draws in order
+until the capacity is exhausted — everyone after that is cut. Undelivered capacity returns to a
+carry pool that later rounds draw on.
+
+Two economic properties are load-bearing and are enforced by tests, not by comments:
+
+* **A table sweep is never profitable.** An attacker holding every seat controls every draw, so
+  they can always be served in full and take the whole capacity — and if they call `settle` the
+  keeper reward returns to them too. Their profit is exactly `released − rake`. `releasableCarry()`
+  caps `released` at the round's own rake, so the profit is never positive at any seat count.
+  Without that cap, a carry above ~2% of two entries would have made a two-address sweep pay.
+  Consequence, stated plainly: the pool drains no faster than the rake, so it is a slow rebate
+  rather than a jackpot, and `rakeBps == 0` is refused because it would freeze the pool forever.
+* **Ties are not a race.** Equal draws are separated by `keccak256(round, player)`, fixed before the
+  round opens — not by reveal order. A reveal-order tiebreak would have made every tie a latency
+  auction that a bot wins against a human, and on a single-sequencer chain would have let the
+  block producer choose the winner by reordering reveals already in the mempool.
+
+It is **not part of the protocol**. It is not an adapter, is not allowlisted in the
+`AdapterRegistry`, holds no policy capsule, and no zap route can reach it. A bug in it cannot touch
+capsule funds, and deploying it changes nothing about the live v1.1/v3 sets above.
+
+Two things gate it, in this order:
+
+1. **Broadcast.** `DeployOverdraw.s.sol` requires `OVERDRAW_RAKE_RECIPIENT` and fails before
+   broadcast if the stake address is not a live ERC-20. Every immutable is read back off the
+   deployed contract and asserted. There is no admin, no pause and no upgrade path, so the entry
+   fee, windows, rake and rake recipient are permanent from that transaction onward.
+2. **`NEXT_PUBLIC_OVERDRAW_ADDRESS` in Vercel.** Until this is set, `/overdraw` fails closed to a
+   "not deployed" page with no address and no table — deliberately, because a game surface that
+   renders a plausible table over a contract that does not exist is how people lose money to a
+   screenshot. Setting it is the moment the product starts asking real people for real 0xZAPS.
+
+Verified locally end to end on an anvil node at chain 4663 (2026-07-26): four seats at 1,000 stake,
+draws 10/25/30/50%, revealed out of order. Capacity settled at 3,900 (4,000 fees − 80 rake − 20
+keeper); paid 390 / 975 / 1,170; the 50% draw was cut; 1,365 returned to the pool; contract balance
+matched credits + pool + open-round fees exactly. A second run grew the pool to 3,744 and confirmed
+a following two-seat round could release only 40 — the rake it pays. **Pre-external-audit, like
+everything else here.**
 
 ## Base mainnet (chainId 8453)
 
