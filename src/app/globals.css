@@ -1,12 +1,18 @@
 /* ── Theme tokens ─────────────────────────────────────────────────────────
-   Five themes, one token layer. Ivory lives on `:root` so a server render with
-   no attribute paints correctly and a JS-disabled visitor gets a complete
-   theme; the other four are `[data-oz-theme]` blocks stamped onto <html> by
-   the pre-paint guard in src/app/layout.tsx.
+   Five themes, one token layer. Voltage is the default: it lives on `:root`
+   so a server render with no attribute paints correctly and a JS-disabled
+   visitor gets a complete theme; the other four are `[data-oz-theme]` blocks
+   stamped onto <html> by the pre-paint guard in src/app/layout.tsx.
 
-   Voltage is not a new theme — it is the identity this app shipped with,
-   preserved exactly (#FFFC00 on #050505, zero radius, no shadows), so nobody
-   who liked the old app is forced off it.
+   THE `:root` BLOCK MUST STAY FIRST. `:root` and `[data-oz-theme="x"]` have
+   the same specificity (0,1,0), so source order alone decides the winner. Move
+   the default block below the others and `:root` beats every attribute after
+   it — every theme silently paints Voltage. Changing the default therefore
+   means moving that block to the top, not just moving the `:root,` line, and
+   it must be kept in step with DEFAULT_THEME in src/lib/theme.ts.
+
+   Voltage is the identity this app shipped with, preserved exactly (#FFFC00 on
+   #050505, zero radius, no shadows).
 
    The landing page at `/` is deliberately NOT themed by this layer. Every one
    of its tokens is redeclared on `.landing` in landing.module.css, so `/`
@@ -19,7 +25,82 @@
    which KIND of value is on a wire — collapsing those into the brand would
    delete information the builder needs to show.
    ──────────────────────────────────────────────────────────────────────── */
+/* The identity this app shipped with, and the default. Carries `:root` — see
+   the ordering note above before moving this block. */
 :root,
+[data-oz-theme="voltage"] {
+  --bg: #050505;
+  --sunk: #000000;
+  --panel: #0b0b0b;
+  --panel-2: #0f0f0f;
+  --chip: #151515;
+  --track: #242424;
+  --token-dot: #2e2e2e;
+  --hover: rgba(255, 255, 255, 0.05);
+
+  --ink: #f4f4f1;
+  --ink-prose: #d6d6d2;
+  --ink-2: #b9b9b4;
+  --ink-3: #8f8f8a;
+
+  --line: rgba(244, 244, 241, 0.13);
+  --line-2: rgba(244, 244, 241, 0.1);
+  --line-soft: rgba(244, 244, 241, 0.06);
+  --line-softer: rgba(244, 244, 241, 0.05);
+  --line-strong: rgba(244, 244, 241, 0.18);
+  --line-btn: rgba(244, 244, 241, 0.16);
+  --line-hover: rgba(255, 252, 0, 0.55);
+  --scroll: rgba(244, 244, 241, 0.18);
+
+  --btn: #fffc00;
+  --btn-hover: #fffd66;
+  --btn-ink: #050505;
+  --btn-ink-2: rgba(5, 5, 5, 0.72);
+  --btn-ink-3: rgba(5, 5, 5, 0.5);
+
+  --zap: #fffc00;
+  /* Ink ON the brand fill. Never --ink: on the dark themes --ink is light, so
+     using it here makes every label on a yellow surface disappear. */
+  --on-zap: #050505;
+  /* A brand mark sitting ON the primary fill. Never --zap: here the primary
+     fill IS yellow, so the mark would vanish into it. */
+  --zap-on-btn: #050505;
+  --zap-deep: #cfcc00;
+  --zap-wash: #201f00;
+  --zap-wash-ink: #fffd66;
+  --zap-tint: #141400;
+  --zap-line: rgba(255, 252, 0, 0.5);
+  --link: #fffd66;
+  --spot: rgba(255, 252, 0, 0.1);
+
+  --ok: #9effb8;
+  --ok-wash: #0e2013;
+  --warn: #ffbd6d;
+  --warn-wash: #241a0c;
+  --danger: #ff8a8a;
+  --danger-wash: #2a1010;
+  --danger-wash-2: #3a1616;
+  --danger-tint: #1c0d0d;
+  --danger-ink: #ffadad;
+  --danger-line: rgba(255, 138, 138, 0.34);
+  --info: #9cbaff;
+  --info-wash: #0f1523;
+
+  --sh-1: none;
+  --sh-seg: none;
+  --sh-btn: none;
+  --sh-2: none;
+  --sh-3: none;
+  --sh-4: none;
+
+  --r-card: 0px;
+  --r-card-sm: 0px;
+  --r-ctl: 0px;
+  --r-ctl-sm: 0px;
+  --r-chip: 0px;
+  --r-pill: 0px;
+}
+
 [data-oz-theme="ivory"] {
   --bg: #f6f3ec;
   --sunk: #efebe1;
@@ -54,11 +135,8 @@
   --btn-ink-3: rgba(251, 249, 244, 0.5);
 
   --zap: #fffc00;
-  /* Ink ON the brand fill. Never --ink: on the dark themes --ink is light, so
-     using it here makes every label on a yellow surface disappear. */
   --on-zap: #1e1b16;
-  /* A brand mark sitting ON the primary fill. Never --zap: in Voltage the
-     primary fill IS yellow, so the mark would vanish into it. */
+  /* Here the primary fill is ink, not yellow, so the mark can be the brand. */
   --zap-on-btn: #fffc00;
   --zap-deep: #b6a400;
   --zap-wash: #fcf6c9;
@@ -240,76 +318,6 @@
   --r-ctl-sm: 8px;
   --r-chip: 6px;
   --r-pill: 999px;
-}
-
-/* The identity this app shipped with, preserved as a theme. */
-[data-oz-theme="voltage"] {
-  --bg: #050505;
-  --sunk: #000000;
-  --panel: #0b0b0b;
-  --panel-2: #0f0f0f;
-  --chip: #151515;
-  --track: #242424;
-  --token-dot: #2e2e2e;
-  --hover: rgba(255, 255, 255, 0.05);
-
-  --ink: #f4f4f1;
-  --ink-prose: #d6d6d2;
-  --ink-2: #b9b9b4;
-  --ink-3: #8f8f8a;
-
-  --line: rgba(244, 244, 241, 0.13);
-  --line-2: rgba(244, 244, 241, 0.1);
-  --line-soft: rgba(244, 244, 241, 0.06);
-  --line-softer: rgba(244, 244, 241, 0.05);
-  --line-strong: rgba(244, 244, 241, 0.18);
-  --line-btn: rgba(244, 244, 241, 0.16);
-  --line-hover: rgba(255, 252, 0, 0.55);
-  --scroll: rgba(244, 244, 241, 0.18);
-
-  --btn: #fffc00;
-  --btn-hover: #fffd66;
-  --btn-ink: #050505;
-  --btn-ink-2: rgba(5, 5, 5, 0.72);
-  --btn-ink-3: rgba(5, 5, 5, 0.5);
-
-  --zap: #fffc00;
-  --on-zap: #050505;
-  --zap-on-btn: #050505;
-  --zap-deep: #cfcc00;
-  --zap-wash: #201f00;
-  --zap-wash-ink: #fffd66;
-  --zap-tint: #141400;
-  --zap-line: rgba(255, 252, 0, 0.5);
-  --link: #fffd66;
-  --spot: rgba(255, 252, 0, 0.1);
-
-  --ok: #9effb8;
-  --ok-wash: #0e2013;
-  --warn: #ffbd6d;
-  --warn-wash: #241a0c;
-  --danger: #ff8a8a;
-  --danger-wash: #2a1010;
-  --danger-wash-2: #3a1616;
-  --danger-tint: #1c0d0d;
-  --danger-ink: #ffadad;
-  --danger-line: rgba(255, 138, 138, 0.34);
-  --info: #9cbaff;
-  --info-wash: #0f1523;
-
-  --sh-1: none;
-  --sh-seg: none;
-  --sh-btn: none;
-  --sh-2: none;
-  --sh-3: none;
-  --sh-4: none;
-
-  --r-card: 0px;
-  --r-card-sm: 0px;
-  --r-ctl: 0px;
-  --r-ctl-sm: 0px;
-  --r-chip: 0px;
-  --r-pill: 0px;
 }
 
 [data-oz-theme="dusk"] {

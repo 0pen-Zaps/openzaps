@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "updatedAt": "2026-07-22T09:47:13Z",
+  "updatedAt": "2026-07-27T19:37:00Z",
   "project": {
     "name": "OpenZaps",
     "website": "https://www.0xzaps.com",
@@ -19,6 +19,7 @@
     "totalSupply": "100000000000",
     "totalSupplyRaw": "100000000000000000000000000000",
     "logo": "https://www.0xzaps.com/0xzaps-token.png",
+    "logoSvg": "https://www.0xzaps.com/0xzaps-token.svg",
     "logoTransparent200": "https://www.0xzaps.com/0xzaps-token-transparent-200.png",
     "banner1500x500": "https://www.0xzaps.com/0xzaps-banner-1500x500.png",
     "onchainImageURI": "ipfs://bafkreidndqit6ydpkivgmm4qdukh7sgv6uexjp3rc76iyvx22zd425ae7i",

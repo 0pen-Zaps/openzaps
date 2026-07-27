@@ -23,7 +23,7 @@ import { BOLT, BOLT_BOX, scanlines } from "@/lib/scanlines";
  *     a yellow bolt on it disappears completely (that is what `--zap-on-btn`
  *     exists for),
  *   - the 404 and error pages paint the mark straight onto `--bg`, which is
- *     cream under the default theme.
+ *     cream under Ivory.
  * Every call site therefore sets `color`. A caller that forgets inherits the
  * surrounding ink: off-brand, but visible — the right way round for a failure.
  */

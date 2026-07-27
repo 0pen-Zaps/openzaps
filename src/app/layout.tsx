@@ -10,7 +10,7 @@ import { ThemeProvider } from "@/components/ThemeProvider";
 import { WalletProvider } from "@/components/WalletProvider";
 import { LINKS, TOKEN, TOKEN_LAUNCH, X_HANDLE } from "@/lib/config";
 import { MOTION_STORAGE_KEY } from "@/lib/motion-preference";
-import { THEME_BG, THEME_GUARD } from "@/lib/theme";
+import { DEFAULT_THEME, THEME_BG, THEME_GUARD, THEME_SCHEME } from "@/lib/theme";
 import {
   SITE_URL,
   SITE_NAME,
@@ -118,10 +118,10 @@ export const metadata: Metadata = {
 };
 
 /**
- * The app ships five themes, three of them light, so a single hardcoded dark
- * `themeColor` is wrong for more visitors than it is right for. These two
- * entries are the pre-JS answer: the browser matches the visitor's OS
- * preference and paints its chrome to suit.
+ * The pre-JS answer, and it is not a guess: a visitor with nothing stored gets
+ * DEFAULT_THEME whatever their OS prefers, so this is simply that theme's own
+ * `--bg`. Keying it off `prefers-color-scheme` instead would paint a light
+ * chrome band above a black page for every light-OS first-timer.
  *
  * The real, per-theme value is written client-side by ThemeProvider once the
  * picked theme is known — metadata cannot know which of five was chosen.
@@ -129,11 +129,8 @@ export const metadata: Metadata = {
  * whatever that says.
  */
 export const viewport: Viewport = {
-  colorScheme: "light dark",
-  themeColor: [
-    { media: "(prefers-color-scheme: light)", color: THEME_BG.ivory },
-    { media: "(prefers-color-scheme: dark)", color: THEME_BG.graphite },
-  ],
+  colorScheme: THEME_SCHEME[DEFAULT_THEME],
+  themeColor: THEME_BG[DEFAULT_THEME],
 };
 
 const siteGraph = {
@@ -256,8 +253,8 @@ export default function RootLayout({
       </head>
       <body>
         {/* First, before either of the others: the theme decides what colour
-            everything else is painted, and Ivory flashing on a Voltage visitor
-            is worse than having no themes at all. */}
+            everything else is painted, and Voltage flashing on an Ivory
+            visitor is worse than having no themes at all. */}
         <Script id="theme-guard" strategy="beforeInteractive">
           {THEME_GUARD}
         </Script>
