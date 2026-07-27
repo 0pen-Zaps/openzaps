@@ -1,4 +1,4 @@
-import { getAddress, zeroAddress, type Address, type Hex } from "viem";
+import { encodeAbiParameters, getAddress, keccak256, zeroAddress, type Address, type Hex } from "viem";
 
 /**
  * Client-side model of the OVERDRAW game (`contracts/src/game/ZapOverdraw.sol`).
@@ -78,16 +78,30 @@ export type WaterfallRow = RevealedDraw & {
 export type Waterfall = {
   readonly rows: readonly WaterfallRow[];
   readonly served: bigint;
-  /** Capacity the bus does not deliver, which becomes the next round's opening pot. */
+  /** Capacity the bus does not deliver, which returns to the carry pool. */
   readonly carry: bigint;
   /** True when there are too few reveals for the bus to discharge at all. */
   readonly stalled: boolean;
 };
 
 /**
+ * The tiebreak between equal draws, mirroring `ZapOverdraw._tiebreak`.
+ *
+ * A fixed hash of (round, player) — deliberately not reveal order, so a tie is
+ * never a race to land a transaction first, and never a block producer's to
+ * decide by reordering reveals already in the mempool. Because it is fixed
+ * before the round opens, this preview can show a player where a tie would put
+ * them before they commit.
+ */
+export function tiebreak(round: bigint, player: Address): bigint {
+  const packed = encodeAbiParameters([{ type: "uint256" }, { type: "address" }], [round, player]);
+  return BigInt(keccak256(packed)) >> 80n;
+}
+
+/**
  * The settlement waterfall, as the contract runs it.
  *
- * Sorted ascending by draw, ties broken by reveal order, each row paid in full
+ * Sorted ascending by draw, ties broken by {tiebreak}, each row paid in full
  * while the remaining current covers it, and the walk stops at the first row it
  * cannot cover. Kept in step with `ZapOverdraw._discharge`, including the two
  * details that are easy to get wrong and that `overdraw.test.ts` pins:
@@ -95,9 +109,9 @@ export type Waterfall = {
  *   * a draw that rounds down to zero is served for nothing and does NOT stop
  *     the walk for the larger draws behind it, and
  *   * a round below {MIN_REVEALS} does not discharge at all — the whole capacity
- *     carries rather than being handed to whoever turned up alone.
+ *     returns to the pool rather than being handed to whoever turned up alone.
  */
-export function waterfall(draws: readonly RevealedDraw[], capacity: bigint): Waterfall {
+export function waterfall(draws: readonly RevealedDraw[], capacity: bigint, round: bigint): Waterfall {
   if (draws.length < MIN_REVEALS || capacity <= 0n) {
     return {
       rows: draws.map((entry) => ({ ...entry, wants: 0n, paid: 0n, served: false })),
@@ -107,11 +121,16 @@ export function waterfall(draws: readonly RevealedDraw[], capacity: bigint): Wat
     };
   }
 
-  // Sort a copy by (draw asc, reveal index asc). The index tiebreak is what the
-  // contract gets for free by packing it into the low bits of its sort key.
+  // Sort a copy by (draw asc, tiebreak asc, index asc) — the same total order the
+  // contract packs into one word. The index is only there to keep the comparison
+  // total if two tiebreaks ever collide.
   const order = draws
-    .map((entry, index) => ({ entry, index }))
-    .sort((a, b) => (a.entry.draw === b.entry.draw ? a.index - b.index : a.entry.draw - b.entry.draw));
+    .map((entry, index) => ({ entry, index, tie: tiebreak(round, entry.player) }))
+    .sort((a, b) => {
+      if (a.entry.draw !== b.entry.draw) return a.entry.draw - b.entry.draw;
+      if (a.tie !== b.tie) return a.tie < b.tie ? -1 : 1;
+      return a.index - b.index;
+    });
 
   const rows: WaterfallRow[] = [];
   let remaining = capacity;
@@ -139,13 +158,33 @@ export function waterfall(draws: readonly RevealedDraw[], capacity: bigint): Wat
   return { rows, served: capacity - remaining, carry: remaining, stalled: false };
 }
 
-/** Capacity a round would discharge, given its pot and this deployment's fees. */
-export function capacityOf(pot: bigint, seats: number, entryFee: bigint, rakeBps: number, keeperBps: number): bigint {
+/**
+ * Capacity a round would discharge, mirroring `ZapOverdraw.settle`.
+ *
+ * The carry pool contributes only up to the round's own rake. That cap is the
+ * anti-sweep defence — an attacker holding every seat recovers everything but
+ * the rake, so any release beyond it would pay them to take the table — and it
+ * is the reason a large pool does not mean a large round.
+ */
+export function capacityOf(
+  seats: number,
+  entryFee: bigint,
+  rakeBps: number,
+  keeperBps: number,
+  carryPool: bigint,
+): bigint {
   const fees = BigInt(seats) * entryFee;
   const rake = (fees * BigInt(rakeBps)) / BigInt(BPS);
   const keeper = (fees * BigInt(keeperBps)) / BigInt(BPS);
-  const capacity = pot - rake - keeper;
+  const released = carryPool < rake ? carryPool : rake;
+  const capacity = fees - rake - keeper + released;
   return capacity > 0n ? capacity : 0n;
+}
+
+/** How much of the pool this round may draw on. Mirrors `releasableCarry()`. */
+export function releasableCarry(seats: number, entryFee: bigint, rakeBps: number, carryPool: bigint): bigint {
+  const rake = (BigInt(seats) * entryFee * BigInt(rakeBps)) / BigInt(BPS);
+  return carryPool < rake ? carryPool : rake;
 }
 
 export const overdrawAbi = [
@@ -154,6 +193,8 @@ export const overdrawAbi = [
   { type: "function", name: "rakeBps", inputs: [], outputs: [{ type: "uint16" }], stateMutability: "view" },
   { type: "function", name: "keeperBps", inputs: [], outputs: [{ type: "uint16" }], stateMutability: "view" },
   { type: "function", name: "currentRound", inputs: [], outputs: [{ type: "uint256" }], stateMutability: "view" },
+  { type: "function", name: "carryPool", inputs: [], outputs: [{ type: "uint256" }], stateMutability: "view" },
+  { type: "function", name: "releasableCarry", inputs: [], outputs: [{ type: "uint256" }], stateMutability: "view" },
   { type: "function", name: "phase", inputs: [], outputs: [{ type: "uint8" }], stateMutability: "view" },
   {
     type: "function",
@@ -165,7 +206,6 @@ export const overdrawAbi = [
       { name: "seats", type: "uint32" },
       { name: "reveals", type: "uint32" },
       { name: "settled", type: "bool" },
-      { name: "pot", type: "uint256" },
     ],
     stateMutability: "view",
   },

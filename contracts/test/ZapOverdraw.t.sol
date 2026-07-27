@@ -59,6 +59,14 @@ contract ZapOverdrawTest is Test {
     address internal carol = address(0xCA401);
     address internal dave = address(0xDA7E);
 
+    /// Mirror of `ZapOverdraw.MIN_REVEALS`, for bounding the sweep fuzz.
+    uint256 internal constant MIN_REVEALS_T = 2;
+
+    /// @dev Every address that could hold a credit. The solvency check sums over this, so any
+    ///      helper that mints a new player MUST append to it — a missing entry understates what
+    ///      the contract owes and turns a real solvency failure into a passing test.
+    address[] internal _tracked;
+
     function setUp() public {
         // A round opens in the constructor, so start the clock somewhere sane rather than at 0.
         vm.warp(1_700_000_000);
@@ -70,7 +78,10 @@ contract ZapOverdrawTest is Test {
             zaps.mint(players[i], 100_000e18);
             vm.prank(players[i]);
             zaps.approve(address(game), type(uint256).max);
+            _tracked.push(players[i]);
         }
+        _tracked.push(address(this));
+        _tracked.push(RAKE);
     }
 
     // ------------------------------------------------------------------ //
@@ -89,22 +100,26 @@ contract ZapOverdrawTest is Test {
     }
 
     function _intoReveal() internal {
-        (uint64 commitEnd,,,,,) = game.rounds(game.currentRound());
+        (uint64 commitEnd,,,,) = game.rounds(game.currentRound());
         vm.warp(commitEnd + 1);
     }
 
     function _intoSettle() internal {
-        (, uint64 revealEnd,,,,) = game.rounds(game.currentRound());
+        (, uint64 revealEnd,,,) = game.rounds(game.currentRound());
         vm.warp(revealEnd + 1);
     }
 
     /// @dev The one accounting fact everything else rests on: every token this contract holds is
     ///      either credited to somebody or sitting in the open round's pot. Never more, never less.
-    function _assertSolvent() internal view {
-        uint256 owed = game.credit(alice) + game.credit(bob) + game.credit(carol) + game.credit(dave)
-            + game.credit(address(this)) + game.credit(RAKE);
-        (,,,,, uint256 pot) = game.rounds(game.currentRound());
-        assertEq(zaps.balanceOf(address(game)), owed + pot, "solvency");
+    function _assertSolvent() internal {
+        uint256 owed;
+        for (uint256 i = 0; i < _tracked.length; ++i) owed += game.credit(_tracked[i]);
+        (,, uint32 seats,,) = game.rounds(game.currentRound());
+        assertEq(
+            zaps.balanceOf(address(game)),
+            owed + game.carryPool() + uint256(seats) * ENTRY,
+            "solvency"
+        );
     }
 
     // ------------------------------------------------------------------ //
@@ -137,27 +152,54 @@ contract ZapOverdrawTest is Test {
         assertEq(game.credit(address(this)), 2e18, "keeper reward");
 
         // 390e18 capacity less 253.5e18 served stays charged for round 2.
-        (,,,,, uint256 nextPot) = game.rounds(game.currentRound());
-        assertEq(nextPot, 136.5e18, "carry");
+        assertEq(game.carryPool(), 136.5e18, "carry");
         assertEq(game.currentRound(), 2, "round advanced");
         _assertSolvent();
     }
 
-    function test_equalDrawsBreakInRevealOrder() public {
+    /// @dev Mirrors `ZapOverdraw._tiebreak`. Equal draws are ordered by this, not by who got their
+    ///      reveal in first, so the test can predict the winner before either player moves.
+    function _tiebreak(uint256 roundId, address player) internal pure returns (uint256) {
+        return uint256(keccak256(abi.encode(roundId, player))) >> 80;
+    }
+
+    /// Equal draws must resolve the same way no matter what order the reveals land in. If they did
+    /// not, every tie would be a latency race — and on a single-sequencer chain, the sequencer's
+    /// choice — rather than a game.
+    function test_equalDrawsAreBrokenByAFixedHashNotByRevealOrder() public {
+        address first = _tiebreak(1, alice) < _tiebreak(1, bob) ? alice : bob;
+        address second = first == alice ? bob : alice;
+
         _commit(alice, 10_000, "a");
         _commit(bob, 10_000, "b");
 
         _intoReveal();
-        _reveal(bob, 10_000, "b"); // bob reveals first, so bob is served first
-        _reveal(alice, 10_000, "a");
+        // Deliberately reveal the loser first: under a reveal-order tiebreak this alone would
+        // hand them the entire capacity.
+        _reveal(second, 10_000, second == alice ? bytes32("a") : bytes32("b"));
+        _reveal(first, 10_000, first == alice ? bytes32("a") : bytes32("b"));
 
         _intoSettle();
         game.settle();
 
-        // fees 200e18, rake 4e18, keeper 1e18, capacity 195e18 — bob takes all of it.
-        assertEq(game.credit(bob), 195e18, "bob served");
-        assertEq(game.credit(alice), 0, "alice cut");
+        assertEq(game.credit(first), 195e18, "lower tiebreak served");
+        assertEq(game.credit(second), 0, "higher tiebreak cut despite revealing first");
         _assertSolvent();
+    }
+
+    /// The same table, revealed in the opposite order, must settle identically.
+    function test_revealOrderCannotChangeTheOutcome() public {
+        address first = _tiebreak(1, alice) < _tiebreak(1, bob) ? alice : bob;
+
+        _commit(alice, 10_000, "a");
+        _commit(bob, 10_000, "b");
+        _intoReveal();
+        _reveal(first, 10_000, first == alice ? bytes32("a") : bytes32("b"));
+        _reveal(first == alice ? bob : alice, 10_000, first == alice ? bytes32("b") : bytes32("a"));
+        _intoSettle();
+        game.settle();
+
+        assertEq(game.credit(first), 195e18, "same winner either way");
     }
 
     function test_unrevealedSeatForfeitsItsEntryToThePot() public {
@@ -189,15 +231,16 @@ contract ZapOverdrawTest is Test {
         _intoSettle();
         game.settle();
 
-        // capacity 195e18, two 10% draws take 39e18, so 156e18 carries.
-        (,,,,, uint256 carried) = game.rounds(2);
-        assertEq(carried, 156e18, "carried in");
+        // capacity 195e18, two 10% draws take 39e18, so 156e18 returns to the pool.
+        assertEq(game.carryPool(), 156e18, "pooled");
 
-        // Round 2: one seat, but the carry is already in the pot before anyone pays.
+        // Round 2 may draw on the pool only up to its own rake: 2% of 200e18 is 4e18. That cap is
+        // the whole anti-sweep defence, so it is asserted on the capacity a player actually sees.
         _commit(carol, 10_000, "c2");
         _commit(dave, 10_000, "d2");
-        (,,,,, uint256 pot2) = game.rounds(2);
-        assertEq(pot2, 156e18 + 200e18, "carry plus fresh fees");
+        (uint256 capacity2,) = game.previewCapacity();
+        assertEq(capacity2, 200e18 - 4e18 - 1e18 + 4e18, "fees less friction, plus a capped release");
+        assertEq(game.releasableCarry(), 4e18, "release is capped at the round's rake");
         _assertSolvent();
     }
 
@@ -210,8 +253,7 @@ contract ZapOverdrawTest is Test {
         game.settle();
 
         assertEq(game.credit(alice), 0, "no discharge below MIN_REVEALS");
-        (,,,,, uint256 carried) = game.rounds(2);
-        assertEq(carried, 195e18, "whole capacity carries");
+        assertEq(game.carryPool(), 195e18, "whole capacity returns to the pool");
         _assertSolvent();
     }
 
@@ -220,8 +262,7 @@ contract ZapOverdrawTest is Test {
         _intoSettle();
         game.settle();
 
-        (,,,,, uint256 carried) = game.rounds(2);
-        assertEq(carried, 100e18 - 2e18 - 0.5e18, "capacity carries whole");
+        assertEq(game.carryPool(), 100e18 - 2e18 - 0.5e18, "capacity returns to the pool");
         assertEq(game.currentRound(), 2);
         _assertSolvent();
     }
@@ -230,7 +271,7 @@ contract ZapOverdrawTest is Test {
     function test_dustDrawIsServedZeroWithoutBlockingTheQueue() public {
         // Deploy a game whose capacity is small enough that 1bp rounds to zero.
         MockERC20 tiny = new MockERC20("Tiny", "TINY", 0);
-        ZapOverdraw g = new ZapOverdraw(address(tiny), RAKE, 100, COMMIT_WINDOW, REVEAL_WINDOW, 0, 0);
+        ZapOverdraw g = new ZapOverdraw(address(tiny), RAKE, 100, COMMIT_WINDOW, REVEAL_WINDOW, 1, 0);
         address[3] memory ps = [alice, bob, carol];
         for (uint256 i = 0; i < ps.length; ++i) {
             tiny.mint(ps[i], 1000);
@@ -246,13 +287,13 @@ contract ZapOverdrawTest is Test {
             vm.prank(ps[i]);
             g.commit(blob);
         }
-        (uint64 commitEnd,,,,,) = g.rounds(1);
+        (uint64 commitEnd,,,,) = g.rounds(1);
         vm.warp(commitEnd + 1);
         for (uint256 i = 0; i < ps.length; ++i) {
             vm.prank(ps[i]);
             g.reveal(draws[i], "s");
         }
-        (, uint64 revealEnd,,,,) = g.rounds(1);
+        (, uint64 revealEnd,,,) = g.rounds(1);
         vm.warp(revealEnd + 1);
         g.settle();
 
@@ -462,8 +503,7 @@ contract ZapOverdrawTest is Test {
         assertLt(used, 3_000_000, "settlement gas at the seat cap");
 
         // Every draw here is tiny, so all of them are served and the bulk carries.
-        (,,,,, uint256 carried) = game.rounds(2);
-        assertGt(carried, 0, "carry");
+        assertGt(game.carryPool(), 0, "carry");
     }
 
     // ------------------------------------------------------------------ //
@@ -499,6 +539,10 @@ contract ZapOverdrawTest is Test {
 
         vm.expectRevert(ZapOverdraw.RakeTooHigh.selector);
         new ZapOverdraw(address(zaps), RAKE, ENTRY, COMMIT_WINDOW, REVEAL_WINDOW, 501, KEEPER_BPS);
+
+        // A zero rake would freeze the carry pool forever in a contract with no rescue path.
+        vm.expectRevert(ZapOverdraw.RakeTooLow.selector);
+        new ZapOverdraw(address(zaps), RAKE, ENTRY, COMMIT_WINDOW, REVEAL_WINDOW, 0, KEEPER_BPS);
 
         vm.expectRevert(ZapOverdraw.KeeperTooHigh.selector);
         new ZapOverdraw(address(zaps), RAKE, ENTRY, COMMIT_WINDOW, REVEAL_WINDOW, RAKE_BPS, 101);
@@ -536,10 +580,9 @@ contract ZapOverdrawTest is Test {
 
         uint256 capacity = 400e18 - 8e18 - 2e18;
         uint256 served = game.credit(alice) + game.credit(bob) + game.credit(carol) + game.credit(dave);
-        (,,,,, uint256 carried) = game.rounds(2);
 
         assertLe(served, capacity, "never overdrawn");
-        assertEq(served + carried, capacity, "every wei accounted for");
+        assertEq(served + game.carryPool(), capacity, "every wei accounted for");
         _assertSolvent();
     }
 
@@ -560,5 +603,103 @@ contract ZapOverdrawTest is Test {
         uint256 modest = a < b ? game.credit(alice) : game.credit(bob);
         uint256 greedy = a < b ? game.credit(bob) : game.credit(alice);
         if (greedy > 0) assertGt(modest, 0, "greedy served while modest was cut");
+    }
+
+    // ------------------------------------------------------------------ //
+    // Sybil economics                                                     //
+    // ------------------------------------------------------------------ //
+
+    /// @dev Fills a round with `n` attacker-controlled seats whose draws sum to exactly BPS, so
+    ///      every one of them is served, then settles from an attacker address so the keeper
+    ///      reward comes back too. Returns net profit in stake wei (negative reads as a loss).
+    function _sweep(uint256 n) internal returns (int256 profit) {
+        uint16 each = uint16(game.BPS() / n);
+        address[] memory sybils = new address[](n);
+        uint256 spent;
+
+        for (uint256 i = 0; i < n; ++i) {
+            sybils[i] = address(uint160(0x5000 + i));
+            _tracked.push(sybils[i]);
+            zaps.mint(sybils[i], ENTRY);
+            bytes32 blob = game.commitmentFor(game.currentRound(), sybils[i], each, "s");
+            vm.startPrank(sybils[i]);
+            zaps.approve(address(game), ENTRY);
+            game.commit(blob);
+            vm.stopPrank();
+            spent += ENTRY;
+        }
+        _intoReveal();
+        for (uint256 i = 0; i < n; ++i) {
+            vm.prank(sybils[i]);
+            game.reveal(each, "s");
+        }
+        _intoSettle();
+
+        vm.prank(sybils[0]);
+        game.settle();
+
+        uint256 recovered;
+        for (uint256 i = 0; i < n; ++i) recovered += game.credit(sybils[i]);
+        profit = int256(recovered) - int256(spent);
+    }
+
+    /// @dev Grows the carry pool by running a round in which everybody draws almost nothing.
+    function _fattenCarry() internal {
+        _commit(alice, 1, "fa");
+        _commit(bob, 1, "fb");
+        _intoReveal();
+        _reveal(alice, 1, "fa");
+        _reveal(bob, 1, "fb");
+        _intoSettle();
+        game.settle();
+    }
+
+    /// THE ATTACK THE RELEASE CAP EXISTS TO STOP. An attacker who takes every seat controls every
+    /// draw, so they can always arrange to be served in full and take the entire capacity — and
+    /// they settle, so the keeper reward returns to them too. Their only real cost is the rake.
+    /// Uncapped, any carry above that rake would make this strictly profitable, and two addresses
+    /// are enough to satisfy MIN_REVEALS. The cap must make it break-even at best, at every size.
+    function testFuzz_tableSweepIsNeverProfitable(uint8 rawSeats) public {
+        _fattenCarry();
+        assertGt(game.carryPool(), 0, "there is a carry worth stealing");
+
+        uint256 n = bound(uint256(rawSeats), MIN_REVEALS_T, 16);
+        int256 profit = _sweep(n);
+
+        assertLe(profit, 0, "sweeping the table must never pay");
+        _assertSolvent();
+    }
+
+    /// The same claim stated as arithmetic rather than a fuzz run: profit is exactly
+    /// `released - rake`, and `released` is capped at `rake`.
+    function test_sweepProfitIsExactlyReleasedMinusRake() public {
+        _fattenCarry();
+        uint256 poolBefore = game.carryPool();
+
+        uint256 n = 4;
+        uint256 fees = n * ENTRY;
+        uint256 rake = (fees * RAKE_BPS) / 10_000;
+        uint256 expectedRelease = poolBefore < rake ? poolBefore : rake;
+
+        int256 profit = _sweep(n);
+        assertEq(profit, int256(expectedRelease) - int256(rake), "profit == released - rake");
+        assertLe(profit, 0, "which is never positive");
+    }
+
+    /// A pool far larger than the rake still only drains at the rake, so it cannot be farmed out
+    /// in one round by anybody, honest or not.
+    function test_carryReleaseIsCappedAtTheRoundsRake() public {
+        _fattenCarry();
+        uint256 pool = game.carryPool();
+
+        _commit(alice, 5000, "a");
+        _commit(bob, 5000, "b");
+
+        uint256 rake = (2 * ENTRY * RAKE_BPS) / 10_000;
+        assertLt(rake, pool, "the pool genuinely exceeds one round's rake");
+        assertEq(game.releasableCarry(), rake, "release is clamped to the rake");
+
+        (uint256 capacity,) = game.previewCapacity();
+        assertEq(capacity, 2 * ENTRY - rake - (2 * ENTRY * KEEPER_BPS) / 10_000 + rake, "capacity");
     }
 }

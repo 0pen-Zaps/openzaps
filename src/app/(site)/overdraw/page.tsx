@@ -30,12 +30,12 @@ const RULES = [
   {
     n: "03",
     title: "The bus serves the modest first",
-    body: "Revealed draws are sorted ascending, ties broken by who revealed first. Each is paid in full while the remaining current covers it. The first draw the bus cannot cover is cut — and so is every draw behind it, because they all asked for at least as much.",
+    body: "Revealed draws are sorted ascending and each is paid in full while the remaining current covers it. The first draw the bus cannot cover is cut — and so is every draw behind it, because they all asked for at least as much. Equal draws are separated by a fixed hash of the round and your address, decided before the round opens, so a tie is never a race to get your reveal in first.",
   },
   {
     n: "04",
-    title: "What is not delivered stays charged",
-    body: "Current the bus does not hand out is not refunded and not swept. It becomes the opening pot of the next round. A table that collectively under-draws is handing its own restraint to whoever plays next.",
+    title: "What is not delivered stays charged — but drains slowly",
+    body: "Current the bus does not hand out is not refunded and not swept — it returns to a carry pool that later rounds draw on. A round may take from that pool only up to the rake it pays, and no further: without that cap, anyone willing to buy every seat would recover their entries and pocket the pool on top. It is a slow rebate by design, not a jackpot.",
   },
 ] as const;
 
@@ -51,6 +51,14 @@ const RISKS = [
   {
     title: "The entry fee is the only anti-sybil cost",
     body: "One address is one seat, but addresses are free. A player willing to pay several entries can occupy several seats and shape the spread of draws. No contract can fix this; read the seat count before you play a round.",
+  },
+  {
+    title: "There is no single right draw, and the table can read you back",
+    body: "Everyone is served whenever the revealed draws add up to the whole capacity, so any split that sums to 100% is a stable outcome — including very unequal ones. Nothing in the game picks between them. The seat count is public while commits are open, which makes the obvious guess \"capacity divided by seats\" — and the last person to commit knows that number better than the first did.",
+  },
+  {
+    title: "The carry pool is a slow rebate, not a jackpot",
+    body: "Undelivered capacity accumulates, but a round can only draw on it up to the rake that round pays. That cap is deliberate: it is exactly what makes buying every seat break-even at best instead of a way to walk off with the pool. It also means a large pool will not produce a large round.",
   },
   {
     title: "Pre-audit code holding real funds",

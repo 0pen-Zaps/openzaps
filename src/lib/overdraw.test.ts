@@ -6,9 +6,13 @@ import {
   capacityOf,
   overdrawAddress,
   phaseAt,
+  releasableCarry,
+  tiebreak,
   waterfall,
   type RevealedDraw,
 } from "@/lib/overdraw";
+
+const ROUND = 1n;
 
 const A = "0x000000000000000000000000000000000000000A" as const;
 const B = "0x000000000000000000000000000000000000000b" as const;
@@ -32,6 +36,7 @@ describe("waterfall", () => {
       // Reveal order deliberately unsorted, to prove the sort is the contract's.
       draws([D, 5000], [A, 1000], [C, 3000], [B, 2500]),
       capacity,
+      ROUND,
     );
 
     expect(result.rows.map((row) => row.player)).toEqual([A, B, C, D]);
@@ -47,14 +52,20 @@ describe("waterfall", () => {
     expect(result.stalled).toBe(false);
   });
 
-  it("breaks equal draws in reveal order", () => {
+  it("breaks equal draws by the fixed tiebreak, not by reveal order", () => {
     const capacity = 195n * 10n ** 18n;
-    const result = waterfall(draws([B, 10_000], [A, 10_000]), capacity);
+    const expected = tiebreak(ROUND, A) < tiebreak(ROUND, B) ? A : B;
 
-    expect(result.rows[0]?.player).toBe(B);
-    expect(result.rows[0]?.paid).toBe(capacity);
-    expect(result.rows[1]?.paid).toBe(0n);
-    expect(result.carry).toBe(0n);
+    // Same two draws, opposite reveal orders: the winner must not move.
+    const asRevealed = waterfall(draws([B, 10_000], [A, 10_000]), capacity, ROUND);
+    const reversed = waterfall(draws([A, 10_000], [B, 10_000]), capacity, ROUND);
+
+    expect(asRevealed.rows[0]?.player).toBe(expected);
+    expect(reversed.rows[0]?.player).toBe(expected);
+    expect(asRevealed.rows[0]?.paid).toBe(capacity);
+    expect(reversed.rows[0]?.paid).toBe(capacity);
+    expect(asRevealed.rows[1]?.paid).toBe(0n);
+    expect(asRevealed.carry).toBe(0n);
   });
 
   /**
@@ -63,7 +74,7 @@ describe("waterfall", () => {
    * queued behind it are still perfectly payable.
    */
   it("skips a dust draw without blocking the queue behind it", () => {
-    const result = waterfall(draws([A, 1], [B, 5000], [C, 5000]), 300n);
+    const result = waterfall(draws([A, 1], [B, 5000], [C, 5000]), 300n, ROUND);
 
     expect(result.rows.map((row) => row.paid)).toEqual([0n, 150n, 150n]);
     expect(result.rows[0]?.served).toBe(true);
@@ -71,7 +82,7 @@ describe("waterfall", () => {
   });
 
   it("does not discharge below the reveal floor", () => {
-    const result = waterfall(draws([A, 10_000]), 195n * 10n ** 18n);
+    const result = waterfall(draws([A, 10_000]), 195n * 10n ** 18n, ROUND);
 
     expect(MIN_REVEALS).toBe(2);
     expect(result.stalled).toBe(true);
@@ -81,7 +92,7 @@ describe("waterfall", () => {
   });
 
   it("carries the whole capacity when nobody revealed", () => {
-    const result = waterfall([], 500n);
+    const result = waterfall([], 500n, ROUND);
     expect(result.rows).toEqual([]);
     expect(result.carry).toBe(500n);
     expect(result.stalled).toBe(true);
@@ -91,7 +102,7 @@ describe("waterfall", () => {
     const capacity = 1_000_000n;
     for (let a = 1; a <= BPS; a += 137) {
       for (let b = 1; b <= BPS; b += 331) {
-        const result = waterfall(draws([A, a], [B, b], [C, BPS]), capacity);
+        const result = waterfall(draws([A, a], [B, b], [C, BPS]), capacity, ROUND);
         expect(result.served).toBeLessThanOrEqual(capacity);
         expect(result.served + result.carry).toBe(capacity);
       }
@@ -103,7 +114,7 @@ describe("waterfall", () => {
     for (let a = 1; a <= BPS; a += 97) {
       for (let b = 1; b <= BPS; b += 89) {
         if (a === b) continue;
-        const rows = waterfall(draws([A, a], [B, b]), capacity).rows;
+        const rows = waterfall(draws([A, a], [B, b]), capacity, ROUND).rows;
         const modest = rows.find((row) => row.draw === Math.min(a, b));
         const greedy = rows.find((row) => row.draw === Math.max(a, b));
         // A greedy row paid something implies the modest row was paid too. Dust
@@ -116,19 +127,48 @@ describe("waterfall", () => {
 });
 
 describe("capacityOf", () => {
-  it("charges rake and keeper on fresh fees only, never on the carry", () => {
-    const entry = 100n * 10n ** 18n;
-    const carry = 1_000n * 10n ** 18n;
-    const seats = 4;
-    const pot = BigInt(seats) * entry + carry;
+  const entry = 100n * 10n ** 18n;
 
-    // 2% rake and 0.5% keeper on 400 tokens of fees is 8 + 2; the 1000 carried
-    // in is untaxed, so capacity is 1400 - 10.
-    expect(capacityOf(pot, seats, entry, 200, 50)).toBe(1_390n * 10n ** 18n);
+  it("charges rake and keeper on fresh fees only", () => {
+    // 2% rake and 0.5% keeper on 400 tokens of fees is 8 + 2, and an empty pool
+    // releases nothing.
+    expect(capacityOf(4, entry, 200, 50, 0n)).toBe(390n * 10n ** 18n);
+  });
+
+  it("releases the carry pool only up to the round's own rake", () => {
+    const fat = 1_000n * 10n ** 18n;
+    // Rake on 400 tokens of fees is 8, so 8 is all the pool may contribute — the
+    // remaining 992 stays pooled no matter how large it grows.
+    expect(releasableCarry(4, entry, 200, fat)).toBe(8n * 10n ** 18n);
+    expect(capacityOf(4, entry, 200, 50, fat)).toBe(398n * 10n ** 18n);
+  });
+
+  it("releases the whole pool when it is smaller than the rake", () => {
+    const thin = 3n * 10n ** 18n;
+    expect(releasableCarry(4, entry, 200, thin)).toBe(thin);
+    expect(capacityOf(4, entry, 200, 50, thin)).toBe(393n * 10n ** 18n);
   });
 
   it("floors at zero rather than reporting a negative capacity", () => {
-    expect(capacityOf(0n, 0, 100n, 200, 50)).toBe(0n);
+    expect(capacityOf(0, 100n, 200, 50, 0n)).toBe(0n);
+  });
+
+  /**
+   * The economic invariant the cap exists for: an attacker holding every seat
+   * recovers the capacity and the keeper reward, so their profit is exactly
+   * `released - rake`. Capping the release at the rake makes that never positive.
+   */
+  it("makes a table sweep break-even at best, for any pool size", () => {
+    for (const seats of [2, 4, 16, 64]) {
+      for (const pool of [0n, 10n ** 18n, 10n ** 24n]) {
+        const fees = BigInt(seats) * entry;
+        const rake = (fees * 200n) / BigInt(BPS);
+        const keeper = (fees * 50n) / BigInt(BPS);
+        const captured = capacityOf(seats, entry, 200, 50, pool) + keeper;
+        expect(captured - fees).toBeLessThanOrEqual(0n);
+        expect(captured - fees).toBe(releasableCarry(seats, entry, 200, pool) - rake);
+      }
+    }
   });
 });
 

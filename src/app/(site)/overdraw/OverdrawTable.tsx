@@ -29,6 +29,7 @@ import {
   MIN_REVEALS,
   capacityOf,
   exportSeal,
+  releasableCarry,
   findSealedDraw,
   markRevealed,
   overdrawAbi,
@@ -52,7 +53,7 @@ type TableState = {
   readonly revealEnd: number;
   readonly seats: number;
   readonly reveals: number;
-  readonly pot: bigint;
+  readonly carryPool: bigint;
   readonly entryFee: bigint;
   readonly rakeBps: number;
   readonly keeperBps: number;
@@ -75,12 +76,13 @@ const EMPTY_COMMITMENT = `0x${"0".repeat(64)}` as const;
  */
 async function readTable(game: Address): Promise<TableState> {
   const base = { address: game, abi: overdrawAbi } as const;
-  const [round, entryFee, rakeBps, keeperBps, stake] = await Promise.all([
+  const [round, entryFee, rakeBps, keeperBps, stake, carryPool] = await Promise.all([
     publicClient.readContract({ ...base, functionName: "currentRound" }),
     publicClient.readContract({ ...base, functionName: "entryFee" }),
     publicClient.readContract({ ...base, functionName: "rakeBps" }),
     publicClient.readContract({ ...base, functionName: "keeperBps" }),
     publicClient.readContract({ ...base, functionName: "stake" }),
+    publicClient.readContract({ ...base, functionName: "carryPool" }),
   ]);
   const [header, players, drawValues] = await Promise.all([
     publicClient.readContract({ ...base, functionName: "rounds", args: [round] }),
@@ -94,7 +96,7 @@ async function readTable(game: Address): Promise<TableState> {
     revealEnd: Number(header[1]),
     seats: Number(header[2]),
     reveals: Number(header[3]),
-    pot: header[5],
+    carryPool,
     entryFee,
     rakeBps: Number(rakeBps),
     keeperBps: Number(keeperBps),
@@ -281,8 +283,10 @@ export function OverdrawTable(): React.JSX.Element {
   // ------------------------------------------------------------------ //
 
   const phase = state ? phaseAt(now, state.commitEnd, state.revealEnd) : null;
-  const capacity = state ? capacityOf(state.pot, state.seats, state.entryFee, state.rakeBps, state.keeperBps) : 0n;
-  const projection = state ? waterfall(state.draws, capacity) : null;
+  const capacity = state
+    ? capacityOf(state.seats, state.entryFee, state.rakeBps, state.keeperBps, state.carryPool)
+    : 0n;
+  const projection = state ? waterfall(state.draws, capacity, state.round) : null;
   const wrongChain = account !== null && !isRobinhoodChain;
 
   const drawBps = Number.parseInt(drawInput, 10);
@@ -567,11 +571,24 @@ export function OverdrawTable(): React.JSX.Element {
               <dt>Entry</dt>
               <dd>{state ? `${fmt(state.entryFee)} 0xZAPS` : "—"}</dd>
             </div>
+            <div>
+              <dt>Carry pool</dt>
+              <dd>{state ? `${fmt(state.carryPool)} 0xZAPS` : "—"}</dd>
+            </div>
           </dl>
+          {state && state.carryPool > 0n ? (
+            <p className={styles.note}>
+              Of that pool, only{" "}
+              <strong>{fmt(releasableCarry(state.seats, state.entryFee, state.rakeBps, state.carryPool))} 0xZAPS</strong>{" "}
+              can enter this round — a round may draw on the pool up to the rake it pays, and no
+              further. Without that cap, anyone who took every seat would recover their entries and
+              pocket the pool on top.
+            </p>
+          ) : null}
           {state && state.reveals < MIN_REVEALS ? (
             <p className={styles.note}>
               A round needs {MIN_REVEALS} revealed draws before the bus discharges at all. Below that the whole
-              capacity carries into the next round.
+              capacity returns to the carry pool.
             </p>
           ) : null}
           <p className={styles.fine}>

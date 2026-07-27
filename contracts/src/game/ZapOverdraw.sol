@@ -59,23 +59,37 @@ import {IERC20} from "../interfaces/IERC20.sol";
 ///                      strictly sequential: round N+1 opens the moment round N settles, so a round
 ///                      left unsettled stalls the game rather than corrupting it.
 ///
-///      THE WATERFALL. `capacity` is the pot less the rake and the keeper reward. Revealed draws are
-///      sorted ascending, ties broken by who revealed first, and walked in that order; each is
-///      credited `capacity * draw / BPS` while the remaining current covers it in full, and the walk
-///      stops at the first draw it cannot. Stopping is not an optimisation — the draws after it are
-///      by construction at least as large, so none of them could be served either.
+///      THE WATERFALL. `capacity` is this round's entry fees, less the rake and the keeper reward,
+///      plus whatever the carry pool is allowed to release. Revealed draws are sorted ascending,
+///      ties broken by a fixed hash of (round, player) rather than by who revealed first, and
+///      walked in that order; each is credited `capacity * draw / BPS` while the remaining current
+///      covers it in full, and the walk stops at the first draw it cannot. Stopping is not an
+///      optimisation — the draws after it are by construction at least as large, so none of them
+///      could be served either. See `_tiebreak` for why reveal order is the wrong rule.
 ///
-///      THE CARRY. Current the bus does not deliver is not refunded and not swept: it stays charged
-///      and becomes the opening pot of the next round. A table that collectively under-draws is
-///      handing its own restraint to the players who come next.
+///      THE CARRY. Current the bus does not deliver is not refunded and not swept: it returns to
+///      {carryPool} and is released back into later rounds. A round may draw on that pool only up
+///      to the rake it pays, which is what stops a sybil from simply taking every seat and
+///      pocketing it — see {releasableCarry} for the arithmetic. The pool is therefore a slow
+///      rebate, not a jackpot, and that is a deliberate trade: a carry that pays out faster than
+///      the rake is a carry that pays a sybil to come and take it.
+///
+///      THE EQUILIBRIUM, HONESTLY. Every seat is served when the revealed draws sum to at most
+///      `BPS`, so this is an N-player Nash demand game: every profile summing to exactly `BPS` is
+///      an equilibrium, and there are a great many of them, unequal ones included. Nothing here
+///      selects between them. The seat count is public while commits are open, so the obvious
+///      focal point is `BPS / seats` — and the last player to commit knows that number better than
+///      the first. If you want a game with one clean equilibrium, this is not it; the interest is
+///      in reading the table, and the table can read you back.
 ///
 ///      SETTLEMENT GAS. The sort is a bounded insertion sort over at most {MAX_SEATS} entries held
 ///      in memory, done inside the contract rather than trusted from calldata, so no caller can
 ///      settle a round in an order of their choosing. That bound is why {MAX_SEATS} is small.
 ///
-///      LONE-SEAT ROUNDS. A round with fewer than {MIN_REVEALS} revealed draws does not discharge:
-///      the whole capacity carries. Otherwise the carry could be harvested by turning up alone.
-///      Note honestly that two addresses defeat this, as the sybil paragraph above says.
+///      LONE-SEAT ROUNDS. A round with fewer than {MIN_REVEALS} revealed draws does not discharge;
+///      the whole capacity returns to the pool. This is a guard against an empty round paying
+///      somebody, and NOTHING MORE — two addresses defeat it, so do not read it as protection of
+///      the carry. The release cap in {releasableCarry} is what protects the carry.
 contract ZapOverdraw {
     // --------------------------------------------------------------------- //
     // Immutable configuration                                                //
@@ -96,7 +110,9 @@ contract ZapOverdraw {
     /// @notice Seconds the reveal window stays open after the commit window closes.
     uint64 public immutable revealWindow;
 
-    /// @notice Rake, in bps of the round's fresh entry fees. Never charged on the carry.
+    /// @notice Rake, in bps of the round's fresh entry fees. Never charged on released carry.
+    /// @dev Doubles as the carry pool's release rate — see {releasableCarry} — so it cannot be
+    ///      zero without freezing the pool permanently.
     uint16 public immutable rakeBps;
 
     /// @notice Settlement reward, in bps of the round's fresh entry fees, credited to the caller.
@@ -118,6 +134,9 @@ contract ZapOverdraw {
     /// @dev Ceilings on the two fee parameters, enforced in the constructor. They exist so that a
     ///      deployment cannot be configured into one where the table can never win.
     uint16 internal constant MAX_RAKE_BPS = 500; // 5%
+    /// @dev A zero rake would make {releasableCarry} always zero, trapping the pool forever in a
+    ///      contract with no admin and no rescue path. One bp is enough to keep the valve open.
+    uint16 internal constant MIN_RAKE_BPS = 1;
     uint16 internal constant MAX_KEEPER_BPS = 100; // 1%
 
     /// @dev Floors on the two windows. A window short enough that honest players cannot reveal in
@@ -140,8 +159,6 @@ contract ZapOverdraw {
         uint32 reveals;
         /// @dev True once `settle` has run. A round settles exactly once.
         bool settled;
-        /// @dev Fresh entry fees plus the carry inherited from the previous round.
-        uint256 pot;
     }
 
     struct Seat {
@@ -149,7 +166,8 @@ contract ZapOverdraw {
         bytes32 blob;
         /// @dev The opened draw in bps, in [1, BPS]. Zero means "not revealed".
         uint16 draw;
-        /// @dev 1-based position in reveal order; the ascending tiebreak between equal draws.
+        /// @dev 1-based position in reveal order. Records THAT a seat opened, and in what
+        ///      sequence; deliberately NOT the tiebreak any more — see `_tiebreak`.
         uint32 revealSeq;
     }
 
@@ -172,6 +190,11 @@ contract ZapOverdraw {
     /// @notice Winnings and keeper rewards, withdrawable with `claim`. Credited, never pushed.
     mapping(address => uint256) public credit;
 
+    /// @notice Capacity past rounds did not deliver, waiting to be released into future ones.
+    /// @dev Held as its own pool rather than pushed into the next round's opening pot, because
+    ///      the amount a round may draw from it is capped at settlement — see {releasableCarry}.
+    uint256 public carryPool;
+
     /// @dev Reentrancy latch. 0 = idle, 1 = entered.
     uint256 private _entered;
 
@@ -187,7 +210,7 @@ contract ZapOverdraw {
     // Events                                                                 //
     // --------------------------------------------------------------------- //
 
-    event RoundOpened(uint256 indexed roundId, uint64 commitEnd, uint64 revealEnd, uint256 carriedIn);
+    event RoundOpened(uint256 indexed roundId, uint64 commitEnd, uint64 revealEnd, uint256 carryPool);
     event Committed(uint256 indexed roundId, address indexed player, bytes32 blob, uint32 seats);
     event Revealed(uint256 indexed roundId, address indexed player, uint16 draw, uint32 revealSeq);
     event Served(uint256 indexed roundId, address indexed player, uint16 draw, uint256 amount);
@@ -209,6 +232,7 @@ contract ZapOverdraw {
     error ZeroAddress();
     error ZeroEntryFee();
     error RakeTooHigh();
+    error RakeTooLow();
     error KeeperTooHigh();
     error WindowOutOfRange();
     error CommitWindowClosed();
@@ -236,7 +260,8 @@ contract ZapOverdraw {
     /// @param entryFee_ Cost of a seat in `stake_` wei. This is the entire anti-sybil budget.
     /// @param commitWindow_ Seconds the commit window stays open.
     /// @param revealWindow_ Seconds the reveal window stays open after commits close.
-    /// @param rakeBps_ Rake in bps of fresh entry fees, at most {MAX_RAKE_BPS}.
+    /// @param rakeBps_ Rake in bps of fresh entry fees, in [{MIN_RAKE_BPS}, {MAX_RAKE_BPS}]. Also
+    ///        the rate at which the carry pool is allowed to drain.
     /// @param keeperBps_ Settlement reward in bps of fresh entry fees, at most {MAX_KEEPER_BPS}.
     constructor(
         address stake_,
@@ -250,6 +275,7 @@ contract ZapOverdraw {
         if (stake_ == address(0) || rakeRecipient_ == address(0)) revert ZeroAddress();
         if (entryFee_ == 0) revert ZeroEntryFee();
         if (rakeBps_ > MAX_RAKE_BPS) revert RakeTooHigh();
+        if (rakeBps_ < MIN_RAKE_BPS) revert RakeTooLow();
         if (keeperBps_ > MAX_KEEPER_BPS) revert KeeperTooHigh();
         if (commitWindow_ < MIN_WINDOW || commitWindow_ > MAX_WINDOW) revert WindowOutOfRange();
         if (revealWindow_ < MIN_WINDOW || revealWindow_ > MAX_WINDOW) revert WindowOutOfRange();
@@ -263,7 +289,7 @@ contract ZapOverdraw {
         keeperBps = keeperBps_;
 
         currentRound = 1;
-        _openRound(1, 0);
+        _openRound(1);
     }
 
     // --------------------------------------------------------------------- //
@@ -291,7 +317,6 @@ contract ZapOverdraw {
         unchecked {
             round.seats += 1;
         }
-        round.pot += entryFee;
 
         _pullExact(msg.sender, entryFee);
 
@@ -340,21 +365,58 @@ contract ZapOverdraw {
         uint256 fees = uint256(round.seats) * entryFee;
         uint256 rake = (fees * rakeBps) / BPS;
         uint256 keeperReward = (fees * keeperBps) / BPS;
-        // `pot` is fees + carry, and rake + keeper are bps of fees alone, so this cannot underflow.
-        uint256 capacity = round.pot - rake - keeperReward;
+
+        // THE CAP THAT MAKES A TABLE SWEEP UNPROFITABLE. See {releasableCarry}.
+        uint256 released = _releasable(rake);
+        uint256 capacity = fees - rake - keeperReward + released;
 
         uint256 served = _discharge(roundId, capacity);
-        uint256 carriedOut = capacity - served;
+        uint256 undelivered = capacity - served;
+
+        // Whatever the bus did not deliver returns to the pool, along with the part of the
+        // release this round was not entitled to draw on.
+        carryPool = carryPool - released + undelivered;
 
         if (keeperReward != 0) credit[msg.sender] += keeperReward;
 
         uint256 next = roundId + 1;
         currentRound = next;
-        _openRound(next, carriedOut);
+        _openRound(next);
 
         if (rake != 0) _push(rakeRecipient, rake);
 
-        emit Settled(roundId, msg.sender, capacity, served, carriedOut, rake);
+        emit Settled(roundId, msg.sender, capacity, served, undelivered, rake);
+    }
+
+    /// @notice How much of {carryPool} a round paying `rake` in rake may draw on.
+    ///
+    /// @dev THIS IS THE MECHANISM'S ANTI-SWEEP DEFENCE, and it is the reason the carry is a pool
+    ///      rather than a balance handed straight to the next round.
+    ///
+    ///      Consider an attacker who occupies EVERY seat in a round. They know all the draws
+    ///      because they chose all of them, so they set them to sum to `BPS`, every seat is
+    ///      served, and they take the whole capacity. They also call `settle`, so the keeper
+    ///      reward comes back to them too. For `s` seats:
+    ///
+    ///          cost      = s * entryFee                        = fees
+    ///          captured  = capacity + keeperReward
+    ///                    = (fees - rake - keeper + released) + keeper
+    ///          profit    = captured - cost = released - rake
+    ///
+    ///      So the sweep is profitable EXACTLY when the carry it unlocks exceeds the rake it
+    ///      pays — and nothing else about the attack matters: not the seat count, not the entry
+    ///      fee, not {MIN_REVEALS}, which two addresses satisfy. Capping `released` at `rake`
+    ///      makes `profit <= 0` for every `s`, so sweeping the table is never better than
+    ///      break-even, whatever the pool has grown to.
+    ///
+    ///      The honest cost of this defence: the carry drains no faster than the rake, so it is
+    ///      a slow rebate rather than a jackpot. A pot that pays out faster than that is a pot
+    ///      that pays a sybil to take it. Note also that `rakeBps == 0` would freeze the pool
+    ///      forever, which is why the constructor refuses it.
+    function releasableCarry() external view returns (uint256) {
+        Round storage round = rounds[currentRound];
+        uint256 fees = uint256(round.seats) * entryFee;
+        return _releasable((fees * rakeBps) / BPS);
     }
 
     /// @notice Withdraw everything credited to you — winnings and keeper rewards alike.
@@ -406,7 +468,7 @@ contract ZapOverdraw {
         fees = uint256(round.seats) * entryFee;
         uint256 rake = (fees * rakeBps) / BPS;
         uint256 keeperReward = (fees * keeperBps) / BPS;
-        capacity = round.pot - rake - keeperReward;
+        capacity = fees - rake - keeperReward + _releasable(rake);
     }
 
     /// @notice Which window the current round is in: 0 commit, 1 reveal, 2 awaiting settlement.
@@ -432,8 +494,8 @@ contract ZapOverdraw {
 
         uint256 remaining = capacity;
         for (uint256 i = 0; i < n; ++i) {
-            uint16 draw = uint16(keys[i] >> 32);
-            address player = players[uint32(keys[i])];
+            uint16 draw = uint16(keys[i] >> 240);
+            address player = players[uint64(keys[i])];
             uint256 want = (capacity * draw) / BPS;
 
             // A draw too small to round up to one wei of the stake token is served for nothing
@@ -447,7 +509,7 @@ contract ZapOverdraw {
             if (want > remaining) {
                 // Draws are non-decreasing from here, so nobody left in the queue can be served.
                 for (uint256 j = i; j < n; ++j) {
-                    emit Cut(roundId, players[uint32(keys[j])], uint16(keys[j] >> 32));
+                    emit Cut(roundId, players[uint64(keys[j])], uint16(keys[j] >> 240));
                 }
                 break;
             }
@@ -460,10 +522,34 @@ contract ZapOverdraw {
         served = capacity - remaining;
     }
 
-    /// @dev Packs each revealed seat as `draw << 32 | index` and insertion-sorts ascending. The
-    ///      index in the low bits is what makes equal draws break in reveal order, and it makes
-    ///      every key distinct, so the sort is a total order with no ambiguity to exploit.
-    ///      Insertion sort over at most {MAX_SEATS} memory words; see the settlement-gas note.
+    /// @dev The tiebreak between equal draws.
+    ///
+    ///      Emphatically NOT reveal order. Draws are 14 bits of usable range and players cluster on
+    ///      round numbers, so ties are the common case, not the edge case — and a reveal-order
+    ///      tiebreak turns every one of them into a race to land a transaction first. That is a
+    ///      latency auction a bot wins against a human every time, and on a chain with one
+    ///      sequencer it is worse than that: whoever orders the block decides who is served, by
+    ///      permuting reveals that are already in the mempool. The outcome of a sealed-bid game
+    ///      must not be a block producer's to choose.
+    ///
+    ///      Hashing (round, player) instead makes the order fixed before the round opens,
+    ///      unraceable, and unaffected by any reordering. It is public — anyone can compute anyone
+    ///      else's position — which is fine: knowing the tiebreak does not help you win one.
+    ///
+    ///      RESIDUAL, STATED PLAINLY: a player holding many addresses can pick whichever has the
+    ///      best position this round, and the round id is known before commits open, so the
+    ///      grinding is possible. It costs one entry fee per address, which is the same sybil
+    ///      budget every other part of this contract already runs on, and unlike a latency race it
+    ///      cannot be won with faster hardware alone.
+    function _tiebreak(uint256 roundId, address player) internal pure returns (uint256) {
+        return uint256(keccak256(abi.encode(roundId, player))) >> 80;
+    }
+
+    /// @dev Packs each revealed seat as `draw << 240 | tiebreak << 64 | index` and insertion-sorts
+    ///      ascending: draw first, then the fixed tiebreak, then the index. The index occupies the
+    ///      low bits purely to make every key distinct, so the sort is a total order even if two
+    ///      tiebreaks collide. Insertion sort over at most {MAX_SEATS} memory words; see the
+    ///      settlement-gas note.
     function _sortedKeys(uint256 roundId, address[] storage players, uint256 n)
         internal
         view
@@ -471,7 +557,9 @@ contract ZapOverdraw {
     {
         keys = new uint256[](n);
         for (uint256 i = 0; i < n; ++i) {
-            keys[i] = (uint256(seatOf[roundId][players[i]].draw) << 32) | i;
+            keys[i] = (uint256(seatOf[roundId][players[i]].draw) << 240)
+                | (_tiebreak(roundId, players[i]) << 64)
+                | i;
         }
         for (uint256 i = 1; i < n; ++i) {
             uint256 key = keys[i];
@@ -484,14 +572,18 @@ contract ZapOverdraw {
         }
     }
 
-    function _openRound(uint256 roundId, uint256 carriedIn) internal {
+    function _releasable(uint256 rake) internal view returns (uint256) {
+        uint256 pool = carryPool;
+        return pool < rake ? pool : rake;
+    }
+
+    function _openRound(uint256 roundId) internal {
         uint64 commitEnd = uint64(block.timestamp) + commitWindow;
         uint64 revealEnd = commitEnd + revealWindow;
         Round storage round = rounds[roundId];
         round.commitEnd = commitEnd;
         round.revealEnd = revealEnd;
-        round.pot = carriedIn;
-        emit RoundOpened(roundId, commitEnd, revealEnd, carriedIn);
+        emit RoundOpened(roundId, commitEnd, revealEnd, carryPool);
     }
 
     /// @dev Pulls exactly `amount` and proves it, so a fee-on-transfer token reverts instead of
