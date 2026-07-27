@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { clamp, reducedMotion, scrollBus } from "./motion";
+import { useReducedMotionPreference } from "@/components/useReducedMotionPreference";
+import { clamp, scrollBus } from "./motion";
 import styles from "./landing.module.css";
 
 /**
@@ -40,9 +41,10 @@ export function Collapse(): React.JSX.Element {
   const cardRefs = useRef<(HTMLDivElement | null)[]>([]);
   const capsuleRef = useRef<HTMLDivElement>(null);
   const counterRef = useRef<HTMLSpanElement>(null);
+  const reduced = useReducedMotionPreference();
 
   useEffect(() => {
-    if (reducedMotion()) return;
+    if (reduced) return;
     const section = sectionRef.current;
     const capsule = capsuleRef.current;
     if (!section || !capsule) return;
@@ -127,7 +129,7 @@ export function Collapse(): React.JSX.Element {
       window.removeEventListener("resize", applyMode);
       delete section.dataset.animated;
     };
-  }, []);
+  }, [reduced]);
 
   return (
     <section

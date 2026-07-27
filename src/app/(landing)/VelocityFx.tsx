@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect } from "react";
-import { clamp, reducedMotion, scrollBus } from "./motion";
+import { useReducedMotionPreference } from "@/components/useReducedMotionPreference";
+import { clamp, scrollBus } from "./motion";
 
 /**
  * Publishes scroll physics to CSS and drives the DOM parallax layers.
@@ -17,8 +18,10 @@ import { clamp, reducedMotion, scrollBus } from "./motion";
  * Renders nothing; under reduced motion it does nothing at all.
  */
 export function VelocityFx(): null {
+  const reduced = useReducedMotionPreference();
+
   useEffect(() => {
-    if (reducedMotion()) return;
+    if (reduced) return;
     const root = document.getElementById("landing-root");
     if (!root) return;
 
@@ -77,7 +80,7 @@ export function VelocityFx(): null {
       root.style.removeProperty("--scroll-vel");
       root.style.removeProperty("--motion-abs");
     };
-  }, []);
+  }, [reduced]);
 
   return null;
 }

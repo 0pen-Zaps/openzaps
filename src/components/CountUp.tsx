@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { useReducedMotionPreference } from "@/components/useReducedMotionPreference";
 
 /**
  * Rolls every numeric run inside a string up from zero when it scrolls into view.
@@ -56,6 +57,7 @@ export function CountUp({
   // each poll would restart the animation and a live counter would visibly
   // read 63 -> 0 -> 64, which looks like the protocol resetting.
   const played = useRef(false);
+  const reduced = useReducedMotionPreference();
 
   // Adjusting state during render is the sanctioned way to react to a changed
   // prop; it re-renders before commit rather than cascading after one.
@@ -68,7 +70,6 @@ export function CountUp({
     const el = ref.current;
     if (!el) return;
 
-    const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     NUMERIC_RUN.lastIndex = 0; // the /g regex is stateful across .test() calls
     const hasDigits = NUMERIC_RUN.test(value);
     NUMERIC_RUN.lastIndex = 0;
@@ -103,7 +104,7 @@ export function CountUp({
       observer.disconnect();
       cancelAnimationFrame(frame);
     };
-  }, [value, duration]);
+  }, [value, duration, reduced]);
 
   return (
     <span className={className} ref={ref} style={{ fontVariantNumeric: "tabular-nums" }}>

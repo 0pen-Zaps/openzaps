@@ -85,6 +85,7 @@ export function BoltIntro(): React.JSX.Element | null {
     <div
       className={styles.overlay}
       data-skip={skipped}
+      data-bolt-intro
       aria-hidden="true"
       /**
        * The overlay retires itself when its own animation ends, rather than on

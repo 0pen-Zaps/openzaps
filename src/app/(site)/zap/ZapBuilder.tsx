@@ -49,6 +49,7 @@ import {
   type SavedDesign,
 } from "@/lib/designs";
 import { edgeScrollDelta } from "@/lib/drag";
+import { reducedMotionEnabled } from "@/lib/motion-preference";
 import { parseRouterAmount } from "@/lib/openzap";
 import { protocolsForAction } from "@/lib/protocols";
 import { quoteRoute } from "@/lib/route-quote";
@@ -617,7 +618,7 @@ export function ZapBuilder({
     setOpenUid(uid);
     setFlaggedUid(uid);
     cardRefs.current.get(uid)?.scrollIntoView({
-      behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth",
+      behavior: reducedMotionEnabled() ? "auto" : "smooth",
       block: "center",
     });
     window.clearTimeout(flagTimer.current);
@@ -808,7 +809,7 @@ export function ZapBuilder({
   const previewRun = useCallback((): void => {
     if (compiled.status === "block" || chain.length === 0) return;
     window.clearInterval(runTimer.current);
-    const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const reduced = reducedMotionEnabled();
     if (reduced) {
       setRunIndex(chain.length - 1);
       runTimer.current = window.setTimeout(() => setRunIndex(-1), 900) as unknown as number;

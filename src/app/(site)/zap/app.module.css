@@ -784,6 +784,149 @@
   gap: 0.4rem 1.1rem;
 }
 
+.lifecycle {
+  display: grid;
+  gap: 1rem;
+  margin-top: 1rem;
+  padding: clamp(0.9rem, 2vw, 1.15rem);
+  border: 1px solid var(--line-soft);
+  background:
+    linear-gradient(90deg, rgba(255, 252, 0, 0.035), transparent 42%),
+    rgba(0, 0, 0, 0.16);
+}
+
+.lifecycleHead {
+  display: grid;
+  grid-template-columns: minmax(0, 0.8fr) minmax(18rem, 1.2fr);
+  gap: 1rem;
+  align-items: end;
+}
+
+.lifecycleHead h3 {
+  margin-top: 0.25rem;
+  color: var(--fg);
+  font-size: clamp(1.05rem, 2vw, 1.35rem);
+  font-weight: 580;
+}
+
+.lifecycleHead p {
+  color: var(--text);
+  font-size: 0.82rem;
+  line-height: 1.55;
+}
+
+.lifecycleTrack {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  border-top: 1px solid var(--line-soft);
+  border-left: 1px solid var(--line-soft);
+  list-style: none;
+}
+
+.lifecycleTrack li {
+  position: relative;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 0.65rem;
+  min-height: 7rem;
+  padding: 0.85rem;
+  border-right: 1px solid var(--line-soft);
+  border-bottom: 1px solid var(--line-soft);
+  background: rgba(255, 255, 255, 0.018);
+}
+
+.lifecycleTrack li[data-status="done"] {
+  background: rgba(255, 252, 0, 0.035);
+}
+
+.lifecycleTrack li[data-status="current"] {
+  background: linear-gradient(135deg, rgba(255, 252, 0, 0.11), rgba(255, 252, 0, 0.025));
+}
+
+.lifecycleTrack li[data-status="error"] {
+  background: rgba(255, 78, 78, 0.055);
+}
+
+.lifecycleNode {
+  display: grid;
+  place-items: center;
+  width: 1.6rem;
+  height: 1.6rem;
+  border: 1px solid var(--line);
+  color: var(--muted);
+  font-family: var(--font-jetbrains-mono), ui-monospace, monospace;
+  font-size: 0.68rem;
+}
+
+.lifecycleTrack li[data-status="done"] .lifecycleNode,
+.lifecycleTrack li[data-status="current"] .lifecycleNode {
+  border-color: rgba(255, 252, 0, 0.58);
+  color: var(--accent-bright);
+  background: rgba(255, 252, 0, 0.09);
+}
+
+.lifecycleTrack li[data-status="current"] .lifecycleNode {
+  animation: ripple 1.8s var(--ease-standard) infinite;
+}
+
+.lifecycleTrack li[data-status="error"] .lifecycleNode {
+  border-color: rgba(255, 78, 78, 0.58);
+  color: #ffadad;
+  background: rgba(255, 78, 78, 0.08);
+}
+
+.lifecycleTrack strong,
+.lifecycleTrack small {
+  display: block;
+}
+
+.lifecycleTrack strong {
+  color: var(--fg);
+  font-size: 0.82rem;
+}
+
+.lifecycleTrack small {
+  margin-top: 0.35rem;
+  color: var(--muted);
+  font-size: 0.7rem;
+  line-height: 1.45;
+}
+
+.lifecycleHash {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 0.75rem;
+  align-items: center;
+  padding: 0.72rem 0.8rem;
+  border: 1px solid rgba(255, 252, 0, 0.22);
+  color: inherit;
+  text-decoration: none;
+}
+
+.lifecycleHash > span {
+  padding: 0.2rem 0.45rem;
+  color: var(--accent-bright);
+  background: rgba(255, 252, 0, 0.08);
+  font-family: var(--font-jetbrains-mono), ui-monospace, monospace;
+  font-size: 0.64rem;
+}
+
+.lifecycleHash > span[data-status="reverted"],
+.lifecycleHash > span[data-status="unknown"] {
+  color: #ffadad;
+  background: rgba(255, 78, 78, 0.08);
+}
+
+.lifecycleHash strong {
+  color: var(--fg);
+  font-size: 0.82rem;
+}
+
+.lifecycleHash code {
+  color: var(--muted);
+  font-size: 0.7rem;
+}
+
 .holderChip {
   display: inline-flex;
   align-items: center;
@@ -935,6 +1078,16 @@
   .receiptHead {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .lifecycleHead,
+  .lifecycleTrack,
+  .lifecycleHash {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .lifecycleTrack li {
+    min-height: 0;
   }
 
   .wallet {

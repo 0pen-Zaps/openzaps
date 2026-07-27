@@ -1,12 +1,12 @@
 "use client";
 
 import { useEffect, useRef } from "react";
+import { useReducedMotionPreference } from "@/components/useReducedMotionPreference";
 import {
   clamp,
   damp,
   deviceQuality,
   pointerBus,
-  reducedMotion,
   scrollBus,
 } from "./motion";
 import styles from "./landing.module.css";
@@ -145,6 +145,7 @@ void main() {
 
 export function Atmosphere(): React.JSX.Element {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const reduced = useReducedMotionPreference();
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -211,7 +212,7 @@ export function Atmosphere(): React.JSX.Element {
     };
 
     const quality = deviceQuality();
-    const still = reducedMotion();
+    const still = reduced;
     const dprCap = quality === 2 ? 1.5 : quality === 1 ? 1.1 : 0.8;
 
     let width = 0;
@@ -321,7 +322,7 @@ export function Atmosphere(): React.JSX.Element {
       // mount, bricking the scene. A discarded canvas releases its context
       // via GC; deleting the program/shaders above is the eager part.
     };
-  }, []);
+  }, [reduced]);
 
   return <canvas ref={canvasRef} className={styles.atmosphere} aria-hidden="true" />;
 }

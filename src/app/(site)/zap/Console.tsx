@@ -19,6 +19,7 @@ import { OpenZapMark } from "@/components/OpenZapMark";
 import { useWalletSession } from "@/components/WalletProvider";
 import { BlockGlyph } from "./BlockGlyph";
 import { CreationWorkspace } from "./CreationWorkspace";
+import { TransactionLifecycle } from "./TransactionLifecycle";
 import { trackEvent } from "@/lib/analytics";
 import { LINKS } from "@/lib/config";
 import {
@@ -88,6 +89,7 @@ import {
   wethAbi,
 } from "@/lib/robinhood";
 import { protocolsForRouteKind } from "@/lib/protocols";
+import type { TransactionLifecycleState } from "@/lib/transaction-lifecycle";
 import { ProtocolStack } from "@/components/ProtocolLogo";
 import styles from "./app.module.css";
 
@@ -212,6 +214,7 @@ export default function AppPage(): React.JSX.Element {
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
   const [transactions, setTransactions] = useState<TransactionRecord[]>([]);
+  const [transactionLifecycle, setTransactionLifecycle] = useState<TransactionLifecycleState | null>(null);
   const [zapHistory, setZapHistory] = useState<ZapHistoryState>([]);
   const zapRef = useRef<SavedZapRecord | null>(null);
   const noticeRef = useRef<HTMLDivElement>(null);
@@ -699,6 +702,44 @@ export default function AppPage(): React.JSX.Element {
     return () => window.clearTimeout(timer);
   }, [refreshCreationFeeQuote]);
 
+  /**
+   * Keep the transaction hash visible while receipt polling is in flight.
+   * A wallet rejection is explicitly "not submitted"; an RPC interruption
+   * preserves the hash as "unknown" so the explorer, not a local spinner,
+   * remains the source of truth.
+   */
+  async function submitAndConfirm(
+    owner: Address,
+    label: string,
+    submit: () => Promise<Hex>,
+  ): Promise<{ hash: Hex; status: "success" | "reverted" }> {
+    setTransactionLifecycle({ label, stage: "wallet", updatedAt: new Date().toISOString() });
+
+    let hash: Hex;
+    try {
+      hash = await submit();
+    } catch (cause) {
+      setTransactionLifecycle({ label, stage: "not-submitted", updatedAt: new Date().toISOString() });
+      throw cause;
+    }
+
+    setTransactionLifecycle({ label, stage: "submitted", hash, updatedAt: new Date().toISOString() });
+    try {
+      const receipt = await publicClient.waitForTransactionReceipt({ hash });
+      recordTransaction(owner, hash, label, receipt.status);
+      setTransactionLifecycle({
+        label,
+        stage: receipt.status === "success" ? "confirmed" : "reverted",
+        hash,
+        updatedAt: new Date().toISOString(),
+      });
+      return { hash, status: receipt.status };
+    } catch (cause) {
+      setTransactionLifecycle({ label, stage: "unknown", hash, updatedAt: new Date().toISOString() });
+      throw cause;
+    }
+  }
+
   async function createZap(): Promise<void> {
     setBusy("create");
     clearMessages();
@@ -739,10 +780,12 @@ export default function AppPage(): React.JSX.Element {
         args: [0, policy, salt, creationFeeQuote.minZapsOut],
         value: OPENZAP_CREATION_FEE,
       });
-      const hash = await wallet.writeContract(request);
-      const receipt = await publicClient.waitForTransactionReceipt({ hash });
-      recordTransaction(owner, hash, "Create immutable zap + convert fee", receipt.status);
-      if (receipt.status !== "success") throw new Error("Creation gateway transaction reverted.");
+      const { hash, status } = await submitAndConfirm(
+        owner,
+        "Create immutable zap + convert fee",
+        () => wallet.writeContract(request),
+      );
+      if (status !== "success") throw new Error("Creation gateway transaction reverted.");
 
       const verified = await inspectOwnedZap(publicClient, predicted, owner);
       const nextZap: CreatedZapResult = {
@@ -789,10 +832,8 @@ export default function AppPage(): React.JSX.Element {
         functionName: "deposit",
         value: exactAmount,
       });
-      const hash = await wallet.writeContract(request);
-      const receipt = await publicClient.waitForTransactionReceipt({ hash });
-      recordTransaction(owner, hash, "Wrap ETH to aeWETH", receipt.status);
-      if (receipt.status !== "success") throw new Error("WETH deposit reverted.");
+      const { status } = await submitAndConfirm(owner, "Wrap ETH to aeWETH", () => wallet.writeContract(request));
+      if (status !== "success") throw new Error("WETH deposit reverted.");
       setNotice(`Wrapped ${formatToken(exactAmount, 18)} ETH into aeWETH.`);
     } catch (cause) {
       setError(readableError(cause));
@@ -839,10 +880,12 @@ export default function AppPage(): React.JSX.Element {
         functionName: "transfer",
         args: [verifiedZap.address, missing],
       });
-      const hash = await wallet.writeContract(request);
-      const receipt = await publicClient.waitForTransactionReceipt({ hash });
-      recordTransaction(owner, hash, `Fund zap with ${tokenIn.symbol}`, receipt.status);
-      if (receipt.status !== "success") throw new Error("Funding transfer reverted.");
+      const { status } = await submitAndConfirm(
+        owner,
+        `Fund zap with ${tokenIn.symbol}`,
+        () => wallet.writeContract(request),
+      );
+      if (status !== "success") throw new Error("Funding transfer reverted.");
       const verified = await publicClient.readContract({
         address: tokenIn.address,
         abi: erc20Abi,
@@ -972,10 +1015,12 @@ export default function AppPage(): React.JSX.Element {
         args: [intent, signature],
         gas: BigInt(maxExecutionGas),
       });
-      const hash = await wallet.writeContract(request);
-      const receipt = await publicClient.waitForTransactionReceipt({ hash });
-      recordTransaction(owner, hash, `${tokenIn.symbol} → ${tokenOut.symbol} zap`, receipt.status);
-      if (receipt.status !== "success") throw new Error("Zap execution reverted.");
+      const { hash, status } = await submitAndConfirm(
+        owner,
+        `${tokenIn.symbol} → ${tokenOut.symbol} zap`,
+        () => wallet.writeContract(request),
+      );
+      if (status !== "success") throw new Error("Zap execution reverted.");
 
       const [outputAfter, nonceUsed] = await Promise.all([
         publicClient.readContract({ address: tokenOut.address, abi: erc20Abi, functionName: "balanceOf", args: [owner] }),
@@ -1017,10 +1062,12 @@ export default function AppPage(): React.JSX.Element {
         functionName: "emergencyExit",
         args: [[...verifiedZap.route.trackedAssets]],
       });
-      const hash = await wallet.writeContract(request);
-      const receipt = await publicClient.waitForTransactionReceipt({ hash });
-      recordTransaction(owner, hash, "Emergency asset recovery", receipt.status);
-      if (receipt.status !== "success") throw new Error("Recovery transaction reverted.");
+      const { hash, status } = await submitAndConfirm(
+        owner,
+        "Emergency asset recovery",
+        () => wallet.writeContract(request),
+      );
+      if (status !== "success") throw new Error("Recovery transaction reverted.");
       setNotice(
         `Tracked ${verifiedZap.route.tokenIn.symbol} and ${verifiedZap.route.tokenOut.symbol} balances returned to the zap owner.`,
       );
@@ -1764,9 +1811,9 @@ export default function AppPage(): React.JSX.Element {
         </aside>
       </section>
 
-      <section className={`container ${styles.receipts}`} aria-label="Transaction receipts">
+      <section id="receipts" className={`container ${styles.receipts}`} aria-label="Transaction receipts">
         <div className={styles.receiptHead}>
-          <div><span className="eyebrow">Receipts</span><h2>Confirmed wallet activity.</h2></div>
+          <div><span className="eyebrow">Receipts</span><h2>Wallet activity, verified by receipts.</h2></div>
           <div className={styles.receiptLinks}>
             <button
               className="btn btnGhost"
@@ -1781,8 +1828,9 @@ export default function AppPage(): React.JSX.Element {
             <a href={ROBINHOOD_EXPLORER_URL} target="_blank" rel="noreferrer">Open Robinhood Blockscout ↗</a>
           </div>
         </div>
+        <TransactionLifecycle activity={transactionLifecycle} />
         {transactions.length === 0 ? (
-          <p className={styles.empty}>Transactions appear here only after a successful Robinhood RPC receipt.</p>
+          <p className={styles.empty}>Transactions appear here only after Robinhood RPC returns a receipt.</p>
         ) : (
           <div className={styles.txList}>
             {transactions.map((transaction) => (

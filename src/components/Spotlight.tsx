@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
+import { useReducedMotionPreference } from "@/components/useReducedMotionPreference";
 
 /**
  * Cursor-tracking highlight for every `.spotlight` element on the page.
@@ -11,8 +12,10 @@ import { useEffect } from "react";
  * component — they just carry the class. Renders nothing.
  */
 export function Spotlight(): null {
+  const reduced = useReducedMotionPreference();
+
   useEffect(() => {
-    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    if (reduced) return;
     // Touch pointers have no hover state; tracking there just burns frames.
     if (!window.matchMedia("(hover: hover) and (pointer: fine)").matches) return;
 
@@ -46,7 +49,7 @@ export function Spotlight(): null {
       document.removeEventListener("pointermove", onMove);
       cancelAnimationFrame(frame);
     };
-  }, []);
+  }, [reduced]);
 
   return null;
 }
