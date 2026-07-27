@@ -2,7 +2,8 @@
 
 import { useEffect, useRef } from "react";
 import { ZapLinesMark } from "@/components/ZapLinesMark";
-import { damp, finePointer, pointerBus, reducedMotion } from "./motion";
+import { useReducedMotionPreference } from "@/components/useReducedMotionPreference";
+import { damp, finePointer, pointerBus } from "./motion";
 import styles from "./landing.module.css";
 
 /**
@@ -59,9 +60,10 @@ const ROUTES = [
 
 export function ZapCore(): React.JSX.Element {
   const tiltRef = useRef<HTMLDivElement>(null);
+  const reduced = useReducedMotionPreference();
 
   useEffect(() => {
-    if (!finePointer() || reducedMotion()) return;
+    if (!finePointer() || reduced) return;
     const stage = tiltRef.current;
     if (!stage) return;
     let frame = 0;
@@ -92,7 +94,7 @@ export function ZapCore(): React.JSX.Element {
       cancelAnimationFrame(frame);
       unsubscribe();
     };
-  }, []);
+  }, [reduced]);
 
   return (
     <div className={styles.coreStage} aria-hidden="true">

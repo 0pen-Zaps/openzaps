@@ -1,5 +1,7 @@
 "use client";
 
+import { reducedMotionEnabled } from "@/lib/motion-preference";
+
 /**
  * Shared motion plumbing for the landing experience.
  *
@@ -28,10 +30,7 @@ export type PointerState = {
 };
 
 export function reducedMotion(): boolean {
-  return (
-    typeof window !== "undefined" &&
-    window.matchMedia("(prefers-reduced-motion: reduce)").matches
-  );
+  return reducedMotionEnabled();
 }
 
 export function finePointer(): boolean {

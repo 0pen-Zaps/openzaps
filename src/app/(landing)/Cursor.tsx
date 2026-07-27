@@ -2,7 +2,8 @@
 
 import { useEffect, useRef } from "react";
 import { ZapLinesMark } from "@/components/ZapLinesMark";
-import { clamp, damp, finePointer, reducedMotion } from "./motion";
+import { useReducedMotionPreference } from "@/components/useReducedMotionPreference";
+import { clamp, damp, finePointer } from "./motion";
 import styles from "./landing.module.css";
 
 /**
@@ -34,9 +35,10 @@ const MODE_SCALE: Record<CursorMode, number> = {
 
 export function Cursor(): React.JSX.Element | null {
   const boltRef = useRef<HTMLDivElement>(null);
+  const reduced = useReducedMotionPreference();
 
   useEffect(() => {
-    if (!finePointer() || reducedMotion()) return;
+    if (!finePointer() || reduced) return;
     const bolt = boltRef.current;
     const root = document.getElementById("landing-root");
     if (!bolt || !root) return;
@@ -198,7 +200,7 @@ export function Cursor(): React.JSX.Element | null {
       releaseMagnet();
       root.removeAttribute("data-cursor-active");
     };
-  }, []);
+  }, [reduced]);
 
   return (
     <div ref={boltRef} className={styles.cursorBolt} data-mode="default" aria-hidden="true">

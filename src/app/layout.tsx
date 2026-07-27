@@ -4,9 +4,11 @@ import Script from "next/script";
 import { Analytics } from "@vercel/analytics/next";
 import "./globals.css";
 import { Spotlight } from "@/components/Spotlight";
+import { MotionControl } from "@/components/MotionControl";
 import { JsonLd } from "@/components/JsonLd";
 import { WalletProvider } from "@/components/WalletProvider";
 import { LINKS, TOKEN, TOKEN_LAUNCH, X_HANDLE } from "@/lib/config";
+import { MOTION_STORAGE_KEY } from "@/lib/motion-preference";
 import {
   SITE_URL,
   SITE_NAME,
@@ -164,6 +166,17 @@ if(new URLSearchParams(location.search).has("intro")){sessionStorage.setItem(k,"
 if(sessionStorage.getItem(k)){document.documentElement.dataset.introSeen="1";return}
 sessionStorage.setItem(k,"1")}catch(e){}})()`;
 
+/**
+ * Resolve the saved/OS motion preference before first paint. CSS and every
+ * JS-driven motion component consume the resulting `data-motion` value, so a
+ * Calm visit never flashes a cinematic first frame while React hydrates.
+ */
+const MOTION_GUARD = `(function(){try{
+var reduced=matchMedia("(prefers-reduced-motion: reduce)").matches;
+var saved=null;try{saved=localStorage.getItem("${MOTION_STORAGE_KEY}")}catch(e){}
+document.documentElement.dataset.motion=(reduced||saved==="calm")?"calm":"cinematic"
+}catch(e){document.documentElement.dataset.motion="calm"}})()`;
+
 export default function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>): React.JSX.Element {
@@ -178,6 +191,9 @@ export default function RootLayout({
       suppressHydrationWarning
     >
       <body>
+        <Script id="motion-guard" strategy="beforeInteractive">
+          {MOTION_GUARD}
+        </Script>
         <Script id="intro-guard" strategy="beforeInteractive">
           {INTRO_GUARD}
         </Script>
@@ -187,6 +203,7 @@ export default function RootLayout({
         </a>
         <WalletProvider>{children}</WalletProvider>
         <Spotlight />
+        <MotionControl />
         <Analytics />
       </body>
     </html>
