@@ -2,7 +2,15 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { Space_Grotesk } from "next/font/google";
 import { BoltIntro } from "@/components/BoltIntro";
-import { pageMetadata } from "@/lib/seo";
+import { JsonLd } from "@/components/JsonLd";
+import {
+  HOME_FAQS,
+  SITE_URL,
+  STATIC_PAGE_SEO,
+  breadcrumbJsonLd,
+  pageMetadata,
+  webPageJsonLd,
+} from "@/lib/seo";
 import { CHAIN } from "@/lib/config";
 import { CountUp } from "@/components/CountUp";
 import { Reveal } from "@/components/Reveal";
@@ -77,12 +85,33 @@ const EXECUTION_POLICIES = [
 ] as const;
 
 export const metadata: Metadata = pageMetadata({
-  title: "DeFi, in one action",
-  description:
-    "OpenZaps turns a multi-protocol DeFi workflow into one bounded Zap. Compose the route with signed gas, fee, and executor limits; Zap now, on a cadence, or on a price move. Live on " +
-    `${CHAIN.name}. Deposited funds are at risk.`,
-  path: "/",
+  ...STATIC_PAGE_SEO.home,
+  keywords: [
+    "DeFi zaps",
+    "one transaction DeFi",
+    "AI agent DeFi",
+    "policy-bound automation",
+    "Robinhood Chain DeFi",
+    "OpenZaps",
+  ],
 });
+
+const landingJsonLd = {
+  "@context": "https://schema.org",
+  "@graph": [
+    webPageJsonLd(STATIC_PAGE_SEO.home),
+    {
+      "@type": "FAQPage",
+      "@id": `${SITE_URL}/#faq-schema`,
+      mainEntity: HOME_FAQS.map(({ question, answer }) => ({
+        "@type": "Question",
+        name: question,
+        acceptedAnswer: { "@type": "Answer", text: answer },
+      })),
+    },
+    breadcrumbJsonLd("/", "OpenZaps"),
+  ],
+};
 
 export default function LandingPage(): React.JSX.Element {
   const graph = protocolGraph();
@@ -112,6 +141,7 @@ export default function LandingPage(): React.JSX.Element {
 
   return (
     <div id="landing-root" className={`${styles.landing} ${displayFont.variable}`}>
+      <JsonLd data={landingJsonLd} />
       <BoltIntro />
       <Atmosphere />
       <div className={styles.grain} aria-hidden="true" />
@@ -141,10 +171,9 @@ export default function LandingPage(): React.JSX.Element {
               className={`${styles.heroLead} ${styles.heroEnter}`}
               style={{ "--enter-delay": "360ms" } as React.CSSProperties}
             >
-              OpenZaps turns a multi-protocol workflow into a single permissionless
-              Zap. Compose the route and its execution policy, sign once, and Zap now,
-              on a cadence, or on a price move.
-              The capsule enforces the signed bounds onchain.
+              OpenZaps turns a multi-step DeFi workflow into one bounded Zap.
+              Compose the route and its execution policy, review the wallet confirmation,
+              then Zap now, on a cadence, or on a price move. The capsule enforces the signed bounds onchain.
             </p>
             <div
               className={`${styles.heroActions} ${styles.heroEnter}`}
@@ -379,7 +408,7 @@ export default function LandingPage(): React.JSX.Element {
             <Reveal as="header" className={styles.sectionHead}>
               <p className={styles.kicker}>Developers</p>
               <h2 id="developers-title" className={styles.sectionTitle}>
-                Build on top of every protocol at once.
+                Build from one typed DeFi catalog.
               </h2>
               <p className={styles.sectionLead}>
                 The block catalog, compiler, and share-token codec are MIT
@@ -496,6 +525,30 @@ export default function LandingPage(): React.JSX.Element {
           </div>
         </section>
 
+        {/* ============================= FAQ ================================ */}
+        <section id="faq" className={styles.section} aria-labelledby="faq-title">
+          <div className="container">
+            <Reveal as="header" className={styles.sectionHead}>
+              <p className={styles.kicker}>OpenZaps FAQ</p>
+              <h2 id="faq-title" className={styles.sectionTitle}>
+                DeFi zaps, policy capsules, and wallet control.
+              </h2>
+              <p className={styles.sectionLead}>
+                Start with the protocol model, then inspect the <Link href="/docs">developer and security docs</Link>,
+                the <Link href="/explore">source-verified zap explorer</Link>, and the <Link href="/token">0xZAPS token page</Link>.
+              </p>
+            </Reveal>
+            <div className={styles.faqGrid}>
+              {HOME_FAQS.map(({ question, answer }) => (
+                <details className={styles.faqItem} key={question}>
+                  <summary>{question}</summary>
+                  <p>{answer}</p>
+                </details>
+              ))}
+            </div>
+          </div>
+        </section>
+
         {/* ========================== FINAL CTA ============================= */}
         <section className={styles.finalCta} aria-labelledby="final-title">
           <span className={styles.ghostWord} data-depth="1.1" style={{ top: "8%", left: "30%" }} aria-hidden="true">
@@ -529,7 +582,7 @@ export default function LandingPage(): React.JSX.Element {
 const WHY = [
   {
     title: "One transaction",
-    detail: "A multi-protocol route executes as a single signed step — approvals, hops, and settlement included.",
+    detail: "Once approved and funded, a bounded route executes its protocol hops and settlement in one transaction.",
   },
   {
     title: "Permissionless",

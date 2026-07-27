@@ -2999,6 +2999,78 @@
 }
 
 /* ==========================================================================
+   FAQ
+   ========================================================================== */
+
+.faqGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.8rem;
+}
+
+.faqItem {
+  align-self: start;
+  border: 1px solid var(--line);
+  background: rgba(11, 11, 11, 0.72);
+  transition: border-color 180ms ease, background 180ms ease;
+}
+
+.faqItem:hover,
+.faqItem[open] {
+  border-color: rgba(255, 252, 0, 0.3);
+  background: rgba(15, 15, 15, 0.9);
+}
+
+.faqItem summary {
+  position: relative;
+  padding: 1.25rem 3.2rem 1.25rem 1.25rem;
+  color: var(--fg);
+  font-size: 0.96rem;
+  font-weight: 600;
+  line-height: 1.45;
+  cursor: pointer;
+  list-style: none;
+}
+
+.faqItem summary::-webkit-details-marker {
+  display: none;
+}
+
+.faqItem summary::after {
+  content: "+";
+  position: absolute;
+  top: 50%;
+  right: 1.25rem;
+  color: var(--accent);
+  font-size: 1.25rem;
+  font-weight: 400;
+  transform: translateY(-50%);
+}
+
+.faqItem[open] summary::after {
+  content: "−";
+}
+
+.faqItem summary:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+
+.faqItem p {
+  margin: 0;
+  padding: 0 1.25rem 1.3rem;
+  color: var(--muted);
+  font-size: 0.88rem;
+  line-height: 1.7;
+}
+
+@media (max-width: 760px) {
+  .faqGrid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ==========================================================================
    Final CTA
    ========================================================================== */
 

@@ -31,6 +31,9 @@ const jetBrainsMono = JetBrains_Mono({
   display: "swap",
 });
 
+const GOOGLE_SITE_VERIFICATION = process.env.NEXT_PUBLIC_GOOGLE_SITE_VERIFICATION;
+const BING_SITE_VERIFICATION = process.env.NEXT_PUBLIC_BING_SITE_VERIFICATION;
+
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
   title: {
@@ -40,7 +43,9 @@ export const metadata: Metadata = {
   description: DEFAULT_DESCRIPTION,
   applicationName: SITE_NAME,
   category: "finance",
-  creator: SITE_NAME,
+  classification: "DeFi intent and execution infrastructure",
+  authors: [{ name: "Nodar Janashia", url: `${SITE_URL}/#founder` }],
+  creator: "Nodar Janashia",
   publisher: SITE_NAME,
   keywords: SEO_KEYWORDS,
   alternates: { canonical: "/" },
@@ -56,7 +61,7 @@ export const metadata: Metadata = {
         url: OG_IMAGE,
         width: 1200,
         height: 630,
-        alt: `${SITE_NAME} — $${TOKEN.symbol} live on ${TOKEN_LAUNCH.network} through ${TOKEN_LAUNCH.venue}`,
+        alt: DEFAULT_TITLE,
       },
     ],
   },
@@ -66,7 +71,7 @@ export const metadata: Metadata = {
     creator: X_HANDLE,
     title: DEFAULT_TITLE,
     description: DEFAULT_DESCRIPTION,
-    images: [OG_IMAGE],
+    images: [{ url: OG_IMAGE, alt: DEFAULT_TITLE }],
   },
   icons: {
     icon: [{ url: "/openzap-mark.svg", type: "image/svg+xml" }],
@@ -74,6 +79,10 @@ export const metadata: Metadata = {
     apple: [{ url: "/apple-icon.png", sizes: "180x180", type: "image/png" }],
   },
   manifest: "/manifest.webmanifest",
+  verification: {
+    ...(GOOGLE_SITE_VERIFICATION ? { google: GOOGLE_SITE_VERIFICATION } : {}),
+    ...(BING_SITE_VERIFICATION ? { other: { "msvalidate.01": BING_SITE_VERIFICATION } } : {}),
+  },
   robots: {
     index: true,
     follow: true,
@@ -102,11 +111,24 @@ const siteGraph = {
       "@id": `${SITE_URL}/#organization`,
       name: SITE_NAME,
       url: SITE_URL,
+      description: DEFAULT_DESCRIPTION,
       logo: {
         "@type": "ImageObject",
-        url: absoluteUrl("/openzap-mark.svg"),
+        "@id": `${SITE_URL}/#logo`,
+        url: absoluteUrl("/icon-512.png"),
+        contentUrl: absoluteUrl("/icon-512.png"),
+        width: 512,
+        height: 512,
       },
-      sameAs: [LINKS.x, LINKS.farcaster],
+      founder: { "@id": `${SITE_URL}/#founder` },
+      sameAs: [LINKS.x, LINKS.farcaster, "https://github.com/0pen-Zaps/openzaps", TOKEN_LAUNCH.tradeUrl],
+    },
+    {
+      "@type": "Person",
+      "@id": `${SITE_URL}/#founder`,
+      name: "Nodar Janashia",
+      url: `${SITE_URL}/#founder`,
+      sameAs: ["https://github.com/nodar", "https://warpcast.com/nodes", "https://x.com/NodarJ"],
     },
     {
       "@type": "WebSite",
@@ -115,7 +137,12 @@ const siteGraph = {
       name: SITE_NAME,
       description: DEFAULT_DESCRIPTION,
       publisher: { "@id": `${SITE_URL}/#organization` },
-      inLanguage: "en",
+      inLanguage: "en-US",
+      potentialAction: {
+        "@type": "SearchAction",
+        target: `${SITE_URL}/explore/{search_term_string}`,
+        "query-input": "required name=search_term_string",
+      },
     },
     {
       "@type": "Product",
@@ -186,10 +213,14 @@ export default function RootLayout({
     // server never rendered. Without this, React reports that difference as a
     // hydration mismatch on every repeat visit.
     <html
-      lang="en"
+      lang="en-US"
       className={`${inter.variable} ${jetBrainsMono.variable}`}
       suppressHydrationWarning
     >
+      <head>
+        <link rel="search" type="application/opensearchdescription+xml" href="/opensearch.xml" title={SITE_NAME} />
+        <link rel="alternate" type="text/plain" href="/llms.txt" title={`${SITE_NAME} for AI systems`} />
+      </head>
       <body>
         <Script id="motion-guard" strategy="beforeInteractive">
           {MOTION_GUARD}

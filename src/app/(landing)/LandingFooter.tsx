@@ -64,7 +64,7 @@ export function LandingFooter({ githubUrl }: { githubUrl: string }): React.JSX.E
 
       <div className={`container ${styles.footerLegal} mono`}>
         <span>© 2026 OpenZaps</span>
-        <span>One transaction. Any protocol.</span>
+        <span>One transaction. Policy-bound.</span>
       </div>
     </footer>
   );

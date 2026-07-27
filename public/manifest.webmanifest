@@ -1,15 +1,36 @@
 {
   "id": "/",
-  "name": "OpenZaps — bounded onchain execution for agents",
+  "name": "OpenZaps — One-Transaction DeFi Zaps",
   "short_name": "OpenZaps",
-  "description": "Compose DeFi routes with signed gas, gas-price, and executor limits, then Zap now, recur, or trigger them on Robinhood Chain.",
-  "start_url": "/",
+  "description": "Build one-transaction DeFi zaps with immutable policy capsules that lock targets, assets, recipients, and calldata before signing. Live on Robinhood Chain.",
+  "start_url": "/zap",
   "scope": "/",
-  "lang": "en",
+  "lang": "en-US",
+  "dir": "ltr",
   "display": "standalone",
   "background_color": "#050505",
   "theme_color": "#050505",
-  "categories": ["finance", "developer", "productivity"],
+  "categories": ["finance", "utilities", "developer"],
+  "shortcuts": [
+    {
+      "name": "Build a DeFi Zap",
+      "short_name": "Build Zap",
+      "description": "Design and simulate a bounded one-transaction DeFi route.",
+      "url": "/zap"
+    },
+    {
+      "name": "Explore Deployed Zaps",
+      "short_name": "Explore",
+      "description": "Inspect verified policy capsules and onchain execution history.",
+      "url": "/explore"
+    },
+    {
+      "name": "Developer Documentation",
+      "short_name": "Docs",
+      "description": "Read the OpenZaps policy, API, lifecycle, and security documentation.",
+      "url": "/docs"
+    }
+  ],
   "icons": [
     {
       "src": "/openzap-mark.svg",

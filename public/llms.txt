@@ -1,21 +1,31 @@
 # OpenZaps
 
-> OpenZaps turn approved DeFi workflows into sealed, immutable policy capsules that a Hermes agent can simulate, submit, monitor, and revoke — without ever holding discretionary wallet authority. 0xZAPS, the ERC-20 paired with aeWETH in OpenZaps' first bounded live route, is live on Robinhood Chain through a creator-verified Clanker V4 market (contract 0xDd90bFa4adC7F4401E611AbaC692D939F9F4CB07).
+> OpenZaps turns supported DeFi workflows into bounded zaps: policy capsules that a human or AI agent can simulate, submit, and monitor without discretionary wallet authority. A supported route can execute its protocol hops and settlement in one transaction after any required approval, capsule-creation, and funding confirmations. 0xZAPS is live on Robinhood Chain through a creator-verified Clanker V4 market (contract 0xDd90bFa4adC7F4401E611AbaC692D939F9F4CB07).
 
 Key facts:
-- Production v1.1 contracts are live on Robinhood Chain (chain ID 4663; factory 0xFC775017b25d2458623E2f3E735A4B750dD8b4E4). Bounded aeWETH ↔ 0xZAPS creation is open; contracts are internally reviewed (63 Foundry tests, 9 internal findings fixed) but pre-external-audit, and deposits carry funds-at-risk warnings. An earlier Base mainnet factory (0xc7C5897e4738a157731c2F93b1d73Db9926E926C) is historical only and not used by the production app.
+- Production v1.1, v3, and v3.1 contracts are live on Robinhood Chain (chain ID 4663). Supported swaps, stitched routes, aeWETH/USDG liquidity, recurring series, and price triggers are exposed through source-backed, allowlisted adapters. The contracts remain pre-external-audit, and deposits carry funds-at-risk warnings. An earlier Base mainnet factory is historical only and is not used by the production app.
 - The token confers no yield, equity, revenue claim, governance, staking, or protocol access guarantee. Live app-level holder utilities exist: wallets holding 100,000+ 0xZAPS unlock auto-refreshing quotes, extended zap/receipt history, and receipt JSON export in the app console (1,000,000+ extends history further). Core workflows are never token-gated.
-- Execution authority is bound in EIP-712-signed policies: fixed adapters, spend ceilings, recipients, deadlines, postconditions, and unconditional owner revoke paths.
+- Execution authority is bound in EIP-712-signed policies: fixed adapters, spend ceilings, recipients, deadlines, and postconditions, plus owner-only nonce invalidation and emergency asset recovery.
 
 ## Pages
 
 - [Home](https://www.0xzaps.com): what OpenZaps are, authority models, security posture, FAQ
-- [Live zap console](https://www.0xzaps.com/app): connect a wallet to quote, create, fund, execute, and recover a bounded aeWETH ↔ 0xZAPS policy capsule
+- [DeFi zap builder](https://www.0xzaps.com/zap): connect a wallet to design, quote, create, fund, execute, automate, and recover supported policy-bound routes
 - [Explore](https://www.0xzaps.com/explore): the live feed of creations, executions, and recoveries read from Robinhood Chain logs, every capsule the factory deployed, and the verified contract set — one page
 - [Developer docs & security](https://www.0xzaps.com/docs): policy schema, simulation API, templates, execution lifecycle, and the security model (threat model, controls, production gates) at /docs#security
-- [Roadmap](https://www.0xzaps.com/roadmap): live bounded route → more templates → relayers → audits
+- [Roadmap](https://www.0xzaps.com/roadmap): current live capabilities, proposed route expansion, submission tooling, and hardening gates
 - [0xZAPS token](https://www.0xzaps.com/token): verified contract, official Clanker market, FAQ
+- [0xZAPS automation fee pot](https://www.0xzaps.com/pot): source-backed pot balances, conversion records, participant credits, rounds, and payouts
 - [Risk disclosures](https://www.0xzaps.com/legal): pre-audit software, onchain irreversibility, token risk
+
+Every verified factory-created capsule has a canonical detail page at `https://www.0xzaps.com/explore/{checksummed-address}` with crawlable policy, provenance, lifecycle, and onchain execution evidence.
+
+## Discovery
+
+- Sitemap: https://www.0xzaps.com/sitemap.xml
+- Robots: https://www.0xzaps.com/robots.txt
+- Web app manifest: https://www.0xzaps.com/manifest.webmanifest
+- OpenSearch descriptor: https://www.0xzaps.com/opensearch.xml
 
 ## Official links
 

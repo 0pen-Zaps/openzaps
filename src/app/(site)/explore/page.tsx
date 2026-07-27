@@ -11,17 +11,14 @@ import {
   explorerAddress,
   explorerTransaction,
 } from "@/lib/robinhood";
-import { breadcrumbJsonLd, pageMetadata } from "@/lib/seo";
+import { STATIC_PAGE_SEO, breadcrumbJsonLd, pageMetadata, webPageJsonLd } from "@/lib/seo";
 import { fetchRangeVaultPulse, fetchZapVaultPulse, formatPulseAmount } from "@/lib/vault-server";
 import { fetchZapSummaries } from "@/lib/zap-server";
 import feed from "./feed.module.css";
 import styles from "./explore.module.css";
 
 export const metadata = pageMetadata({
-  title: "Explore — live activity and every deployed capsule",
-  description:
-    "The live OpenZaps feed on Robinhood Chain: creations, executions, and recoveries read straight from onchain logs, every policy capsule the canonical factory deployed, and the verified contract set — one page, no indexer, no estimates.",
-  path: "/explore",
+  ...STATIC_PAGE_SEO.explore,
   keywords: [
     "OpenZaps feed",
     "Robinhood Chain activity",
@@ -62,12 +59,20 @@ export default async function ZapsFeedPage(): Promise<React.JSX.Element> {
 
   return (
     <main className={feed.page} id="main">
-      <JsonLd data={{ "@context": "https://schema.org", ...breadcrumbJsonLd("/explore", "Explore") }} />
+      <JsonLd
+        data={{
+          "@context": "https://schema.org",
+          "@graph": [
+            webPageJsonLd({ ...STATIC_PAGE_SEO.explore, type: "CollectionPage" }),
+            breadcrumbJsonLd("/explore", "Explore"),
+          ],
+        }}
+      />
 
       <section className={`container ${feed.hero}`}>
         <div>
           <span className="eyebrow">Explore</span>
-          <h1>Every zap, straight from the chain.</h1>
+          <h1>Explore every DeFi zap, straight from the chain.</h1>
           <p>
             Creations, executions, and recoveries are read directly from Robinhood Chain logs — and an execution row
             is counted only when it comes from a zap the canonical factory deployed. Below the live feed sits every
