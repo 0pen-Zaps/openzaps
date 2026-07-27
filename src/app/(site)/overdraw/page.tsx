@@ -1,3 +1,5 @@
+import Link from "next/link";
+
 import { JsonLd } from "@/components/JsonLd";
 import { Reveal } from "@/components/Reveal";
 import { TOKEN, TOKEN_LAUNCH } from "@/lib/config";
@@ -91,6 +93,11 @@ export default function OverdrawPage(): React.JSX.Element {
         <p className={styles.lead}>
           There is no dealer, no die and no oracle. The only thing you are betting against is the judgement of the
           other players, and every outcome is a pure function of the draws they opened.
+        </p>
+        <p className={styles.lead}>
+          <Link href="/overdraw/how" className={styles.heroLink}>
+            Watch a round play out &rarr;
+          </Link>
         </p>
       </header>
 

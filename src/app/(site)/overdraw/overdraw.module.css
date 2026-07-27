@@ -33,6 +33,18 @@
   text-wrap: pretty;
 }
 
+.heroLink {
+  color: var(--accent);
+  font-weight: 600;
+  border-bottom: 1px solid var(--accent-dim);
+  padding-bottom: 0.1rem;
+}
+
+.heroLink:hover {
+  color: var(--accent-bright);
+  border-bottom-color: var(--accent-bright);
+}
+
 .lead strong {
   color: var(--accent-bright);
   font-weight: 600;

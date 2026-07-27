@@ -96,6 +96,15 @@ export const STATIC_PAGE_SEO = {
     changeFrequency: "daily",
     priority: 0.6,
   },
+  overdrawHow: {
+    title: "How An OVERDRAW Round Plays Out",
+    description:
+      "Watch one round of OVERDRAW step by step: four sealed claims on a shared pot, opened together, paid smallest first, and the greedy one cut when it runs out.",
+    path: "/overdraw/how",
+    ogImage: "/og/app.png",
+    changeFrequency: "monthly",
+    priority: 0.55,
+  },
   legal: {
     title: "Security Risks & Token Disclosures",
     description:
