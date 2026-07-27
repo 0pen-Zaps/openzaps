@@ -6,6 +6,7 @@ import { Glyph } from "@/components/Glyph";
 import { JsonLd } from "@/components/JsonLd";
 import { TokenUtilities } from "@/components/TokenUtilities";
 import { buyUrl, TOKEN, TOKEN_LAUNCH, LINKS } from "@/lib/config";
+import { HOOK_FEE_LABEL } from "@/lib/robinhood";
 import {
   STATIC_PAGE_SEO,
   SITE_URL,
@@ -44,23 +45,44 @@ const steps = [
   },
 ] as const;
 
-const utility: readonly { title: string; body: string; danger?: boolean }[] = [
+/**
+ * Where a utility is actually enforced. This is the distinction the page exists
+ * to keep honest: `contracts` utilities hold because a deployed immutable says
+ * so, `app` ones are conveniences 0xzaps.com chooses to grant and could stop
+ * granting tomorrow. Collapsing the two into one undifferentiated list is how a
+ * token page starts implying protocol rights it does not confer.
+ */
+const WHERE = {
+  contracts: "Onchain",
+  app: "App only",
+  wallet: "Wallet",
+} as const;
+
+const utility: readonly { title: string; where: keyof typeof WHERE; body: string }[] = [
   {
     title: "The asset in the pinned live routes",
+    where: "contracts",
     body: "The bounded adapter is welded to one Uniswap v4 pool — aeWETH ↔ 0xZAPS, both directions, one deployed contract — and cannot route to another token, spender, hook, or DEX. Two stitched adapters trade 0xZAPS against USDG, one per direction, by pairing that pool with the hookless aeWETH ↔ USDG one. Every pool an adapter may touch is a constructor immutable, so an execution cannot wander off them.",
   },
   {
+    title: "The creation fee converts into it",
+    where: "contracts",
+    body: `Every Zap created through the app-creation fee gateway pays its native fee, and the immutable gateway converts that fee through the same pinned aeWETH → ${TOKEN.symbol} route the app quotes for you. The conversion is part of the creation transaction, not a later discretionary step.`,
+  },
+  {
+    title: "The lottery pot accrues and holds it",
+    where: "contracts",
+    body: `Eighty percent of the automation fee goes to whoever submitted the run; the remaining twenty accrues to the pot and becomes ${TOKEN.symbol} once anyone converts it. The pot's balance is readable onchain and shown live on /pot.`,
+  },
+  {
     title: "App conveniences at a balance threshold",
+    where: "app",
     body: "Hold 100,000+ 0xZAPS in the connected wallet and the app auto-refreshes live quotes, keeps 50 saved Zaps instead of 20, retains 100 receipts instead of 20, and enables receipt JSON export. At 1,000,000+ the saved-Zap limit is 100. The app reads the balance; the contracts never do.",
   },
   {
     title: "Wallet-readable ERC-20",
+    where: "wallet",
     body: `Use the exact ${TOKEN_LAUNCH.network} address, ${TOKEN.decimals} decimals, and the add-to-wallet button on this page. Wallet support varies.`,
-  },
-  {
-    title: "What it does not grant",
-    body: "The token grants no protocol governance, staking, revenue, yield, equity, or fee rights. It is not equity and no return is implied. Every core workflow — create, fund, execute, recover — works without holding it.",
-    danger: true,
   },
 ];
 
@@ -186,15 +208,20 @@ export default function TokenPage(): React.JSX.Element {
 
         <aside className={styles.rail}>
           <section className={styles.tokenCard}>
+            {/* The opaque asset, not the transparent one. The mark is lime on
+                black; dropped transparent onto `--panel` it is near-invisible
+                on Ivory and Paper. A token logo is a brand asset rather than
+                themed UI, so it brings its own ground and stays legible on all
+                five themes — the radius is the only part that themes. */}
             <Image
               className={styles.tokenArt}
-              src="/0xzaps-token-transparent-200.png"
+              src={TOKEN.logoPath}
               alt={TOKEN.symbol}
-              width={96}
-              height={96}
+              width={128}
+              height={128}
             />
             <strong className={styles.tokenName}>{TOKEN.symbol}</strong>
-            <span className={styles.tokenPair}>paired with aeWETH · v4, 2% hook</span>
+            <span className={styles.tokenPair}>paired with aeWETH · v4, {HOOK_FEE_LABEL} hook</span>
             <div className={styles.railActions}>
               {/* The in-app bounded route takes the brand fill: this is an app
                   screen now, and the route that shows its policy before signing
@@ -210,13 +237,19 @@ export default function TokenPage(): React.JSX.Element {
             </div>
           </section>
 
+          {/* These three were prose bullets that restated the utility rows
+              below. They are now the rows themselves, so this card links to
+              them rather than keeping a second copy that can drift. */}
           <section className={styles.railNote}>
             <h2 className={styles.railNoteTitle}>Where it shows up</h2>
             <div className={styles.railList}>
-              <span>· The creation fee converts into it</span>
-              <span>· The lottery pot holds it</span>
               <span>· The pinned live routes trade it</span>
+              <span>· The creation fee converts into it</span>
+              <span>· The lottery pot accrues it</span>
             </div>
+            <Link className={styles.railNoteLink} href="/token#utilities">
+              All current utility <span aria-hidden>↓</span>
+            </Link>
           </section>
         </aside>
       </div>
@@ -241,18 +274,34 @@ export default function TokenPage(): React.JSX.Element {
           TokenUtilityPanel; the id is a route, not decoration. */}
       <section className={styles.section} id="utilities">
         <header className={styles.sectionHead}>
-          <h2 className={styles.sectionTitle}>Only the utility that exists today</h2>
+          <h2 className={styles.sectionTitle}>What {TOKEN.symbol} is used for today</h2>
           <span className={styles.sectionNote}>
-            All of it live today, in the contracts or in the app. None of it is a protocol right.
+            Every item below is live right now. The tag says where it is enforced.
           </span>
         </header>
         <div className={styles.rows}>
           {utility.map((u) => (
-            <div className={`${styles.row} ${u.danger ? styles.rowDanger : ""}`.trim()} key={u.title}>
-              <span className={styles.rowKey}>{u.title}</span>
+            <div className={styles.row} key={u.title}>
+              <span className={styles.rowKey}>
+                {u.title}
+                <em className={styles.rowWhere} data-where={u.where}>
+                  {WHERE[u.where]}
+                </em>
+              </span>
               <p className={styles.rowBody}>{u.body}</p>
             </div>
           ))}
+          {/* Deliberately the last row and deliberately loud: everything above
+              is a reason to hold the token, and this is the boundary on all of
+              it. Moving it out of this list detaches it from what it limits. */}
+          <div className={`${styles.row} ${styles.rowDanger}`}>
+            <span className={styles.rowKey}>What it does not grant</span>
+            <p className={styles.rowBody}>
+              The token grants no protocol governance, staking, revenue, yield, equity, or fee rights. It is not
+              equity and no return is implied. Every core workflow — create, fund, execute, recover — works without
+              holding it, and the app conveniences above are not protocol rights.
+            </p>
+          </div>
         </div>
       </section>
 

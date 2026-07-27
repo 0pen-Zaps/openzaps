@@ -3,12 +3,15 @@
  *
  * A theme is nothing but a `data-oz-theme` value on <html>; every colour,
  * shadow and radius in the app resolves from the token block that attribute
- * selects in globals.css. Ivory sits on `:root` as well as on its own
+ * selects in globals.css. The default sits on `:root` as well as on its own
  * attribute block, so a server render with no attribute — and a visitor with
  * JavaScript off — still gets a complete theme rather than unstyled tokens.
  *
- * `voltage` is the identity the app shipped with. It is preserved exactly so
- * that adopting this system never forces anyone off the look they chose.
+ * `voltage` is the identity the app shipped with, preserved exactly, and the
+ * default. Changing DEFAULT_THEME is a two-file edit: the `:root,` line in
+ * globals.css has to move onto the new default's block AND that block has to
+ * become the first of the five, because `:root` ties on specificity with every
+ * `[data-oz-theme]` selector and only source order breaks the tie.
  */
 
 export const THEME_STORAGE_KEY = "oz-theme-v1";
@@ -16,7 +19,7 @@ export const THEME_STORAGE_KEY = "oz-theme-v1";
 export const THEMES = ["ivory", "paper", "graphite", "voltage", "dusk"] as const;
 export type Theme = (typeof THEMES)[number];
 
-export const DEFAULT_THEME: Theme = "ivory";
+export const DEFAULT_THEME: Theme = "voltage";
 
 /**
  * Browser-chrome colour per theme — the `--bg` of each block in globals.css.
@@ -53,10 +56,10 @@ export type ThemeOption = {
 };
 
 export const THEME_OPTIONS: readonly ThemeOption[] = [
-  { id: "ivory", name: "Ivory", hint: "warm paper · default", swatch: ["#F6F3EC", "#EFEBE1", "#1E1B16", "#FFFC00"], radius: 5 },
+  { id: "ivory", name: "Ivory", hint: "warm paper", swatch: ["#F6F3EC", "#EFEBE1", "#1E1B16", "#FFFC00"], radius: 5 },
   { id: "paper", name: "Paper", hint: "cool neutral · squared", swatch: ["#F4F4F5", "#EAEAEC", "#16161A", "#FFFC00"], radius: 2 },
   { id: "graphite", name: "Graphite", hint: "warm dark", swatch: ["#191712", "#211E17", "#F2EEE4", "#FFFC00"], radius: 5 },
-  { id: "voltage", name: "Voltage", hint: "the original · zero radius", swatch: ["#050505", "#0B0B0B", "#F4F4F1", "#FFFC00"], radius: 0 },
+  { id: "voltage", name: "Voltage", hint: "the original · default", swatch: ["#050505", "#0B0B0B", "#F4F4F1", "#FFFC00"], radius: 0 },
   { id: "dusk", name: "Dusk", hint: "cool night · soft", swatch: ["#14161F", "#1B1E29", "#ECEEF6", "#FFFC00"], radius: 7 },
 ];
 

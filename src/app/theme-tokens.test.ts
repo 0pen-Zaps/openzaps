@@ -2,24 +2,31 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
-import { THEMES, THEME_BG, THEME_SCHEME } from "@/lib/theme";
+import { DEFAULT_THEME, THEMES, THEME_BG, THEME_SCHEME } from "@/lib/theme";
 
 /**
  * Guards for the five-theme token layer.
  *
  * Every failure mode below is silent in a browser. A token missing from one
- * theme block does not error — it inherits Ivory's value, so a dark theme
- * quietly paints one element cream and nobody notices until a screenshot. A
- * wrong `THEME_BG` entry is a mismatched band above the page on mobile and
- * nowhere else. These are the checks that turn "looks fine in the theme I
- * happen to use" into a build signal.
+ * theme block does not error — it inherits the default theme's value, so an
+ * off-default theme quietly paints one element wrong and nobody notices until
+ * a screenshot. A wrong `THEME_BG` entry is a mismatched band above the page
+ * on mobile and nowhere else. These are the checks that turn "looks fine in
+ * the theme I happen to use" into a build signal.
  */
 
 const globals = readFileSync(fileURLToPath(new URL("./globals.css", import.meta.url)), "utf8");
 
-/** The declarations inside one `[data-oz-theme="…"]` (or `:root`) block. */
+/**
+ * The declarations inside one `[data-oz-theme="…"]` block.
+ *
+ * DEFAULT_THEME's block is the one that also carries `:root`, which is what a
+ * server render and a JS-disabled visitor get. Looking it up by that compound
+ * marker means a DEFAULT_THEME change that skips globals.css fails here
+ * instead of shipping a first paint in the wrong theme.
+ */
 function themeBlock(theme: string): string {
-  const marker = theme === "ivory" ? ':root,\n[data-oz-theme="ivory"] {' : `[data-oz-theme="${theme}"] {`;
+  const marker = theme === DEFAULT_THEME ? `:root,\n[data-oz-theme="${theme}"] {` : `[data-oz-theme="${theme}"] {`;
   const start = globals.indexOf(marker);
   expect(start, `no token block for "${theme}" in globals.css`).toBeGreaterThan(-1);
   return globals.slice(start, globals.indexOf("\n}", start));
@@ -34,24 +41,35 @@ function hex(block: string, token: string): string {
 }
 
 describe("theme token parity", () => {
-  const ivory = declaredTokens(themeBlock("ivory"));
+  const base = declaredTokens(themeBlock(DEFAULT_THEME));
 
   it("declares a meaningful number of tokens on the default theme", () => {
-    // A sanity floor: if the Ivory block were truncated by an edit, every
+    // A sanity floor: if the default block were truncated by an edit, every
     // comparison below would pass against almost nothing.
-    expect(ivory.size).toBeGreaterThan(50);
+    expect(base.size).toBeGreaterThan(50);
   });
 
-  for (const theme of THEMES.filter((candidate) => candidate !== "ivory")) {
-    it(`"${theme}" overrides every token Ivory declares`, () => {
-      const missing = [...ivory].filter((token) => !declaredTokens(themeBlock(theme)).has(token));
-      // An unoverridden token falls through to Ivory's value. On a dark theme
-      // that is a cream-coloured element, with no error anywhere.
+  it("puts the default theme's block first, so `:root` loses every tie", () => {
+    // `:root` and `[data-oz-theme="x"]` are both (0,1,0). Nothing but source
+    // order decides which wins, so the block carrying `:root` must come before
+    // the other four — below them it would override each in turn and every
+    // theme would silently paint the default.
+    const rootAt = globals.indexOf(`:root,\n[data-oz-theme="${DEFAULT_THEME}"] {`);
+    for (const theme of THEMES.filter((candidate) => candidate !== DEFAULT_THEME)) {
+      expect(globals.indexOf(`[data-oz-theme="${theme}"] {`), `${theme} is declared before the \`:root\` block`).toBeGreaterThan(rootAt);
+    }
+  });
+
+  for (const theme of THEMES.filter((candidate) => candidate !== DEFAULT_THEME)) {
+    it(`"${theme}" overrides every token ${DEFAULT_THEME} declares`, () => {
+      const missing = [...base].filter((token) => !declaredTokens(themeBlock(theme)).has(token));
+      // An unoverridden token falls through to the default theme's value —
+      // one element painted from the wrong palette, with no error anywhere.
       expect(missing, `${theme} is missing: ${missing.join(", ")}`).toEqual([]);
     });
 
     it(`"${theme}" introduces no token the other themes lack`, () => {
-      const extra = [...declaredTokens(themeBlock(theme))].filter((token) => !ivory.has(token));
+      const extra = [...declaredTokens(themeBlock(theme))].filter((token) => !base.has(token));
       expect(extra, `${theme} declares tokens no other theme has: ${extra.join(", ")}`).toEqual([]);
     });
   }

@@ -89,7 +89,26 @@ export const ROBINHOOD_LIQUIDITY = {
   poolId: "0xb040f18affd851c6ea02b896b2f846cb77edbb33cc5361f7f8c6d14b87c01573" as Hex,
   dynamicFeeFlag: 0x800000,
   tickSpacing: 200,
+  /**
+   * What the Clanker hook actually charges a swap, in v4 fee units — hundredths
+   * of a bip, so 1_000_000 is 100% and this is 1%.
+   *
+   * DISPLAY ONLY. The pool carries `dynamicFeeFlag`, so no static fee exists to
+   * read off the PoolKey and quotes come from the quoter, never from here.
+   * It lives in one place because it does not: the same number was written out
+   * by hand on /token and /explore and both said 2%.
+   *
+   * Verified against the live hook (`clankerFee(poolId)` and `pairedFee(poolId)`
+   * both return 10000). The hook owner can change it, so re-read it before
+   * trusting this string:
+   *   cast call 0x48B8F6AD3A1b4aA477314c9a23035b8F84dDe8cc \
+   *     "clankerFee(bytes32)(uint24)" <poolId> --rpc-url <ROBINHOOD_RPC_URL>
+   */
+  hookFeePips: 10_000,
 } as const;
+
+/** The hook fee as it is written in UI copy — "1%", never a hand-typed digit. */
+export const HOOK_FEE_LABEL = `${ROBINHOOD_LIQUIDITY.hookFeePips / 10_000}%`;
 
 /**
  * The aeWETH/USDG pool the `RobinhoodV4PoolAdapter` (0x714E…) is welded to — a

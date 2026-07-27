@@ -6,6 +6,7 @@ import { ActivityFeed } from "./ActivityFeed";
 import { fetchProtocolActivity } from "@/lib/activity-server";
 import { TOKEN_LAUNCH } from "@/lib/config";
 import {
+  HOOK_FEE_LABEL,
   OPENZAP_CONTRACTS,
   ROBINHOOD_LIQUIDITY,
   explorerAddress,
@@ -79,7 +80,7 @@ export default async function ZapsFeedPage(): Promise<React.JSX.Element> {
         </div>
         <aside className={styles.heroCard}>
           <span className={styles.heroCardLabel}>Pinned pool</span>
-          <strong className={styles.heroCardName}>aeWETH ↔ 0xZAPS · v4 · 2% hook</strong>
+          <strong className={styles.heroCardName}>aeWETH ↔ 0xZAPS · v4 · {HOOK_FEE_LABEL} hook</strong>
           <code className={styles.heroCardId}>
             {ROBINHOOD_LIQUIDITY.poolId.slice(0, 18)}…{ROBINHOOD_LIQUIDITY.poolId.slice(-8)}
           </code>

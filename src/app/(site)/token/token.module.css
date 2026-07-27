@@ -134,11 +134,16 @@
   text-align: center;
 }
 
+/* 96px was sized for the old logo, which filled its square canvas. The mark
+   is a bolt: 74% of the canvas tall but only 27% wide, so the same box reads
+   far lighter. 128px restores the optical weight without changing the asset,
+   which stays square because token lists and wallets expect a square canvas. */
 .tokenArt {
   display: block;
-  width: 96px;
-  height: 96px;
+  width: 128px;
+  height: 128px;
   margin: 0 auto;
+  border-radius: var(--r-card-sm);
 }
 
 .tokenName {
@@ -254,6 +259,19 @@
   line-height: 1.5;
 }
 
+.railNoteLink {
+  display: inline-block;
+  margin-top: 10px;
+  color: var(--link);
+  font-size: 12.5px;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.railNoteLink:hover {
+  text-decoration: underline;
+}
+
 /* ── Sections ─────────────────────────────────────────────────────────────── */
 
 .section {
@@ -342,8 +360,32 @@
 }
 
 .rowKey {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
   font-size: 13px;
   font-weight: 600;
+}
+
+/* Where a utility is enforced. `--zap-wash` / `--zap-wash-ink` is the brand
+   pair that stays legible on every theme; never `--zap` as a fill with ink on
+   top, which is the trap `--on-zap` exists for. */
+.rowWhere {
+  padding: 2px 7px;
+  border-radius: var(--r-chip);
+  background: var(--chip);
+  color: var(--ink-3);
+  font-size: 10.5px;
+  font-style: normal;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.rowWhere[data-where="contracts"] {
+  background: var(--zap-wash);
+  color: var(--zap-wash-ink);
 }
 
 .rowBody {

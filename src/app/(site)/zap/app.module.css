@@ -12,8 +12,8 @@
 
    Every colour in here used to be hardcoded — `rgba(255,255,255,0.035)`
    panels, `#ffadad` errors — which only ever worked on a black ground. Under
-   Ivory, the default theme and the one a JS-disabled visitor gets, those fills
-   vanish and the status hexes stop meeting contrast. Everything is on tokens.
+   Ivory or Paper those fills vanish and the status hexes stop meeting
+   contrast, and a theme is one click away. Everything is on tokens.
    The single documented exception to "no hardcoded colour" in this repo is
    src/lib/blocks.ts; there is none in here.
 
