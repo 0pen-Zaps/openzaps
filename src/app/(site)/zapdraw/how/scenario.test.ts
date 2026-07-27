@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { DEMO, tokens } from "@/app/(site)/overdraw/how/scenario";
+import { DEMO, tokens } from "@/app/(site)/zapdraw/how/scenario";
 
 /**
  * The walkthrough teaches the rules, so its numbers have to be the contract's.

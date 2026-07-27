@@ -7,7 +7,7 @@ import { DEMO, tokens } from "./scenario";
 import styles from "./how.module.css";
 
 /**
- * One round of OVERDRAW, played out as eight beats.
+ * One round of ZapDraw, played out as eight beats.
  *
  * Every figure comes from `scenario.ts`, which runs the real `waterfall`, so the
  * animation cannot drift from the rules it is teaching.
