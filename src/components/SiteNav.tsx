@@ -15,7 +15,7 @@ const LINKS = [
   { href: "/explore", label: "Explore" },
   { href: "/profile", label: "Profile" },
   { href: "/pot", label: "Pot" },
-  { href: "/overdraw", label: "Overdraw" },
+  { href: "/zapdraw", label: "ZapDraw" },
   { href: "/docs", label: "Docs" },
   { href: "/token", label: TOKEN.symbol },
 ] as const;

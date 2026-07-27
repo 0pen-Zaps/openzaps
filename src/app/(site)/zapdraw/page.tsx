@@ -4,11 +4,11 @@ import { JsonLd } from "@/components/JsonLd";
 import { Reveal } from "@/components/Reveal";
 import { TOKEN, TOKEN_LAUNCH } from "@/lib/config";
 import { STATIC_PAGE_SEO, breadcrumbJsonLd, pageMetadata, webPageJsonLd } from "@/lib/seo";
-import { OverdrawTable } from "./OverdrawTable";
-import styles from "./overdraw.module.css";
+import { ZapDrawTable } from "./ZapDrawTable";
+import styles from "./zapdraw.module.css";
 
 export const metadata = pageMetadata({
-  ...STATIC_PAGE_SEO.overdraw,
+  ...STATIC_PAGE_SEO.zapdraw,
   keywords: [
     "0xZAPS game",
     "onchain game Robinhood Chain",
@@ -72,19 +72,19 @@ const RISKS = [
   },
 ] as const;
 
-export default function OverdrawPage(): React.JSX.Element {
+export default function ZapDrawPage(): React.JSX.Element {
   return (
     <main className={styles.page} id="main">
       <JsonLd
         data={{
           "@context": "https://schema.org",
-          "@graph": [webPageJsonLd(STATIC_PAGE_SEO.overdraw), breadcrumbJsonLd("/overdraw", "OVERDRAW")],
+          "@graph": [webPageJsonLd(STATIC_PAGE_SEO.zapdraw), breadcrumbJsonLd("/zapdraw", "ZapDraw")],
         }}
       />
 
       <header className={`container ${styles.hero}`}>
         <p className={styles.eyebrow}>Game · Robinhood Chain {TOKEN_LAUNCH.chainId}</p>
-        <h1 className={styles.title}>OVERDRAW</h1>
+        <h1 className={styles.title}>ZapDraw</h1>
         <p className={styles.lead}>
           One shared bus, limited current, and a table full of people deciding in secret how much of it to take.{" "}
           <strong>The modest are served first.</strong> Draw more than the bus can still deliver and you are cut —
@@ -95,14 +95,14 @@ export default function OverdrawPage(): React.JSX.Element {
           other players, and every outcome is a pure function of the draws they opened.
         </p>
         <p className={styles.lead}>
-          <Link href="/overdraw/how" className={styles.heroLink}>
+          <Link href="/zapdraw/how" className={styles.heroLink}>
             Watch a round play out &rarr;
           </Link>
         </p>
       </header>
 
       <div className="container">
-        <OverdrawTable />
+        <ZapDrawTable />
       </div>
 
       <Reveal as="section" className="container">

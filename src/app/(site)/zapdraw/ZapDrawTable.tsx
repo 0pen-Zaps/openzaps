@@ -42,7 +42,7 @@ import {
   type RevealedDraw,
   type SealedDraw,
 } from "@/lib/overdraw";
-import styles from "./overdraw.module.css";
+import styles from "./zapdraw.module.css";
 
 type Busy = null | "connect" | "approve" | "commit" | "reveal" | "settle" | "claim";
 
@@ -152,7 +152,7 @@ const PHASE_COPY: Record<Phase, { label: string; hint: string }> = {
   },
 };
 
-export function OverdrawTable(): React.JSX.Element {
+export function ZapDrawTable(): React.JSX.Element {
   const game = useMemo(() => overdrawAddress(), []);
 
   // One wallet session for the whole site, owned by the root provider. This
@@ -502,7 +502,7 @@ export function OverdrawTable(): React.JSX.Element {
         <p className={styles.closedTag}>Not deployed</p>
         <h2 className={styles.closedTitle}>There is no table to sit at yet.</h2>
         <p className={styles.closedBody}>
-          OVERDRAW&apos;s contract is written and tested but not deployed to Robinhood Chain, so this page has
+          ZapDraw&apos;s contract is written and tested but not deployed to Robinhood Chain, so this page has
           no round to show you and no address to take 0xZAPS to. It stays this way until a real deployment is
           configured — a game surface that renders a plausible-looking table over a contract that does not
           exist is how people lose money to a screenshot.
@@ -543,7 +543,7 @@ export function OverdrawTable(): React.JSX.Element {
 
       {wrongChain ? (
         <p className={styles.warn} role="status">
-          Your wallet is on chain {walletChainId ?? "an unknown network"}. OVERDRAW lives on Robinhood Chain (
+          Your wallet is on chain {walletChainId ?? "an unknown network"}. ZapDraw lives on Robinhood Chain (
           {ROBINHOOD_CHAIN_ID}); any action below will ask you to switch first.
         </p>
       ) : null}

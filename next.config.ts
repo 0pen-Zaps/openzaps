@@ -21,6 +21,10 @@ const nextConfig: NextConfig = {
         destination: "https://www.0xzaps.com/:path*",
         permanent: true,
       },
+      // The game shipped briefly as "overdraw" before it was named ZapDraw; both
+      // URLs were live and sitemapped, so they redirect rather than 404.
+      { source: "/overdraw", destination: "/zapdraw", permanent: true },
+      { source: "/overdraw/how", destination: "/zapdraw/how", permanent: true },
       { source: "/use", destination: "/zap", permanent: true },
       { source: "/zaps", destination: "/explore", permanent: true },
       { source: "/zaps/:address", destination: "/explore/:address", permanent: true },

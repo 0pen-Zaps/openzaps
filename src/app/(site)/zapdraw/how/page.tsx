@@ -6,9 +6,9 @@ import { RoundFilm } from "./RoundFilm";
 import styles from "./how.module.css";
 
 export const metadata = pageMetadata({
-  ...STATIC_PAGE_SEO.overdrawHow,
+  ...STATIC_PAGE_SEO.zapdrawHow,
   keywords: [
-    "how OVERDRAW works",
+    "how ZapDraw works",
     "commit reveal game explained",
     "sealed bid game walkthrough",
     "0xZAPS game rules",
@@ -22,14 +22,14 @@ export default function HowPage(): React.JSX.Element {
         data={{
           "@context": "https://schema.org",
           "@graph": [
-            webPageJsonLd(STATIC_PAGE_SEO.overdrawHow),
-            breadcrumbJsonLd("/overdraw/how", "How a round plays out"),
+            webPageJsonLd(STATIC_PAGE_SEO.zapdrawHow),
+            breadcrumbJsonLd("/zapdraw/how", "How a round plays out"),
           ],
         }}
       />
 
       <header className={`container ${styles.hero}`}>
-        <p className={styles.eyebrow}>OVERDRAW · one round, start to finish</p>
+        <p className={styles.eyebrow}>ZapDraw · one round, start to finish</p>
         <h1 className={styles.title}>Watch a round.</h1>
         <p className={styles.lead}>Eight steps. Real numbers. No reading required.</p>
       </header>
@@ -50,7 +50,7 @@ export default function HowPage(): React.JSX.Element {
           round, which mirrors what the contract does at settlement.
         </p>
         <p className={styles.footBody}>
-          <Link href="/overdraw" className={styles.footLink}>
+          <Link href="/zapdraw" className={styles.footLink}>
             Go to the table &rarr;
           </Link>
         </p>
