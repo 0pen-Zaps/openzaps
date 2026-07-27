@@ -232,6 +232,48 @@ It is **not part of the protocol**. It is not an adapter, is not allowlisted in 
 `AdapterRegistry`, holds no policy capsule, and no zap route can reach it. A bug in it cannot touch
 capsule funds, and deploying it changes nothing about the live v1.1/v3 sets above.
 
+### Go-live runbook
+
+Simulated against live chain state and rehearsed end to end on a fork of it (2026-07-27): deploy,
+then smoke, both green; the smoke script was also confirmed to REJECT a build pointed at the wrong
+stake token, so it is a gate rather than a formality.
+
+```bash
+cd contracts
+
+# 1. Simulate. No key, no broadcast — proves the constructor guards pass against live state.
+OVERDRAW_RAKE_RECIPIENT=0x5a52D4B820Ae7F02880d270562950918ACb14aA2 \
+forge script script/DeployOverdraw.s.sol:DeployOverdraw \
+  --rpc-url https://rpc.mainnet.chain.robinhood.com \
+  --sender <deployer address>
+
+# 2. Broadcast. Signer from the keystore; never a key on the command line.
+OVERDRAW_RAKE_RECIPIENT=0x5a52D4B820Ae7F02880d270562950918ACb14aA2 \
+forge script script/DeployOverdraw.s.sol:DeployOverdraw \
+  --rpc-url https://rpc.mainnet.chain.robinhood.com \
+  --account nodar-deployer --broadcast
+
+# 3. Verify the DEPLOYED contract, not the broadcast log.
+OVERDRAW_ADDRESS=0x<deployed> \
+forge script script/SmokeOverdraw.s.sol:SmokeOverdraw \
+  --rpc-url https://rpc.mainnet.chain.robinhood.com
+```
+
+Only once step 3 prints `SMOKE PASSED` does `NEXT_PUBLIC_OVERDRAW_ADDRESS` get set in Vercel and the
+site redeployed. Until then `/overdraw` fails closed and nobody can send the game a token.
+
+Defaults the script applies, all permanent once broadcast:
+
+| Parameter | Value | Why |
+|---|---|---|
+| `stake` | 0xZAPS `0xDd90…CB07` | verified live: 18 dp, 100B supply |
+| `rakeRecipient` | `0x5a52…4aA2` (governance) | a live user-controlled address; also the carry's release valve |
+| `entryFee` | `1,000,000` 0xZAPS | ≈ `0.00073` aeWETH quoted against the pinned pool on 2026-07-27 — a couple of dollars a seat |
+| `commitWindow` / `revealWindow` | 6 h / 6 h | an unrevealed seat forfeits, so the window must be survivable |
+| `rakeBps` / `keeperBps` | 200 / 50 | rake doubles as the carry drain rate; zero is refused |
+
+Estimated deployment cost: **1,736,917 gas ≈ 0.000139 ETH** at 0.08 gwei.
+
 Two things gate it, in this order:
 
 1. **Broadcast.** `DeployOverdraw.s.sol` requires `OVERDRAW_RAKE_RECIPIENT` and fails before
