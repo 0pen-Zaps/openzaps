@@ -490,3 +490,24 @@
   color: var(--accent);
   font-weight: 600;
 }
+
+/* The one rule the walkthrough exists to teach, stated in prose before any
+   motion so it is never dependent on scrolling, JS, or a beat being reached. */
+.rule {
+  margin-top: clamp(1.6rem, 4vw, 2.6rem);
+  max-width: 46rem;
+  border-left: 2px solid var(--accent);
+  padding-left: 1rem;
+}
+
+.ruleLine {
+  color: var(--text);
+  font-size: clamp(1rem, 1.8vw, 1.25rem);
+  line-height: 1.55;
+  text-wrap: pretty;
+}
+
+.ruleLine strong {
+  color: var(--accent-bright);
+  font-weight: 600;
+}
