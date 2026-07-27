@@ -1,15 +1,11 @@
 import { TOKEN } from "@/lib/config";
 import { JsonLd } from "@/components/JsonLd";
-import { pageMetadata, breadcrumbJsonLd } from "@/lib/seo";
+import { STATIC_PAGE_SEO, breadcrumbJsonLd, pageMetadata, webPageJsonLd } from "@/lib/seo";
 import { Reveal } from "@/components/Reveal";
 import styles from "../docs/docs.module.css";
 
 export const metadata = pageMetadata({
-  title: "Risk disclosures",
-  description:
-    "The OpenZaps contracts have not been externally audited. Onchain actions are irreversible. 0xZAPS is an ERC-20 with no claim on revenue, yield, or assets. Read the relayer, market, and user-responsibility disclosures before signing anything.",
-  path: "/legal",
-  ogImage: "/og/legal.png",
+  ...STATIC_PAGE_SEO.legal,
   keywords: ["OpenZaps risk disclosures", "0xZAPS token risk"],
 });
 
@@ -25,11 +21,16 @@ const risks = [
 export default function LegalPage(): React.JSX.Element {
   return (
     <main className={styles.page} id="main">
-      <JsonLd data={{ "@context": "https://schema.org", ...breadcrumbJsonLd("/legal", "Risk disclosures") }} />
+      <JsonLd
+        data={{
+          "@context": "https://schema.org",
+          "@graph": [webPageJsonLd(STATIC_PAGE_SEO.legal), breadcrumbJsonLd("/legal", "Risk disclosures")],
+        }}
+      />
       <section className={`container ${styles.hero}`}>
         <div>
           <span className="eyebrow">Risk disclosures</span>
-          <h1>Bounded does not mean risk-free.</h1>
+          <h1>Security risks and 0xZAPS token disclosures.</h1>
           <p>
             OpenZaps narrows what an agent can do. It does not remove smart-contract, wallet, relayer, market, token,
             legal, or operational risk.

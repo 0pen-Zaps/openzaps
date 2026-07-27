@@ -7,7 +7,7 @@ import { getAddress, type Address } from "viem";
 
 import { JsonLd } from "@/components/JsonLd";
 import { explorerAddress } from "@/lib/robinhood";
-import { breadcrumbJsonLd, pageMetadata } from "@/lib/seo";
+import { absoluteUrl, breadcrumbJsonLd, pageMetadata, webPageJsonLd } from "@/lib/seo";
 import { fetchZapDetail } from "@/lib/zap-server";
 import { isZapNotFound, type ZapDetailPayload } from "@/lib/zap";
 import { ZapLive } from "./ZapLive";
@@ -110,6 +110,25 @@ async function capUnverifiedCacheLife(): Promise<void> {
   await unverifiedCacheWindow();
 }
 
+function verifiedZapSeo(zap: Address, payload: ZapDetailPayload): {
+  title: string;
+  description: string;
+  path: string;
+} {
+  const { policy, stats } = payload;
+  const route =
+    policy.matchesLiveRoute && policy.inputSymbol && policy.outputSymbol
+      ? `${policy.inputSymbol} → ${policy.outputSymbol} DeFi zap`
+      : "OpenZaps policy capsule";
+  const executions = stats.executionCount === 1 ? "1 execution" : `${stats.executionCount} executions`;
+
+  return {
+    title: `DeFi Zap ${shortAddress(zap)} — Verified Policy`,
+    description: `Verified ${route} ${shortAddress(zap)} on Robinhood Chain. Inspect its immutable policy, owner, status, and ${executions} from onchain logs.`,
+    path: `/explore/${zap}`,
+  };
+}
+
 export async function generateMetadata({ params }: Params): Promise<Metadata> {
   const { address } = await params;
   const zap = normalizeAddress(address);
@@ -129,23 +148,13 @@ export async function generateMetadata({ params }: Params): Promise<Metadata> {
     return {
       title: `${shortAddress(zap)} — unverified address`,
       description: "Robinhood Chain could not be read for this address, so nothing about it is reported.",
+      alternates: { canonical: absoluteUrl(`/explore/${zap}`) },
       robots: { index: false, follow: true },
     };
   }
 
-  const { policy, provenance, stats } = loaded.payload;
-  const route =
-    policy.matchesLiveRoute && policy.inputSymbol && policy.outputSymbol
-      ? `a bounded ${policy.inputSymbol} → ${policy.outputSymbol} swap capsule`
-      : "a factory-deployed policy capsule";
-
   return pageMetadata({
-    title: `Zap ${shortAddress(zap)} — deployed policy capsule`,
-    description:
-      `${shortAddress(zap)} is ${route} deployed by the OpenZaps factory on Robinhood Chain, owned by ` +
-      `${shortAddress(provenance.owner)} and created in block ${Number(provenance.createdBlock).toLocaleString("en-US")}. ` +
-      `${stats.executionCount === 1 ? "1 execution" : `${stats.executionCount} executions`} read from its own onchain logs.`,
-    path: `/explore/${zap}`,
+    ...verifiedZapSeo(zap, loaded.payload),
     keywords: [
       "OpenZaps zap",
       "policy capsule onchain",
@@ -172,15 +181,46 @@ export default async function ZapDetailPage({ params }: Params): Promise<React.J
   // has to stop short of saying it did.
   const verified = loaded.status === "ok";
   if (!verified) await capUnverifiedCacheLife();
+  const verifiedPayload = loaded.status === "ok" ? loaded.payload : null;
+  const seo = verifiedPayload ? verifiedZapSeo(zap, verifiedPayload) : null;
 
   return (
     <main className={styles.page} id="main">
-      <JsonLd
-        data={{
-          "@context": "https://schema.org",
-          ...breadcrumbJsonLd(`/explore/${zap}`, verified ? `Zap ${shortAddress(zap)}` : shortAddress(zap)),
-        }}
-      />
+      {verifiedPayload && seo ? (
+        <JsonLd
+          data={{
+            "@context": "https://schema.org",
+            "@graph": [
+              {
+                ...webPageJsonLd(seo),
+                mainEntity: { "@id": absoluteUrl(`/explore/${zap}#zap`) },
+              },
+              {
+                "@type": "Thing",
+                "@id": absoluteUrl(`/explore/${zap}#zap`),
+                name: `OpenZap ${shortAddress(zap)}`,
+                identifier: zap,
+                description: seo.description,
+                mainEntityOfPage: { "@id": absoluteUrl(`/explore/${zap}#webpage`) },
+                additionalProperty: [
+                  { "@type": "PropertyValue", name: "Owner", value: verifiedPayload.provenance.owner },
+                  {
+                    "@type": "PropertyValue",
+                    name: "Creation block",
+                    value: String(verifiedPayload.provenance.createdBlock),
+                  },
+                  {
+                    "@type": "PropertyValue",
+                    name: "Onchain executions",
+                    value: verifiedPayload.stats.executionCount,
+                  },
+                ],
+              },
+              breadcrumbJsonLd(`/explore/${zap}`, `Zap ${shortAddress(zap)}`),
+            ],
+          }}
+        />
+      ) : null}
 
       <section className={`container ${styles.detailHero}`}>
         <div>

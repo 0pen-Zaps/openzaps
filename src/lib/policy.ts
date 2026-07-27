@@ -274,7 +274,7 @@ export function simulatePolicy(policy: PolicyDraft, previous?: PolicyDraft): Sim
     label: "Human gate",
     detail: policy.humanApproval
       ? "A final wallet review is set in this draft. The v1.1 policy has no per-run approval step, so a deployed capsule does not bind it."
-      : "No human gate beyond the signed policy. The signed amount and the owner's revoke path are the bounds.",
+      : "No human gate beyond the signed policy. The signed amount, owner-only nonce invalidation, and emergency exit are the bounds.",
     status: policy.humanApproval ? "pass" : "warn",
   });
 

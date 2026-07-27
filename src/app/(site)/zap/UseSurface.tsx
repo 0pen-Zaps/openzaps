@@ -103,7 +103,7 @@ export function UseSurface(): React.JSX.Element {
   };
 
   return (
-    <div>
+    <div id="zap-workspace">
       <div className={`container ${buildStyles.useNav}`}>
         <div
           className={`${appStyles.segment} ${buildStyles.useTabs}`}

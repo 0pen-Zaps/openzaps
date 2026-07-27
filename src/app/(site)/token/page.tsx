@@ -3,16 +3,19 @@ import { BuyButton } from "@/components/BuyButton";
 import { JsonLd } from "@/components/JsonLd";
 import { TokenUtilities } from "@/components/TokenUtilities";
 import { TOKEN, TOKEN_LAUNCH, LINKS } from "@/lib/config";
-import { pageMetadata, absoluteUrl, SITE_URL } from "@/lib/seo";
+import {
+  STATIC_PAGE_SEO,
+  SITE_URL,
+  absoluteUrl,
+  pageMetadata,
+  webPageJsonLd,
+} from "@/lib/seo";
 import { Reveal } from "@/components/Reveal";
 import { CopyButton } from "@/components/CopyButton";
 import styles from "./token.module.css";
 
 export const metadata = pageMetadata({
-  title: `${TOKEN.symbol} token — contract, market, and what it is not`,
-  description: `${TOKEN.symbol} is an ERC-20 on ${TOKEN_LAUNCH.network}, traded through ${TOKEN_LAUNCH.venue}. It has no claim on revenue, yield, or assets. Verify the contract address before trading or adding it to a wallet.`,
-  path: "/token",
-  ogImage: "/og/token.png",
+  ...STATIC_PAGE_SEO.token,
   keywords: [
     `buy ${TOKEN.symbol}`,
     `${TOKEN.symbol} ${TOKEN_LAUNCH.venue}`,
@@ -90,6 +93,19 @@ const faqs = [
 const tokenPageJsonLd = {
   "@context": "https://schema.org",
   "@graph": [
+    webPageJsonLd(STATIC_PAGE_SEO.token),
+    {
+      "@type": "Product",
+      "@id": absoluteUrl("/token#token"),
+      name: `${TOKEN.symbol} token`,
+      image: absoluteUrl(TOKEN.logoPath),
+      description: STATIC_PAGE_SEO.token.description,
+      brand: { "@id": `${SITE_URL}/#organization` },
+      sku: TOKEN_LAUNCH.contract,
+      category: "ERC-20 token",
+      sameAs: [TOKEN_LAUNCH.contractUrl, TOKEN_LAUNCH.tradeUrl, TOKEN_LAUNCH.dexscreenerUrl],
+      mainEntityOfPage: { "@id": absoluteUrl("/token#webpage") },
+    },
     {
       "@type": "FAQPage",
       "@id": absoluteUrl("/token#faq"),
@@ -115,7 +131,7 @@ export default function TokenPage(): React.JSX.Element {
     <main className={styles.page} id="main">
       <JsonLd data={tokenPageJsonLd} />
       {/* hero */}
-      <section className={`container ${styles.hero}`}>
+      <section className={`container ${styles.hero}`} id="token">
         <span className="badge">Live on {TOKEN_LAUNCH.network}</span>
         <div className={styles.heroMark}>
           <OpenZapMark />

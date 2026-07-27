@@ -1,25 +1,33 @@
 import type { MetadataRoute } from "next";
-import { SITE_URL } from "@/lib/seo";
+import { STATIC_PAGE_SEO, absoluteUrl } from "@/lib/seo";
+import { fetchZapAddresses } from "@/lib/zap-server";
 
-const ROUTES = [
-  { path: "", priority: 1, changeFrequency: "weekly" },
-  { path: "/zap", priority: 0.95, changeFrequency: "weekly" },
-    // Only the index: per-zap URLs are minted onchain, so enumerating them here
-  // would need an RPC read at build time and would go stale the moment the
-  // next capsule is deployed. The index links every one of them.
-  { path: "/explore", priority: 0.92, changeFrequency: "daily" },
-  { path: "/docs", priority: 0.9, changeFrequency: "weekly" },
-  { path: "/roadmap", priority: 0.72, changeFrequency: "weekly" },
-  { path: "/token", priority: 0.7, changeFrequency: "weekly" },
-  { path: "/legal", priority: 0.55, changeFrequency: "monthly" },
-] as const;
+const MAX_DYNAMIC_URLS = 49_000;
 
-export default function sitemap(): MetadataRoute.Sitemap {
-  const lastModified = new Date();
-  return ROUTES.map(({ path, priority, changeFrequency }) => ({
-    url: `${SITE_URL}${path}`,
-    lastModified,
-    changeFrequency,
-    priority,
-  }));
+export const revalidate = 300;
+
+export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
+  const staticEntries: MetadataRoute.Sitemap = Object.values(STATIC_PAGE_SEO).map(
+    ({ path, priority, changeFrequency, ogImage }) => ({
+      url: absoluteUrl(path),
+      changeFrequency,
+      priority,
+      images: [absoluteUrl(ogImage)],
+    }),
+  );
+
+  try {
+    const addresses = await fetchZapAddresses(MAX_DYNAMIC_URLS);
+    const zapEntries: MetadataRoute.Sitemap = addresses.map((address) => ({
+      url: absoluteUrl(`/explore/${address}`),
+      changeFrequency: "daily",
+      priority: 0.7,
+      images: [absoluteUrl("/og.png")],
+    }));
+    return [...staticEntries, ...zapEntries];
+  } catch {
+    // Search discovery must remain available when the RPC is temporarily degraded.
+    console.warn("[sitemap] Onchain zap enumeration unavailable; serving static routes only.");
+    return staticEntries;
+  }
 }

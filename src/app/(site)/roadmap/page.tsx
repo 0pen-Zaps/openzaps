@@ -1,15 +1,11 @@
 import Link from "next/link";
 import { JsonLd } from "@/components/JsonLd";
-import { pageMetadata, breadcrumbJsonLd } from "@/lib/seo";
+import { STATIC_PAGE_SEO, breadcrumbJsonLd, pageMetadata, webPageJsonLd } from "@/lib/seo";
 import { Reveal } from "@/components/Reveal";
 import styles from "../docs/docs.module.css";
 
 export const metadata = pageMetadata({
-  title: "Roadmap",
-  description:
-    "What users can Zap today, what is being worked on, and what is not decided. Bounded swaps, stitched routes, liquidity, recurring series, price triggers, and execution-policy composition are live on Robinhood Chain.",
-  path: "/roadmap",
-  ogImage: "/og/roadmap.png",
+  ...STATIC_PAGE_SEO.roadmap,
   keywords: ["OpenZaps roadmap", "DeFi agent roadmap"],
 });
 
@@ -45,13 +41,18 @@ const principles = [
   "ERC-20 first. Callback tokens and multi-asset accounting stay out until their failure modes are reviewed.",
   "Protective zaps stay blocked until oracle, liquidity, and liquidation risk controls are externally reviewed.",
   "Every execution fee is visible in the typed intent, and every creation fee is visible with its conversion floor before the wallet transaction is signed.",
-  "Every automation keeps pause, revoke, audit, and self-submit fallback paths.",
+  "Every automation keeps nonce invalidation, emergency asset recovery, auditability, and self-submit fallback paths.",
 ] as const;
 
 export default function RoadmapPage(): React.JSX.Element {
   return (
     <main className={styles.page} id="main">
-      <JsonLd data={{ "@context": "https://schema.org", ...breadcrumbJsonLd("/roadmap", "Roadmap") }} />
+      <JsonLd
+        data={{
+          "@context": "https://schema.org",
+          "@graph": [webPageJsonLd(STATIC_PAGE_SEO.roadmap), breadcrumbJsonLd("/roadmap", "Roadmap")],
+        }}
+      />
       <section className={`container ${styles.hero}`}>
         <div>
           <span className="eyebrow">Roadmap</span>
@@ -59,7 +60,7 @@ export default function RoadmapPage(): React.JSX.Element {
           <p>
             This page carries no dates. The order below is not a commitment: anything past the current release can be
             reordered or dropped. The constraint that does not move is that each release has to keep execution authority
-            explicit, inspectable, and revocable.
+            explicit, inspectable, and recoverable.
           </p>
           <div className={styles.heroActions}>
             <Link className="btn btnPrimary btnLg" href="/docs">

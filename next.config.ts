@@ -15,6 +15,12 @@ const nextConfig: NextConfig = {
   //   /pricing        → /docs              removed; docs are the surviving reference
   async redirects() {
     return [
+      {
+        source: "/:path*",
+        has: [{ type: "host", value: "0xzaps.com" }],
+        destination: "https://www.0xzaps.com/:path*",
+        permanent: true,
+      },
       { source: "/use", destination: "/zap", permanent: true },
       { source: "/zaps", destination: "/explore", permanent: true },
       { source: "/zaps/:address", destination: "/explore/:address", permanent: true },
@@ -23,6 +29,19 @@ const nextConfig: NextConfig = {
       { source: "/build", destination: "/zap", permanent: true },
       { source: "/security", destination: "/docs#security", permanent: true },
       { source: "/pricing", destination: "/docs", permanent: true },
+    ];
+  },
+  async headers() {
+    return [
+      {
+        source: "/api/:path*",
+        headers: [
+          {
+            key: "X-Robots-Tag",
+            value: "noindex, nofollow, nosnippet",
+          },
+        ],
+      },
     ];
   },
 };

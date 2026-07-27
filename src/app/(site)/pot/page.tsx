@@ -1,16 +1,14 @@
 import Link from "next/link";
 
 import { JsonLd } from "@/components/JsonLd";
-import { breadcrumbJsonLd, pageMetadata } from "@/lib/seo";
+import { STATIC_PAGE_SEO, breadcrumbJsonLd, pageMetadata, webPageJsonLd } from "@/lib/seo";
 import { fetchPots } from "@/lib/pot-server";
 import { PotLive, type PotPayload } from "./PotLive";
 import styles from "./pot.module.css";
 
 export const metadata = pageMetadata({
-  title: "0xZAPS lottery pot",
-  description:
-    "Every automated Zap pays 1% of its output — 20% of that fee accrues here and converts to 0xZAPS. See the live prize, the tickets in the round, the conversions, and every prize paid out. Deposited funds are at risk.",
-  path: "/pot",
+  ...STATIC_PAGE_SEO.pot,
+  keywords: ["0xZAPS fee pot", "OpenZaps automation fee", "Robinhood Chain lottery pot"],
 });
 
 export const dynamic = "force-dynamic";
@@ -28,7 +26,12 @@ export default async function PotPage(): Promise<React.JSX.Element> {
 
   return (
     <main className={styles.page} id="main">
-      <JsonLd data={breadcrumbJsonLd("/pot", "Lottery pot")} />
+      <JsonLd
+        data={{
+          "@context": "https://schema.org",
+          "@graph": [webPageJsonLd(STATIC_PAGE_SEO.pot), breadcrumbJsonLd("/pot", "Lottery pot")],
+        }}
+      />
 
       <section className={`container ${styles.hero}`}>
         <p className="eyebrow">Protocol fee · 0xZAPS</p>

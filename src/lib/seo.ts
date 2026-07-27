@@ -2,40 +2,159 @@ import type { Metadata } from "next";
 import { TOKEN, TOKEN_LAUNCH, CHAIN, X_HANDLE } from "@/lib/config";
 
 // Canonical production origin. www is canonical: 0xzaps.com 308-redirects to www.0xzaps.com.
-// Hardcoded default so canonicals never regress to a *.vercel.app alias when the env var is
-// missing at build time; NEXT_PUBLIC_SITE_URL remains the override for previews.
-export const SITE_URL = (process.env.NEXT_PUBLIC_SITE_URL ?? "https://www.0xzaps.com").replace(/\/+$/, "");
+// Hardcoded so production and preview builds never emit a *.vercel.app canonical.
+export const SITE_URL = "https://www.0xzaps.com";
 
 export const SITE_NAME = "OpenZaps";
 export const OG_IMAGE = "/og.png";
 
-export const DEFAULT_TITLE = "OpenZaps — DeFi policy capsules agents cannot redirect";
+type StaticPageSeo = {
+  title: string;
+  description: string;
+  path: string;
+  ogImage: string;
+  changeFrequency: "daily" | "weekly" | "monthly";
+  priority: number;
+};
 
-export const DEFAULT_DESCRIPTION =
-  "Compose a DeFi route with signed gas, gas-price, and executor limits, then Zap now, recur, or trigger it. A capsule fixes the target, recipient, asset, calldata, and execution policy before signing; nothing can widen those bounds. " +
-  `Bounded swaps, stitched routes, liquidity, and standing automations are live on ${TOKEN_LAUNCH.network} for aeWETH ↔ ${TOKEN.symbol}. Deposited funds are at risk.`;
+/**
+ * Single source of truth for indexable routes. Route metadata, JSON-LD, sitemap entries, and
+ * regression tests all consume this map so titles, canonicals, and crawl discovery cannot drift.
+ */
+export const STATIC_PAGE_SEO = {
+  home: {
+    title: "One-Transaction DeFi Zaps for Agents",
+    description:
+      "Build one-transaction DeFi zaps with immutable policy capsules that lock targets, assets, recipients, and calldata before signing. Live on Robinhood Chain.",
+    path: "/",
+    ogImage: OG_IMAGE,
+    changeFrequency: "weekly",
+    priority: 1,
+  },
+  zap: {
+    title: "Build One-Transaction DeFi Zaps",
+    description:
+      "Design, simulate, sign, and run one-transaction DeFi zaps with bounded policy capsules on Robinhood Chain. Your wallet keeps control of every action.",
+    path: "/zap",
+    ogImage: "/og/app.png",
+    changeFrequency: "weekly",
+    priority: 0.95,
+  },
+  explore: {
+    title: "Explore DeFi Zaps on Robinhood Chain",
+    description:
+      "Explore verified OpenZap policy capsules, owners, routes, execution history, and lifecycle state read directly from Robinhood Chain contracts and logs.",
+    path: "/explore",
+    ogImage: OG_IMAGE,
+    changeFrequency: "daily",
+    priority: 0.9,
+  },
+  docs: {
+    title: "DeFi Zap Developer Docs & Security",
+    description:
+      "Build with OpenZaps: policy schemas, EIP-712 intents, simulation APIs, execution lifecycle, smart contract controls, threat model, and security status.",
+    path: "/docs",
+    ogImage: "/og/docs.png",
+    changeFrequency: "weekly",
+    priority: 0.85,
+  },
+  roadmap: {
+    title: "DeFi Zap Protocol Roadmap",
+    description:
+      "Track what OpenZaps runs today, the next bounded DeFi routes under consideration, and the security gates required before broader agent execution.",
+    path: "/roadmap",
+    ogImage: "/og/roadmap.png",
+    changeFrequency: "monthly",
+    priority: 0.65,
+  },
+  token: {
+    title: `${TOKEN.symbol} Token: Contract, Utility & Market`,
+    description:
+      `Verify the ${TOKEN.symbol} token contract, utility, official ${TOKEN_LAUNCH.venue} market, and ${CHAIN.name} details. The token grants no revenue, yield, equity, or fee rights.`,
+    path: "/token",
+    ogImage: "/og/token.png",
+    changeFrequency: "weekly",
+    priority: 0.8,
+  },
+  pot: {
+    title: "0xZAPS Automation Fee Pot",
+    description:
+      "Inspect the OpenZaps automation fee pot, live 0xZAPS conversion balance, participant credits, prize rounds, and source-backed onchain evidence.",
+    path: "/pot",
+    ogImage: "/og/app.png",
+    changeFrequency: "daily",
+    priority: 0.7,
+  },
+  legal: {
+    title: "Security Risks & Token Disclosures",
+    description:
+      `Review OpenZaps smart contract, wallet, execution, and ${TOKEN.symbol} token risks before using the live ${CHAIN.name} protocol. The contracts are unaudited.`,
+    path: "/legal",
+    ogImage: "/og/legal.png",
+    changeFrequency: "monthly",
+    priority: 0.55,
+  },
+} as const satisfies Record<string, StaticPageSeo>;
+
+export const HOME_FAQS = [
+  {
+    question: "What is a DeFi zap?",
+    answer:
+      "A DeFi zap packages multiple supported protocol steps into one wallet transaction. OpenZaps executes only routes backed by allowlisted adapters and tokens; approval, capsule creation, and funding can require separate wallet confirmations.",
+  },
+  {
+    question: "Does every OpenZap require only one transaction?",
+    answer:
+      "The bounded route executes its protocol hops and settlement atomically in one transaction after setup. Token approval, capsule creation, and funding can each require a separate wallet confirmation.",
+  },
+  {
+    question: "Can an AI agent change my OpenZap policy?",
+    answer:
+      "No. The user wallet or Safe creates the authority and signs the policy. An eligible executor can submit only the transaction permitted by those immutable targets, assets, recipients, amounts, calldata constraints, and deadlines.",
+  },
+  {
+    question: "How can an owner stop or recover from an intent?",
+    answer:
+      "The owner can invalidate an unused intent nonce and use the contract's emergency-exit path for tracked assets. The deployed policy stays immutable, and the live v1.1 capsule does not expose a generic pause control.",
+  },
+  {
+    question: "Does OpenZaps support every DeFi protocol?",
+    answer:
+      "No. Live execution is limited to source-backed routes whose adapters and tokens are explicitly allowlisted. Additional protocols require reviewed adapters and tests before they can carry funds.",
+  },
+  {
+    question: "Are OpenZaps contracts externally audited?",
+    answer:
+      "No external audit is currently published for the live OpenZaps contracts. The software is pre-audit, deposited funds are at risk, and onchain actions are irreversible.",
+  },
+] as const;
+
+export function brandedTitle(title: string): string {
+  return title.endsWith(`| ${SITE_NAME}`) ? title : `${title} | ${SITE_NAME}`;
+}
+
+export const DEFAULT_TITLE = brandedTitle(STATIC_PAGE_SEO.home.title);
+export const DEFAULT_DESCRIPTION = STATIC_PAGE_SEO.home.description;
 
 export const SEO_KEYWORDS = [
   "OpenZaps",
+  "DeFi zaps",
+  "one-transaction DeFi",
+  "DeFi intent execution",
+  "agent DeFi infrastructure",
+  "bounded DeFi automation",
+  "onchain intents",
+  "DeFi workflow builder",
   TOKEN.symbol,
   `${TOKEN.symbol} token`,
   "0xzaps.com",
   TOKEN_LAUNCH.venue,
   `${TOKEN_LAUNCH.venue} ${TOKEN_LAUNCH.version}`,
   TOKEN_LAUNCH.network,
-  TOKEN_LAUNCH.contract,
-  "Dexscreener Robinhood Chain",
-  "DeFi automation",
-  "onchain automation",
   "policy capsules",
-  "Hermes agent",
   "EIP-712 intents",
   "ERC-1271",
   "immutable zaps",
-  "visual DeFi builder",
-  "execution policy composer",
-  "DeFi policy blocks",
-  "aeWETH 0xZAPS route",
   CHAIN.name,
 ];
 
@@ -65,11 +184,11 @@ export function pageMetadata({
   ogImage?: string;
 }): Metadata {
   const url = absoluteUrl(path);
-  const socialTitle = `${title} | ${SITE_NAME}`;
+  const socialTitle = brandedTitle(title);
   return {
     title,
     description,
-    keywords: [...SEO_KEYWORDS, ...keywords],
+    keywords: [...new Set([...SEO_KEYWORDS, ...keywords])],
     alternates: { canonical: url },
     openGraph: {
       title: socialTitle,
@@ -86,8 +205,40 @@ export function pageMetadata({
       creator: X_HANDLE,
       title: socialTitle,
       description,
-      images: [absoluteUrl(ogImage)],
+      images: [{ url: absoluteUrl(ogImage), width: 1200, height: 630, alt: socialTitle }],
     },
+  };
+}
+
+/** Schema.org WebPage node shared by every indexable route. */
+export function webPageJsonLd({
+  title,
+  description,
+  path,
+  ogImage = OG_IMAGE,
+  type = "WebPage",
+}: Pick<StaticPageSeo, "title" | "description" | "path"> & {
+  ogImage?: string;
+  type?: "WebPage" | "CollectionPage";
+}): object {
+  const url = absoluteUrl(path);
+  return {
+    "@type": type,
+    "@id": absoluteUrl(`${path}#webpage`),
+    url,
+    name: brandedTitle(title),
+    description,
+    inLanguage: "en-US",
+    isPartOf: { "@id": `${SITE_URL}/#website` },
+    about: { "@id": `${SITE_URL}/#organization` },
+    publisher: { "@id": `${SITE_URL}/#organization` },
+    primaryImageOfPage: {
+      "@type": "ImageObject",
+      url: absoluteUrl(ogImage),
+      width: 1200,
+      height: 630,
+    },
+    ...(path === "/" ? {} : { breadcrumb: { "@id": absoluteUrl(`${path}#breadcrumbs`) } }),
   };
 }
 
@@ -105,5 +256,10 @@ export function breadcrumbJsonLd(path: string, name: string): object {
 
 /** Serialize JSON-LD safely for a <script type="application/ld+json"> block. */
 export function jsonLd(data: object): string {
-  return JSON.stringify(data).replace(/</g, "\\u003c");
+  return JSON.stringify(data)
+    .replace(/</g, "\\u003c")
+    .replace(/>/g, "\\u003e")
+    .replace(/&/g, "\\u0026")
+    .replace(/\u2028/g, "\\u2028")
+    .replace(/\u2029/g, "\\u2029");
 }

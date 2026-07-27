@@ -2,17 +2,13 @@ import Link from "next/link";
 import { CHAIN, CONTRACTS, LINKS, STATUS, TOKEN, explorer } from "@/lib/config";
 import { POLICY_TEMPLATES } from "@/lib/policy";
 import { JsonLd } from "@/components/JsonLd";
-import { pageMetadata, breadcrumbJsonLd, SITE_URL } from "@/lib/seo";
+import { STATIC_PAGE_SEO, SITE_URL, breadcrumbJsonLd, pageMetadata, webPageJsonLd } from "@/lib/seo";
 import { Reveal } from "@/components/Reveal";
 import { TokenUtilityPanel } from "@/components/TokenUtilityPanel";
 import styles from "./docs.module.css";
 
 export const metadata = pageMetadata({
-  title: "Developer docs & security",
-  description:
-    "How OpenZaps composes routes with execution gas, gas-price, and executor-access policies; reduces them into EIP-712 intents; and simulates, signs, submits, monitors, and revokes each capsule. Swaps, liquidity, recurring series, and price triggers are live on Robinhood Chain. Deposited funds are at risk.",
-  path: "/docs",
-  ogImage: "/og/docs.png",
+  ...STATIC_PAGE_SEO.docs,
   keywords: [
     "OpenZaps docs",
     "policy capsule docs",
@@ -31,7 +27,7 @@ const lifecycle = [
   ["2", "Simulate", "Deterministic checks run before any wallet prompt. A blocked policy does not proceed. A warned policy proceeds only after review."],
   ["3", "Review signature", "The typed intent binds chain, owner, recipient, nonce, deadline, policy hash, min-out, execution gas, gas-price ceiling, and executor access where the contract supports it. None can change after signing."],
   ["4", "Submit", "The owner submits from their own wallet. The v1.1 policy cannot bind a submitter, so whoever executes chooses the mempool path."],
-  ["5", "Monitor and revoke", "Receipts, allowance checks, balance deltas, alerts, and the owner's revoke and exit paths stay attached to the capsule. Its page at /explore/<address> reports what the contract stores and what its own logs say, and nothing else."],
+  ["5", "Monitor and recover", "Receipts, allowance checks, balance deltas, alerts, nonce invalidation, and the owner's emergency-exit path stay attached to the capsule. Its page at /explore/<address> reports what the contract stores and what its own logs say, and nothing else."],
 ] as const;
 
 const executionPolicies = [
@@ -64,7 +60,7 @@ const controls = [
   ["Exact approvals", "The approval is the exact step amount, and it is reset to zero on the success path and the revert path. No standing allowance is left for anyone to draw on later."],
   ["Balance-delta checks", "After the adapter returns, the capsule asserts the tracked output asset, the recipient, the minimum output, and that no allowance remains. A failed assertion reverts the whole execution."],
   ["Submitter is not bound", "The v1.1 policy has no submitter field, so whoever executes the capsule chooses the mempool path. The live bounded route is submitted from the owner's own wallet."],
-  ["Owner revoke", "The owner can pause, invalidate nonce space, or emergency-exit without an agent. The withdraw and revoke path is unconditional and needs no one else's cooperation."],
+  ["Owner recovery controls", "The owner can invalidate unused intent nonces or emergency-exit tracked assets without an agent. The live v1.1 capsule has no generic pause function; its deployed policy remains immutable."],
 ] as const;
 
 const threats = [
@@ -79,14 +75,19 @@ const gates = [
   ["External audit", "Independent review of factory, clone init, EIP-712/1271 verification, approval reset, and adapter boundaries."],
   ["Formal checks", "A prover run over the authorization, approval-reset, call-surface, recipient, isolation, and token-allowlist invariants."],
   ["Adapter governance", "Safe plus timelock ownership, adapter bytecode manifests, and a rollback process."],
-  ["Testnet soak", "Public testnet with real wallet review, alerts, receipts, and revoke drills."],
-  ["Incident runbook", "Emergency pause, disclosure process, chain-monitor alerts, and postmortem template."],
+  ["Testnet soak", "Public testnet with real wallet review, alerts, receipts, and recovery drills."],
+  ["Incident runbook", "Emergency-control review, disclosure process, chain-monitor alerts, and postmortem template."],
 ] as const;
 
 export default function DocsPage(): React.JSX.Element {
   return (
     <main className={styles.page} id="main">
-      <JsonLd data={{ "@context": "https://schema.org", ...breadcrumbJsonLd("/docs", "Developer docs") }} />
+      <JsonLd
+        data={{
+          "@context": "https://schema.org",
+          "@graph": [webPageJsonLd(STATIC_PAGE_SEO.docs), breadcrumbJsonLd("/docs", "Developer docs")],
+        }}
+      />
       <section className={`container ${styles.hero}`}>
         <div>
           <span className="eyebrow">Developer docs</span>

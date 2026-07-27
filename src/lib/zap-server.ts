@@ -386,6 +386,21 @@ export async function fetchZapSummaries(limit: number = ACTIVITY_FEED_LIMIT): Pr
 }
 
 /**
+ * Enumerate canonical factory-created capsules for crawl discovery without paying for a full
+ * detail snapshot per address. The factory event is the same provenance gate used by detail
+ * pages; newest-first deduplication keeps the sitemap deterministic if an RPC repeats a log.
+ */
+export async function fetchZapAddresses(limit = 49_000): Promise<Address[]> {
+  if (!Number.isSafeInteger(limit) || limit < 1) {
+    throw new RangeError("Zap address limit must be a positive safe integer.");
+  }
+  assertConfigured();
+  const snapshot = await factorySnapshot(FACTORY_SNAPSHOT_TTL_MS);
+  const { rows } = newestZapCreations(snapshot.created, limit);
+  return [...new Map(rows.map((row) => [row.zap.toLowerCase(), row.zap])).values()];
+}
+
+/**
  * A malformed env override collapses a contract address to zeroAddress, which
  * would make every query return nothing and the page claim an empty history.
  */

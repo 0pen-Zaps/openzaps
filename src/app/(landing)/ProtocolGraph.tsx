@@ -45,7 +45,7 @@ export function ProtocolGraph({
           className={styles.graphSvg}
           aria-hidden="true"
         >
-          {/* Spokes: every protocol composes through the core. */}
+          {/* Spokes: each catalogued protocol composes through the core. */}
           {nodes.map((node) => {
             const p = POSITIONS[node.id];
             if (!p) return null;
