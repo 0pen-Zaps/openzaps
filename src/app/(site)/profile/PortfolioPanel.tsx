@@ -17,18 +17,25 @@ interface PortfolioPanelProps {
   onRetry: () => void;
 }
 
-const SLICE_COLORS = ["#fffc00", "#9effb8", "#9cbaff", "#ffbd6d", "#e7a6ff", "#7de5ef"] as const;
+/**
+ * Slice tones, as tokens rather than literals. The six hexes these replace were
+ * Voltage-era neons: garish on Ivory and Paper, and near-invisible on the dark
+ * themes they were not tuned for. Every consumer takes a raw string — the SVG
+ * `stroke`, the legend swatch background, and the `--asset-color` custom
+ * property — so `var(--token)` works in all three without further change.
+ */
+const SLICE_COLORS = ["var(--zap)", "var(--ok)", "var(--info)", "var(--warn)", "var(--zap-deep)", "var(--link)"] as const;
 
 export function PortfolioPanel({ status, data, error, onRetry }: PortfolioPanelProps): React.JSX.Element {
   if ((status === "idle" || status === "loading") && !data) {
     return (
-      <section className={`container ${styles.panel}`} aria-busy="true" aria-label="Wallet holdings">
+      <section className={styles.panel} aria-busy="true" aria-label="Wallet holdings">
         <header className={styles.head}>
-          <div>
-            <span className="eyebrow">Wallet holdings</span>
-            <h2>Reading balances and onchain quotes.</h2>
+          <h2>Holdings</h2>
+          <span className={styles.hint}>reading balances and onchain quotes</span>
+          <div className={styles.headMeta}>
+            <span className={styles.reading}>RPC snapshot</span>
           </div>
-          <span className={styles.reading}>RPC snapshot</span>
         </header>
         <div className={styles.skeleton} aria-hidden>
           <i />
@@ -41,15 +48,15 @@ export function PortfolioPanel({ status, data, error, onRetry }: PortfolioPanelP
 
   if (status === "unavailable" || !data) {
     return (
-      <section className={`container ${styles.panel}`} aria-label="Wallet holdings">
+      <section className={styles.panel} aria-label="Wallet holdings">
         <div className={styles.unavailable} role="alert">
           <BlockGlyph name="alert" />
           <div>
-            <span className="eyebrow">Wallet holdings unavailable</span>
-            <h2>No zero portfolio was inferred.</h2>
+            <h2>Holdings unavailable</h2>
+            <p className={styles.hint}>no zero portfolio was inferred</p>
             <p>{error ?? "The Robinhood Chain RPC balance snapshot failed."}</p>
           </div>
-          <button className="btn btnGhost" onClick={onRetry} type="button">Retry holdings</button>
+          <button className={styles.panelBtn} onClick={onRetry} type="button">Retry holdings</button>
         </div>
       </section>
     );
@@ -62,19 +69,17 @@ export function PortfolioPanel({ status, data, error, onRetry }: PortfolioPanelP
   const empty = data.valuationStatus === "empty";
 
   return (
-    <section className={`container ${styles.panel}`} aria-labelledby="portfolio-heading">
+    <section className={styles.panel} aria-labelledby="portfolio-heading">
       <header className={styles.head}>
-        <div>
-          <span className="eyebrow">Wallet holdings</span>
-          <h2 id="portfolio-heading">Assets in this wallet, read directly.</h2>
-          <p>Curated Robinhood Chain balances. Onchain route quotes price only assets with a defensible ETH path.</p>
-        </div>
+        <h2 id="portfolio-heading">Holdings</h2>
+        <span className={styles.hint}>read straight from this wallet</span>
         <div className={styles.headMeta}>
           <span data-status={data.valuationStatus}>{valuationLabel(data.valuationStatus)}</span>
-          <button className="btn btnGhost" disabled={status === "loading"} onClick={onRetry} type="button">
+          <button className={styles.panelBtn} data-busy={status === "loading"} disabled={status === "loading"} onClick={onRetry} type="button">
             {status === "loading" ? "Refreshing…" : "Refresh holdings"}
           </button>
         </div>
+        <p>Curated Robinhood Chain balances. Onchain route quotes price only assets with a defensible ETH path.</p>
       </header>
 
       {empty ? (

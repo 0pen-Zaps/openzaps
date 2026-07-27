@@ -81,8 +81,8 @@ export function ZapLive({
 
   if (state.status === "loading") {
     return (
-      <section className={`container ${styles.panel}`} aria-label="Zap detail">
-        <p className={styles.empty}>Reading this zap&apos;s policy, balances, and logs from Robinhood Chain…</p>
+      <section className={styles.card} aria-label="Zap detail">
+        <p className={styles.empty}>Reading this Zap&apos;s policy, balances, and logs from Robinhood Chain…</p>
         <div aria-hidden className={styles.skelGrid}>
           {Array.from({ length: 6 }, (_, i) => (
             <div className={styles.skelCard} key={i} style={{ "--row-delay": `${-i * 0.14}s` } as React.CSSProperties}>
@@ -97,23 +97,23 @@ export function ZapLive({
 
   if (state.status === "unavailable") {
     return (
-      <section className={`container ${styles.panel}`} aria-label="Zap detail">
+      <section className={styles.card} aria-label="Zap detail">
         <div className={styles.unavailable} role="alert">
           <p>
             The Robinhood RPC reads for this address failed, so its onchain state is unavailable. The factory
-            check is one of the reads that failed, so not even &ldquo;this is a deployed capsule&rdquo; is
+            check is one of the reads that failed, so not even &ldquo;this is a deployed Zap&rdquo; is
             claimed here. A stale balance or a zeroed execution count would each be a claim about the chain
             that nobody verified. Nothing is shown instead.
           </p>
           <button
-            className="btn btnGhost"
+            className={styles.ghostBtn}
             onClick={() => {
               setState({ status: "loading" });
               void load();
             }}
             type="button"
           >
-            <span>Retry</span>
+            Retry
           </button>
         </div>
       </section>
@@ -129,39 +129,42 @@ export function ZapLive({
 
   return (
     <>
-      <section className={`container ${styles.verifyStrip}`} aria-label="Verification">
-        <div className={styles.verifyMain}>
-          <span className={styles.badge} data-verified={verified}>
-            {verified ? "✓ Verified onchain" : "⚠ Unverified shape"}
+      <section className={styles.card} aria-label="Verification">
+        <div className={styles.cardHead}>
+          <h2 className={styles.cardTitle}>Verification</h2>
+          <span className={styles.cardSub}>read at one pinned block</span>
+          <span className={styles.cardHeadEnd}>
+            <span className={styles.stateChip} data-verified={verified}>
+              {verified ? "✓ Verified onchain" : "⚠ Unverified shape"}
+            </span>
           </span>
-          <p>
-            {verified
-              ? "The factory's own ZapCreated log names this address. Its runtime is the EIP-1167 clone of the canonical implementation. The policy it exposes rehashes to the policyHash it committed to."
-              : "The factory created this address, but at least one integrity check does not hold. Every failing check is listed below. Nothing has been rounded off or assumed."}
-          </p>
         </div>
-        <dl className={styles.verifyFacts}>
-          <div>
-            <dt>Read at block</dt>
-            <dd>{Number(data.headBlock).toLocaleString("en-US")}</dd>
-          </div>
-          <div>
-            <dt>Snapshot taken</dt>
-            <dd suppressHydrationWarning>{new Date(data.readAt).toLocaleString("en-US")}</dd>
-          </div>
-          <div>
-            <dt>Lifecycle</dt>
-            <dd>{LIFECYCLE_COPY[data.lifecycle]}</dd>
-          </div>
+        <p className={styles.cardBody}>
+          {verified
+            ? "The factory's own ZapCreated log names this address. Its runtime is the EIP-1167 clone of the canonical implementation. The policy it exposes rehashes to the policyHash it committed to."
+            : "The factory created this address, but at least one integrity check does not hold. Every failing check is listed below. Nothing has been rounded off or assumed."}
+        </p>
+        <dl className={styles.factGrid}>
+          <Fact label="Read at block">
+            <span>{Number(data.headBlock).toLocaleString("en-US")}</span>
+          </Fact>
+          <Fact label="Snapshot taken">
+            <span suppressHydrationWarning>{new Date(data.readAt).toLocaleString("en-US")}</span>
+          </Fact>
+          <Fact label="Lifecycle">
+            <span>{LIFECYCLE_COPY[data.lifecycle]}</span>
+          </Fact>
         </dl>
-        <p className={styles.refreshLine}>
+        <p className={`${styles.cardFoot} ${styles.refreshLine}`}>
           {refreshing && <span aria-hidden className={`spinner ${styles.updatedSpinner}`} />}
-          Every contract read and log query on this page is pinned to that one block, so the policy, the
-          balances, and the event history describe the same moment. Nothing here is estimated or priced.
+          <span>
+            Every contract read and log query on this page is pinned to that one block, so the policy, the
+            balances, and the event history describe the same moment. Nothing here is estimated or priced.
+          </span>
         </p>
       </section>
 
-      <div aria-live="polite" className="container">
+      <div aria-live="polite">
         {staleSince && (
           <div className={styles.staleWarning}>
             Refresh has been failing since{" "}
@@ -172,20 +175,17 @@ export function ZapLive({
         )}
       </div>
 
-      <section className={`container ${styles.panel}`} aria-labelledby="what-this-does">
-        <header className={styles.panelHead}>
-          <span className="eyebrow">What this zap does</span>
-          <h2 id="what-this-does">The deployed chain.</h2>
-          <p>
-            The same block vocabulary the <Link href="/zap">builder</Link>{" "}
-            uses, drawn from this capsule&apos;s own policy fields rather than from a template. Connectors are
-            coloured by the shape of value moving along them.
-          </p>
-        </header>
+      <section className={styles.card} aria-labelledby="what-this-does">
+        <div className={styles.cardHead}>
+          <h2 className={styles.cardTitle} id="what-this-does">
+            The deployed chain
+          </h2>
+          <span className={styles.cardSub}>drawn from this Zap&apos;s own policy fields, not from a template</span>
+        </div>
 
         {policy.deviations.length > 0 && (
           <div className={styles.deviations} role="alert">
-            <strong>This capsule departs from the routes the live contracts support.</strong>
+            <strong>This Zap departs from the routes the live contracts support.</strong>
             <ul>
               {policy.deviations.map((deviation) => (
                 <li key={deviation}>{deviation}</li>
@@ -202,7 +202,11 @@ export function ZapLive({
                   <div
                     className={styles.joint}
                     data-status={node.incoming ? "ok" : "unknown"}
-                    style={{ "--accent": node.incoming ? SHAPE_COLOR[node.incoming] : "#ff7a90" } as React.CSSProperties}
+                    style={
+                      {
+                        "--shape": node.incoming ? SHAPE_COLOR[node.incoming] : "var(--danger)",
+                      } as React.CSSProperties
+                    }
                   >
                     <span className={styles.jointLine} />
                     <span className={styles.jointLabel}>
@@ -211,14 +215,14 @@ export function ZapLive({
                   </div>
                 )}
                 <article
-                  className={styles.card}
+                  className={styles.chainCard}
                   data-kind={node.kind}
-                  style={{ "--accent": SHAPE_COLOR[node.accent] } as React.CSSProperties}
+                  style={{ "--shape": SHAPE_COLOR[node.accent] } as React.CSSProperties}
                 >
-                  <span className={styles.cardGlyph}>
+                  <span className={styles.chainGlyphTile}>
                     <BlockGlyph name={node.glyph} className={styles.glyph} />
                   </span>
-                  <div className={styles.cardText}>
+                  <div className={styles.chainText}>
                     <strong>
                       {node.title}
                       {node.protocols && node.protocols.length > 0 ? (
@@ -231,7 +235,7 @@ export function ZapLive({
                     <span>{node.detail}</span>
                   </div>
                   {node.link && (
-                    <a className={styles.cardLink} href={explorerAddress(node.link)} target="_blank" rel="noreferrer">
+                    <a className={styles.chainLink} href={explorerAddress(node.link)} target="_blank" rel="noreferrer">
                       {shortAddress(node.link)} ↗
                     </a>
                   )}
@@ -241,14 +245,14 @@ export function ZapLive({
           </div>
         ) : (
           <p className={styles.empty}>
-            This zap exposes no step, so there is no chain to draw. The policy fields it does expose are listed
+            This Zap exposes no step, so there is no chain to draw. The policy fields it does expose are listed
             below exactly as the contract stores them.
           </p>
         )}
 
         {policy.stepCount !== "1" && (
           <p className={styles.note}>
-            The zap declares {policy.stepCount} steps. Only step 0 is shown: it is the only one this snapshot
+            The Zap declares {policy.stepCount} steps. Only step 0 is shown: it is the only one this snapshot
             read. The rest are not guessed at.
           </p>
         )}
@@ -288,20 +292,22 @@ export function ZapLive({
             </span>
           </Fact>
         </dl>
+
+        <p className={styles.cardFoot}>
+          The same block vocabulary the <Link href="/zap">builder</Link> uses. Connectors are coloured by the shape
+          of value moving along them.
+        </p>
       </section>
 
-      <section className={`container ${styles.panel}`} aria-labelledby="what-happened">
-        <header className={styles.panelHead}>
-          <span className="eyebrow">Measured, not modelled</span>
-          <h2 id="what-happened">What has happened.</h2>
-          <p>
-            Counts and totals come only from this contract&apos;s own Executed and EmergencyExit logs. No USD
-            value, token price, PnL, APY, or success rate appears on this page. A reverted execution emits no
-            log at all, so a success rate computed from these logs would be unfalsifiable, and none is shown.
-          </p>
-        </header>
+      <section className={styles.card} aria-labelledby="what-happened">
+        <div className={styles.cardHead}>
+          <h2 className={styles.cardTitle} id="what-happened">
+            What has happened
+          </h2>
+          <span className={styles.cardSub}>measured, not modelled</span>
+        </div>
 
-        <div className={styles.metrics}>
+        <div className={styles.metricGrid}>
           <Metric label="Executions" value={String(stats.executionCount)} />
           <Metric label="Emergency exits" value={String(stats.recoveryCount)} />
           <ExecutionTime count={stats.executionCount} label="First execution" timestamp={stats.firstExecutionAt} />
@@ -312,7 +318,7 @@ export function ZapLive({
           <div className={styles.totalsCard}>
             <h3>Produced by executions</h3>
             {Object.keys(stats.amountOutByAsset).length === 0 ? (
-              <p className={styles.empty}>None yet — this zap has never emitted an Executed log.</p>
+              <p className={styles.empty}>None yet — this Zap has never emitted an Executed log.</p>
             ) : (
               <ul className={styles.totalsList}>
                 {Object.entries(stats.amountOutByAsset).map(([symbol, net]) => {
@@ -338,7 +344,7 @@ export function ZapLive({
               <p className={styles.empty}>
                 {policy.maxRelayerFeeCap === "0"
                   ? "Zero, and not because none happened to be taken. This policy commits maxRelayerFeeCap = 0, so no execution of it can pay a relayer fee. The bound comes from the policy hash, not from a measurement."
-                  : "No fee appears in any Executed log for this zap."}
+                  : "No fee appears in any Executed log for this Zap."}
               </p>
             ) : (
               <ul className={styles.totalsList}>
@@ -355,7 +361,7 @@ export function ZapLive({
           <div className={styles.totalsCard}>
             <h3>Swept by emergency exit</h3>
             {recoveredTotals.length === 0 ? (
-              <p className={styles.empty}>None — the owner has never pulled assets back out of this capsule.</p>
+              <p className={styles.empty}>None — the owner has never pulled assets back out of this Zap.</p>
             ) : (
               <ul className={styles.totalsList}>
                 {recoveredTotals.map(([symbol, raw]) => (
@@ -386,32 +392,41 @@ export function ZapLive({
             </span>
           </div>
         </div>
+
+        <p className={styles.cardFoot}>
+          Counts and totals come only from this contract&apos;s own Executed and EmergencyExit logs. No USD value,
+          token price, PnL, APY, or success rate appears on this page. A reverted execution emits no log at all, so
+          a success rate computed from these logs would be unfalsifiable, and none is shown.
+        </p>
       </section>
 
-      <section className={`container ${styles.panel}`} aria-labelledby="event-log">
-        <header className={styles.panelHead}>
-          <span className="eyebrow">Event log</span>
-          <h2 id="event-log">Every execution and exit.</h2>
-        </header>
+      <section className={styles.card} aria-labelledby="event-log">
+        <div className={styles.cardHead}>
+          <h2 className={styles.cardTitle} id="event-log">
+            Every execution and exit
+          </h2>
+          <span className={styles.cardSub}>read from this contract&apos;s own logs</span>
+        </div>
 
         <h3 className={styles.rowsHead}>Executions</h3>
         {executions.length === 0 ? (
           <p className={styles.empty}>None yet.</p>
         ) : (
-          <div className={styles.rows}>
-            {executions.map((execution, i) => (
-              <a
-                className={styles.row}
-                href={explorerTransaction(execution.txHash)}
-                key={`${execution.txHash}:${execution.logIndex}`}
-                style={{ "--row-delay": `${Math.min(i, 10) * 45}ms` } as React.CSSProperties}
-                target="_blank"
-                rel="noreferrer"
-              >
-                <span className={styles.rowType} data-type="executed">
-                  Executed
-                </span>
-                <span className={styles.rowDetail}>
+          executions.map((execution, i) => (
+            <a
+              className={styles.eventRow}
+              href={explorerTransaction(execution.txHash)}
+              key={`${execution.txHash}:${execution.logIndex}`}
+              style={{ "--row-delay": `${Math.min(i, 10) * 45}ms` } as React.CSSProperties}
+              target="_blank"
+              rel="noreferrer"
+            >
+              <span className={styles.eventGlyph} data-type="executed">
+                <BlockGlyph name="bolt" />
+              </span>
+              <span className={styles.eventBody}>
+                <span className={styles.eventKind}>Executed</span>
+                <strong className={styles.eventTitle}>
                   <Amount raw={execution.amountOut} symbol={execution.assetSymbol} inline /> to{" "}
                   {shortAddress(execution.recipient)}
                   {execution.fee !== "0" && (
@@ -420,65 +435,74 @@ export function ZapLive({
                       <Amount raw={execution.fee} symbol={execution.assetSymbol} inline />
                     </>
                   )}
-                  {/* A 78-digit nonce would swallow the row, and half of one is
-                      not a nonce, so the full value stays in the title. */}
-                  <span className={styles.rowNonce} title={`nonce ${execution.nonce}`}>
-                    nonce {shortDigits(execution.nonce)}
-                  </span>
+                </strong>
+                {/* A 78-digit nonce would swallow the row, and half of one is
+                    not a nonce, so the full value stays in the title. */}
+                <span className={styles.eventDetail} title={`nonce ${execution.nonce}`}>
+                  nonce {shortDigits(execution.nonce)}
                 </span>
-                <span className={styles.rowTime} suppressHydrationWarning>
-                  {execution.timestamp
-                    ? localDate(execution.timestamp)
-                    : `block ${Number(execution.blockNumber).toLocaleString("en-US")}`}{" "}
+              </span>
+              <span className={styles.eventEnd}>
+                <span className={styles.eventTx}>
+                  {shortAddress(execution.txHash)}{" "}
                   <span aria-label="opens transaction on Blockscout in a new tab">↗</span>
                 </span>
-              </a>
-            ))}
-          </div>
+                <span className={styles.eventTime} suppressHydrationWarning>
+                  {execution.timestamp
+                    ? localDate(execution.timestamp)
+                    : `block ${Number(execution.blockNumber).toLocaleString("en-US")}`}
+                </span>
+              </span>
+            </a>
+          ))
         )}
 
         <h3 className={styles.rowsHead}>Emergency exits</h3>
         {recoveries.length === 0 ? (
           <p className={styles.empty}>None yet.</p>
         ) : (
-          <div className={styles.rows}>
-            {recoveries.map((recovery, i) => (
-              <a
-                className={styles.row}
-                href={explorerTransaction(recovery.txHash)}
-                key={`${recovery.txHash}:${recovery.logIndex}`}
-                style={{ "--row-delay": `${Math.min(i, 10) * 45}ms` } as React.CSSProperties}
-                target="_blank"
-                rel="noreferrer"
-              >
-                <span className={styles.rowType} data-type="recovered">
-                  Exit
-                </span>
-                <span className={styles.rowDetail}>
+          recoveries.map((recovery, i) => (
+            <a
+              className={styles.eventRow}
+              href={explorerTransaction(recovery.txHash)}
+              key={`${recovery.txHash}:${recovery.logIndex}`}
+              style={{ "--row-delay": `${Math.min(i, 10) * 45}ms` } as React.CSSProperties}
+              target="_blank"
+              rel="noreferrer"
+            >
+              <span className={styles.eventGlyph} data-type="recovered">
+                <BlockGlyph name="key" />
+              </span>
+              <span className={styles.eventBody}>
+                <span className={styles.eventKind}>Exit</span>
+                <strong className={styles.eventTitle}>
                   <Amount raw={recovery.amount} symbol={recovery.assetSymbol} inline /> to{" "}
                   {shortAddress(recovery.owner)}
-                </span>
-                <span className={styles.rowTime} suppressHydrationWarning>
-                  {recovery.timestamp
-                    ? localDate(recovery.timestamp)
-                    : `block ${Number(recovery.blockNumber).toLocaleString("en-US")}`}{" "}
+                </strong>
+              </span>
+              <span className={styles.eventEnd}>
+                <span className={styles.eventTx}>
+                  {shortAddress(recovery.txHash)}{" "}
                   <span aria-label="opens transaction on Blockscout in a new tab">↗</span>
                 </span>
-              </a>
-            ))}
-          </div>
+                <span className={styles.eventTime} suppressHydrationWarning>
+                  {recovery.timestamp
+                    ? localDate(recovery.timestamp)
+                    : `block ${Number(recovery.blockNumber).toLocaleString("en-US")}`}
+                </span>
+              </span>
+            </a>
+          ))
         )}
       </section>
 
-      <section className={`container ${styles.panel}`} aria-labelledby="provenance">
-        <header className={styles.panelHead}>
-          <span className="eyebrow">Provenance</span>
-          <h2 id="provenance">Where this address came from.</h2>
-          <p>
-            This capsule is only on the site because the canonical factory&apos;s own ZapCreated log names it.
-            An identically-shaped contract deployed by anything else would never reach this page.
-          </p>
-        </header>
+      <section className={styles.card} aria-labelledby="provenance">
+        <div className={styles.cardHead}>
+          <h2 className={styles.cardTitle} id="provenance">
+            Where this address came from
+          </h2>
+          <span className={styles.cardSub}>provenance</span>
+        </div>
         <dl className={styles.factGrid}>
           <Fact label="Created in block">
             <span>{Number(provenance.createdBlock).toLocaleString("en-US")}</span>
@@ -511,11 +535,19 @@ export function ZapLive({
             <AddressValue address={data.factory.implementation} />
             <span className={styles.factNote}>Factory version {data.factory.version}</span>
           </Fact>
-          <Fact label="Capsule type">
+          {/* "Contract type", not "Zap type": the values already carry the
+              automated-vs-one-shot distinction, and "Zap type" would read as a
+              statement about the execution rather than about the contract. */}
+          <Fact label="Contract type">
             <strong>{capsuleLineage(data.factory.version).title}</strong>
             <span className={styles.factNote}>{capsuleLineage(data.factory.version).detail}</span>
           </Fact>
         </dl>
+
+        <p className={styles.cardFoot}>
+          This Zap is only on the site because the canonical factory&apos;s own ZapCreated log names it. An
+          identically-shaped contract deployed by anything else would never reach this page.
+        </p>
       </section>
     </>
   );
@@ -634,7 +666,7 @@ function actionForRouteKind(
         glyph: "pool",
         accent: "lp",
         emits: "lp",
-        detail: `Half the ${input} swaps in-pool, both legs enter the full-range aeWETH/USDG vault, and ${output} shares mint straight to the capsule.`,
+        detail: `Half the ${input} swaps in-pool, both legs enter the full-range aeWETH/USDG vault, and ${output} shares mint straight to the Zap.`,
       };
     case "lp-withdraw":
       return {
@@ -642,7 +674,7 @@ function actionForRouteKind(
         glyph: "poolOut",
         accent: "lp",
         emits: "token",
-        detail: `${input} shares burn for both pool currencies plus accrued fees; the off-target leg swaps in-pool so the capsule settles in ${output}.`,
+        detail: `${input} shares burn for both pool currencies plus accrued fees; the off-target leg swaps in-pool so the Zap settles in ${output}.`,
       };
     case "vault-deposit":
       return {
@@ -709,7 +741,7 @@ function Metric({
   hydrationSafe?: boolean;
 }): React.JSX.Element {
   return (
-    <div className={styles.metric}>
+    <div className={styles.metricCard}>
       <strong aria-label={srValue ? `${label}: ${srValue}` : undefined} suppressHydrationWarning={hydrationSafe}>
         {value}
       </strong>
@@ -823,14 +855,14 @@ function capsuleLineage(version: string): { title: string; detail: string } {
     return {
       title: "Automated · v3.1",
       detail:
-        "Can hold a recurring series whose per-Zap floor is derived from an allowlisted price source for each Zap, or a one-shot price trigger. Any eligible executor may submit a Zap the capsule owes.",
+        "Can hold a recurring series whose per-Zap floor is derived from an allowlisted price source for each Zap, or a one-shot price trigger. Any eligible executor may submit a run it owes.",
     };
   }
   if (version.startsWith("3")) {
     return {
       title: "Automated · v3",
       detail:
-        "Can hold a recurring series or a one-shot price trigger. Any eligible executor may submit a Zap the capsule owes; the chain refuses every Zap it does not.",
+        "Can hold a recurring series or a one-shot price trigger. Any eligible executor may submit a run it owes; the chain refuses every run it does not.",
     };
   }
   return {

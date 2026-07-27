@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { createPublicClient, formatUnits, http, zeroAddress } from "viem";
 
 import { CopyButton } from "@/components/CopyButton";
@@ -24,11 +24,12 @@ import {
   type BlockCategory,
   type BlockParam,
   type ChainNode,
+  type FlowShape,
   type LegoBlock,
   type ParamValue,
   type ZapRecipe,
 } from "@/lib/blocks";
-import { reduceChainToLiveRoute } from "@/lib/deployable";
+import { DEFAULT_SLIPPAGE_BPS, reduceChainToLiveRoute } from "@/lib/deployable";
 import {
   DEFAULT_EXECUTION_POLICY,
   EXECUTION_POLICY_BLOCK_IDS,
@@ -98,8 +99,12 @@ type BuilderQuoteState =
   | { status: "error"; message: string }
   | { status: "ready"; amountOut: bigint; feeZapsOut: bigint; routeId: string };
 
-const CATEGORIES: Array<BlockCategory | "all"> = [
-  "all",
+/**
+ * Palette order. The category tab strip is gone — twenty-four blocks under
+ * eight standing headings is one list you can read, where a filter was a
+ * control you had to operate before the list told you anything.
+ */
+const CATEGORY_ORDER: readonly BlockCategory[] = [
   "source",
   "swap",
   "lend",
@@ -109,6 +114,9 @@ const CATEGORIES: Array<BlockCategory | "all"> = [
   "guard",
   "sink",
 ];
+
+/** The connector-shape key, rendered under the palette beside the port dots. */
+const SHAPES: readonly FlowShape[] = ["token", "lp", "receipt", "yield", "debt"];
 
 type DragOrigin =
   | { from: "palette"; blockId: string }
@@ -317,7 +325,6 @@ export function ZapBuilder({
   const [openUid, setOpenUid] = useState<string | null>(null);
   // The block a problem was just jumped to, held only long enough to point at.
   const [flaggedUid, setFlaggedUid] = useState<string | null>(null);
-  const [category, setCategory] = useState<BlockCategory | "all">("all");
   const [query, setQuery] = useState("");
   const [importing, setImporting] = useState(false);
   const [importText, setImportText] = useState("");
@@ -640,14 +647,25 @@ export function ZapBuilder({
   // implementation at all, so a phone would be left with no way to compose a
   // chain. One code path now covers mouse, pen, and finger.
 
+  /**
+   * Where in the chain a held block would land.
+   *
+   * The track is a wrapping row, so a single vertical midpoint no longer says
+   * which side of a node the pointer is on. This walks the placements in
+   * reading order and stops at the first one the pointer is *before* — above
+   * its row, or left of its centre within that row. In a one-column layout
+   * (a phone, or a chain that has not wrapped) the `x` test never fires and it
+   * degenerates to exactly the vertical midpoint rule it replaces.
+   */
   const resolveDrop = useCallback(
-    (state: DragState, y: number): { index: number | null; valid: boolean } => {
-      const canvas = canvasRef.current;
-      if (!canvas) return { index: null, valid: false };
-      const bounds = canvas.getBoundingClientRect();
+    (state: DragState, x: number, y: number): { index: number | null; valid: boolean } => {
+      const track = canvasRef.current;
+      if (!track) return { index: null, valid: false };
+      const bounds = track.getBoundingClientRect();
       // A generous margin: on a phone the chain fills the screen and the finger
       // regularly strays past the panel edge mid-drag.
       if (y < bounds.top - 120 || y > bounds.bottom + 120) return { index: null, valid: false };
+      if (x < bounds.left - 120 || x > bounds.right + 120) return { index: null, valid: false };
 
       const working = state.from === "chain" ? chain.filter((node) => node.uid !== state.uid) : chain;
 
@@ -656,7 +674,7 @@ export function ZapBuilder({
         const el = cardRefs.current.get(working[i].uid);
         if (!el) continue;
         const rect = el.getBoundingClientRect();
-        if (y < rect.top + rect.height / 2) {
+        if (y < rect.top || (y <= rect.bottom && x < rect.left + rect.width / 2)) {
           index = i;
           break;
         }
@@ -671,7 +689,7 @@ export function ZapBuilder({
   const dragActive = drag?.active === true;
 
   /**
-   * Scroll the page while a block is held against a viewport edge.
+   * Scroll the workspace while a block is held against its edge.
    *
    * Driven by animation frames rather than by pointer movement, because the
    * gesture that needs this most is a finger parked at the bottom of the screen
@@ -679,21 +697,29 @@ export function ZapBuilder({
    * re-resolves the drop: the pointer has not moved, but every card under it
    * has. The pointer position is read from the ref rather than from `drag`, so
    * the loop is set up once per gesture instead of once per pixel travelled.
+   *
+   * The scroll lives on the app shell's `#zapscroll` container, not the window.
+   * Scrolling the window here is a silent no-op — nothing would error, dragging
+   * to the end of a long chain would simply stop working.
    */
   useEffect(() => {
     if (!dragActive) return;
     let frame = window.requestAnimationFrame(function step(): void {
       const state = dragRef.current;
       if (state?.active) {
-        const delta = edgeScrollDelta(state.y, window.innerHeight);
+        const scroller = document.getElementById("zapscroll");
+        const rect = scroller?.getBoundingClientRect();
+        const delta = edgeScrollDelta(state.y - (rect?.top ?? 0), rect?.height ?? window.innerHeight);
         if (delta !== 0) {
-          const before = window.scrollY;
-          window.scrollBy(0, delta);
-          // At either end of the document `scrollBy` is a no-op, and
-          // re-resolving a drop that cannot have moved would churn state
-          // every frame for as long as the block is held there.
-          if (window.scrollY !== before) {
-            const drop = resolveDrop(state, state.y);
+          const before = scroller ? scroller.scrollTop : window.scrollY;
+          if (scroller) scroller.scrollBy(0, delta);
+          else window.scrollBy(0, delta);
+          // At either end `scrollBy` is a no-op, and re-resolving a drop that
+          // cannot have moved would churn state every frame for as long as the
+          // block is held there.
+          const after = scroller ? scroller.scrollTop : window.scrollY;
+          if (after !== before) {
+            const drop = resolveDrop(state, state.x, state.y);
             setDropIndex(drop.index);
             setDropValid(drop.valid);
           }
@@ -747,7 +773,7 @@ export function ZapBuilder({
       dragRef.current = next;
       setDrag(next);
       if (!next.active) return;
-      const drop = resolveDrop(next, event.clientY);
+      const drop = resolveDrop(next, event.clientX, event.clientY);
       setDropIndex(drop.index);
       setDropValid(drop.valid);
     },
@@ -773,7 +799,7 @@ export function ZapBuilder({
         return;
       }
 
-      const drop = resolveDrop(state, event.clientY);
+      const drop = resolveDrop(state, event.clientX, event.clientY);
       if (drop.index === null || !drop.valid) {
         if (drop.index !== null) {
           flash(
@@ -855,7 +881,7 @@ export function ZapBuilder({
   }, [chain, runIndex]);
 
   /**
-   * The palette, narrowed by tab and by search.
+   * The palette, narrowed by search.
    *
    * The search reads the blurb and the category label as well as the name,
    * because the word someone reaches for is rarely the block's title: "dca"
@@ -863,13 +889,22 @@ export function ZapBuilder({
    * lending group through its category.
    */
   const visibleBlocks = useMemo(() => {
-    const byCategory = category === "all" ? BLOCKS : BLOCKS.filter((block) => block.category === category);
     const needle = query.trim().toLowerCase();
-    if (!needle) return byCategory;
-    return byCategory.filter((block) =>
+    if (!needle) return BLOCKS;
+    return BLOCKS.filter((block) =>
       `${block.name} ${block.blurb} ${CATEGORY_LABEL[block.category]}`.toLowerCase().includes(needle),
     );
-  }, [category, query]);
+  }, [query]);
+
+  /** Standing headings, in catalog order, with the empty ones dropped. */
+  const blockGroups = useMemo(
+    () =>
+      CATEGORY_ORDER.map((category) => ({
+        category,
+        blocks: visibleBlocks.filter((block) => block.category === category),
+      })).filter((group) => group.blocks.length > 0),
+    [visibleBlocks],
+  );
 
   const exportPayload = useMemo(
     () =>
@@ -1200,35 +1235,62 @@ export function ZapBuilder({
 
   const dragBlock = drag ? getBlock(drag.blockId) : undefined;
 
+  // ---- readout summaries ---------------------------------------------------
+  // Compile validity and live-route deployability are different facts. A design
+  // can compile perfectly and still have nothing on Robinhood Chain to run it,
+  // so the chip never claims "deployable" from `compiled.status` alone.
+  const jointCount = compiled.joints.length;
+  const seatedJoints = compiled.joints.filter((joint) => joint.status === "ok").length;
+  const allSeated = jointCount > 0 && seatedJoints === jointCount;
+  const verdict: { label: string; tone: "ok" | "warn" | "danger" } =
+    compiled.status === "block"
+      ? { label: "blocked", tone: "danger" }
+      : compiled.status === "warn"
+        ? { label: "review", tone: "warn" }
+        : deployment.deployable
+          ? { label: "deployable", tone: "ok" }
+          : { label: "compiles", tone: "ok" };
+
+  const handoffAvailable = Boolean((deployment.deployable && deployHref) || (automation.deployable && automateHref));
+
   return (
-    <div className={styles.builder} data-dragging={drag?.active ? "true" : "false"}>
-      <section className={styles.recipes} aria-label="Zap blueprints">
-        <div className={`${styles.recipeHead} ${styles.recipeHeadWithNav}`}>
-          <div className={styles.recipeLead}>
-            <span className={styles.sectionStep}>Quick start</span>
-            <h2>Start from a blueprint</h2>
+    <div className={styles.screen} data-dragging={drag?.active ? "true" : "false"}>
+      <section className={styles.reuse} aria-label="Zap blueprints">
+        <div className={styles.reuseHead}>
+          <div>
+            <h2 className={styles.reuseTitle}>Start from a blueprint</h2>
             {/* No count in the copy: it went stale the first time a blueprint was
                 added, and the row is right there to be counted. */}
-            <p>
+            <p className={styles.reuseLede}>
               Choose an outcome, then inspect every block. <em>Deployable</em> routes can Zap now;{" "}
               <em>automatable</em> designs bind a cadence or price condition on the live aeWETH ↔ 0xZAPS stack.
             </p>
           </div>
-          <div className={styles.recipeNav} aria-label="Browse blueprints">
-            <button type="button" onClick={() => scrollRecipes(-1)} aria-label="Previous blueprints">
-              ←
+          <div className={styles.reuseNav} aria-label="Browse blueprints">
+            <button
+              type="button"
+              className={styles.reuseNavBtn}
+              onClick={() => scrollRecipes(-1)}
+              aria-label="Previous blueprints"
+            >
+              <BlockGlyph name="chevronLeft" />
             </button>
-            <button type="button" onClick={() => scrollRecipes(1)} aria-label="Next blueprints">
-              →
+            <button
+              type="button"
+              className={styles.reuseNavBtn}
+              onClick={() => scrollRecipes(1)}
+              aria-label="Next blueprints"
+            >
+              <BlockGlyph name="chevronRight" />
             </button>
           </div>
         </div>
-        <div className={styles.recipeRow} ref={recipeRowRef}>
+        <div className={styles.reuseRow} ref={recipeRowRef}>
           {RECIPES.map((recipe) => (
             <button
               key={recipe.id}
               type="button"
-              className={styles.recipe}
+              className={styles.blueprint}
               data-active={recipe.id === recipeId}
               aria-pressed={recipe.id === recipeId}
               style={{ ["--accent" as string]: SHAPE_COLOR[recipe.accent] }}
@@ -1238,8 +1300,8 @@ export function ZapBuilder({
               <span>{recipe.tagline}</span>
               <em>
                 {recipe.blocks.length} blocks
-                {DEPLOYABLE_RECIPES.has(recipe.id) ? <i className={styles.recipeLive}>deployable</i> : null}
-                {AUTOMATABLE_RECIPES.has(recipe.id) ? <i className={styles.recipeAuto}>automatable</i> : null}
+                {DEPLOYABLE_RECIPES.has(recipe.id) ? <i className={styles.tagOk}>deployable</i> : null}
+                {AUTOMATABLE_RECIPES.has(recipe.id) ? <i className={styles.tagInfo}>automatable</i> : null}
               </em>
             </button>
           ))}
@@ -1247,24 +1309,27 @@ export function ZapBuilder({
       </section>
 
       {library && library.length > 0 ? (
-        <section className={styles.libraryRow} aria-label="Your saved designs">
-          <div className={styles.recipeHead}>
-            <h2>Your designs</h2>
-            <p>
-              Saved on this device — {library.length} of {MAX_SAVED_DESIGNS}. Loading one lands on the
-              undo stack like any other edit; the share link reopens it anywhere.
-            </p>
+        <section className={styles.reuse} aria-label="Your saved designs">
+          <div className={styles.reuseHead}>
+            <div>
+              <h2 className={styles.reuseTitle}>Your designs</h2>
+              <p className={styles.reuseLede}>
+                Saved on this device — {library.length} of {MAX_SAVED_DESIGNS}. Loading one lands on the
+                undo stack like any other edit; the share link reopens it anywhere.
+              </p>
+            </div>
           </div>
-          <div className={styles.recipeRow}>
+          <div className={styles.reuseRow}>
             {library.map((design) => (
               <div
                 key={design.id}
-                className={styles.saved}
+                className={`${styles.blueprint} ${styles.savedCard}`}
                 style={{ ["--accent" as string]: SHAPE_COLOR[design.accent] }}
               >
                 {renamingId === design.id ? (
                   <div className={styles.savedRename}>
                     <input
+                      className={styles.textInput}
                       value={renameText}
                       autoFocus
                       maxLength={MAX_DESIGN_NAME}
@@ -1275,7 +1340,12 @@ export function ZapBuilder({
                         if (event.key === "Escape") setRenamingId(null);
                       }}
                     />
-                    <button type="button" onClick={confirmRename} disabled={!renameText.trim()}>
+                    <button
+                      type="button"
+                      className={`${styles.toolBtn} ${styles.toolBtnLg}`}
+                      onClick={confirmRename}
+                      disabled={!renameText.trim()}
+                    >
                       Rename
                     </button>
                   </div>
@@ -1305,7 +1375,6 @@ export function ZapBuilder({
                   <CopyButton
                     value={`${origin}/zap?${SHARE_PARAM}=${design.token}`}
                     label="Link"
-                    className={styles.savedCopy}
                     title={`Copy a share link that reopens “${design.name}”`}
                   />
                   <button
@@ -1327,15 +1396,13 @@ export function ZapBuilder({
         </section>
       ) : null}
 
-      <div className={styles.workspace} id="zap-workspace">
+      <div className={styles.workspace}>
         {/* ---- palette ---- */}
         <aside className={styles.palette} aria-label="Block palette">
           <div className={styles.paletteHead}>
-            <span className={styles.sectionStep}>01 Choose</span>
-            <h2>Choose blocks</h2>
-            <p className={styles.paletteHint}>Drag into the chain, or tap to drop it in the first slot that fits.</p>
+            <h2>Blocks</h2>
           </div>
-          <div className={styles.search}>
+          <div className={styles.paletteSearch}>
             <input
               type="search"
               value={query}
@@ -1347,91 +1414,78 @@ export function ZapBuilder({
               aria-label="Search blocks by name, description, or category"
             />
           </div>
-          <div className={styles.tabs} role="tablist" aria-label="Block categories">
-            {CATEGORIES.map((entry) => (
-              <button
-                key={entry}
-                type="button"
-                role="tab"
-                aria-selected={category === entry}
-                className={styles.tab}
-                onClick={() => setCategory(entry)}
-              >
-                {entry === "all" ? "All" : CATEGORY_LABEL[entry]}
-              </button>
-            ))}
-          </div>
-          <div className={styles.paletteList}>
+          <div className={styles.paletteScroll}>
             {visibleBlocks.length === 0 ? (
               <p className={styles.noMatch} role="status">
-                No block matches “{query.trim()}”
-                {category === "all" ? "." : ` in ${CATEGORY_LABEL[category]}. Try All.`}
+                No block matches “{query.trim()}”.
               </p>
             ) : null}
-            {visibleBlocks.map((block) => {
-              const fits = fitsById.get(block.id) ?? false;
-              const accent = SHAPE_COLOR[block.emits ?? block.accepts ?? "token"];
-              // The chip button's aria-label REPLACES its contents in the
-              // accessible name, so the venue marks must be said here or a
-              // screen reader never hears them.
-              const chipProtocols = protocolsForAction(block.id, defaultParams(block));
-              const chipVia = chipProtocols.length
-                ? ` Routes through ${chipProtocols.map((protocol) => protocol.name).join(" and ")}.`
-                : "";
-              return (
-                <button
-                  key={block.id}
-                  type="button"
-                  className={styles.chip}
-                  data-fits={fits}
-                  data-kind={block.kind}
-                  data-lifted={drag?.from === "palette" && drag.blockId === block.id && drag.active}
-                  style={{ ["--accent" as string]: accent }}
-                  onPointerDown={(event) => beginDrag(event, { from: "palette", blockId: block.id })}
-                  onPointerMove={onDragMove}
-                  onPointerUp={endDrag}
-                  onPointerCancel={cancelDrag}
-                  onKeyDown={(event) => {
-                    if (event.key !== "Enter" && event.key !== " ") return;
-                    event.preventDefault();
-                    addBlock(block);
-                  }}
-                  aria-label={`${block.name}. ${block.blurb}${chipVia} ${fits ? "Fits the current chain." : "Does not fit the current chain yet."}`}
-                >
-                  <span className={styles.chipIcon}>
-                    <BlockGlyph name={block.glyph} className={styles.glyph} />
-                  </span>
-                  <span className={styles.chipText}>
-                    <strong>
-                      {block.name}
-                      <ProtocolStack protocols={protocolsForAction(block.id, defaultParams(block))} size={13} />
-                    </strong>
-                    <span>{block.blurb}</span>
-                  </span>
-                  <span className={styles.chipPorts} aria-hidden>
-                    {block.accepts ? <i style={{ background: SHAPE_COLOR[block.accepts] }} /> : null}
-                    {block.emits ? <i style={{ background: SHAPE_COLOR[block.emits] }} /> : null}
-                  </span>
-                </button>
-              );
-            })}
+            {blockGroups.map((group) => (
+              <Fragment key={group.category}>
+                <span className={styles.paletteGroup}>{CATEGORY_LABEL[group.category].toUpperCase()}</span>
+                {group.blocks.map((block) => {
+                  const fits = fitsById.get(block.id) ?? false;
+                  // The button's aria-label REPLACES its contents in the
+                  // accessible name, so the blurb and the venue marks must be
+                  // said here or a screen reader never hears them — the row
+                  // itself is one line now.
+                  const chipProtocols = protocolsForAction(block.id, defaultParams(block));
+                  const chipVia = chipProtocols.length
+                    ? ` Routes through ${chipProtocols.map((protocol) => protocol.name).join(" and ")}.`
+                    : "";
+                  return (
+                    <button
+                      key={block.id}
+                      type="button"
+                      className={styles.block}
+                      data-fits={fits}
+                      data-kind={block.kind}
+                      data-lifted={drag?.from === "palette" && drag.blockId === block.id && drag.active}
+                      title={block.blurb}
+                      onPointerDown={(event) => beginDrag(event, { from: "palette", blockId: block.id })}
+                      onPointerMove={onDragMove}
+                      onPointerUp={endDrag}
+                      onPointerCancel={cancelDrag}
+                      onKeyDown={(event) => {
+                        if (event.key !== "Enter" && event.key !== " ") return;
+                        event.preventDefault();
+                        addBlock(block);
+                      }}
+                      aria-label={`${block.name}. ${block.blurb}${chipVia} ${fits ? "Fits the current chain." : "Does not fit the current chain yet."}`}
+                    >
+                      <BlockGlyph name={block.glyph} className={styles.blockGlyph} />
+                      <span className={styles.blockName}>{block.name}</span>
+                      <span className={styles.blockPorts} aria-hidden>
+                        {block.accepts ? <i style={{ background: SHAPE_COLOR[block.accepts] }} /> : null}
+                        {block.emits ? <i style={{ background: SHAPE_COLOR[block.emits] }} /> : null}
+                      </span>
+                    </button>
+                  );
+                })}
+              </Fragment>
+            ))}
+          </div>
+          {/* The key for every port dot above and every connector on the canvas. */}
+          <div className={styles.paletteLegend}>
+            {SHAPES.map((shape) => (
+              <span key={shape}>
+                <i style={{ background: SHAPE_COLOR[shape] }} />
+                {SHAPE_LABEL[shape]}
+              </span>
+            ))}
           </div>
         </aside>
 
         {/* ---- canvas ---- */}
-        <section className={styles.canvasWrap} aria-label="Zap chain">
-          <header className={styles.canvasHead}>
-            <div>
-              <span className={styles.sectionStep}>02 Arrange</span>
-              <h2>Your zap</h2>
-              <p title={GAS_ESTIMATE_NOTE}>
-                {chain.length} block{chain.length === 1 ? "" : "s"} · ≈{compiled.gas.toLocaleString("en-US")} gas (estimate)
-              </p>
-            </div>
-            <div className={styles.canvasActions}>
+        <section className={styles.canvas} aria-label="Zap chain">
+          <div className={styles.canvasBar}>
+            <span className={styles.canvasCount} title={GAS_ESTIMATE_NOTE}>
+              {chain.length} block{chain.length === 1 ? "" : "s"} · ≈{compiled.gas.toLocaleString("en-US")} gas
+            </span>
+            <div className={styles.canvasTools}>
               <button
                 type="button"
-                className={`${styles.ghostBtn} ${styles.iconBtn}`}
+                className={`${styles.toolBtn} ${styles.toolIcon}`}
                 onClick={undo}
                 disabled={past.length === 0}
                 aria-label="Undo"
@@ -1442,7 +1496,7 @@ export function ZapBuilder({
               </button>
               <button
                 type="button"
-                className={`${styles.ghostBtn} ${styles.iconBtn}`}
+                className={`${styles.toolBtn} ${styles.toolIcon}`}
                 onClick={redo}
                 disabled={future.length === 0}
                 aria-label="Redo"
@@ -1451,12 +1505,17 @@ export function ZapBuilder({
               >
                 ↷
               </button>
-              <button type="button" className={styles.ghostBtn} onClick={previewRun} disabled={compiled.status === "block" || !chain.length}>
+              <button
+                type="button"
+                className={styles.toolBtn}
+                onClick={previewRun}
+                disabled={compiled.status === "block" || !chain.length}
+              >
                 Preview Zap
               </button>
               <button
                 type="button"
-                className={styles.ghostBtn}
+                className={styles.toolBtn}
                 onClick={() => {
                   commit([]);
                   setOpenUid(null);
@@ -1468,129 +1527,111 @@ export function ZapBuilder({
                 Clear
               </button>
             </div>
-          </header>
-
-          <div className={styles.scopeBanner} role="note">
-            <p>
-              <strong>Design safely.</strong> This canvas never connects, approves, funds, signs, or submits. Review
-              the exact route, values, guard coverage, and creation fee before continuing.
-            </p>
-            <details className={styles.scopeDetails}>
-              <summary>How designs become live Zaps</summary>
-              <p>
-                Deployable one-shot routes hand their exact amount and slippage to Zap now. A Recurring deposit or
-                Price trigger on the pinned aeWETH ↔ 0xZAPS route hands cadence or threshold to Automate. The wallet
-                still confirms capsule creation and its fixed creation fee.
-              </p>
-            </details>
           </div>
 
-          <div className={styles.canvas} ref={canvasRef}>
-            {chain.length === 0 ? (
-              <div className={styles.empty} data-over={dropIndex === 0}>
-                <BlockGlyph name="wallet" className={styles.emptyGlyph} />
-                <strong>Drop a source here</strong>
-                <span>Every chain starts with one — a wallet balance, a recurring deposit, or pending rewards.</span>
-              </div>
-            ) : null}
+          <div className={styles.canvasBody}>
+            {/* The drag target is the track itself, and it is rendered even when
+                empty: the resolver hit-tests against this box, so losing it
+                would silently disable dropping into an empty canvas. */}
+            <div className={styles.track} ref={canvasRef}>
+              {chain.length === 0 ? (
+                <div className={styles.empty} data-over={dropIndex === 0}>
+                  <BlockGlyph name="wallet" className={styles.emptyGlyph} />
+                  <strong>Drop a source here</strong>
+                  <span>Every chain starts with one — a wallet balance, a recurring deposit, or pending rewards.</span>
+                </div>
+              ) : null}
 
-            {chain.map((node, index) => {
-              const block = getBlock(node.blockId);
-              if (!block) return null;
-              const joint = compiled.joints[index];
-              const open = openUid === node.uid;
-              const incoming = joint?.shape ?? null;
-              const accent = SHAPE_COLOR[block.emits ?? block.accepts ?? "token"];
-              const lifted = drag?.from === "chain" && drag.uid === node.uid && drag.active;
+              {chain.map((node, index) => {
+                const block = getBlock(node.blockId);
+                if (!block) return null;
+                const joint = compiled.joints[index];
+                const open = openUid === node.uid;
+                const incoming = joint?.shape ?? null;
+                const brokenJoint = joint?.status === "mismatch" || joint?.status === "orphan";
+                const lifted = drag?.from === "chain" && drag.uid === node.uid && drag.active;
+                const previousOpen = index > 0 && openUid === chain[index - 1]?.uid;
 
-              return (
-                <div key={node.uid} className={styles.slotGroup}>
-                  <div
-                    className={styles.slot}
-                    data-open={drag?.active && dropIndex === index}
-                    data-valid={dropValid}
-                    aria-hidden
-                  >
-                    <span />
-                  </div>
-
-                  {index > 0 ? (
+                return (
+                  <Fragment key={node.uid}>
                     <div
-                      className={styles.joint}
-                      data-status={joint?.status ?? "ok"}
-                      data-flowing={runIndex >= index}
-                      style={{ ["--accent" as string]: incoming ? SHAPE_COLOR[incoming] : "#ff7a90" }}
+                      className={styles.slot}
+                      data-open={drag?.active && dropIndex === index}
+                      data-valid={dropValid}
+                      aria-hidden
                     >
-                      <span className={styles.jointLine} />
-                      <span className={styles.jointLabel}>
-                        {joint?.status === "mismatch" || joint?.status === "orphan"
-                          ? "does not fit"
-                          : incoming
-                            ? SHAPE_LABEL[incoming]
-                            : "start"}
-                      </span>
+                      <span />
                     </div>
-                  ) : null}
 
-                  <article
-                    ref={(el) => {
-                      if (el) cardRefs.current.set(node.uid, el);
-                      else cardRefs.current.delete(node.uid);
-                    }}
-                    className={styles.card}
-                    data-kind={block.kind}
-                    data-open={open}
-                    data-lifted={lifted}
-                    data-broken={joint?.status === "mismatch" || joint?.status === "orphan"}
-                    data-running={runIndex === index}
-                    data-flagged={flaggedUid === node.uid}
-                    style={{ ["--accent" as string]: accent }}
-                  >
-                    <div className={styles.cardMain}>
-                      <span
-                        className={styles.handle}
-                        role="button"
-                        tabIndex={-1}
-                        aria-hidden
-                        onPointerDown={(event) =>
-                          beginDrag(event, { from: "chain", blockId: block.id, uid: node.uid, index })
+                    {index > 0 ? (
+                      <div
+                        className={styles.connector}
+                        data-status={joint?.status ?? "ok"}
+                        data-flowing={runIndex >= index}
+                        data-mirror={previousOpen ? "true" : "false"}
+                        title={
+                          brokenJoint ? "does not fit" : incoming ? SHAPE_LABEL[incoming] : "start"
                         }
-                        onPointerMove={onDragMove}
-                        onPointerUp={endDrag}
-                        onPointerCancel={cancelDrag}
                       >
-                        <BlockGlyph name={block.glyph} className={styles.glyph} />
+                        <i className={styles.connectorLine} />
+                        <i className={styles.connectorDot} />
+                        {brokenJoint ? <span className={styles.connectorFlag}>does not fit</span> : null}
+                      </div>
+                    ) : null}
+
+                    <article
+                      ref={(el) => {
+                        if (el) cardRefs.current.set(node.uid, el);
+                        else cardRefs.current.delete(node.uid);
+                      }}
+                      className={styles.node}
+                      data-kind={block.kind}
+                      data-open={open}
+                      data-lifted={lifted}
+                      data-broken={brokenJoint}
+                      data-running={runIndex === index}
+                      data-flagged={flaggedUid === node.uid}
+                    >
+                      <span className={styles.nodeEyebrow}>
+                        <span
+                          className={styles.nodeHandle}
+                          role="button"
+                          tabIndex={-1}
+                          aria-hidden
+                          onPointerDown={(event) =>
+                            beginDrag(event, { from: "chain", blockId: block.id, uid: node.uid, index })
+                          }
+                          onPointerMove={onDragMove}
+                          onPointerUp={endDrag}
+                          onPointerCancel={cancelDrag}
+                        >
+                          <BlockGlyph name={block.glyph} />
+                        </span>
+                        {eyebrowFor(block)}
                       </span>
 
                       <button
                         type="button"
-                        className={styles.cardTitle}
+                        className={styles.nodeTitle}
                         aria-expanded={open}
                         onClick={() => setOpenUid(open ? null : node.uid)}
                       >
-                        <strong>{block.name}</strong>
-                        <span>{summarise(block, node)}</span>
+                        <strong className={styles.nodeName}>{block.name}</strong>
+                        <span className={styles.nodeValue}>{summarise(block, node)}</span>
                       </button>
 
-                      <span className={styles.cardTools}>
-                        {/* The protocols this block actually calls under the
-                            hood, with the block's CURRENT params — flip the
-                            swap venue and the mark flips with it. Inside the
-                            tools cluster so .cardMain keeps its three grid
-                            columns. */}
-                        <span className={styles.cardProtocols}>
-                          <ProtocolStack protocols={protocolsForAction(block.id, node.params)} size={17} />
-                        </span>
-                        <span className={styles.maturity} data-level={block.maturity}>
-                          {block.maturity}
-                        </span>
+                      <span className={styles.nodeChip} data-level={block.maturity}>
+                        {block.maturity}
+                      </span>
+
+                      <span className={styles.nodeTools}>
                         <button
                           type="button"
                           onClick={() => moveNode(node.uid, -1)}
                           disabled={!canMove(node.uid, -1)}
                           aria-label={`Move ${block.name} up`}
                         >
-                          ↑
+                          <BlockGlyph name="chevronUp" />
                         </button>
                         <button
                           type="button"
@@ -1598,7 +1639,7 @@ export function ZapBuilder({
                           disabled={!canMove(node.uid, 1)}
                           aria-label={`Move ${block.name} down`}
                         >
-                          ↓
+                          <BlockGlyph name="chevronDown" />
                         </button>
                         <button
                           type="button"
@@ -1607,162 +1648,464 @@ export function ZapBuilder({
                           aria-label={`Duplicate ${block.name}`}
                           title={`Duplicate ${block.name} with these settings`}
                         >
-                          ⧉
+                          <BlockGlyph name="copy" />
                         </button>
-                        <button type="button" onClick={() => removeNode(node.uid)} aria-label={`Remove ${block.name}`}>
-                          ✕
+                        <button
+                          type="button"
+                          onClick={() => removeNode(node.uid)}
+                          aria-label={`Remove ${block.name}`}
+                        >
+                          <BlockGlyph name="trash" />
                         </button>
                       </span>
-                    </div>
 
-                    {open ? (
-                      <div className={styles.cardBody}>
-                        <p>{block.detail}</p>
-                        {block.params.length ? (
-                          <div className={styles.params}>
-                            {block.params.map((param) => {
-                              const id = `${node.uid}-${param.key}`;
-                              const value = node.params[param.key] ?? param.value;
-                              return (
-                                <label key={param.key} className={styles.param} htmlFor={id}>
-                                  <span className={styles.paramLabel}>
-                                    {param.label}
+                      {open ? (
+                        <div className={styles.nodeBody}>
+                          <p className={styles.nodeDetail}>{block.detail}</p>
+                          {/* The protocols this block actually calls under the
+                              hood, with the block's CURRENT params — flip the
+                              swap venue and the mark flips with it. */}
+                          <ProtocolStack protocols={protocolsForAction(block.id, node.params)} size={17} />
+                          {block.params.length ? (
+                            <div className={styles.fields}>
+                              {block.params.map((param) => {
+                                const id = `${node.uid}-${param.key}`;
+                                const value = node.params[param.key] ?? param.value;
+                                return (
+                                  <label key={param.key} className={styles.field} htmlFor={id}>
+                                    <span className={styles.fieldLabel}>
+                                      {param.label}
+                                      {param.type === "number" ? (
+                                        <em>
+                                          {value}
+                                          {paramSuffix(param)}
+                                        </em>
+                                      ) : param.type === "amount" && param.unit ? (
+                                        // The figure is already in the field, so only the
+                                        // unit needs saying — an amount is not a slider.
+                                        <em>{param.unit}</em>
+                                      ) : null}
+                                    </span>
                                     {param.type === "number" ? (
-                                      <em>
-                                        {value}
-                                        {paramSuffix(param)}
-                                      </em>
-                                    ) : param.type === "amount" && param.unit ? (
-                                      // The figure is already in the field, so only the
-                                      // unit needs saying — an amount is not a slider.
-                                      <em>{param.unit}</em>
-                                    ) : null}
-                                  </span>
-                                  {param.type === "number" ? (
-                                    <input
-                                      id={id}
-                                      type="range"
-                                      min={param.min}
-                                      max={param.max}
-                                      step={param.step}
-                                      value={Number(value)}
-                                      onChange={(event) => setParam(node.uid, param.key, Number(event.target.value))}
-                                    />
-                                  ) : param.type === "amount" ? (
-                                    <input
-                                      id={id}
-                                      type="text"
-                                      inputMode="decimal"
-                                      // Never Number() this: the decimal text is what
-                                      // `parseRouterAmount` turns into wei, and a float
-                                      // round-trip would quietly drop the low digits.
-                                      value={String(value)}
-                                      placeholder={param.placeholder}
-                                      onChange={(event) => setParam(node.uid, param.key, event.target.value)}
-                                    />
-                                  ) : param.type === "select" ? (
-                                    <select
-                                      id={id}
-                                      value={String(value)}
-                                      onChange={(event) => setParam(node.uid, param.key, event.target.value)}
-                                    >
-                                      {param.options.map((option) => (
-                                        <option key={option} value={option}>
-                                          {option}
-                                        </option>
-                                      ))}
-                                    </select>
-                                  ) : (
-                                    <input
-                                      id={id}
-                                      type="text"
-                                      value={String(value)}
-                                      placeholder={param.placeholder}
-                                      onChange={(event) => setParam(node.uid, param.key, event.target.value)}
-                                    />
-                                  )}
-                                </label>
-                              );
-                            })}
-                          </div>
-                        ) : null}
-                      </div>
-                    ) : null}
-                  </article>
-                </div>
-              );
-            })}
+                                      <input
+                                        id={id}
+                                        className={styles.range}
+                                        type="range"
+                                        min={param.min}
+                                        max={param.max}
+                                        step={param.step}
+                                        value={Number(value)}
+                                        onChange={(event) => setParam(node.uid, param.key, Number(event.target.value))}
+                                      />
+                                    ) : param.type === "amount" ? (
+                                      <input
+                                        id={id}
+                                        className={styles.textInput}
+                                        type="text"
+                                        inputMode="decimal"
+                                        // Never Number() this: the decimal text is what
+                                        // `parseRouterAmount` turns into wei, and a float
+                                        // round-trip would quietly drop the low digits.
+                                        value={String(value)}
+                                        placeholder={param.placeholder}
+                                        onChange={(event) => setParam(node.uid, param.key, event.target.value)}
+                                      />
+                                    ) : param.type === "select" ? (
+                                      <select
+                                        id={id}
+                                        className={styles.selectInput}
+                                        value={String(value)}
+                                        onChange={(event) => setParam(node.uid, param.key, event.target.value)}
+                                      >
+                                        {param.options.map((option) => (
+                                          <option key={option} value={option}>
+                                            {option}
+                                          </option>
+                                        ))}
+                                      </select>
+                                    ) : (
+                                      <input
+                                        id={id}
+                                        className={styles.textInput}
+                                        type="text"
+                                        value={String(value)}
+                                        placeholder={param.placeholder}
+                                        onChange={(event) => setParam(node.uid, param.key, event.target.value)}
+                                      />
+                                    )}
+                                  </label>
+                                );
+                              })}
+                            </div>
+                          ) : null}
+                        </div>
+                      ) : null}
+                    </article>
+                  </Fragment>
+                );
+              })}
 
-            <div
-              className={styles.slot}
-              data-open={drag?.active && dropIndex === chain.length && chain.length > 0}
-              data-valid={dropValid}
-              aria-hidden
-            >
-              <span />
+              <div
+                className={styles.slot}
+                data-open={drag?.active && dropIndex === chain.length && chain.length > 0}
+                data-valid={dropValid}
+                aria-hidden
+              >
+                <span />
+              </div>
             </div>
+
+            <div className={styles.drop} aria-hidden>
+              <i className={styles.dropRule} />
+            </div>
+
+            {/* A derived readout of what the chain already says, not a second
+                drop target: guards live in the one node track, so drag, undo and
+                `canInsert` all keep a single index space. */}
+            <section className={styles.policy} aria-label="Execution policy stack">
+              <div className={styles.policyHead}>
+                <BlockGlyph name="lock" />
+                <strong>Execution policy</strong>
+                <span className={styles.policyHint}>added as one stack · undo removes all three</span>
+                <button
+                  type="button"
+                  className={styles.policyCompose}
+                  onClick={composeExecutionPolicy}
+                  disabled={missingExecutionPolicyIds.length === 0}
+                >
+                  {missingExecutionPolicyIds.length === 0
+                    ? "All three explicit ✓"
+                    : missingExecutionPolicyIds.length === EXECUTION_POLICY_BLOCK_IDS.length
+                      ? `Compose all ${EXECUTION_POLICY_BLOCK_IDS.length} policy blocks`
+                      : `Compose remaining ${missingExecutionPolicyIds.length}`}
+                </button>
+                {/* v3.1 enforcement is an automation fact. A one-shot design gets
+                    the same bounds signed into a single intent — saying "enforced
+                    by v3.1" there would name a contract it never reaches. */}
+                <span className={styles.pill} data-tone={automation.deployable ? "ok" : undefined}>
+                  {automation.deployable ? "enforced by v3.1" : "one-shot bounds"}
+                </span>
+              </div>
+              <div className={styles.policyCells}>
+                <div>
+                  <span>SLIPPAGE CAP</span>
+                  <strong className={styles.mono}>{settingsSlippage?.bps ?? DEFAULT_SLIPPAGE_BPS} bps</strong>
+                </div>
+                <div>
+                  <span>GAS CEILING</span>
+                  <strong className={styles.mono}>
+                    {executionPolicy.maxGas.toLocaleString("en-US")} · ≤{executionPolicy.maxFeePerGasGwei} gwei
+                  </strong>
+                </div>
+                <div>
+                  <span>EXECUTOR ACCESS</span>
+                  <strong>{executionPolicy.executorAccess === "owner-only" ? "Owner only" : "Anyone"}</strong>
+                </div>
+              </div>
+              <p className={styles.policyNote}>
+                Gas caps bind both one-shot and automated EIP-712 intents. Executor access binds v3/v3.1 automation;
+                Zap now discloses an owner-only choice because v1.1 cannot restrict its caller. Missing blocks use the
+                protocol defaults shown here.
+              </p>
+            </section>
+
+            <p className={styles.canvasNote}>
+              Drag a block from the left to add it. Anything the selected contract cannot enforce is flagged before
+              you hand off.
+            </p>
+
+            {/* What the highlight travelling along the row is actually on.
+                Without this, "Preview Zap" lit each node in turn and said
+                nothing — the animation showed the order, which the row already
+                shows, and the settings it would execute with stayed inside
+                whichever node happened to be open. */}
+            {runStep ? (
+              <p className={styles.runStep}>
+                <span>
+                  Step {runStep.position} of {chain.length}
+                </span>
+                <strong>{runStep.name}</strong>
+                <em>{runStep.summary}</em>
+              </p>
+            ) : null}
+
+            {hint ? (
+              <p className={styles.hint} role="status">
+                {hint}
+              </p>
+            ) : null}
+
+            {/* Structural edits are visible as a card moving and audible as
+                nothing. Polite, so it waits its turn rather than cutting across
+                whatever the reader is already saying. */}
+            <p className={styles.srStatus} role="status" aria-live="polite">
+              {narration}
+            </p>
           </div>
-
-          {/* What the highlight travelling down the chain is actually on.
-              Without this, "Preview run" lit each card in turn and said
-              nothing — the animation showed the order, which the vertical
-              layout already showed, and the settings it would execute with
-              stayed inside whichever card happened to be open. */}
-          {runStep ? (
-            <p className={styles.runStep}>
-              <span>
-                Step {runStep.position} of {chain.length}
-              </span>
-              <strong>{runStep.name}</strong>
-              <em>{runStep.summary}</em>
-            </p>
-          ) : null}
-
-          {hint ? (
-            <p className={styles.hint} role="status">
-              {hint}
-            </p>
-          ) : null}
-
-          {/* Structural edits are visible as a card moving and audible as
-              nothing. Polite, so it waits its turn rather than cutting across
-              whatever the reader is already saying. */}
-          <p className={styles.srStatus} role="status" aria-live="polite">
-            {narration}
-          </p>
         </section>
 
-        {/* ---- readout ---- */}
-        <aside className={styles.readout} aria-label="Policy readout">
-          <div className={styles.readoutHead}>
-            <span className={styles.sectionStep}>03 Review</span>
-            <p>Confirm what fits, what is enforced, and where this design can run.</p>
-          </div>
-          <div className={styles.verdict} data-status={compiled.status}>
-            <span className={styles.verdictDot} />
-            <div>
-              <strong>
-                {compiled.status === "pass"
-                  ? "Ready to preview"
-                  : compiled.status === "warn"
-                    ? "Review recommended"
-                    : "Fix before preview"}
-              </strong>
-              <span title={GAS_ESTIMATE_NOTE}>
-                ≈{compiled.gas.toLocaleString("en-US")} gas (estimate) · {chain.length} block
-                {chain.length === 1 ? "" : "s"}
+        {/* ---- readout rail ---- */}
+        <aside className={styles.rail} aria-label="Policy readout">
+          <section className={styles.card}>
+            <div className={styles.cardHead}>
+              <h2>Readout</h2>
+              <span className={`${styles.pill} ${styles.pillEnd}`} data-tone={verdict.tone}>
+                {verdict.label}
               </span>
             </div>
-          </div>
+            <div className={styles.row}>
+              <span>Blocks</span>
+              <strong>
+                {chain.length === 0
+                  ? "empty canvas"
+                  : `${chain.length} · ${allSeated ? "all connected" : `${jointCount - seatedJoints} not seated`}`}
+              </strong>
+            </div>
+            <div className={styles.row}>
+              <span>Connectors fit</span>
+              <strong className={jointCount === 0 ? undefined : allSeated ? styles.ok : styles.danger}>
+                {jointCount === 0 ? "none yet" : allSeated ? `all ${jointCount}` : `${seatedJoints} of ${jointCount}`}
+              </strong>
+            </div>
+            <div className={styles.row}>
+              <span>Guards enforced</span>
+              <strong className={styles.mono}>{compiled.guardScore}%</strong>
+            </div>
+            <div className={styles.row}>
+              <span>Est. gas</span>
+              <strong className={styles.mono} title={GAS_ESTIMATE_NOTE}>
+                ≈{compiled.gas.toLocaleString("en-US")}
+              </strong>
+            </div>
+            <div className={styles.row}>
+              <span>Creation fee</span>
+              <strong className={styles.mono}>{formatBuilderToken(OPENZAP_CREATION_FEE, 18)} ETH</strong>
+            </div>
+          </section>
 
-          <section className={styles.quotePanel} aria-label="Live route and creation-fee quote">
-            <div className={styles.quoteHead}>
-              <div>
-                <span>Live quote</span>
-                <strong>{quoteRouteTarget ? `${quoteRouteTarget.tokenIn.symbol} → ${quoteRouteTarget.tokenOut.symbol}` : "Add a live route"}</strong>
-              </div>
+          <section className={`${styles.card} ${styles.handoff}`}>
+            <h2>Hand it off</h2>
+            <p className={styles.handoffLede}>The exact amount, floor, and bounds travel with it.</p>
+            <div className={styles.handoffActions}>
+              {deployment.deployable && deployHref ? (
+                <Link
+                  className={styles.zapBtn}
+                  href={deployHref}
+                  onClick={() => trackEvent("builder_deploy_handoff", { route: deployment.routeId })}
+                >
+                  <BlockGlyph name="boltFill" />
+                  Zap now
+                </Link>
+              ) : null}
+              {automation.deployable && automateHref ? (
+                <Link
+                  className={styles.ghostBtn}
+                  href={automateHref}
+                  onClick={() =>
+                    trackEvent("builder_automate_handoff", { route: automation.routeId, mode: automation.mode })
+                  }
+                >
+                  Automate it
+                </Link>
+              ) : null}
+              {handoffAvailable ? null : (
+                <button type="button" className={styles.primaryBtn} onClick={saveDesign}>
+                  {savedChain === chain ? "Saved as design ✓" : "Save as design"}
+                </button>
+              )}
+            </div>
+
+            {handoffAvailable ? (
+              <>
+                {deployment.deployable ? (
+                  <p className={styles.deployNote}>
+                    <strong>Zap now</strong> opens with{" "}
+                    {deployRoute
+                      ? `${deployRoute.tokenIn.symbol} → ${deployRoute.tokenOut.symbol}`
+                      : "the matching route"}
+                    , {deployment.amountIn} {deployRoute ? deployRoute.tokenIn.symbol : ""}, a{" "}
+                    {(deployment.slippageBps / 100).toFixed(2)}% signed slippage cap, up to{" "}
+                    {deployment.executionPolicy.maxGas.toLocaleString("en-US")} gas, and at most{" "}
+                    {deployment.executionPolicy.maxFeePerGasGwei} gwei. Creation, funding, and the final EIP-712
+                    authorization stay in Zap now.
+                  </p>
+                ) : null}
+                {automation.deployable ? (
+                  <p className={styles.deployNote}>
+                    <strong>{automation.mode === "recurring" ? "Recurring" : "Price-triggered"}</strong> handoff
+                    preserves this route, amount, slippage,{" "}
+                    {automation.executionPolicy.maxGas.toLocaleString("en-US")} gas, a{" "}
+                    {automation.executionPolicy.maxFeePerGasGwei} gwei ceiling, and{" "}
+                    {automation.executionPolicy.executorAccess === "owner-only"
+                      ? "owner-only execution"
+                      : "open execution"}
+                    {automation.mode === "recurring"
+                      ? `, then binds ${automation.maxRuns} runs on the ${automation.intervalId} cadence.`
+                      : `, then binds ${automation.thresholdId.startsWith("up") ? "a rise" : "a fall"} of ${automation.thresholdId.replace(/\D/g, "")}% for ${automation.validDays} days.`}
+                  </p>
+                ) : null}
+                {deployment.deployable && deployment.unenforcedGuards.length > 0 ? (
+                  // Rendered in full, in the CTA's own line of sight. Summarising
+                  // or counting these would let someone deploy believing a guard
+                  // they drew is protecting funds that nothing is protecting.
+                  <div className={styles.unenforced} role="note">
+                    <strong>
+                      If you Zap now, {deployment.unenforcedGuards.length} guard
+                      {deployment.unenforcedGuards.length === 1 ? " in this design is" : "s in this design are"} not
+                      enforced onchain.
+                    </strong>
+                    <p>
+                      The one-shot policy binds owner, recipient, adapter, spender, input token, exact amount, and
+                      minimum output. Choosing that path keeps those bounds and drops the rest:
+                    </p>
+                    <ul>
+                      {deployment.unenforcedGuards.map((guard) => (
+                        <li key={guard}>{guard}</li>
+                      ))}
+                    </ul>
+                  </div>
+                ) : null}
+              </>
+            ) : (
+              <>
+                {!deployment.deployable ? (
+                  <div className={styles.reasons} role="note">
+                    <strong>This design cannot Zap now on Robinhood Chain today.</strong>
+                    <ul>
+                      {deployment.reasons.map((reason) => (
+                        <li key={reason}>{reason}</li>
+                      ))}
+                    </ul>
+                  </div>
+                ) : null}
+                {!automation.deployable ? (
+                  <div className={styles.reasons} role="note">
+                    <strong>This design cannot be automated on Robinhood Chain today.</strong>
+                    <ul>
+                      {automation.reasons.map((reason) => (
+                        <li key={reason}>{reason}</li>
+                      ))}
+                    </ul>
+                  </div>
+                ) : null}
+              </>
+            )}
+
+            <p className={styles.handoffNote}>
+              This canvas never connects, approves, funds, signs, or submits.
+            </p>
+            <details className={styles.disclosure}>
+              <summary>How designs become live Zaps</summary>
+              <p>
+                Deployable one-shot routes hand their exact amount and slippage to Zap now. A Recurring deposit or
+                Price trigger on the pinned aeWETH ↔ 0xZAPS route hands cadence or threshold to Automate. The wallet
+                still confirms the Zap&rsquo;s creation and its fixed creation fee.
+              </p>
+              <p>
+                The canvas compiles and simulates. It cannot sign, fund, or submit a transaction — that happens in{" "}
+                <strong>Zap now</strong>, against whichever deployed routes your design reduces to: swaps, stitched
+                multi-pool routes, and aeWETH/USDG liquidity provide/withdraw.
+              </p>
+            </details>
+          </section>
+
+          {/* ---- zap settings ----
+              The two numbers every zap needs, surfaced without opening a node.
+              These inputs edit the CHAIN — the source block's amount and the
+              slippage guard's cap — never a parallel copy, so the compiler,
+              the deploy reduction, and the nodes all stay in agreement, and
+              every change lands on the undo stack like any other edit. */}
+          <section className={styles.card} aria-label="Zap settings">
+            <div className={styles.cardHead}>
+              <h2>Zap settings</h2>
+              <strong className={styles.pillEnd}>
+                {settingsAmount === null
+                  ? "no source"
+                  : settingsAmount.kind === "amount"
+                    ? settingsAmount.asset
+                    : settingsAmount.name}
+              </strong>
+            </div>
+            <div className={styles.settings}>
+              {settingsAmount === null ? (
+                <p className={styles.nodeDetail}>Add a source block and its amount appears here.</p>
+              ) : settingsAmount.kind === "unparameterised" ? (
+                <p className={styles.nodeDetail}>
+                  {settingsAmount.name} draws whatever has accrued — it has no amount to set.
+                </p>
+              ) : (
+                <label className={styles.field} htmlFor="zap-settings-amount">
+                  <span className={styles.fieldLabel}>
+                    {settingsAmount.label} ({settingsAmount.asset})
+                  </span>
+                  <input
+                    id="zap-settings-amount"
+                    className={styles.textInput}
+                    type="text"
+                    inputMode="decimal"
+                    spellCheck={false}
+                    value={settingsAmount.value}
+                    onChange={(event) => setParam(settingsAmount.uid, "amount", event.target.value)}
+                  />
+                </label>
+              )}
+              {settingsSlippage ? (
+                <label className={styles.field} htmlFor="zap-settings-slippage">
+                  <span className={styles.fieldLabel}>
+                    Slippage cap
+                    <em>{settingsSlippage.bps} bps</em>
+                  </span>
+                  <input
+                    id="zap-settings-slippage"
+                    className={styles.range}
+                    type="range"
+                    min={settingsSlippage.min}
+                    max={settingsSlippage.max}
+                    step={settingsSlippage.step}
+                    value={settingsSlippage.bps}
+                    aria-valuetext={`${settingsSlippage.bps} basis points (${(settingsSlippage.bps / 100).toFixed(2)}%)`}
+                    onChange={(event) => setParam(settingsSlippage.uid, "bps", Number(event.target.value))}
+                  />
+                </label>
+              ) : (
+                <button
+                  type="button"
+                  className={`${styles.toolBtn} ${styles.toolBtnLg}`}
+                  onClick={() => {
+                    const guard = getBlock("guard-slippage");
+                    if (guard) {
+                      addBlock(guard);
+                      trackEvent("builder_settings_slippage_added", {});
+                    }
+                  }}
+                >
+                  Add a slippage cap
+                </button>
+              )}
+            </div>
+            <p className={styles.fieldNote}>
+              Not settings: the recipient is always the owner wallet, the relayer fee cap is 0, and the chain is
+              Robinhood (4663) — all frozen into the signed policy, on purpose.
+            </p>
+          </section>
+
+          {/* Live money preview: route output and the separate creation-fee
+              conversion stay in one card so "minimum received" cannot read as
+              "after a hidden fee". */}
+          <section className={styles.card} aria-label="Live route and creation-fee quote">
+            <div className={styles.cardHead}>
+              <h2>Live quote</h2>
+              <strong className={styles.pillEnd}>
+                {quoteRouteTarget
+                  ? `${quoteRouteTarget.tokenIn.symbol} → ${quoteRouteTarget.tokenOut.symbol}`
+                  : "Add a live route"}
+              </strong>
               {builderQuote.status === "error" ? (
-                <button type="button" onClick={() => setQuoteRefresh((value) => value + 1)}>
+                <button
+                  type="button"
+                  className={`${styles.toolBtn} ${styles.toolBtnMd}`}
+                  onClick={() => setQuoteRefresh((value) => value + 1)}
+                >
                   Retry
                 </button>
               ) : null}
@@ -1773,18 +2116,21 @@ export function ZapBuilder({
               <p className={styles.quoteError}>{builderQuote.message}</p>
             ) : builderQuote.status === "ready" && quoteEconomics && quoteRouteTarget && builderQuote.routeId === quoteRouteTarget.id ? (
               <div className={styles.quoteGrid}>
-                <div>
+                <div className={styles.quoteCell}>
                   <span>Gross route quote</span>
-                  <strong>{formatBuilderToken(builderQuote.amountOut, quoteRouteTarget.tokenOut.decimals)} {quoteRouteTarget.tokenOut.symbol}</strong>
+                  <strong>
+                    {formatBuilderToken(builderQuote.amountOut, quoteRouteTarget.tokenOut.decimals)}{" "}
+                    {quoteRouteTarget.tokenOut.symbol}
+                  </strong>
                 </div>
-                <div>
+                <div className={styles.quoteCell}>
                   <span>Estimated recipient</span>
                   <strong>
                     {formatBuilderToken(quoteEconomics.recipientOut, quoteRouteTarget.tokenOut.decimals)}{" "}
                     {quoteRouteTarget.tokenOut.symbol}
                   </strong>
                 </div>
-                <div>
+                <div className={styles.quoteCell}>
                   <span>{automation.deployable ? "Indicative net floor" : "Signed minimum"}</span>
                   <strong>
                     {formatBuilderToken(quoteEconomics.minimumOut, quoteRouteTarget.tokenOut.decimals)}{" "}
@@ -1792,7 +2138,7 @@ export function ZapBuilder({
                   </strong>
                 </div>
                 {quoteEconomics.automationFee > 0n ? (
-                  <div>
+                  <div className={styles.quoteCell}>
                     <span>Automation fee</span>
                     <strong>
                       {formatBuilderToken(quoteEconomics.automationFee, quoteRouteTarget.tokenOut.decimals)}{" "}
@@ -1800,11 +2146,11 @@ export function ZapBuilder({
                     </strong>
                   </div>
                 ) : null}
-                <div>
+                <div className={styles.quoteCell}>
                   <span>Creation fee</span>
                   <strong>{formatBuilderToken(OPENZAP_CREATION_FEE, 18)} ETH</strong>
                 </div>
-                <div>
+                <div className={styles.quoteCell}>
                   <span>Fee conversion floor</span>
                   <strong>
                     {formatBuilderToken(
@@ -1822,158 +2168,21 @@ export function ZapBuilder({
               {automation.deployable
                 ? "Automated Zaps retain the live 1% output fee: 80% rewards the executor and 20% enters the existing 0xZAPS conversion pot. "
                 : ""}
-              The separate creation fee is paid only if capsule creation succeeds and atomically converted through the pinned aeWETH → 0xZAPS adapter.
+              The separate creation fee is paid only if the Zap&rsquo;s creation succeeds and atomically converted
+              through the pinned aeWETH → 0xZAPS adapter.
             </p>
           </section>
 
-          {/* ---- zap settings ----
-              The two numbers every zap needs, surfaced without opening a card.
-              These inputs edit the CHAIN — the source block's amount and the
-              slippage guard's cap — never a parallel copy, so the compiler,
-              the deploy reduction, and the cards all stay in agreement, and
-              every change lands on the undo stack like any other edit. */}
-          <div className={styles.meter} aria-label="Zap settings">
-            <div className={styles.meterHead}>
-              <span>Zap settings</span>
-              <strong>
-                {settingsAmount === null
-                  ? "no source"
-                  : settingsAmount.kind === "amount"
-                    ? settingsAmount.asset
-                    : settingsAmount.name}
-              </strong>
-            </div>
-            <div className={styles.params}>
-              {settingsAmount === null ? (
-                <p className={styles.hashNote}>Add a source block and its amount appears here.</p>
-              ) : settingsAmount.kind === "unparameterised" ? (
-                <p className={styles.hashNote}>
-                  {settingsAmount.name} draws whatever has accrued — it has no amount to set.
-                </p>
-              ) : (
-                <label className={styles.param} htmlFor="zap-settings-amount">
-                  <span className={styles.paramLabel}>
-                    {settingsAmount.label} ({settingsAmount.asset})
-                  </span>
-                  <input
-                    id="zap-settings-amount"
-                    type="text"
-                    inputMode="decimal"
-                    spellCheck={false}
-                    value={settingsAmount.value}
-                    onChange={(event) => setParam(settingsAmount.uid, "amount", event.target.value)}
-                  />
-                </label>
-              )}
-              {settingsSlippage ? (
-                <label className={styles.param} htmlFor="zap-settings-slippage">
-                  <span className={styles.paramLabel}>
-                    Slippage cap
-                    <em>{settingsSlippage.bps} bps</em>
-                  </span>
-                  <input
-                    id="zap-settings-slippage"
-                    type="range"
-                    min={settingsSlippage.min}
-                    max={settingsSlippage.max}
-                    step={settingsSlippage.step}
-                    value={settingsSlippage.bps}
-                    aria-valuetext={`${settingsSlippage.bps} basis points (${(settingsSlippage.bps / 100).toFixed(2)}%)`}
-                    onChange={(event) => setParam(settingsSlippage.uid, "bps", Number(event.target.value))}
-                  />
-                </label>
-              ) : (
-                <button
-                  type="button"
-                  className={styles.ghostBtn}
-                  onClick={() => {
-                    const guard = getBlock("guard-slippage");
-                    if (guard) {
-                      addBlock(guard);
-                      trackEvent("builder_settings_slippage_added", {});
-                    }
-                  }}
-                >
-                  Add a slippage cap
-                </button>
-              )}
-            </div>
-            <p className={styles.hashNote}>
-              Not settings: the recipient is always the owner wallet, the relayer fee cap is 0, and the chain is
-              Robinhood (4663) — all frozen into the signed policy, on purpose.
-            </p>
-          </div>
-
-          <div className={`${styles.meter} ${styles.policyStack}`} aria-label="Execution policy stack">
-            <div className={styles.meterHead}>
-              <span>Execution policy</span>
-              <strong>
-                {EXECUTION_POLICY_BLOCK_IDS.length - missingExecutionPolicyIds.length}/{EXECUTION_POLICY_BLOCK_IDS.length} explicit
-              </strong>
-            </div>
-            <dl className={styles.policyGrid}>
-              <div>
-                <dt>Gas limit</dt>
-                <dd>{executionPolicy.maxGas.toLocaleString("en-US")}</dd>
-              </div>
-              <div>
-                <dt>Gas price</dt>
-                <dd>≤ {executionPolicy.maxFeePerGasGwei} gwei</dd>
-              </div>
-              <div>
-                <dt>Executor</dt>
-                <dd>{executionPolicy.executorAccess === "owner-only" ? "Owner only" : "Anyone"}</dd>
-              </div>
-            </dl>
-            <p className={styles.hashNote}>
-              Gas caps bind both one-shot and automated EIP-712 intents. Executor access binds v3/v3.1 automation;
-              Zap now discloses an owner-only choice because v1.1 cannot restrict its caller. Missing blocks use the
-              protocol defaults shown here.
-            </p>
-            <button
-              type="button"
-              className={styles.composePolicyBtn}
-              onClick={composeExecutionPolicy}
-              disabled={missingExecutionPolicyIds.length === 0}
-            >
-              {missingExecutionPolicyIds.length === 0
-                ? "Execution policy explicit ✓"
-                : missingExecutionPolicyIds.length === EXECUTION_POLICY_BLOCK_IDS.length
-                  ? `Compose all ${EXECUTION_POLICY_BLOCK_IDS.length} policy blocks`
-                  : `Compose remaining ${missingExecutionPolicyIds.length}`}
-            </button>
-            <span className={styles.policyUndo}>Inserted together · one undo restores the previous chain.</span>
-          </div>
-
-          {/* Every issue the compiler raised, not the first one. The "Connector
-              fit" check below can only ever quote a single message, so a chain
-              with three broken joints used to report one and leave the other
-              two to be found by eye. Each one that names a block is a button
-              that goes there. */}
-          {compiled.issues.length > 0 ? (
-            <ul className={styles.issues} aria-label={`${compiled.issues.length} problems in this design`}>
-              {compiled.issues.map((issue, index) => (
-                <li key={`${issue.code ?? "chain"}-${issue.uid ?? index}`} data-level={issue.level}>
-                  {issue.uid ? (
-                    <button type="button" onClick={() => revealNode(issue.uid as string)}>
-                      <span>{issue.message}</span>
-                      <em aria-hidden>Show</em>
-                    </button>
-                  ) : (
-                    <span>{issue.message}</span>
-                  )}
-                </li>
-              ))}
-            </ul>
-          ) : null}
-
-          <div className={styles.meter}>
-            <div className={styles.meterHead}>
-              <span>Guard coverage</span>
-              <strong>{compiled.guardScore}%</strong>
+          <section className={styles.card}>
+            <div className={styles.cardHead}>
+              <h2>Guard coverage</h2>
+              <strong className={`${styles.pillEnd} ${styles.mono}`}>{compiled.guardScore}%</strong>
             </div>
             <div className={styles.meterTrack}>
-              <span style={{ width: `${compiled.guardScore}%` }} data-level={compiled.guardScore === 100 ? "full" : compiled.guardScore >= 50 ? "part" : "low"} />
+              <span
+                style={{ width: `${compiled.guardScore}%` }}
+                data-level={compiled.guardScore === 100 ? "full" : compiled.guardScore >= 50 ? "part" : "low"}
+              />
             </div>
             {/* Each gap names the risk that opened it and adds the piece that
                 closes it. The percentage alone was a grade, not a next step. */}
@@ -1989,6 +2198,7 @@ export function ZapBuilder({
                       </span>
                       <button
                         type="button"
+                        className={`${styles.toolBtn} ${styles.toolBtnSm}`}
                         onClick={() => {
                           addBlock(guard);
                           trackEvent("builder_guard_gap_filled", { guard: guard.id });
@@ -2002,213 +2212,163 @@ export function ZapBuilder({
                 })}
               </ul>
             ) : null}
-          </div>
+          </section>
 
-          <ul className={styles.checks}>
-            {compiled.checks.map((check) => (
-              <li key={check.label} data-status={check.status}>
-                <strong>{check.label}</strong>
-                <span>{check.detail}</span>
-              </li>
-            ))}
-          </ul>
+          {/* Every issue the compiler raised, not the first one. The "Connector
+              fit" check below can only ever quote a single message, so a chain
+              with three broken joints used to report one and leave the other
+              two to be found by eye. Each one that names a block is a button
+              that goes there. */}
+          {compiled.issues.length > 0 ? (
+            <section className={styles.card}>
+              <div className={styles.cardHead}>
+                <h2>Problems</h2>
+                <span className={`${styles.pill} ${styles.pillEnd}`} data-tone="danger">
+                  {compiled.issues.length}
+                </span>
+              </div>
+              <ul className={styles.issues} aria-label={`${compiled.issues.length} problems in this design`}>
+                {compiled.issues.map((issue, index) => (
+                  <li key={`${issue.code ?? "chain"}-${issue.uid ?? index}`} data-level={issue.level}>
+                    {issue.uid ? (
+                      <button type="button" onClick={() => revealNode(issue.uid as string)}>
+                        <span>{issue.message}</span>
+                        <em aria-hidden>Show</em>
+                      </button>
+                    ) : (
+                      <span>{issue.message}</span>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </section>
+          ) : null}
 
-          <div className={styles.hashRow}>
-            <span>Design fingerprint</span>
-            <CopyButton
-              value={compiled.hash}
-              label={`${compiled.hash.slice(0, 10)}…${compiled.hash.slice(-6)}`}
-              title="Copy this design's fingerprint"
-            />
-          </div>
-          <p className={styles.hashNote}>
-            A local checksum (FNV-1a) that tells two designs apart. It is <strong>not</strong> the onchain policy
-            hash: a deployed capsule commits to a keccak256 hash of its ABI-encoded policy, so this value will not
-            match anything on a block explorer.
-          </p>
-
-          {(deployment.deployable && deployHref) || (automation.deployable && automateHref) ? (
-            <div className={styles.deploy} data-deployable="true">
-              {deployment.deployable && deployHref ? (
-                <Link
-                  className={styles.deployBtn}
-                  href={deployHref}
-                  onClick={() => trackEvent("builder_deploy_handoff", { route: deployment.routeId })}
-                >
-                  Review &amp; Zap now →
-                </Link>
-              ) : null}
-              {automation.deployable && automateHref ? (
-                <Link
-                  className={styles.automateBtn}
-                  href={automateHref}
-                  onClick={() => trackEvent("builder_automate_handoff", { route: automation.routeId, mode: automation.mode })}
-                >
-                  {automation.mode === "recurring" ? "Review recurring series" : "Review price trigger"} →
-                </Link>
-              ) : null}
-              {deployment.deployable ? (
-                <p className={styles.deployNote}>
-                  <strong>Zap now</strong> opens with{" "}
-                  {deployRoute
-                    ? `${deployRoute.tokenIn.symbol} → ${deployRoute.tokenOut.symbol}`
-                    : "the matching route"}
-                  , {deployment.amountIn} {deployRoute ? deployRoute.tokenIn.symbol : ""}, a{" "}
-                  {(deployment.slippageBps / 100).toFixed(2)}% signed slippage cap, up to{" "}
-                  {deployment.executionPolicy.maxGas.toLocaleString("en-US")} gas, and at most{" "}
-                  {deployment.executionPolicy.maxFeePerGasGwei} gwei. Creation, funding, and the final EIP-712
-                  authorization stay in Zap now.
-                </p>
-              ) : null}
-              {automation.deployable ? (
-                <p className={styles.deployNote}>
-                  <strong>{automation.mode === "recurring" ? "Recurring" : "Price-triggered"}</strong> handoff
-                  preserves this route, amount, slippage, {automation.executionPolicy.maxGas.toLocaleString("en-US")} gas,
-                  a {automation.executionPolicy.maxFeePerGasGwei} gwei ceiling, and{" "}
-                  {automation.executionPolicy.executorAccess === "owner-only" ? "owner-only execution" : "open execution"}
-                  {automation.mode === "recurring"
-                    ? `, then binds ${automation.maxRuns} runs on the ${automation.intervalId} cadence.`
-                    : `, then binds ${automation.thresholdId.startsWith("up") ? "a rise" : "a fall"} of ${automation.thresholdId.replace(/\D/g, "")}% for ${automation.validDays} days.`}
-                </p>
-              ) : null}
-              {deployment.deployable && deployment.unenforcedGuards.length > 0 ? (
-                // Rendered in full, in the CTA's own line of sight. Summarising
-                // or counting these would let someone deploy believing a guard
-                // they drew is protecting funds that nothing is protecting.
-                <div className={styles.unenforced} role="note">
-                  <strong>
-                    If you Zap now, {deployment.unenforcedGuards.length} guard
-                    {deployment.unenforcedGuards.length === 1 ? " in this design is" : "s in this design are"} not
-                    enforced onchain.
-                  </strong>
-                  <p>
-                    The one-shot policy binds owner, recipient, adapter, spender, input token, exact amount, and
-                    minimum output. Choosing that path keeps those bounds and drops the rest:
-                  </p>
-                  <ul>
-                    {deployment.unenforcedGuards.map((guard) => (
-                      <li key={guard}>{guard}</li>
-                    ))}
-                  </ul>
-                </div>
-              ) : null}
+          <section className={styles.card}>
+            <div className={styles.cardHead}>
+              <h2>Checks</h2>
             </div>
-          ) : (
-            <div className={styles.deploy} data-deployable="false">
-              <button type="button" className={styles.saveBtn} onClick={saveDesign}>
-                {savedChain === chain ? "Saved as design ✓" : "Save as design"}
+            <ul className={styles.checks}>
+              {compiled.checks.map((check) => (
+                <li key={check.label} data-status={check.status}>
+                  <strong>{check.label}</strong>
+                  <span>{check.detail}</span>
+                </li>
+              ))}
+            </ul>
+          </section>
+
+          <section className={styles.card}>
+            <div className={styles.hashRow}>
+              <span>Design fingerprint</span>
+              <CopyButton
+                value={compiled.hash}
+                label={`${compiled.hash.slice(0, 10)}…${compiled.hash.slice(-6)}`}
+                title="Copy this design's fingerprint"
+              />
+            </div>
+            <p className={styles.hashNote}>
+              A local checksum (FNV-1a) that tells two designs apart. It is <strong>not</strong> the onchain policy
+              hash: a deployed Zap commits to a keccak256 hash of its ABI-encoded policy, so this value will not
+              match anything on a block explorer.
+            </p>
+          </section>
+
+          <section className={styles.card}>
+            <div className={styles.actions}>
+              <CopyButton
+                className={styles.actionBtn}
+                value={shareUrl}
+                label="Copy share link"
+                title="Copy a link that reopens this exact design"
+              />
+              <CopyButton
+                className={styles.actionBtn}
+                value={exportPayload}
+                label="Copy design JSON"
+                title="Copy the compiled chain"
+              />
+
+              {/* Durable, named saves — the draft answers "put my canvas back";
+                  the library answers "keep this one, I'm starting another". */}
+              <button
+                type="button"
+                className={styles.actionBtn}
+                aria-expanded={naming}
+                disabled={chain.length === 0}
+                onClick={() => setNaming((open) => !open)}
+              >
+                {naming ? "Cancel save" : "Save to library"}
               </button>
-              {!deployment.deployable ? (
-                <div className={styles.reasons} role="note">
-                  <strong>This design cannot Zap now on Robinhood Chain today.</strong>
-                  <ul>
-                    {deployment.reasons.map((reason) => (
-                      <li key={reason}>{reason}</li>
-                    ))}
-                  </ul>
+              {naming ? (
+                <div className={styles.import}>
+                  <label htmlFor="library-name">
+                    Name this design. Saving under an existing name updates it.
+                  </label>
+                  <input
+                    id="library-name"
+                    type="text"
+                    value={libraryName}
+                    autoFocus
+                    maxLength={MAX_DESIGN_NAME}
+                    spellCheck={false}
+                    placeholder="e.g. Weekly aeWETH → 0xZAPS"
+                    onChange={(event) => setLibraryName(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Escape") setNaming(false);
+                      if (event.key === "Enter") saveToLibrary();
+                    }}
+                  />
+                  <button
+                    type="button"
+                    className={`${styles.toolBtn} ${styles.toolBtnLg}`}
+                    onClick={saveToLibrary}
+                    disabled={!libraryName.trim()}
+                  >
+                    Save design
+                  </button>
                 </div>
               ) : null}
-              {!automation.deployable ? (
-                <div className={styles.reasons} role="note">
-                  <strong>This design cannot be automated on Robinhood Chain today.</strong>
-                  <ul>
-                    {automation.reasons.map((reason) => (
-                      <li key={reason}>{reason}</li>
-                    ))}
-                  </ul>
+
+              {/* The other half of those two buttons. A design copied out as JSON
+                  had no way back in except by hand. */}
+              <button
+                type="button"
+                className={styles.actionBtn}
+                aria-expanded={importing}
+                onClick={() => setImporting((open) => !open)}
+              >
+                {importing ? "Cancel import" : "Paste a design"}
+              </button>
+              {importing ? (
+                <div className={styles.import}>
+                  <label htmlFor="import-design">Paste a share link or a copied design JSON.</label>
+                  <textarea
+                    id="import-design"
+                    value={importText}
+                    rows={3}
+                    spellCheck={false}
+                    placeholder="https://www.0xzaps.com/zap?d=… or { &quot;chain&quot;: [ … ] }"
+                    onChange={(event) => setImportText(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Escape") setImporting(false);
+                      // Enter alone would fight the textarea; the modifier is the
+                      // usual "send this" gesture and the button is right there.
+                      if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) importDesign();
+                    }}
+                  />
+                  <button
+                    type="button"
+                    className={`${styles.toolBtn} ${styles.toolBtnLg}`}
+                    onClick={importDesign}
+                    disabled={!importText.trim()}
+                  >
+                    Load design
+                  </button>
                 </div>
               ) : null}
             </div>
-          )}
-
-          <div className={styles.readoutActions}>
-            <CopyButton
-              className={styles.exportBtn}
-              value={shareUrl}
-              label="Copy share link"
-              title="Copy a link that reopens this exact design"
-            />
-            <CopyButton className={styles.exportBtn} value={exportPayload} label="Copy design JSON" title="Copy the compiled chain" />
-
-            {/* Durable, named saves — the draft answers "put my canvas back";
-                the library answers "keep this one, I'm starting another". */}
-            <button
-              type="button"
-              className={styles.importToggle}
-              aria-expanded={naming}
-              disabled={chain.length === 0}
-              onClick={() => setNaming((open) => !open)}
-            >
-              {naming ? "Cancel save" : "Save to library"}
-            </button>
-            {naming ? (
-              <div className={styles.import}>
-                <label htmlFor="library-name">
-                  Name this design. Saving under an existing name updates it.
-                </label>
-                <input
-                  id="library-name"
-                  type="text"
-                  value={libraryName}
-                  autoFocus
-                  maxLength={MAX_DESIGN_NAME}
-                  spellCheck={false}
-                  placeholder="e.g. Weekly aeWETH → 0xZAPS"
-                  onChange={(event) => setLibraryName(event.target.value)}
-                  onKeyDown={(event) => {
-                    if (event.key === "Escape") setNaming(false);
-                    if (event.key === "Enter") saveToLibrary();
-                  }}
-                />
-                <button type="button" onClick={saveToLibrary} disabled={!libraryName.trim()}>
-                  Save design
-                </button>
-              </div>
-            ) : null}
-
-            {/* The other half of those two buttons. A design copied out as JSON
-                had no way back in except by hand. */}
-            <button
-              type="button"
-              className={styles.importToggle}
-              aria-expanded={importing}
-              onClick={() => setImporting((open) => !open)}
-            >
-              {importing ? "Cancel import" : "Paste a design"}
-            </button>
-            {importing ? (
-              <div className={styles.import}>
-                <label htmlFor="import-design">Paste a share link or a copied design JSON.</label>
-                <textarea
-                  id="import-design"
-                  value={importText}
-                  rows={3}
-                  spellCheck={false}
-                  placeholder="https://www.0xzaps.com/zap?d=… or { &quot;chain&quot;: [ … ] }"
-                  onChange={(event) => setImportText(event.target.value)}
-                  onKeyDown={(event) => {
-                    if (event.key === "Escape") setImporting(false);
-                    // Enter alone would fight the textarea; the modifier is the
-                    // usual "send this" gesture and the button is right there.
-                    if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) importDesign();
-                  }}
-                />
-                <button type="button" onClick={importDesign} disabled={!importText.trim()}>
-                  Load design
-                </button>
-              </div>
-            ) : null}
-
-            <Link className={styles.openApp} href={automateHref ?? "/zap?view=sign"}>
-              {automation.deployable ? "Open Automate →" : "Open Zap now →"}
-            </Link>
-          </div>
-
-          <p className={styles.disclaimer}>
-            The canvas compiles and simulates. It cannot sign, fund, or submit a transaction — that happens one
-            tab over, in <strong>Zap now</strong>, against whichever deployed routes your design reduces
-            to: swaps, stitched multi-pool routes, and aeWETH/USDG liquidity provide/withdraw.
-          </p>
+          </section>
         </aside>
       </div>
 
@@ -2218,12 +2378,11 @@ export function ZapBuilder({
           style={{
             width: drag.width,
             transform: `translate3d(${drag.x - drag.dx}px, ${drag.y - drag.dy}px, 0)`,
-            ["--accent" as string]: SHAPE_COLOR[dragBlock.emits ?? dragBlock.accepts ?? "token"],
           }}
           data-valid={dropValid && dropIndex !== null}
           aria-hidden
         >
-          <BlockGlyph name={dragBlock.glyph} className={styles.glyph} />
+          <BlockGlyph name={dragBlock.glyph} />
           <strong>{dragBlock.name}</strong>
         </div>
       ) : null}
@@ -2241,6 +2400,20 @@ function isTextEntry(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false;
   if (target.isContentEditable || target instanceof HTMLTextAreaElement) return true;
   return target instanceof HTMLInputElement && target.type !== "range";
+}
+
+/**
+ * What a node calls itself on the canvas.
+ *
+ * The ends of a chain are the two things a reader looks for first, so they are
+ * named by their role rather than by their catalogue group; everything in
+ * between falls back to the group the palette filed it under.
+ */
+function eyebrowFor(block: LegoBlock): string {
+  if (block.kind === "source") return "TOKEN IN";
+  if (block.kind === "sink") return "TOKEN OUT";
+  if (block.kind === "guard") return "GUARD";
+  return CATEGORY_LABEL[block.category].toUpperCase();
 }
 
 /** A block's params at their catalogue defaults, for palette-time protocol badges. */

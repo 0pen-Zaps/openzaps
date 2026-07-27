@@ -1,0 +1,1451 @@
+/**
+ * Automate — recurring and price-triggered Zaps.
+ *
+ * A module of its own rather than more rules in `app.module.css`: that sheet is
+ * shared with Console.tsx and UseSurface.tsx, and 41 of the 46 classes this
+ * screen used to borrow are the same objects Zap now draws with. Restyling
+ * Automate in place would silently restyle a screen nobody was looking at.
+ *
+ * The screen renders content only — AppShell owns the measure, the padding and
+ * the scroll container.
+ */
+
+/* ── layout ──────────────────────────────────────────────────────────────── */
+
+/* Block flow, not a flex column with a gap: the notice live region stays
+   mounted while empty (see .bannerNotice) and a flex `gap` would still reserve
+   space around a zero-height item. */
+.screen {
+  display: block;
+}
+
+.head {
+  margin: 0 0 20px;
+}
+
+.title {
+  margin: 0;
+  font-family: var(--font-serif);
+  font-size: 34px;
+  font-weight: 500;
+  letter-spacing: -0.02em;
+  color: var(--ink);
+}
+
+.lede {
+  max-width: 74ch;
+  margin: 8px 0 0;
+  color: var(--ink-2);
+  font-size: 14.5px;
+  line-height: 1.55;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.42fr) minmax(320px, 0.58fr);
+  gap: 18px;
+  align-items: start;
+}
+
+.col {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  min-width: 0;
+}
+
+.card {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--r-card);
+  overflow: hidden;
+}
+
+/* The configurator is the one card the eye should land on first. */
+.cardLift {
+  box-shadow: var(--sh-1);
+}
+
+.body {
+  padding: 18px;
+}
+
+/* ── banners ─────────────────────────────────────────────────────────────── */
+
+.banner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 0 14px;
+  padding: 11px 14px;
+  border-radius: var(--r-card-sm);
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+
+.bannerNotice {
+  border: 1px solid var(--line-2);
+  background: var(--info-wash);
+  color: var(--ink-2);
+}
+
+/* The notice live region stays mounted so screen readers announce updates;
+   collapse the box whenever it has no message. */
+.bannerNotice:empty {
+  height: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  overflow: hidden;
+}
+
+.bannerError {
+  border: 1px solid var(--danger-line);
+  background: var(--danger-wash);
+  color: var(--danger-ink);
+}
+
+.bannerWarn {
+  border: 1px solid var(--warn);
+  background: var(--warn-wash);
+  color: var(--warn);
+}
+
+.bannerGlyph {
+  flex: 0 0 auto;
+  width: 15px;
+  height: 15px;
+}
+
+.bannerAction {
+  margin-left: auto;
+}
+
+/* ── configurator: mode bar ──────────────────────────────────────────────── */
+
+.modeBar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--line-soft);
+}
+
+.mode,
+.modeOn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 34px;
+  padding: 0 13px;
+  border-radius: var(--r-ctl);
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+  transition:
+    background var(--dur-1) var(--ease-standard),
+    color var(--dur-1) var(--ease-standard),
+    border-color var(--dur-1) var(--ease-standard);
+}
+
+.mode {
+  border: 1px solid var(--line);
+  background: var(--panel-2);
+  color: var(--ink-2);
+}
+
+.mode:hover:not(:disabled) {
+  border-color: var(--line-hover);
+  color: var(--ink);
+}
+
+/* A transparent border rather than `border: 0` so switching modes cannot shift
+   the row by a pixel. */
+.modeOn {
+  border: 1px solid transparent;
+  background: var(--btn);
+  color: var(--btn-ink);
+}
+
+.mode:disabled,
+.modeOn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.modeGlyph {
+  flex: 0 0 auto;
+  width: 14px;
+  height: 14px;
+}
+
+.stepChip {
+  display: flex;
+  align-items: center;
+  height: 26px;
+  padding: 0 10px;
+  margin-left: auto;
+  border-radius: var(--r-pill);
+  background: var(--chip);
+  color: var(--ink-2);
+  font-size: 11.5px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.versionChip {
+  display: flex;
+  align-items: center;
+  flex: 0 0 auto;
+  height: 26px;
+  padding: 0 10px;
+  border-radius: var(--r-pill);
+  background: var(--zap-wash);
+  color: var(--zap-wash-ink);
+  font-size: 11.5px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+/* ── configurator: summary + fields ──────────────────────────────────────── */
+
+/* The plain-English restatement of everything the form will sign. It is the
+   only reason the execution bounds can live behind a disclosure — if this
+   sentence stops naming the live slippage, hiding the slider becomes a real
+   safety regression. */
+.summary {
+  margin: 0 0 16px;
+  font-family: var(--font-serif);
+  font-size: 19px;
+  font-weight: 400;
+  line-height: 1.5;
+  letter-spacing: -0.005em;
+  color: var(--ink);
+}
+
+.summary strong {
+  font-weight: 600;
+}
+
+.routeSeg {
+  display: inline-flex;
+  gap: 3px;
+  margin: 0 0 14px;
+  padding: 3px;
+  border-radius: var(--r-ctl);
+  background: var(--chip);
+}
+
+.routeSegBtn,
+.routeSegOn {
+  display: inline-flex;
+  align-items: center;
+  height: 28px;
+  padding: 0 11px;
+  border: 0;
+  border-radius: var(--r-ctl-sm);
+  font-family: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.routeSegBtn {
+  background: transparent;
+  color: var(--ink-2);
+}
+
+.routeSegBtn:hover:not(:disabled) {
+  color: var(--ink);
+}
+
+.routeSegOn {
+  background: var(--panel);
+  color: var(--ink);
+  box-shadow: var(--sh-seg);
+}
+
+.routeSegBtn:disabled,
+.routeSegOn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.field {
+  display: block;
+  min-width: 0;
+}
+
+.fieldLabel {
+  display: block;
+  margin-bottom: 6px;
+  color: var(--ink-2);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.input {
+  width: 100%;
+  height: 40px;
+  padding: 0 12px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-ctl);
+  background: var(--panel-2);
+  color: var(--ink);
+  font-family: inherit;
+  font-size: 14px;
+}
+
+.input:focus {
+  outline: none;
+  border-color: var(--ink);
+  background: var(--panel);
+}
+
+.input:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.inputMono {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── who may Zap it ──────────────────────────────────────────────────────── */
+
+.access {
+  margin-top: 16px;
+  padding: 14px;
+  border: 1px solid var(--line-2);
+  border-radius: var(--r-card-sm);
+  background: var(--panel-2);
+}
+
+.accessHead {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.accessTitle {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.accessHint {
+  color: var(--ink-3);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.accessGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+/* All three carry the 1.5px border, selected or not, so choosing one cannot
+   reflow the row by half a pixel. */
+.accessOpt {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 11px;
+  border: 1.5px solid var(--line-btn);
+  border-radius: var(--r-ctl);
+  background: var(--panel);
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color var(--dur-1) var(--ease-standard);
+}
+
+.accessOpt:hover:not(:disabled) {
+  border-color: var(--line-hover);
+}
+
+.accessOptOn,
+.accessOptOn:hover:not(:disabled) {
+  border-color: var(--ink);
+}
+
+.accessOpt:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.accessOpt strong {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.accessOpt span {
+  color: var(--ink-2);
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.pinnedField {
+  display: block;
+  margin-top: 8px;
+}
+
+.note {
+  margin: 10px 0 0;
+  color: var(--ink-2);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.note code {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+
+/* ── advanced execution bounds ───────────────────────────────────────────── */
+
+.advanced {
+  margin-top: 12px;
+}
+
+.advancedSummary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 34px;
+  padding: 0 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-ctl);
+  background: var(--panel-2);
+  color: var(--ink-2);
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+  list-style: none;
+}
+
+.advancedSummary::-webkit-details-marker {
+  display: none;
+}
+
+.advancedSummary:hover {
+  color: var(--ink);
+}
+
+.advancedChevron {
+  flex: 0 0 auto;
+  width: 13px;
+  height: 13px;
+  transition: transform var(--dur-1) var(--ease-standard);
+}
+
+.advanced[open] .advancedChevron {
+  transform: rotate(180deg);
+}
+
+.advancedGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 10px;
+  padding: 14px;
+  border: 1px solid var(--line-2);
+  border-radius: var(--r-card-sm);
+  background: var(--panel-2);
+}
+
+.advancedNote {
+  grid-column: 1 / -1;
+  margin: 0;
+  color: var(--ink-2);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.range {
+  width: 100%;
+  height: 28px;
+  accent-color: var(--zap-deep);
+  cursor: pointer;
+}
+
+.range:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 4px;
+}
+
+.range:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* ── floor preview + window warning ──────────────────────────────────────── */
+
+.floorNote {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 14px;
+  padding: 12px 14px;
+  border: 1px solid var(--zap-line);
+  border-radius: var(--r-card-sm);
+  background: var(--zap-tint);
+}
+
+.floorGlyph {
+  flex: 0 0 auto;
+  width: 16px;
+  height: 16px;
+  color: var(--zap-wash-ink);
+}
+
+.floorText {
+  margin: 0;
+  color: var(--zap-wash-ink);
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+
+.floorText strong {
+  font-weight: 600;
+}
+
+.noteWarn {
+  margin: 14px 0 0;
+  padding: 10px 12px;
+  border: 1px solid var(--warn);
+  border-radius: var(--r-card-sm);
+  background: var(--warn-wash);
+  color: var(--warn);
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+
+/* ── lifecycle steps ─────────────────────────────────────────────────────── */
+
+.steps {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 18px;
+}
+
+.step {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 8px 12px;
+  border-radius: var(--r-ctl-sm);
+}
+
+/* Only the step you are on gets the full card treatment; the rest are one-line
+   receipts of where you have been and where you are going. */
+.step[data-state="current"] {
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-card-sm);
+  background: var(--panel-2);
+}
+
+.stepMark {
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--chip);
+  color: var(--ink-3);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.step[data-state="current"] .stepMark {
+  background: var(--btn);
+  color: var(--btn-ink);
+}
+
+.step[data-state="done"] .stepMark {
+  background: var(--ok-wash);
+  color: var(--ok);
+}
+
+.stepCheck {
+  width: 12px;
+  height: 12px;
+}
+
+.stepBody {
+  flex: 1;
+  min-width: 0;
+  padding-top: 1px;
+}
+
+.stepTitle {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--ink-2);
+}
+
+.step[data-state="current"] .stepTitle {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.step[data-state="pending"] .stepTitle {
+  color: var(--ink-3);
+}
+
+.stepGlyph {
+  flex: 0 0 auto;
+  width: 14px;
+  height: 14px;
+}
+
+.stepDetail {
+  margin: 5px 0 0;
+  color: var(--ink-2);
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+
+.stepActions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.stepCaption {
+  flex: 1 1 220px;
+  min-width: 0;
+  color: var(--ink-2);
+  font-size: 12.5px;
+  line-height: 1.45;
+}
+
+.okStatus {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--ok);
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+.okGlyph {
+  flex: 0 0 auto;
+  width: 13px;
+  height: 13px;
+}
+
+/* ── funding preflight + creation fee ────────────────────────────────────── */
+
+/* Both of these sit inside .stepActions, which is a wrapping flex row: the
+   100% basis is what keeps them on their own line above the button they
+   qualify rather than squeezing in beside it. */
+.preflight {
+  flex: 1 1 100%;
+  margin: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--line-2);
+  border-radius: var(--r-card-sm);
+  background: var(--panel);
+  color: var(--ink-2);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.preflight strong {
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.preflightShort {
+  border-color: var(--danger-line);
+  background: var(--danger-wash);
+  color: var(--danger-ink);
+}
+
+.preflightShort strong {
+  color: var(--danger-ink);
+}
+
+.feeNote {
+  display: flex;
+  flex: 1 1 100%;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 14px;
+  border: 1px solid var(--line-2);
+  border-radius: var(--r-card-sm);
+  background: var(--panel);
+}
+
+/* An unread quote is not a detail: creation is blocked until it lands. */
+.feeNote[data-ready="false"] {
+  border-color: var(--warn);
+  background: var(--warn-wash);
+}
+
+.feeCell {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.feeCell span {
+  color: var(--ink-3);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+}
+
+.feeCell strong {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+
+/* Only an actual quote gets the numeric face — a failure message set in mono
+   reads as data. */
+.feeMono {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.feeLinks {
+  display: flex;
+  gap: 10px;
+  margin-top: 2px;
+}
+
+.feeLinks a {
+  color: var(--link);
+  font-size: 11px;
+}
+
+/* ── executor network ────────────────────────────────────────────────────── */
+
+.execHead {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 13px 18px;
+  border-bottom: 1px solid var(--line-soft);
+}
+
+.execTitle {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.execLive {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--ok);
+  font-size: 11.5px;
+  font-weight: 600;
+}
+
+.execDot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--ok);
+  animation: ozPulse 2.4s ease-in-out infinite;
+}
+
+.execIdle {
+  color: var(--ink-3);
+  font-size: 11.5px;
+  font-weight: 600;
+}
+
+.execMeta {
+  margin-left: auto;
+  color: var(--ink-3);
+  font-size: 11.5px;
+  white-space: nowrap;
+}
+
+.execMeta a {
+  color: var(--link);
+  font-family: var(--font-mono);
+}
+
+.stats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1px;
+  background: var(--line-soft);
+}
+
+.stat {
+  min-width: 0;
+  padding: 14px 18px;
+  background: var(--panel);
+}
+
+.statValue {
+  display: block;
+  font-family: var(--font-mono);
+  font-size: 17px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+
+.statLabel {
+  color: var(--ink-3);
+  font-size: 11.5px;
+  line-height: 1.4;
+}
+
+.execFoot {
+  margin: 0;
+  padding: 13px 18px;
+  border-top: 1px solid var(--line-soft);
+  color: var(--ink-2);
+  font-size: 12.5px;
+  line-height: 1.55;
+}
+
+.execRisk {
+  display: block;
+  margin-top: 6px;
+  color: var(--ink-3);
+  font-size: 11.5px;
+}
+
+/* ── local executor ──────────────────────────────────────────────────────── */
+
+.localExecHead {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 13px 18px;
+  border-bottom: 1px solid var(--line-soft);
+}
+
+.localExecChip {
+  margin-left: auto;
+  padding: 2px 7px;
+  border-radius: var(--r-pill);
+  background: var(--warn-wash);
+  color: var(--warn);
+  font-size: 10.5px;
+  font-weight: 600;
+}
+
+.localExecBody {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 10px;
+  padding: 14px 18px;
+}
+
+.localExecField {
+  flex: 1 1 240px;
+  min-width: 0;
+}
+
+/* ── rail ────────────────────────────────────────────────────────────────── */
+
+.railHead {
+  display: flex;
+  align-items: center;
+  padding: 13px 16px;
+  border-bottom: 1px solid var(--line-soft);
+}
+
+.railTitle {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.railAll {
+  margin-left: auto;
+  color: var(--link);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.railItem {
+  padding: 14px 16px;
+}
+
+.railItemTop {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.railItemGlyph {
+  flex: 0 0 auto;
+  width: 13px;
+  height: 13px;
+  color: var(--ink-3);
+}
+
+.railItemName {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.railChip {
+  margin-left: auto;
+  padding: 2px 7px;
+  border-radius: var(--r-pill);
+  font-size: 10.5px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.chipOk {
+  background: var(--ok-wash);
+  color: var(--ok);
+}
+
+.chipWarn {
+  background: var(--warn-wash);
+  color: var(--warn);
+}
+
+.chipMuted {
+  background: var(--chip);
+  color: var(--ink-3);
+}
+
+.chipDanger {
+  background: var(--danger-wash);
+  color: var(--danger-ink);
+}
+
+.progress {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin: 9px 0 0;
+}
+
+.seg {
+  height: 5px;
+  flex: 1;
+  border-radius: var(--r-pill);
+  background: var(--track);
+}
+
+.segOn {
+  background: var(--ok);
+}
+
+.railMeta {
+  display: block;
+  margin-top: 7px;
+  color: var(--ink-3);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.45;
+}
+
+.railRow {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px 16px;
+  border-top: 1px solid var(--line-softer);
+}
+
+.railRowLabel {
+  color: var(--ink-3);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+}
+
+.railRowValue {
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+
+.railRowValue a {
+  color: var(--link);
+}
+
+/* A check that did NOT pass must not look exactly like one that did. */
+.railRow[data-ok="false"] .railRowValue {
+  color: var(--danger-ink);
+}
+
+.railRowMono {
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+}
+
+.railActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 12px 16px;
+  border-top: 1px solid var(--line-soft);
+}
+
+.railEmpty {
+  margin: 0;
+  padding: 16px;
+  color: var(--ink-2);
+  font-size: 12.5px;
+  line-height: 1.55;
+}
+
+.railList {
+  display: flex;
+  flex-direction: column;
+  border-top: 1px solid var(--line-soft);
+}
+
+.railItemBtn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 11px 16px;
+  border: 0;
+  border-bottom: 1px solid var(--line-softer);
+  background: transparent;
+  color: var(--ink);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+  transition: background var(--dur-1) var(--ease-standard);
+}
+
+.railItemBtn:last-child {
+  border-bottom: 0;
+}
+
+.railItemBtn:hover {
+  background: var(--hover);
+}
+
+.railSunk {
+  padding: 16px;
+  border: 1px solid var(--line-2);
+  border-radius: var(--r-card);
+  background: var(--sunk);
+}
+
+.railSunkTitle {
+  margin: 0 0 8px;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.enforce {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.enforceRow {
+  display: flex;
+  gap: 9px;
+}
+
+.enforceCheck {
+  flex: 0 0 auto;
+  width: 13px;
+  height: 13px;
+  margin-top: 3px;
+  color: var(--ok);
+}
+
+.enforceText {
+  color: var(--ink-2);
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+
+.railProse {
+  margin: 0;
+  color: var(--ink-2);
+  font-size: 12.5px;
+  line-height: 1.55;
+}
+
+.railLink {
+  color: var(--link);
+  font-weight: 600;
+}
+
+/* ── creation receipt ────────────────────────────────────────────────────── */
+
+.receiptHead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--line-soft);
+}
+
+.receiptChip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 24px;
+  padding: 0 9px;
+  border-radius: var(--r-pill);
+  background: var(--ok-wash);
+  color: var(--ok);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.receiptChipGlyph {
+  width: 12px;
+  height: 12px;
+}
+
+.receiptTitle {
+  margin: 0;
+  font-family: var(--font-serif);
+  font-size: 20px;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  color: var(--ink);
+}
+
+.receiptLineage {
+  margin-left: auto;
+  padding: 2px 9px;
+  border-radius: var(--r-pill);
+  background: var(--chip);
+  color: var(--ink-2);
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.receiptDetail {
+  margin: 0;
+  padding: 12px 18px;
+  color: var(--ink-2);
+  font-size: 12.5px;
+  line-height: 1.55;
+}
+
+.facts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 1px;
+  margin: 0;
+  background: var(--line-soft);
+  border-top: 1px solid var(--line-soft);
+  border-bottom: 1px solid var(--line-soft);
+}
+
+.fact {
+  min-width: 0;
+  padding: 12px 16px;
+  background: var(--panel);
+}
+
+.facts dt {
+  color: var(--ink-3);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+}
+
+.facts dd {
+  margin: 4px 0 0;
+  font-size: 12.5px;
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+
+.facts dd a {
+  color: var(--link);
+}
+
+.factMono {
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+}
+
+.receiptActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 13px 18px;
+  border-top: 1px solid var(--line-soft);
+}
+
+/* ── buttons ─────────────────────────────────────────────────────────────── */
+
+.btnPrimary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  height: 42px;
+  padding: 0 18px;
+  border: 0;
+  border-radius: var(--r-ctl);
+  background: var(--btn);
+  color: var(--btn-ink);
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  text-decoration: none;
+  white-space: nowrap;
+  cursor: pointer;
+  box-shadow: var(--sh-btn);
+  transition: background var(--dur-1) var(--ease-standard);
+}
+
+.btnPrimary:hover:not(:disabled) {
+  background: var(--btn-hover);
+}
+
+.btnGhost,
+.btnDanger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  height: 30px;
+  padding: 0 11px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-ctl);
+  background: var(--panel-2);
+  color: var(--ink);
+  font-family: inherit;
+  font-size: 12.5px;
+  font-weight: 500;
+  text-decoration: none;
+  white-space: nowrap;
+  cursor: pointer;
+  transition:
+    background var(--dur-1) var(--ease-standard),
+    border-color var(--dur-1) var(--ease-standard);
+}
+
+.btnGhost:hover:not(:disabled) {
+  background: var(--panel);
+  border-color: var(--line-hover);
+}
+
+.btnDanger {
+  border-color: var(--danger-line);
+  color: var(--danger-ink);
+}
+
+.btnDanger:hover:not(:disabled) {
+  background: var(--danger-wash);
+}
+
+.btnPrimary:disabled,
+.btnGhost:disabled,
+.btnDanger:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+/* Busy keeps FULL contrast and gains a spinner. Dimming a control that is
+   working reads as "broken", not "in progress" — and these are the buttons
+   people stare at while a wallet prompt is open. */
+.btnPrimary[data-busy="true"],
+.btnGhost[data-busy="true"],
+.btnDanger[data-busy="true"] {
+  opacity: 1;
+}
+
+.btnPrimary[data-busy="true"]::after,
+.btnGhost[data-busy="true"]::after,
+.btnDanger[data-busy="true"]::after {
+  content: "";
+  flex: 0 0 auto;
+  width: 12px;
+  height: 12px;
+  border: 1.5px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  animation: ozSpin 0.7s linear infinite;
+}
+
+/* Declared here rather than reused from globals.css: Turbopack scopes
+   `animation-name` per CSS Module, so a keyframe that exists only in the global
+   sheet resolves to nothing and the animation silently never runs. */
+@keyframes ozSpin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes ozPulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
+}
+
+/* ── mobile ──────────────────────────────────────────────────────────────── */
+
+/* One column, source order: configure first, then what the chain says about it.
+   AppShell drops its 1040px content minimum at the same breakpoint; without
+   that the page would scroll sideways no matter what this file does. */
+@media (max-width: 900px) {
+  .grid {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 14px;
+  }
+
+  .fields,
+  .accessGrid,
+  .advancedGrid,
+  .facts {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .stats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .modeBar {
+    flex-wrap: wrap;
+  }
+
+  .stepChip {
+    margin-left: 0;
+  }
+
+  .body {
+    padding: 14px;
+  }
+
+  .title {
+    font-size: 28px;
+  }
+
+  .summary {
+    font-size: 17px;
+  }
+}
+
+@media (max-width: 600px) {
+  .stats {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .routeSeg {
+    display: flex;
+    width: 100%;
+  }
+
+  .routeSegBtn,
+  .routeSegOn {
+    flex: 1;
+    justify-content: center;
+  }
+
+  .stepActions,
+  .receiptActions,
+  .localExecBody {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .stepActions > .btnPrimary,
+  .stepActions > .btnGhost,
+  .receiptActions > .btnPrimary,
+  .receiptActions > .btnGhost,
+  .localExecBody > .btnPrimary {
+    width: 100%;
+  }
+
+  .railActions > * {
+    flex: 1 1 auto;
+  }
+
+  .accessHead {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+  }
+
+  .execMeta {
+    margin-left: 0;
+    width: 100%;
+  }
+
+  .execHead {
+    flex-wrap: wrap;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .execDot,
+  .btnPrimary[data-busy="true"]::after,
+  .btnGhost[data-busy="true"]::after,
+  .btnDanger[data-busy="true"]::after {
+    animation: none;
+  }
+
+  .advancedChevron,
+  .mode,
+  .modeOn,
+  .accessOpt,
+  .btnPrimary,
+  .btnGhost,
+  .btnDanger,
+  .railItemBtn {
+    transition: none;
+  }
+}

@@ -1,479 +1,607 @@
-.page {
-  position: relative;
-  z-index: 1;
-}
+/* 0xZAPS — an app screen, not a landing page.
+   Every colour here is a token. The five themes ride entirely on globals.css;
+   a literal anywhere in this file is a theme that breaks on four of them. */
 
-/* hero */
-.hero {
+.screen {
   display: flex;
   flex-direction: column;
-  align-items: center;
-  text-align: center;
-  padding: clamp(3rem, 7vw, 6rem) 0 0;
+  gap: 26px;
+  /* Defensive: the shell clears its 1000px content minimum below 900px, but a
+     grid child with content wider than its track still forces a sideways
+     scroll unless it is allowed to shrink. */
+  min-width: 0;
 }
 
-.heroMark {
-  margin: 1.4rem 0 0.4rem;
+.top {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 320px;
+  gap: 36px;
+  align-items: start;
 }
 
-.heroMark svg {
-  width: clamp(5.5rem, 13vw, 8.5rem);
-  height: clamp(5.5rem, 13vw, 8.5rem);
-  filter: drop-shadow(0 0 50px rgba(255, 252, 0, 0.5));
-  animation: float 6s ease-in-out infinite;
+.col {
+  min-width: 0;
 }
+
+.rail {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+/* ── Head ─────────────────────────────────────────────────────────────────── */
 
 .title {
-  font-size: clamp(3.6rem, 12vw, 8rem);
-  font-weight: 600;
-  letter-spacing: 0;
-  line-height: 1;
+  margin: 0;
+  font-family: var(--font-serif), Newsreader, serif;
+  font-size: 46px;
+  font-weight: 500;
+  letter-spacing: -0.025em;
+  line-height: 1.06;
 }
 
-.lead {
-  max-width: 38rem;
-  margin-top: 1.2rem;
-  color: var(--text);
-  font-size: clamp(1.05rem, 1.6vw, 1.3rem);
-  line-height: 1.6;
-  text-wrap: pretty;
+.lede {
+  max-width: 68ch;
+  margin: 14px 0 0;
+  color: var(--ink-prose);
+  font-size: 15.5px;
+  line-height: 1.7;
 }
 
-.lead strong {
-  color: var(--accent-bright);
-  font-weight: 600;
-}
-
-.heroActions {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  gap: 0.85rem;
-  margin-top: 1.8rem;
-}
+/* ── Facts table ──────────────────────────────────────────────────────────── */
 
 .facts {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 1px;
-  width: 100%;
-  margin-top: 2.6rem;
+  margin-top: 26px;
   overflow: hidden;
   border: 1px solid var(--line);
-  border-radius: 0;
-  background: var(--line);
+  border-radius: var(--r-card);
+  background: var(--panel);
+  scroll-margin-top: 26px;
 }
 
 .fact {
   display: flex;
-  flex-direction: column;
-  gap: 0.4rem;
-  padding: 1.3rem;
-  /* Opaque on purpose. The container paints --line and sets gap: 1px, so the
-     dividers between cells ARE the container showing through. A transparent
-     cell lets that colour flood the whole strip and it reads as one grey slab
-     with no divisions at all. */
-  background: var(--bg);
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 13px 18px;
+  border-bottom: 1px solid var(--line-softer);
 }
 
-.fact span {
-  color: var(--muted);
-  font-family: var(--font-jetbrains-mono), ui-monospace, monospace;
-  font-size: 0.72rem;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
+.fact:last-child {
+  border-bottom: 0;
 }
 
-.fact strong {
-  font-size: 1.15rem;
+.factKey {
+  flex: 0 0 auto;
+  color: var(--ink-3);
+  font-size: 12.5px;
+}
+
+.factValue {
+  font-size: 13px;
   font-weight: 600;
-  letter-spacing: 0;
+  text-align: right;
 }
 
-/* contract address */
-.addressWrap {
-  margin-top: 1.5rem;
-}
-
-.address {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 1rem;
-  padding: 1rem 1.25rem;
-  border: 1px solid var(--line);
-  border-radius: 0;
-  background: var(--card);
-}
-
-.addressIdentity {
-  min-width: 0;
-  display: grid;
-  gap: 0.35rem;
-}
-
-.addressLabel {
-  color: var(--accent-dim);
-  font-family: var(--font-jetbrains-mono), ui-monospace, monospace;
-  font-size: 0.78rem;
-}
-
-.addressValue {
-  color: var(--accent-bright);
-  font-family: var(--font-jetbrains-mono), ui-monospace, monospace;
-  font-size: 0.8rem;
-  word-break: break-all;
-}
-
-.addressValue:hover {
-  text-decoration: underline;
-}
-
-/* sections */
-.section {
-  padding: clamp(4rem, 7vw, 6.5rem) 0 0;
-}
-
-.head {
-  max-width: 46rem;
-  margin-bottom: 2rem;
-}
-
-.head h2,
-.cta h2 {
-  margin-top: 0.85rem;
-  font-size: clamp(2.1rem, 4.6vw, 3.8rem);
-  font-weight: 540;
-  line-height: 1;
-  letter-spacing: 0;
-  text-wrap: balance;
-}
-
-.head p {
-  max-width: 40rem;
-  margin-top: 0.9rem;
-  color: var(--muted);
-  font-size: 1.05rem;
-  line-height: 1.6;
-}
-
-/* steps */
-.steps {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 18rem), 1fr));
-  gap: 1rem;
-}
-
-.step {
-  padding: 1.5rem;
-  border: 1px solid var(--line);
-  border-radius: 0;
-  background: var(--card);
-  box-shadow: var(--card-shadow);
-}
-
-.stepNum {
-  display: inline-flex;
-  color: var(--accent-dim);
-  font-family: var(--font-jetbrains-mono), ui-monospace, monospace;
-  font-size: 1.4rem;
-  font-weight: 500;
-}
-
-.step h3 {
-  margin-top: 1rem;
-  font-size: 1.2rem;
-  font-weight: 600;
-  letter-spacing: 0;
-}
-
-.step p {
-  margin-top: 0.6rem;
-  color: var(--muted);
-  line-height: 1.6;
-}
-
-.buyRow {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  gap: 0.75rem;
-  margin-top: 2rem;
-}
-
-/* utility */
-.utilGrid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 19rem), 1fr));
-  gap: 1rem;
-}
-
-.utilCard {
-  position: relative;
-  padding: 1.5rem;
-  overflow: hidden;
-  border: 1px solid var(--line);
-  border-radius: 0;
-  background: var(--card);
-  box-shadow: var(--card-shadow);
-}
-
-.utilCard h3 {
-  position: relative;
-  z-index: 1;
-  font-size: 1.2rem;
-  font-weight: 600;
-  letter-spacing: 0;
-}
-
-.utilCard p {
-  position: relative;
-  z-index: 1;
-  margin-top: 0.65rem;
-  color: var(--muted);
-  line-height: 1.6;
-}
-
-/* distribution */
-.dist {
-  display: grid;
-  grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
-  gap: clamp(1.5rem, 4vw, 3rem);
-  align-items: center;
-  padding: clamp(1.8rem, 4vw, 2.8rem);
-  border: 1px solid var(--line);
-  border-radius: 0;
-  background: var(--card);
-  box-shadow: var(--card-shadow);
-}
-
-.distCopy h2 {
-  margin-top: 0.85rem;
-  font-size: clamp(2rem, 4vw, 3.2rem);
-  font-weight: 540;
-  letter-spacing: 0;
-  line-height: 1;
-}
-
-.distCopy p {
-  margin-top: 0.9rem;
-  color: var(--muted);
-  line-height: 1.6;
-}
-
-.verifyList {
-  display: flex;
-  flex-direction: column;
-  gap: 0.7rem;
-}
-
-.verifyRow {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
-  gap: 0.8rem;
-  align-items: center;
-  min-height: 3.6rem;
-  padding: 0.8rem 1rem;
-  border: 1px solid var(--line);
-  border-radius: 0;
-  background: rgba(255, 255, 255, 0.025);
-  transition: border-color 160ms ease, background 160ms ease;
-}
-
-.verifyRow:hover {
-  border-color: rgba(255, 252, 0, 0.35);
-  background: rgba(255, 252, 0, 0.06);
-}
-
-.verifyRow span {
-  color: var(--muted);
-  font-family: var(--font-jetbrains-mono), ui-monospace, monospace;
-  font-size: 0.72rem;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-}
-
-.verifyRow strong {
-  min-width: 0;
-  color: var(--text);
-  font-family: var(--font-jetbrains-mono), ui-monospace, monospace;
-  font-size: 0.78rem;
-  font-weight: 500;
-  overflow-wrap: anywhere;
-}
-
-.verifyRow i {
-  color: var(--accent-bright);
-  font-style: normal;
-}
-
-/* faq */
-.faqs {
-  display: grid;
-  gap: 0.7rem;
-}
-
-.faq {
-  padding: 1.1rem 1.3rem;
-  border: 1px solid var(--line);
-  border-radius: 0;
-  background: var(--card);
-}
-
-.faq summary {
-  cursor: pointer;
-  font-size: 1.02rem;
-  font-weight: 580;
-  letter-spacing: 0;
-  list-style: none;
-}
-
-.faq summary::-webkit-details-marker {
-  display: none;
-}
-
-.faq summary::after {
-  float: right;
-  content: "+";
-  color: var(--accent-dim);
-  font-weight: 400;
-}
-
-.faq[open] summary::after {
-  content: "–";
-}
-
-.faq p {
-  margin-top: 0.8rem;
-  color: var(--muted);
-  line-height: 1.6;
-}
-
-/* cta */
-.cta {
-  margin-top: clamp(4rem, 7vw, 6.5rem);
-}
-
-.ctaInner {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  text-align: center;
-  padding: clamp(2.5rem, 6vw, 4rem) 1.5rem;
-  border: 1px solid var(--line);
-  border-radius: 0;
-  /* A multi-layer `background` may only carry a colour in its LAST layer, so a
-     bare `transparent` layer ahead of one invalidates the whole declaration and
-     the browser drops it — background and all. The tinted gradient layers this
-     had are gone with the glass idiom; only the flat fill remains. */
-  background: var(--card);
-  box-shadow: var(--card-shadow);
-}
-
-.disclaimer {
-  max-width: 36rem;
-  margin-top: 1.6rem;
-  color: var(--muted-2);
-  font-size: 0.82rem;
-  line-height: 1.55;
-}
-
-@keyframes float {
-  0%, 100% { transform: translateY(0); }
-  50% { transform: translateY(-10px); }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .heroMark svg { animation: none; }
-}
-
-@media (max-width: 860px) {
-  .facts {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .dist {
-    grid-template-columns: 1fr;
-  }
-
-  .address {
-    grid-template-columns: 1fr;
-  }
-}
-
-@media (max-width: 460px) {
-  .facts {
-    grid-template-columns: 1fr;
-  }
-}
-
-/* ---------------- motion layer ---------------- */
-
-.addressCopy {
-  margin-top: 0.6rem;
-}
-
-.fact,
-.step,
-.utilCard,
-.verifyRow {
-  transition:
-    transform var(--dur-3) var(--ease-emphasis),
-    border-color var(--dur-3) var(--ease-standard),
-    background var(--dur-3) var(--ease-standard),
-    box-shadow var(--dur-3) var(--ease-standard);
-}
-
-.fact:hover,
-.utilCard:hover,
-.step:hover {
-  transform: translateY(-4px);
-  border-color: rgba(255, 252, 0, 0.4);
-  box-shadow: 0 16px 38px rgba(0, 0, 0, 0.42);
-}
-
-.fact strong,
-.stepNum {
+.factMono {
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-size: 12px;
   font-variant-numeric: tabular-nums;
 }
 
-/* The step number inflates and warms up, marking which card is under focus. */
+.factAddress {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  min-width: 0;
+}
+
+.factAddress code {
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-size: 11.5px;
+  overflow-wrap: anywhere;
+}
+
+/* The shared CopyButton is sized for a control row; in a 13px table row it has
+   to sit down. A descendant selector rather than a passed class, so this wins
+   over CopyButton.module.css regardless of which module the bundler emits
+   first — equal specificity would make the winner depend on build order. */
+.factAddress > button {
+  flex: 0 0 auto;
+  padding: 3px 8px;
+  border-radius: var(--r-chip);
+  font-size: 11px;
+}
+
+/* ── Verify note ──────────────────────────────────────────────────────────── */
+
+.verifyNote {
+  margin: 16px 0 0;
+  color: var(--ink-3);
+  font-size: 12.5px;
+  line-height: 1.6;
+}
+
+/* ── Right rail ───────────────────────────────────────────────────────────── */
+
+.tokenCard {
+  padding: 18px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-card);
+  background: var(--panel);
+  text-align: center;
+}
+
+.tokenArt {
+  display: block;
+  width: 96px;
+  height: 96px;
+  margin: 0 auto;
+}
+
+.tokenName {
+  display: block;
+  margin-top: 12px;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.tokenPair {
+  display: block;
+  margin-top: 3px;
+  color: var(--ink-3);
+  font-size: 12px;
+}
+
+.railActions {
+  display: grid;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.railPrimary,
+.railGhost {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: 100%;
+  border-radius: var(--r-ctl);
+  font-weight: 600;
+  text-decoration: none;
+  cursor: pointer;
+  transition:
+    background var(--dur-2) var(--ease-standard),
+    border-color var(--dur-2) var(--ease-standard);
+}
+
+.railPrimary {
+  height: 40px;
+  border: 0;
+  background: var(--zap);
+  /* --on-zap, never --ink: on Graphite/Voltage/Dusk --ink is near-white and
+     would vanish into the brand fill. */
+  color: var(--on-zap);
+  font-size: 13.5px;
+}
+
+.railPrimary:hover {
+  background: var(--zap-deep);
+  color: var(--on-zap);
+}
+
+.railGhost {
+  height: 38px;
+  border: 1px solid var(--line-btn);
+  background: var(--panel-2);
+  color: var(--ink);
+  font-size: 13px;
+}
+
+.railGhost:hover {
+  border-color: var(--line-hover);
+  background: var(--panel);
+}
+
+/* Busy is not disabled. The add-to-wallet request was accepted and the wallet
+   is open; dimming it reads as "your click was ignored". */
+.railGhost[disabled] {
+  cursor: progress;
+  opacity: 1;
+}
+
+.railGhost[data-busy="true"]::after {
+  content: "";
+  width: 12px;
+  height: 12px;
+  flex: 0 0 auto;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  opacity: 0.75;
+  animation: railSpin 620ms linear infinite;
+}
+
+/* Module-local on purpose: CSS Modules scope `animation-name`, so the `spin`
+   declared in globals.css silently never runs from here. */
+@keyframes railSpin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.railNote {
+  padding: 16px;
+  border: 1px solid var(--line-2);
+  border-radius: var(--r-card);
+  background: var(--sunk);
+}
+
+.railNoteTitle {
+  margin: 0 0 8px;
+  font-size: 13.5px;
+  font-weight: 600;
+}
+
+.railList {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  color: var(--ink-2);
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+
+/* ── Sections ─────────────────────────────────────────────────────────────── */
+
+.section {
+  /* The scroller is `#zapscroll`, not the document, so `html {
+     scroll-padding-top }` no longer offsets `/token#utilities`. */
+  scroll-margin-top: 26px;
+}
+
+.sectionHead {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.sectionTitle {
+  margin: 0;
+  font-family: var(--font-serif), Newsreader, serif;
+  font-size: 22px;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+}
+
+.sectionNote {
+  color: var(--ink-3);
+  font-size: 12.5px;
+}
+
+/* ── How to buy ───────────────────────────────────────────────────────────── */
+
+.steps {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.step {
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-card);
+  background: var(--panel);
+}
+
 .stepNum {
-  display: inline-flex;
-  transition: transform var(--dur-3) var(--ease-spring), color var(--dur-2) var(--ease-standard);
+  color: var(--ink-3);
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  font-variant-numeric: tabular-nums;
 }
 
-.step:hover .stepNum,
-.step:focus-within .stepNum {
-  color: var(--accent-bright);
-  transform: scale(1.14) translateY(-2px);
+.stepTitle {
+  margin: 8px 0 0;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.35;
 }
 
-.verifyRow:hover {
-  transform: translateX(4px);
+.stepBody {
+  margin: 7px 0 0;
+  color: var(--ink-2);
+  font-size: 12.5px;
+  line-height: 1.6;
 }
 
-/* Trailing arrow leans out on hover to advertise the external jump. */
-.verifyRow i {
-  display: inline-block;
+/* ── Utility rows ─────────────────────────────────────────────────────────── */
+
+.rows {
+  display: grid;
+  gap: 1px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: var(--r-card);
+  /* The 1px gaps ARE this background showing through, so every row must be
+     opaque — a transparent row floods the whole stack with the divider colour. */
+  background: var(--line-soft);
+}
+
+.row {
+  display: grid;
+  grid-template-columns: 260px minmax(0, 1fr);
+  gap: 16px;
+  padding: 13px 18px;
+  background: var(--panel);
+}
+
+.rowKey {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.rowBody {
+  margin: 0;
+  color: var(--ink-2);
+  font-size: 12.5px;
+  line-height: 1.6;
+}
+
+.rowDanger {
+  background: var(--danger-tint);
+}
+
+.rowDanger .rowKey,
+.rowDanger .rowBody {
+  color: var(--danger-ink);
+}
+
+/* ── Verify links ─────────────────────────────────────────────────────────── */
+
+.links {
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: var(--r-card);
+  background: var(--panel);
+}
+
+.linkRow {
+  display: grid;
+  grid-template-columns: 150px minmax(0, 1fr) 16px;
+  align-items: center;
+  gap: 16px;
+  padding: 12px 18px;
+  border-bottom: 1px solid var(--line-softer);
+  color: inherit;
+  text-decoration: none;
+  transition: background var(--dur-2) var(--ease-standard);
+}
+
+.linkRow:last-child {
+  border-bottom: 0;
+}
+
+.linkRow:hover {
+  background: var(--panel-2);
+}
+
+.linkKey {
+  color: var(--ink-3);
+  font-size: 12.5px;
+}
+
+.linkValue {
+  min-width: 0;
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-size: 12.5px;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.linkArrow {
+  justify-self: end;
+  color: var(--ink-3);
+  font-size: 11.5px;
   font-style: normal;
-  transition: transform var(--dur-2) var(--ease-emphasis);
 }
 
-.verifyRow:hover i {
-  transform: translate(3px, -3px);
+/* ── FAQ ──────────────────────────────────────────────────────────────────── */
+
+.faqs {
+  display: grid;
+  gap: 1px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: var(--r-card);
+  background: var(--line-soft);
 }
 
-/* The hero mark breathes rather than sitting inert above the fold. */
-.heroMark svg {
-  animation: tokenBreathe 7s var(--ease-standard) infinite;
+.faq {
+  background: var(--panel);
 }
 
-@keyframes tokenBreathe {
-  0%, 100% { transform: translateY(0) scale(1); filter: drop-shadow(0 0 34px rgba(255, 252, 0, 0.28)); }
-  50% { transform: translateY(-9px) scale(1.025); filter: drop-shadow(0 0 54px rgba(255, 252, 0, 0.45)); }
+.faqSummary {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 13px 18px;
+  font-size: 13.5px;
+  font-weight: 600;
+  list-style: none;
+  cursor: pointer;
 }
 
-.addressValue {
-  transition: color var(--dur-2) var(--ease-standard), letter-spacing var(--dur-3) var(--ease-standard);
+.faqSummary::-webkit-details-marker {
+  display: none;
+}
+
+.faqSummary:hover {
+  background: var(--panel-2);
+}
+
+.faqChevron {
+  width: 14px;
+  height: 14px;
+  margin-left: auto;
+  flex: 0 0 auto;
+  color: var(--ink-3);
+  transition: transform var(--dur-2) var(--ease-standard);
+}
+
+.faq[open] .faqChevron {
+  transform: rotate(180deg);
+}
+
+.faqBody {
+  margin: 0;
+  padding: 0 18px 14px;
+  color: var(--ink-2);
+  font-size: 12.5px;
+  line-height: 1.6;
+}
+
+/* ── Closing risk statement ───────────────────────────────────────────────── */
+
+.warn {
+  display: flex;
+  gap: 12px;
+  padding: 16px;
+  border: 1px solid var(--danger-line);
+  border-radius: var(--r-card-sm);
+  background: var(--danger-wash);
+}
+
+.warnGlyph {
+  width: 18px;
+  height: 18px;
+  flex: 0 0 auto;
+  color: var(--danger);
+}
+
+.warnBody {
+  margin: 0;
+  color: var(--danger-ink);
+  font-size: 13.5px;
+  line-height: 1.6;
+}
+
+.footNote {
+  margin: 12px 0 0;
+  color: var(--ink-3);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+/* ── Mobile ───────────────────────────────────────────────────────────────── */
+
+@media (max-width: 900px) {
+  .top {
+    display: flex;
+    flex-direction: column;
+    gap: 22px;
+  }
+
+  /* The left column dissolves so its four children become flex items of `.top`
+     alongside the rail — which lets the buy card be ordered directly under the
+     lede instead of below a five-row table. */
+  .col {
+    display: contents;
+  }
+
+  .title {
+    order: 1;
+    font-size: 34px;
+  }
+
+  /* The stack's own 22px gap replaces every element margin here — leaving both
+     in place doubles the spacing between the title and the lede. */
+  .lede {
+    order: 2;
+    margin-top: 0;
+    font-size: 15px;
+    line-height: 1.65;
+  }
+
+  .rail {
+    order: 3;
+  }
+
+  .facts {
+    order: 4;
+    margin-top: 0;
+  }
+
+  .verifyNote {
+    order: 5;
+    margin-top: 0;
+  }
+
+  .fact {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 5px;
+  }
+
+  .factValue {
+    text-align: left;
+  }
+
+  .factAddress {
+    justify-content: flex-start;
+    width: 100%;
+  }
+
+  .steps {
+    grid-template-columns: 1fr;
+  }
+
+  .row {
+    grid-template-columns: 1fr;
+    gap: 6px;
+  }
+
+  .linkRow {
+    grid-template-columns: minmax(0, 1fr) 16px;
+  }
+
+  .linkKey,
+  .linkValue {
+    grid-column: 1;
+  }
+
+  .linkArrow {
+    grid-row: 1 / span 2;
+    align-self: center;
+  }
+}
+
+@media (max-width: 560px) {
+  .title {
+    font-size: 30px;
+  }
+
+  .factAddress code {
+    font-size: 11px;
+  }
+
+  .warn {
+    flex-direction: column;
+    gap: 8px;
+  }
+}
+
+/* Spinners are the one motion that survives the reduce query: they are the only
+   signal that the wallet request is still in flight. Mirrors the exception
+   globals.css already makes for `.btn[data-busy]`. */
+@media (prefers-reduced-motion: reduce) {
+  .railGhost[data-busy="true"]::after {
+    animation-duration: 1.8s !important;
+    animation-iteration-count: infinite !important;
+  }
 }

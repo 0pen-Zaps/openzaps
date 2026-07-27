@@ -185,7 +185,7 @@ export default async function ZapDetailPage({ params }: Params): Promise<React.J
   const seo = verifiedPayload ? verifiedZapSeo(zap, verifiedPayload) : null;
 
   return (
-    <main className={styles.page} id="main">
+    <main className={styles.screen} data-screen-label="Zap detail" id="main">
       {verifiedPayload && seo ? (
         <JsonLd
           data={{
@@ -222,40 +222,35 @@ export default async function ZapDetailPage({ params }: Params): Promise<React.J
         />
       ) : null}
 
-      <section className={`container ${styles.detailHero}`}>
-        <div>
-          <span className="eyebrow">
-            <Link className={styles.crumb} href="/explore">
-              Deployed zaps
-            </Link>
-            {verified ? null : <> · unverified address</>}
-          </span>
-          <h1>
-            <span className={styles.heroAddress}>{zap}</span>
-          </h1>
-          {verified ? (
-            <p>
-              Everything below was read from Robinhood Chain at one pinned block. This page reports what the
-              contract stores and what its own logs say. Nothing is estimated, modelled, or priced. A read
-              that fails is reported as unavailable, never as a zero.
-            </p>
-          ) : (
-            <p>
-              The reads against Robinhood Chain failed for this address, so nothing about it is claimed here.
-              This page is not saying it is a deployed capsule, that it holds anything, or that it has ever
-              executed — only that the reads failed. Blockscout reads the same chain independently.
-            </p>
-          )}
-          <div className={styles.heroActions}>
-            <a className="btn btnGhost" href={explorerAddress(zap)} target="_blank" rel="noreferrer">
-              <span>View on Blockscout ↗</span>
-            </a>
-            <Link className="btn btnGhost" href="/zap">
-              <span>Design a chain</span>
-            </Link>
-          </div>
+      <div className={styles.detailHead}>
+        <Link className={styles.backLink} href="/explore">
+          ← Deployed Zaps
+        </Link>
+        {verified ? null : <span className={styles.unverifiedNote}> · unverified address</span>}
+        {/* The full address stays the h1: it is what this page is about and what
+            a search result should carry. */}
+        <h1 className={styles.detailTitle}>
+          <code className={styles.heroAddress}>{zap}</code>
+        </h1>
+        {verified ? (
+          <p className={styles.detailLede}>
+            Everything below was read from Robinhood Chain at one pinned block. This page reports what the
+            contract stores and what its own logs say. Nothing is estimated, modelled, or priced. A read
+            that fails is reported as unavailable, never as a zero.
+          </p>
+        ) : (
+          <p className={styles.detailLede}>
+            The reads against Robinhood Chain failed for this address, so nothing about it is claimed here.
+            This page is not saying it is a deployed Zap, that it holds anything, or that it has ever
+            executed — only that the reads failed. Blockscout reads the same chain independently.
+          </p>
+        )}
+        <div className={styles.heroActions}>
+          <a className={styles.ghostBtn} href={explorerAddress(zap)} target="_blank" rel="noreferrer">
+            View on Blockscout ↗
+          </a>
         </div>
-      </section>
+      </div>
 
       <ZapLive address={zap} initial={loaded.status === "ok" ? loaded.payload : null} />
     </main>

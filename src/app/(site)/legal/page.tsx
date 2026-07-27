@@ -20,49 +20,47 @@ const risks = [
 
 export default function LegalPage(): React.JSX.Element {
   return (
-    <main className={styles.page} id="main">
+    <main className={styles.reader} id="main" data-screen-label="Risk disclosures">
       <JsonLd
         data={{
           "@context": "https://schema.org",
           "@graph": [webPageJsonLd(STATIC_PAGE_SEO.legal), breadcrumbJsonLd("/legal", "Risk disclosures")],
         }}
       />
-      <section className={`container ${styles.hero}`}>
-        <div>
-          <span className="eyebrow">Risk disclosures</span>
-          <h1>Security risks and 0xZAPS token disclosures.</h1>
-          <p>
-            OpenZaps narrows what an agent can do. It does not remove smart-contract, wallet, relayer, market, token,
-            legal, or operational risk.
-          </p>
+
+      <h1 className={styles.title}>Security risks and 0xZAPS token disclosures.</h1>
+      <p className={styles.lede}>
+        OpenZaps narrows what an agent can do. It does not remove smart-contract, wallet, relayer, market, token,
+        legal, or operational risk.
+      </p>
+      <div className={styles.actions}>
+        <span className={styles.metaChip}>
+          <b>Transaction posture</b>
+          Wallet-confirmed broadcasts only
+        </span>
+      </div>
+
+      <section className={styles.section}>
+        <h2 className={styles.h2}>Primary risks</h2>
+        <div className={styles.defs}>
+          {risks.map(([name, body], i) => (
+            <Reveal className={styles.def} delay={i * 45} key={name}>
+              <strong className={styles.defTerm}>{name}</strong>
+              <p className={styles.defBody}>{body}</p>
+            </Reveal>
+          ))}
         </div>
-        <aside className={styles.heroCard}>
-          <span>Transaction posture</span>
-          <strong>Wallet-confirmed broadcasts only</strong>
-        </aside>
       </section>
 
-      <section className={`container ${styles.content}`}>
-        <section className={styles.section}>
-          <h2>Primary risks</h2>
-          <div className={styles.table}>
-            {risks.map(([name, body], i) => (
-              <Reveal className={styles.row} delay={i * 45} key={name}>
-                <strong>{name}</strong>
-                <p>{body}</p>
-              </Reveal>
-            ))}
-          </div>
-        </section>
-
-        <section className={styles.callout}>
-          <span>No financial advice</span>
-          <strong>Nothing in OpenZaps is an offer, solicitation, investment recommendation, or guarantee.</strong>
-          <p>
-            The product is software for inspecting and constraining onchain execution. Users should get independent
-            legal, tax, security, and financial advice before using any crypto protocol.
-          </p>
-        </section>
+      <section className={styles.note}>
+        <span className={styles.noteEyebrow}>No financial advice</span>
+        <strong className={styles.noteTitle}>
+          Nothing in OpenZaps is an offer, solicitation, investment recommendation, or guarantee.
+        </strong>
+        <p className={styles.noteCopy}>
+          The product is software for inspecting and constraining onchain execution. Users should get independent
+          legal, tax, security, and financial advice before using any crypto protocol.
+        </p>
       </section>
     </main>
   );

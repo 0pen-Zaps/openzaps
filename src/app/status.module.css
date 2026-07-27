@@ -20,16 +20,19 @@
   width: 4.5rem;
   height: 4.5rem;
   margin-bottom: 1.5rem;
-  filter: drop-shadow(0 0 32px rgba(255, 252, 0, 0.28));
+  /* Painted straight onto --bg, which is cream by default — the brand yellow
+     would be an invisible bolt above a 404. */
+  color: var(--zap-deep);
+  filter: drop-shadow(0 0 32px var(--zap-line));
 }
 
 .code {
-  font-family: var(--font-jetbrains-mono), ui-monospace, monospace;
+  font-family: var(--font-mono), ui-monospace, monospace;
   font-size: clamp(3.4rem, 12vw, 5.6rem);
   font-weight: 600;
   line-height: 1;
   letter-spacing: -0.02em;
-  color: var(--accent);
+  color: var(--zap-deep);
 }
 
 .title {
@@ -43,7 +46,7 @@
 .body {
   max-width: 34rem;
   margin-top: 1rem;
-  color: var(--muted);
+  color: var(--ink-3);
   font-size: 1.02rem;
   line-height: 1.6;
   text-wrap: pretty;
@@ -54,11 +57,11 @@
   margin-top: 1.1rem;
   padding: 0.7rem 0.9rem;
   overflow-wrap: anywhere;
-  border: 1px solid rgba(255, 138, 138, 0.28);
-  border-radius: 0;
-  background: rgba(255, 90, 90, 0.07);
-  color: #ffb4b4;
-  font-family: var(--font-jetbrains-mono), ui-monospace, monospace;
+  border: 1px solid var(--danger-line);
+  border-radius: var(--r-ctl-sm);
+  background: var(--danger-wash);
+  color: var(--danger-ink);
+  font-family: var(--font-mono), ui-monospace, monospace;
   font-size: 0.76rem;
   line-height: 1.5;
   text-align: left;
@@ -85,10 +88,10 @@
 .suggest a {
   padding: 0.44rem 0.75rem;
   border: 1px solid var(--line);
-  border-radius: 0;
-  background: rgba(255, 255, 255, 0.03);
-  color: var(--muted);
-  font-family: var(--font-jetbrains-mono), ui-monospace, monospace;
+  border-radius: var(--r-ctl-sm);
+  background: var(--panel-2);
+  color: var(--ink-3);
+  font-family: var(--font-mono), ui-monospace, monospace;
   font-size: 0.74rem;
   transition:
     color var(--dur-2) var(--ease-standard),
@@ -98,9 +101,9 @@
 }
 
 .suggest a:hover {
-  border-color: rgba(255, 252, 0, 0.42);
-  background: rgba(255, 252, 0, 0.1);
-  color: var(--fg);
+  border-color: var(--zap-line);
+  background: var(--zap-wash);
+  color: var(--zap-wash-ink);
   transform: translateY(-2px);
 }
 
@@ -128,8 +131,8 @@
 .loadBars i {
   width: 0.34rem;
   height: 2.2rem;
-  border-radius: 0;
-  background: var(--grad-brand);
+  border-radius: var(--r-pill);
+  background: var(--zap-deep);
   transform-origin: 50% 100%;
   animation: loadBar 1.05s var(--ease-standard) infinite;
 }

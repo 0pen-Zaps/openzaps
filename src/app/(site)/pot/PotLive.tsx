@@ -187,18 +187,38 @@ export function PotLive({ initial }: { initial: PotPayload | null }): React.JSX.
   );
 
   if (state.status === "loading") {
+    // Shapes, never placeholder figures: a skeleton that looked like a number
+    // would be a claim about the chain made before anything had been read.
     return (
-      <section className={`container ${styles.panel}`} aria-label="Lottery pot">
-        <p className={styles.empty}>Reading both pots from Robinhood Chain…</p>
+      <section className={styles.skel} aria-busy="true" aria-label="Lottery pot">
+        <div className={styles.stats}>
+          {[0, 1, 2, 3].map((slot) => (
+            <div className={styles.statCard} key={slot}>
+              <span className={`${styles.skelBar} ${styles.skelNum}`} />
+              <span className={`${styles.skelBar} ${styles.skelCaption}`} />
+            </div>
+          ))}
+        </div>
+        <div className={styles.card}>
+          <div className={styles.cardHead}>
+            <span className={`${styles.skelBar} ${styles.skelHead}`} />
+          </div>
+          {[0, 1, 2].map((slot) => (
+            <div className={styles.pendingRow} key={slot}>
+              <span className={`${styles.skelBar} ${styles.skelRow}`} />
+            </div>
+          ))}
+        </div>
+        <p className={styles.skelNote}>Reading both pots from Robinhood Chain…</p>
       </section>
     );
   }
 
   if (state.status === "unavailable") {
     return (
-      <section className={`container ${styles.panel}`} aria-label="Lottery pot">
+      <section className={styles.alertBlock} aria-label="Lottery pot">
         <div className={styles.alert} role="alert">
-          <BlockGlyph name="alert" className={styles.alertGlyph} />
+          <BlockGlyph name="alert" className={styles.msgGlyph} />
           <p>
             The RPC reads for the pot failed, so nothing is shown. A prize or a ticket count rendered
             from a failed read would be a claim about the chain that nobody verified.
@@ -212,48 +232,52 @@ export function PotLive({ initial }: { initial: PotPayload | null }): React.JSX.
 
   return (
     <>
-      <section className={`container ${styles.walletBar}`} aria-label="Wallet">
+      <section className={styles.walletBar} aria-label="Wallet">
         {account ? (
           <>
-            <p className={styles.connected}>
-              <BlockGlyph name={isRobinhoodChain ? "check" : "alert"} className={styles.barGlyph} />
+            <p className={styles.walletState}>
+              <BlockGlyph
+                name={isRobinhoodChain ? "check" : "alert"}
+                className={`${styles.walletGlyph} ${isRobinhoodChain ? styles.walletGlyphOk : styles.walletGlyphWarn}`}
+              />
               Reading tickets for <code>{short(account)}</code>
             </p>
             {!isRobinhoodChain ? (
-              <button className="btn btnGhost" data-busy={busy === "connect"} disabled={busy !== null} onClick={() => void switchWalletNetwork()} type="button">
+              <button className={`btn ${styles.ghostBtn}`} data-busy={busy === "connect"} disabled={busy !== null} onClick={() => void switchWalletNetwork()} type="button">
                 {busy === "connect" ? "Switching…" : "Switch network"}
               </button>
             ) : null}
           </>
         ) : (
           <>
-            <p className={styles.connectHint}>Connect to see your tickets and to convert fees into the prize.</p>
-            <button className="btn btnGhost" data-busy={busy === "connect"} disabled={busy !== null} onClick={() => void connect()} type="button">
+            <p className={styles.walletState}>Connect to see your tickets and to convert fees into the prize.</p>
+            <button className={`btn ${styles.ghostBtn}`} data-busy={busy === "connect"} disabled={busy !== null} onClick={() => void connect()} type="button">
               {busy === "connect" ? "Connecting…" : "Connect wallet"}
             </button>
           </>
         )}
       </section>
 
-      <div aria-live="polite" className="container">
-        {notice && (
+      <div aria-live="polite" className={styles.msgStack}>
+        {notice ? (
           <p className={styles.notice}>
-            <BlockGlyph name="check" className={styles.barGlyph} />
+            <BlockGlyph name="check" className={styles.msgGlyph} />
             {notice}
           </p>
-        )}
-        {error && (
+        ) : null}
+        {error ? (
           <p className={styles.alert} role="alert">
-            <BlockGlyph name="alert" className={styles.alertGlyph} />
+            <BlockGlyph name="alert" className={styles.msgGlyph} />
             {error}
           </p>
-        )}
-        {staleSince && (
+        ) : null}
+        {staleSince ? (
           <p className={styles.stale}>
+            <BlockGlyph name="clock" className={styles.msgGlyph} />
             Refresh has been failing since {new Date(staleSince).toLocaleTimeString("en-US")} — the figures below are
             the last verified snapshot.
           </p>
-        )}
+        ) : null}
       </div>
 
       {data.pots.map((pot) => {
@@ -267,56 +291,61 @@ export function PotLive({ initial }: { initial: PotPayload | null }): React.JSX.
         const empty = BigInt(pot.prize) === 0n && BigInt(pot.totalTickets) === 0n;
 
         return (
-          <section className={`container ${styles.pot}`} key={pot.address} aria-label={`${pot.label} lottery pot`}>
+          <section className={styles.potBlock} key={pot.address} aria-label={`${pot.label} lottery pot`}>
             <header className={styles.potHead}>
-              <div>
-                <span className="eyebrow">{pot.label} pot · round {pot.round}</span>
-                <h2>
+              <div className={styles.potHeadMain}>
+                <span className={styles.potLabel}>{pot.label} POT · ROUND {pot.round}</span>
+                <h2 className={styles.potTitle}>
                   {empty ? "Nothing in this pot yet." : `${formatPotAmount(pot.prize)} 0xZAPS in the prize.`}
                 </h2>
               </div>
               <a className={styles.potAddr} href={explorerAddress(pot.address)} target="_blank" rel="noreferrer">
-                {short(pot.address)} ↗
+                {short(pot.address)}
+                <BlockGlyph name="external" className={styles.potAddrGlyph} />
               </a>
             </header>
 
             <dl className={styles.stats}>
-              <div>
-                <dt>Prize this round</dt>
-                <dd>
-                  <strong>{formatPotAmount(pot.prize)}</strong> 0xZAPS
+              <div className={styles.statCard}>
+                <dt className={styles.statLabel}>Prize this round</dt>
+                <dd className={styles.statValue}>
+                  <strong>{formatPotAmount(pot.prize)}</strong>
+                  <em className={styles.statUnit}>0xZAPS</em>
                 </dd>
               </div>
-              <div>
-                <dt>Your share of this round</dt>
-                <dd>
-                  {/* A share, never a ticket count beside a 0xZAPS figure: tickets are raw
-                      fee units summed across assets of different decimals, so rendering
-                      them at the prize asset's scale would invite "1 ticket = 1 0xZAPS". */}
+              <div className={styles.statCard}>
+                <dt className={styles.statLabel}>Your share of this round</dt>
+                {/* A share, never a ticket count beside a 0xZAPS figure: tickets are raw
+                    fee units summed across assets of different decimals, so rendering
+                    them at the prize asset's scale would invite "1 ticket = 1 0xZAPS". */}
+                <dd className={styles.statValue}>
                   <strong>{share === null ? "—" : `${(share * 100).toFixed(2)}%`}</strong>
-                  <span className={styles.sub}>
-                    {share === null ? "connect a wallet to read your tickets" : "of the fees this round collected"}
-                  </span>
+                </dd>
+                <dd className={styles.statNote}>
+                  {share === null ? "connect a wallet to read your tickets" : "of the fees this round collected"}
                 </dd>
               </div>
-              <div>
-                <dt>Converted to 0xZAPS</dt>
-                <dd>
+              <div className={styles.statCard}>
+                <dt className={styles.statLabel}>Converted to 0xZAPS</dt>
+                <dd className={styles.statValue}>
                   <strong>{converted === null ? "—" : formatPotAmount(converted.toString())}</strong>
-                  <span className={styles.sub}>{historyVerified ? "lifetime" : "history RPC unavailable"}</span>
+                  <em className={styles.statUnit}>0xZAPS</em>
                 </dd>
+                <dd className={styles.statNote}>{historyVerified ? "lifetime" : "history RPC unavailable"}</dd>
               </div>
-              <div>
-                <dt>Paid to winners</dt>
-                <dd>
+              <div className={styles.statCard}>
+                <dt className={styles.statLabel}>Paid to winners</dt>
+                <dd className={styles.statValue}>
                   <strong>{awarded === null ? "—" : formatPotAmount(awarded.toString())}</strong>
-                  <span className={styles.sub}>{historyVerified ? "lifetime" : "history RPC unavailable"}</span>
+                  <em className={styles.statUnit}>0xZAPS</em>
                 </dd>
+                <dd className={styles.statNote}>{historyVerified ? "lifetime" : "history RPC unavailable"}</dd>
               </div>
             </dl>
 
             {!historyVerified && (
-              <p className={styles.stale} role="status">
+              <p className={`${styles.stale} ${styles.staleRow}`} role="status">
+                <BlockGlyph name="alert" className={styles.msgGlyph} />
                 Prize, ticket, and held-asset reads above are verified at block {Number(data.headBlock).toLocaleString("en-US")}.{" "}
                 Conversion and winner history is hidden because its full RPC log scan did not verify.
               </p>
@@ -324,34 +353,36 @@ export function PotLive({ initial }: { initial: PotPayload | null }): React.JSX.
 
             {/* The open half of the loop. A fee that arrives as aeWETH or USDG is not
                 prize yet — someone has to convert it, and anyone may. */}
-            <div className={styles.convert}>
-              <h3>
-                <BlockGlyph name="repeat" className={styles.sectionGlyph} />
-                Fees awaiting conversion
-              </h3>
+            <section className={styles.card}>
+              <div className={styles.cardHead}>
+                <h3 className={styles.cardTitle}>
+                  <BlockGlyph name="repeat" />
+                  Fees awaiting conversion
+                </h3>
+              </div>
               {convertible.length > 0 ? (
                 <ul className={styles.pendingList}>
                   {convertible.map((entry) => (
-                    <li key={entry.asset}>
-                      <span className={styles.pendingAmount}>
+                    <li className={styles.pendingRow} key={entry.asset}>
+                      <span className={styles.rowValue}>
                         {formatPotAmount(entry.balance, entry.decimals)} {entry.symbol}
                       </span>
                       <button
-                        className="btn btnPrimary"
+                        className={`btn ${styles.convertBtn}`}
                         data-busy={busy === `convert:${pot.address}:${entry.asset}`}
                         disabled={busy !== null || !account || !isRobinhoodChain}
                         onClick={() => void convert(pot, entry.asset, BigInt(entry.balance), entry.symbol)}
                         type="button"
                         title={!account ? "Connect a wallet to submit the conversion" : !isRobinhoodChain ? "Switch to Robinhood Chain to submit the conversion" : undefined}
                       >
-                        <BlockGlyph name="bolt" className={styles.btnGlyph} />
+                        <BlockGlyph name="boltFill" className={styles.btnGlyph} />
                         {busy === `convert:${pot.address}:${entry.asset}` ? "Zapping fees…" : "Zap fees into 0xZAPS"}
                       </button>
                     </li>
                   ))}
                 </ul>
               ) : (
-                <p className={styles.muted}>
+                <p className={styles.cardBody}>
                   Nothing convertible is sitting here. This pot&apos;s prize is whatever arrived as 0xZAPS directly,
                   plus anything already converted.
                 </p>
@@ -359,11 +390,11 @@ export function PotLive({ initial }: { initial: PotPayload | null }): React.JSX.
 
               {stranded.length > 0 && (
                 <div className={styles.stranded}>
-                  <p>
-                    <BlockGlyph name="alert" className={styles.alertGlyph} />
+                  <p className={styles.strandedHead}>
+                    <BlockGlyph name="alert" className={styles.msgGlyph} />
                     Held but <strong>not convertible</strong>, and not part of any prize:
                   </p>
-                  <ul>
+                  <ul className={styles.strandedList}>
                     {stranded.map((entry) => (
                       <li key={entry.asset}>
                         {formatPotAmount(entry.balance, entry.decimals)} {entry.symbol}
@@ -379,17 +410,22 @@ export function PotLive({ initial }: { initial: PotPayload | null }): React.JSX.
               )}
 
               <p className={styles.convertNote}>
-                <code>buyZaps</code> is permissionless — any wallet can call it, and the output is measured by the
+                {/* Explicit, not a literal space: a leading <code> on its own line loses the
+                    following space through JSX whitespace trimming, and it renders "buyZapsis". */}
+                <code>buyZaps</code>{" "}
+                is permissionless — any wallet can call it, and the output is measured by the
                 pot&apos;s own balance delta rather than trusted from the adapter. Only aeWETH can be converted: the
                 adapter the pot is welded to takes nothing else.
               </p>
-            </div>
+            </section>
 
             {historyVerified && pot.conversions.length > 0 && (
-              <div className={styles.history}>
-                <h3>Conversions</h3>
+              <section className={styles.card}>
+                <div className={styles.cardHead}>
+                  <h3 className={styles.cardTitle}>Conversions</h3>
+                </div>
                 <div className={styles.scroller}>
-                  <table>
+                  <table className={`${styles.table} ${styles.conversions}`}>
                     <thead>
                       <tr>
                         <th scope="col">Round</th>
@@ -416,14 +452,16 @@ export function PotLive({ initial }: { initial: PotPayload | null }): React.JSX.
                     </tbody>
                   </table>
                 </div>
-              </div>
+              </section>
             )}
 
             {historyVerified && pot.awards.length > 0 && (
-              <div className={styles.history}>
-                <h3>Winners</h3>
+              <section className={styles.card}>
+                <div className={styles.cardHead}>
+                  <h3 className={styles.cardTitle}>Winners</h3>
+                </div>
                 <div className={styles.scroller}>
-                  <table>
+                  <table className={`${styles.table} ${styles.winners}`}>
                     <thead>
                       <tr>
                         <th scope="col">Round</th>
@@ -450,23 +488,23 @@ export function PotLive({ initial }: { initial: PotPayload | null }): React.JSX.
                     </tbody>
                   </table>
                 </div>
-              </div>
+              </section>
             )}
           </section>
         );
       })}
 
-      <section className={`container ${styles.rules}`} aria-label="How the pot works">
-        <h2>What is settled, and what is not.</h2>
+      <section className={styles.rules} aria-label="How the pot works">
+        <h2 className={styles.rulesTitle}>What is settled, and what is not.</h2>
         <div className={styles.ruleGrid}>
-          <article>
+          <article className={styles.ruleCard}>
             <h3>Where the prize comes from</h3>
             <p>
-              Every automated run pays 1% of its output: 80% to the executor that submitted it, 20% here. When a run
+              Every automated Zap pays 1% of its output: 80% to the executor that submitted it, 20% here. When a run
               settles in 0xZAPS the pot is credited directly; in any other asset it waits for a conversion.
             </p>
           </article>
-          <article>
+          <article className={styles.ruleCard}>
             <h3>What a ticket is</h3>
             <p>
               The raw fee amount your zap contributed, credited to the round. Counts are summed across assets of
@@ -475,14 +513,14 @@ export function PotLive({ initial }: { initial: PotPayload | null }): React.JSX.
               again to be eligible in the next one.
             </p>
           </article>
-          <article>
+          <article className={styles.ruleCard}>
             <h3>What can be paid out</h3>
             <p>
               Only 0xZAPS, only a round&apos;s accrued prize, and only to an address holding tickets in that round.
               A round with no prize or no participants cannot be closed at all.
             </p>
           </article>
-          <article>
+          <article className={styles.ruleCard}>
             <h3>What is still deferred</h3>
             <p>
               How a winner gets chosen. Until that decision lands, <code>awardRound</code> is governance-gated — so

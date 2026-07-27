@@ -124,7 +124,7 @@ export function RoundFilm(): React.JSX.Element {
 
   return (
     <section className={styles.film} aria-label="How one round plays out">
-      <header className={styles.head}>
+      <header className={styles.filmHead}>
         <p className={styles.step}>
           {String(step + 1).padStart(2, "0")} / {String(SCENES.length).padStart(2, "0")}
         </p>

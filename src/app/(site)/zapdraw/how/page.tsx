@@ -1,5 +1,6 @@
 import Link from "next/link";
 
+import { Glyph } from "@/components/Glyph";
 import { JsonLd } from "@/components/JsonLd";
 import { STATIC_PAGE_SEO, breadcrumbJsonLd, pageMetadata, webPageJsonLd } from "@/lib/seo";
 import { Walkthrough } from "./Walkthrough";
@@ -17,7 +18,7 @@ export const metadata = pageMetadata({
 
 export default function HowPage(): React.JSX.Element {
   return (
-    <main className={styles.page} id="main">
+    <main className={styles.screen} id="main">
       <JsonLd
         data={{
           "@context": "https://schema.org",
@@ -28,13 +29,14 @@ export default function HowPage(): React.JSX.Element {
         }}
       />
 
-      <header className={`container ${styles.hero}`}>
-        <p className={styles.eyebrow}>ZapDraw · one round, start to finish</p>
+      <header className={styles.head}>
+        <span className={styles.eyebrow}>ZapDraw · one round, start to finish</span>
         <h1 className={styles.title}>Watch a round.</h1>
         <p className={styles.lead}>Scroll it. Real numbers, no reading required.</p>
       </header>
 
-      <section className={`container ${styles.rule}`}>
+      <section className={styles.rule}>
+        <Glyph name="alert" className={styles.ruleIcon} />
         <p className={styles.ruleLine}>
           The bus pays a claim <strong>in full, or not at all.</strong> A claim it cannot cover
           completely is paid nothing — and the money it could not cover stays on the bus.
@@ -43,7 +45,7 @@ export default function HowPage(): React.JSX.Element {
 
       <Walkthrough />
 
-      <section className={`container ${styles.foot}`}>
+      <section className={styles.foot}>
         <h2 className={styles.footTitle}>That is the whole game.</h2>
         <p className={styles.footBody}>
           Claim a small slice and you are almost certainly paid it. Claim a big one and you are paid a lot —
@@ -54,7 +56,7 @@ export default function HowPage(): React.JSX.Element {
           The numbers above are not illustrations. They are computed by the same code that previews a live
           round, which mirrors what the contract does at settlement.
         </p>
-        <p className={styles.footBody}>
+        <p>
           <Link href="/zapdraw" className={styles.footLink}>
             Go to the table &rarr;
           </Link>

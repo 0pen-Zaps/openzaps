@@ -3,22 +3,26 @@
   display: grid;
   grid-template-columns: minmax(0, 1.05fr) minmax(18rem, 0.95fr);
   gap: clamp(1.5rem, 4vw, 3.5rem);
-  padding: clamp(1.4rem, 4vw, 3rem);
-  border: 1px solid rgba(255, 252, 0, 0.28);
-  background:
-    radial-gradient(circle at 8% 12%, rgba(255, 252, 0, 0.12), transparent 34%),
-    rgba(255, 255, 255, 0.025);
-  box-shadow: var(--card-shadow);
+  padding: clamp(1.4rem, 4vw, 2.5rem);
   overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: var(--r-card);
+  /* --sunk, not a brand-tinted glass stack. The old fill was a yellow radial
+     over rgba(255,255,255,0.025): on the two light themes that is a stain on
+     paper, and the surface hierarchy vanishes entirely. */
+  background: var(--sunk);
 }
 
+/* The one piece of brand decoration left. --zap-tint is the faintest brand
+   wash in every theme and sits just off --sunk in both directions, so the mark
+   stays a watermark rather than becoming a glow (dark) or a smudge (light). */
 .panel::after {
   content: "0x";
   position: absolute;
   right: -0.06em;
   bottom: -0.3em;
-  color: rgba(255, 252, 0, 0.035);
-  font-family: var(--font-jetbrains-mono), ui-monospace, monospace;
+  color: var(--zap-tint);
+  font-family: var(--font-mono), ui-monospace, monospace;
   font-size: clamp(7rem, 20vw, 16rem);
   font-weight: 800;
   line-height: 1;
@@ -33,27 +37,28 @@
 }
 
 .eyebrow {
-  color: var(--accent-bright);
-  font-family: var(--font-jetbrains-mono), ui-monospace, monospace;
+  color: var(--ink-3);
+  font-family: var(--font-mono), ui-monospace, monospace;
   font-size: 0.72rem;
   letter-spacing: 0.14em;
   text-transform: uppercase;
 }
 
 .copy h2 {
-  max-width: 13ch;
+  max-width: 16ch;
   margin-top: 0.75rem;
-  color: var(--fg);
-  font-size: clamp(1.85rem, 4vw, 3.2rem);
-  font-weight: 560;
-  letter-spacing: -0.035em;
-  line-height: 0.98;
+  color: var(--ink);
+  font-family: var(--font-serif), Newsreader, serif;
+  font-size: clamp(1.6rem, 3.2vw, 2.4rem);
+  font-weight: 500;
+  letter-spacing: -0.02em;
+  line-height: 1.06;
 }
 
 .copy > p {
   max-width: 42rem;
   margin-top: 1rem;
-  color: var(--text);
+  color: var(--ink-prose);
   line-height: 1.65;
 }
 
@@ -67,7 +72,7 @@
 
 .actions > a:last-child:not([class*="btn"]) {
   padding: 0.55rem 0.2rem;
-  color: var(--accent-bright);
+  color: var(--link);
   font-size: 0.84rem;
   font-weight: 650;
 }
@@ -88,18 +93,19 @@
 
 .utility span {
   grid-row: 1 / 3;
-  color: var(--accent-bright);
-  font-family: var(--font-jetbrains-mono), ui-monospace, monospace;
+  color: var(--ink-3);
+  font-family: var(--font-mono), ui-monospace, monospace;
   font-size: 0.75rem;
+  font-variant-numeric: tabular-nums;
 }
 
 .utility strong {
-  color: var(--fg);
+  color: var(--ink);
   font-size: 0.9rem;
 }
 
 .utility p {
-  color: var(--muted);
+  color: var(--ink-2);
   font-size: 0.76rem;
   line-height: 1.5;
 }
@@ -109,7 +115,7 @@
   margin: 0;
   padding-top: 1rem;
   border-top: 1px solid var(--line);
-  color: var(--muted);
+  color: var(--ink-3);
   font-size: 0.72rem;
   line-height: 1.5;
 }

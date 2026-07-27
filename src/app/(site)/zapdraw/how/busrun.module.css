@@ -1,6 +1,11 @@
 /* THE RUN — a pinned traverse along one round's bus.
    Only mounted when motion is allowed and the viewport can hold it; every other
-   reader gets the stepper in RoundFilm, which carries the same explanation. */
+   reader gets the stepper in RoundFilm, which carries the same explanation.
+
+   Retokenised for the five-theme layer: the traverse used to be drawn entirely
+   in `--accent` with `--bg` text, which is yellow on cream under Ivory — the
+   paid-segment labels and the closing CTA were both invisible on the default
+   theme. */
 
 .section {
   position: relative;
@@ -9,10 +14,14 @@
   height: 340vh;
 }
 
+/* The scrollport is no longer the window: the app shell scrolls `#zapscroll`,
+   which is shorter than the viewport by the height of the context bar. BusRun
+   measures that box and publishes it as `--stage-h`; the fallback is the
+   pre-shell geometry, so this still pins correctly outside the shell. */
 .sticky {
   position: sticky;
   top: var(--nav-h, 4.4rem);
-  height: calc(100svh - var(--nav-h, 4.4rem));
+  height: var(--stage-h, calc(100svh - var(--nav-h, 4.4rem)));
   display: grid;
   align-content: center;
   gap: clamp(1rem, 2.5vw, 1.8rem);
@@ -21,35 +30,37 @@
 
 .head {
   display: grid;
-  gap: 0.35rem;
+  gap: 6px;
 }
 
 .eyebrow {
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 0.68rem;
-  letter-spacing: 0.22em;
+  color: var(--ink-3);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.09em;
   text-transform: uppercase;
-  color: var(--accent);
 }
 
 .caption {
-  font-size: clamp(1.5rem, 4.2vw, 2.8rem);
-  font-weight: 600;
-  line-height: 1.02;
+  font-family: var(--font-serif), Georgia, serif;
+  font-size: clamp(26px, 4.2vw, 40px);
+  font-weight: 500;
+  line-height: 1.05;
   letter-spacing: -0.02em;
-  min-height: 1.02em;
+  min-height: 1.05em;
   text-wrap: balance;
 }
 
 .sub {
-  color: var(--muted);
-  font-size: clamp(0.85rem, 1.4vw, 1rem);
+  color: var(--ink-2);
+  font-size: 13.5px;
   line-height: 1.5;
   min-height: 1.5em;
 }
 
 .sub strong {
-  color: var(--accent-bright);
+  color: var(--ink);
+  font-family: var(--font-mono), ui-monospace, monospace;
   font-weight: 600;
   font-variant-numeric: tabular-nums;
 }
@@ -97,7 +108,7 @@
   position: relative;
   height: clamp(2.4rem, 6vh, 3.4rem);
   border: 1px solid var(--line);
-  background: var(--bg-2);
+  background: var(--track);
 }
 
 /* A paid claim snaps solid in one step the instant the head clears its far edge.
@@ -109,21 +120,24 @@
   bottom: 0;
   left: var(--x);
   width: var(--w);
-  border-right: 1px solid var(--bg);
+  /* The divider is the empty track showing through, so adjacent paid claims
+     read as two claims rather than one block. */
+  border-right: 1px solid var(--track);
   background: transparent;
   display: grid;
   place-items: center;
 }
 
 .seg[data-paid="true"] {
-  background: var(--accent);
+  background: var(--zap);
 }
 
 .segTag {
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 0.66rem;
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-size: 11px;
   font-weight: 700;
-  color: var(--bg);
+  /* Ink ON the brand fill — never `--bg`, which is cream under Ivory. */
+  color: var(--on-zap);
   opacity: 0;
   white-space: nowrap;
   /* Counter the rail's horizontal squeeze so type never distorts. */
@@ -141,8 +155,8 @@
   bottom: -1px;
   left: var(--x);
   width: var(--w);
-  border: 1px dashed var(--accent-dim);
-  background: repeating-linear-gradient(-45deg, rgba(255, 252, 0, 0.09) 0 6px, transparent 6px 12px);
+  border: 1px dashed var(--zap-line);
+  background: repeating-linear-gradient(-45deg, var(--zap-wash) 0 6px, transparent 6px 12px);
   display: grid;
   place-items: center;
   transform-origin: left center;
@@ -151,10 +165,10 @@
 }
 
 .ghostTag {
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 0.66rem;
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-size: 11px;
   font-weight: 700;
-  color: var(--accent-bright);
+  color: var(--zap-wash-ink);
   white-space: nowrap;
   transform: scaleX(calc(1 / (var(--unroll, 1) * var(--squeeze, 1))));
 }
@@ -167,8 +181,8 @@
   bottom: -1px;
   left: var(--x);
   width: var(--w);
-  border: 1px solid var(--accent-dim);
-  background: rgba(255, 252, 0, 0.07);
+  border: 1px solid var(--zap-line);
+  background: var(--zap-tint);
   display: grid;
   place-items: center;
   opacity: var(--remOpacity, 0);
@@ -176,11 +190,11 @@
 }
 
 .remTag {
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 0.64rem;
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-size: 10.5px;
   font-weight: 700;
-  letter-spacing: 0.08em;
-  color: var(--accent-bright);
+  letter-spacing: 0.06em;
+  color: var(--zap-wash-ink);
   white-space: nowrap;
   transform: scaleX(calc(1 / var(--squeeze, 1)));
 }
@@ -192,18 +206,18 @@
   bottom: -0.7rem;
   left: 100%;
   width: 2px;
-  background: var(--accent-bright);
+  background: var(--zap-wash-ink);
 }
 
 .endStopTag {
   position: absolute;
   top: -1.3rem;
   left: 0.3rem;
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 0.58rem;
-  letter-spacing: 0.14em;
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-size: 10px;
+  letter-spacing: 0.1em;
   text-transform: uppercase;
-  color: var(--accent-bright);
+  color: var(--zap-wash-ink);
   white-space: nowrap;
   transform: scaleX(calc(1 / var(--squeeze, 1)));
 }
@@ -215,27 +229,27 @@
   left: var(--x);
   width: var(--w);
   height: 0.5rem;
-  border: 1px solid var(--accent-dim);
+  border: 1px solid var(--line-strong);
   border-bottom: 0;
   opacity: var(--bracketOpacity, 0);
 }
 
 .bracketAsk {
   top: -1.9rem;
-  border-color: var(--accent-bright);
+  border-color: var(--zap-wash-ink);
 }
 
 .bracketLeft {
   bottom: -1.9rem;
-  border: 1px solid var(--accent-dim);
+  border: 1px solid var(--line-strong);
   border-top: 0;
 }
 
 .bracketTag {
   position: absolute;
   left: 50%;
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 0.62rem;
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-size: 10.5px;
   font-weight: 700;
   white-space: nowrap;
   transform: translateX(-50%) scaleX(calc(1 / var(--squeeze, 1)));
@@ -243,12 +257,12 @@
 
 .bracketAsk .bracketTag {
   bottom: calc(100% + 0.15rem);
-  color: var(--accent-bright);
+  color: var(--zap-wash-ink);
 }
 
 .bracketLeft .bracketTag {
   top: calc(100% + 0.15rem);
-  color: var(--muted);
+  color: var(--ink-3);
 }
 
 /* The fixed head: where payment has reached. Screen-space, never on the rail. */
@@ -258,7 +272,7 @@
   bottom: 8%;
   left: var(--headX);
   width: 1px;
-  background: var(--accent-bright);
+  background: var(--zap-wash-ink);
   opacity: 0.7;
 }
 
@@ -266,11 +280,11 @@
   position: absolute;
   top: -0.1rem;
   left: 0.35rem;
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 0.56rem;
-  letter-spacing: 0.14em;
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-size: 10px;
+  letter-spacing: 0.1em;
   text-transform: uppercase;
-  color: var(--accent-bright);
+  color: var(--zap-wash-ink);
   white-space: nowrap;
 }
 
@@ -280,36 +294,40 @@
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 0.9rem;
+  gap: 14px;
   opacity: var(--ctaOpacity, 0);
   transform: translateY(calc((1 - var(--ctaOpacity, 0)) * 0.6rem));
   pointer-events: var(--ctaEvents, none);
 }
 
-/* Solid yellow, sized like a paid segment: by the time it appears, nine beats
-   have taught that a solid yellow block is money that actually arrived. */
+/* The app's primary button, not a brand-fill slab: `--accent` with `--bg` text
+   put cream on yellow, so the one call to action on the page was unreadable at
+   rest on the default theme. */
 .ctaButton {
   display: inline-flex;
   align-items: center;
-  gap: 0.5rem;
-  border: 1px solid var(--accent);
-  background: var(--accent);
-  color: var(--bg);
+  gap: 8px;
+  height: 42px;
+  padding: 0 18px;
+  border: 0;
+  border-radius: var(--r-ctl);
+  background: var(--btn);
+  color: var(--btn-ink);
+  font-size: 14px;
   font-weight: 600;
-  font-size: 1rem;
-  padding: 0.8rem 1.4rem;
+  white-space: nowrap;
   text-decoration: none;
+  box-shadow: var(--sh-btn);
   transition: background var(--dur-1) var(--ease-standard);
 }
 
 .ctaButton:hover {
-  background: var(--accent-bright);
-  border-color: var(--accent-bright);
+  background: var(--btn-hover);
 }
 
 .ctaNote {
-  color: var(--muted);
-  font-size: 0.82rem;
+  color: var(--ink-3);
+  font-size: 12px;
 }
 
 /* ------------------------------------------------------------- progress */
@@ -317,12 +335,14 @@
 .progress {
   position: relative;
   height: 2px;
-  background: var(--line);
+  border-radius: var(--r-pill);
+  overflow: hidden;
+  background: var(--track);
 }
 
 .progressFill {
   position: absolute;
   inset: 0 auto 0 0;
   width: calc(var(--p, 0) * 100%);
-  background: var(--accent);
+  background: var(--zap-deep);
 }

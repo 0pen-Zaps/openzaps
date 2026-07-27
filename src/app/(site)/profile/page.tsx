@@ -5,7 +5,7 @@ import { pageMetadata } from "@/lib/seo";
 
 export const metadata = {
   ...pageMetadata({
-    title: "My Zaps",
+    title: "My zaps",
     description:
       "Connect a wallet to inspect its confirmed OpenZaps history, monitor recurring and price-triggered authorizations, and access supported recovery controls.",
     path: "/profile",

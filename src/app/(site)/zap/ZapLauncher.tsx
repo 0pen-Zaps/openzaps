@@ -1,33 +1,49 @@
+"use client";
+
 import Link from "next/link";
+import { useEffect, useState } from "react";
 
 import { BlockGlyph } from "./BlockGlyph";
+import { readDesignLibrary, type SavedDesign } from "@/lib/designs";
 import styles from "./workspace.module.css";
+
+/**
+ * Start — the intent launcher.
+ *
+ * A client module, which it did not use to be: the reuse row reads the design
+ * library out of localStorage, and that read has to happen in a browser. It
+ * still server-renders, so `page.tsx` using this as its Suspense fallback keeps
+ * doing what that comment says it does — the prerendered `/zap` shell carries
+ * the h1, the four intent cards, and the reuse row's skeleton.
+ */
 
 const ROUTE = "robinhood-v4-weth-zaps";
 
+/** How many saved designs the row shows. Three fills the grid without a scroll. */
+const REUSE_LIMIT = 3;
+
 const OPTIONS = [
   {
-    number: "01",
-    glyph: "bolt",
+    // The prototype draws this one as a solid silhouette rather than a stroke —
+    // `boltFill` is that same geometry, already in the set.
+    glyph: "boltFill",
     label: "Zap now",
     title: "Zap in with one bounded authorization",
-    detail: "Create the capsule, fund it, review the exact output floor, then sign and Zap.",
+    detail: "Create the Zap, fund it, review the exact output floor, then sign and run it.",
     meta: "v1.1 · one-time nonce",
     href: `/zap?view=sign&route=${ROUTE}`,
     accent: "instant",
   },
   {
-    number: "02",
     glyph: "repeat",
     label: "Recurring",
     title: "Repeat a fixed amount on schedule",
-    detail: "Choose cadence, total Zaps, expiry, and slippage. The capsule enforces every Zap.",
+    detail: "Choose cadence, total runs, expiry, and slippage. The Zap enforces every run.",
     meta: "v3.1 · replaceable series",
     href: `/zap?view=automate&src=build&mode=recurring&route=${ROUTE}&amount=0.01&bps=100&interval=daily&runs=10`,
     accent: "recurring",
   },
   {
-    number: "03",
     glyph: "band",
     label: "Price trigger",
     title: "Fire once after a one-sided move",
@@ -37,11 +53,12 @@ const OPTIONS = [
     accent: "trigger",
   },
   {
-    number: "04",
-    glyph: "split",
+    // `route`, not `split`: the same three strokes without the two arrowheads,
+    // which is the mark the design draws for the composer.
+    glyph: "route",
     label: "Compose",
     title: "Build the route and its execution policy",
-    detail: "Connect the route, add gas, gas-price, and executor controls as one stack, then review the resolved bounds before handoff.",
+    detail: "Connect the route, add gas, gas-price, and executor controls as one stack, then review the resolved bounds.",
     meta: "atomic policy stack · one-step undo",
     href: "/zap?view=design",
     accent: "compose",
@@ -50,32 +67,44 @@ const OPTIONS = [
 
 export function ZapLauncher(): React.JSX.Element {
   return (
-    <main className={styles.launcher} id="main">
-      <section className={`container ${styles.launchHero}`}>
+    <main className={styles.screen} id="main" data-screen-label="Start">
+      <div className={styles.hero}>
         <div>
-          <span className="eyebrow">New zap</span>
-          <h1>Start with the outcome.<br />Lock the rules after.</h1>
-          <p>
-            Choose how you want to Zap. Every path resolves to a capsule with an immutable route,
-            a wallet-owned recipient, and reviewable execution bounds.
+          <span className={styles.heroEyebrow}>NEW ZAP</span>
+          <h1 className={styles.heroTitle}>Start with the outcome. Lock the rules after.</h1>
+          <p className={styles.heroLede}>
+            Choose how you want to Zap. Every path ends in a Zap contract with an immutable route,
+            a wallet-owned recipient, and bounds you read before you sign.
           </p>
         </div>
-        <aside className={styles.profilePrompt}>
-          <BlockGlyph name="wallet" className={styles.promptGlyph} />
-          <div>
-            <span>Your control room</span>
-            <strong>History, live automations, revocations, and recoveries.</strong>
-          </div>
-          <Link href="/profile">Open profile →</Link>
+        <aside className={styles.controlRoom}>
+          <span className={styles.controlRoomLabel}>YOUR CONTROL ROOM</span>
+          <strong className={styles.controlRoomLine}>
+            History, live automations, revocations, and recoveries.
+          </strong>
+          <Link href="/profile" className={styles.controlRoomLink}>
+            Open my zaps →
+          </Link>
         </aside>
+      </div>
+
+      <section className={styles.section} aria-labelledby="reuse-heading">
+        <div className={styles.sectionHead}>
+          <h2 id="reuse-heading" className={styles.sectionTitle}>
+            Run one you already trust
+          </h2>
+          <span className={styles.sectionNote}>Your saved designs, newest first.</span>
+        </div>
+        <SavedDesigns />
       </section>
 
-      <section className={`container ${styles.intentSection}`} aria-labelledby="intent-heading">
-        <header className={styles.sectionHead}>
-          <span className="eyebrow">How should it run?</span>
-          <h2 id="intent-heading">One route. Four execution shapes.</h2>
-          <p>Nothing is submitted from this screen. Pick a shape, then review every bound before your wallet acts.</p>
-        </header>
+      <section id="start-new" aria-labelledby="intent-heading">
+        <div className={styles.sectionHead}>
+          <h2 id="intent-heading" className={styles.sectionTitle}>
+            Or start something new
+          </h2>
+          <span className={styles.sectionNote}>Nothing is submitted from this screen.</span>
+        </div>
 
         <div className={styles.intentGrid}>
           {OPTIONS.map((option) => (
@@ -85,31 +114,110 @@ export function ZapLauncher(): React.JSX.Element {
               data-accent={option.accent}
               key={option.label}
             >
-              <span className={styles.cardNumber}>{option.number}</span>
-              <span className={styles.cardGlyph}><BlockGlyph name={option.glyph} /></span>
-              <div className={styles.cardCopy}>
-                <span>{option.label}</span>
-                <h3>{option.title}</h3>
-                <p>{option.detail}</p>
-              </div>
-              <div className={styles.cardFoot}>
-                <code>{option.meta}</code>
-                <span aria-hidden>↗</span>
+              <span className={styles.intentTile}>
+                <BlockGlyph name={option.glyph} />
+              </span>
+              <div className={styles.intentCopy}>
+                <span className={styles.intentEyebrow}>{option.label.toUpperCase()}</span>
+                <h3 className={styles.intentTitle}>{option.title}</h3>
+                <p className={styles.intentDetail}>{option.detail}</p>
+                <span className={styles.intentMeta}>{option.meta}</span>
               </div>
             </Link>
           ))}
         </div>
       </section>
-
-      <section className={`container ${styles.truthStrip}`} aria-label="Zap lifecycle">
-        <div><span>1</span><strong>Choose intent</strong><small>Zap now, recur, trigger, compose</small></div>
-        <i aria-hidden />
-        <div><span>2</span><strong>Review policy</strong><small>route, amount, floor, recipient</small></div>
-        <i aria-hidden />
-        <div><span>3</span><strong>Confirm wallet</strong><small>creation, funding, signature</small></div>
-        <i aria-hidden />
-        <div><span>4</span><strong>Track onchain</strong><small>profile shows confirmed state</small></div>
-      </section>
     </main>
   );
+}
+
+/**
+ * The reuse row: the design library's own saved records, newest first — the
+ * same store the shell's "Pick up again" rail reads, so the two can never
+ * disagree about what you have saved.
+ *
+ * `null` is not `[]`. Until the effect has run there is no library to speak
+ * of — on the server, and for the frame before hydration, there is no
+ * localStorage at all — and printing "nothing saved yet" in that gap would be
+ * a claim about the user's library that nothing has checked. The skeleton is
+ * what makes this component safe to server-render, not a polish detail; it is
+ * also what keeps the relative timestamps out of the prerendered HTML, where
+ * "2d ago" would be frozen at build time.
+ *
+ * There is no wrong-chain, busy, or error branch here on purpose: this reads
+ * one local key and writes nothing. `readDesignLibrary` already fails soft —
+ * a corrupt or unreadable library reads as empty rather than throwing.
+ */
+function SavedDesigns(): React.JSX.Element {
+  const [library, setLibrary] = useState<SavedDesign[] | null>(null);
+
+  useEffect(() => {
+    const read = (): void => setLibrary(readDesignLibrary().slice(0, REUSE_LIMIT));
+    read();
+    // Saving a design in a second tab should not leave this row stale.
+    window.addEventListener("storage", read);
+    return () => window.removeEventListener("storage", read);
+  }, []);
+
+  if (library === null) {
+    return (
+      <div className={styles.reuseGrid} aria-busy="true">
+        {[0, 1, 2].map((slot) => (
+          <div className={styles.reuseCard} data-skeleton="true" aria-hidden key={slot}>
+            <div className={styles.reuseCopy}>
+              <span className={styles.skelBar} />
+              <span className={styles.skelBar} />
+            </div>
+            <span className={styles.skelBtn} />
+          </div>
+        ))}
+      </div>
+    );
+  }
+
+  if (library.length === 0) {
+    return (
+      <div className={styles.reuseGrid}>
+        <p className={styles.reuseNotice} role="status">
+          Nothing saved yet. Designs you save in the composer land here, ready to run again.
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className={styles.reuseGrid}>
+      {library.map((design) => (
+        <div className={styles.reuseCard} key={design.id}>
+          <div className={styles.reuseCopy}>
+            <strong className={styles.reuseName}>{design.name}</strong>
+            <span className={styles.reuseMeta}>
+              {design.blocks} {design.blocks === 1 ? "block" : "blocks"} · saved{" "}
+              {relativeTime(design.updatedAt)}
+            </span>
+          </div>
+          <Link
+            href={`/zap?view=design&d=${encodeURIComponent(design.token)}`}
+            className={styles.reuseAction}
+            // Three identical "Open" links otherwise, which is a list of
+            // unlabelled destinations to anyone reading them out of context.
+            aria-label={`Open ${design.name} in the composer`}
+          >
+            Open
+          </Link>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/** Mirrors the shell rail's own wording so the same design reads the same in both places. */
+function relativeTime(at: number): string {
+  const seconds = Math.max(0, Math.round((Date.now() - at) / 1000));
+  if (seconds < 90) return "just now";
+  const minutes = Math.round(seconds / 60);
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.round(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  return `${Math.round(hours / 24)}d ago`;
 }

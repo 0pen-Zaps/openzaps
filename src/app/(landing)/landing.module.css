@@ -46,6 +46,64 @@
   --grad-brand: var(--accent);
   --grad-text: var(--accent);
 
+  /* ── Pinned to Voltage ──────────────────────────────────────────────────
+     The app moved to a five-theme token layer whose default is Ivory (warm
+     paper). This route did not: `/` is the brand's front door and stays black
+     and yellow whatever the app is set to.
+
+     The block above already pins every token the landing's OWN rules read.
+     These are the ones the SHARED primitives in globals.css read — `.btn`,
+     `.btnPrimary`, `.btnGhost`, `.mono`, `.container` are all used inside this
+     subtree, and they were rewritten against the new names. Without this,
+     picking Graphite in the app would repaint the landing's hero buttons with
+     a bone-white fill on the next visit to `/`.
+
+     Values are Voltage's, verbatim. If a token is added to globals.css and a
+     shared primitive starts reading it, it belongs here too. */
+  --ink: #f4f4f1;
+  --ink-prose: #d6d6d2;
+  --ink-2: #b9b9b4;
+  --ink-3: #8f8f8a;
+  --panel: #0b0b0b;
+  --panel-2: #0f0f0f;
+  --chip: #151515;
+  --sunk: #000000;
+  --track: #242424;
+  --hover: rgba(255, 255, 255, 0.05);
+  --line-2: rgba(244, 244, 241, 0.1);
+  --line-softer: rgba(244, 244, 241, 0.05);
+  --line-strong: rgba(244, 244, 241, 0.18);
+  --line-btn: rgba(244, 244, 241, 0.16);
+  --line-hover: rgba(255, 252, 0, 0.55);
+  --btn: #fffc00;
+  --btn-hover: #fffd66;
+  --btn-ink: #050505;
+  --btn-ink-2: rgba(5, 5, 5, 0.72);
+  --btn-ink-3: rgba(5, 5, 5, 0.5);
+  --zap: #fffc00;
+  --on-zap: #050505;
+  --zap-on-btn: #050505;
+  --zap-deep: #cfcc00;
+  --zap-wash: #201f00;
+  --zap-wash-ink: #fffd66;
+  --zap-tint: #141400;
+  --zap-line: rgba(255, 252, 0, 0.5);
+  --link: #fffd66;
+  --spot: rgba(255, 252, 0, 0.1);
+  --warn: #ffbd6d;
+  --sh-1: none;
+  --sh-seg: none;
+  --sh-btn: none;
+  --sh-2: none;
+  --sh-3: none;
+  --sh-4: none;
+  --r-card: 0px;
+  --r-card-sm: 0px;
+  --r-ctl: 0px;
+  --r-ctl-sm: 0px;
+  --r-chip: 0px;
+  --r-pill: 0px;
+
   position: relative;
   z-index: 0;
   background:
@@ -78,6 +136,105 @@
 .landing :global([data-magnetic]) {
   translate: var(--mag-x, 0px) var(--mag-y, 0px);
   transition: translate 80ms linear;
+}
+
+/* ==========================================================================
+   Shared buttons, cinematic edition
+
+   `.btn` in globals.css is now the app's button: a flat plate that changes
+   colour and does not move, because a lift-and-sweep reads as a smudge on
+   paper. The landing is not paper. The press feel it was designed around —
+   the taller target, the light sweeping across on hover, the dip on press —
+   is restored here, scoped to this route.
+
+   The keyframes are declared in THIS file on purpose: Turbopack scopes
+   `animation-name` per CSS Module, so an `animation: btnSweep` here would
+   silently never run against a `@keyframes btnSweep` living in globals.css.
+   ========================================================================== */
+
+.landing :global(.btn) {
+  min-height: 44px;
+  overflow: hidden;
+  transition:
+    transform var(--dur-2) var(--ease-emphasis),
+    box-shadow var(--dur-3) var(--ease-standard),
+    border-color var(--dur-2) var(--ease-standard),
+    background var(--dur-2) var(--ease-standard),
+    color var(--dur-2) var(--ease-standard);
+}
+
+.landing :global(.btnLg) {
+  min-height: 52px;
+  padding: 0 1.5rem;
+  font-size: 1rem;
+}
+
+/* A light sweep that crosses the button on hover. Sits behind the label via
+   z-index on the children, so it never washes out text. */
+.landing :global(.btn)::before {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -60%;
+  z-index: 0;
+  width: 45%;
+  content: "";
+  background: linear-gradient(100deg, transparent, rgba(255, 255, 255, 0.28), transparent);
+  transform: skewX(-18deg);
+  opacity: 0;
+  pointer-events: none;
+}
+
+.landing :global(.btn) > * {
+  position: relative;
+  z-index: 1;
+}
+
+.landing :global(.btn):hover::before {
+  animation: btnSweep 720ms var(--ease-standard);
+}
+
+/* Press feedback: every button dips toward the surface it sits on. */
+.landing :global(.btn):active {
+  transform: translateY(1px) scale(0.985);
+  transition-duration: var(--dur-1);
+}
+
+.landing :global(.btnPrimary):hover,
+.landing :global(.btnGhost):hover {
+  transform: translateY(-2px);
+}
+
+.landing :global(.btnPrimary):active,
+.landing :global(.btnGhost):active {
+  transform: translateY(0) scale(0.985);
+}
+
+.landing :global(.btnGhost) {
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.landing :global(.btnGhost):hover {
+  border-color: rgba(255, 255, 255, 0.2);
+  background: rgba(255, 255, 255, 0.06);
+}
+
+/* A disabled or in-flight button must not lift, sweep or dip. */
+.landing :global(.btn)[disabled],
+.landing :global(.btn)[aria-disabled="true"],
+.landing :global(.btn)[data-busy="true"] {
+  transform: none !important;
+}
+
+.landing :global(.btn)[disabled]::before,
+.landing :global(.btn)[aria-disabled="true"]::before,
+.landing :global(.btn)[data-busy="true"]::before {
+  animation: none !important;
+}
+
+@keyframes btnSweep {
+  from { left: -60%; opacity: 1; }
+  to { left: 130%; opacity: 0; }
 }
 
 /* ==========================================================================

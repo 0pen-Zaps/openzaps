@@ -1,0 +1,173 @@
+/* The theme trigger and its popover. Sits at the bottom of the app sidebar,
+   above the wallet chip. */
+
+.trigger {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  height: 36px;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-ctl);
+  background: var(--panel-2);
+  text-align: left;
+  cursor: pointer;
+  transition: background var(--dur-2) var(--ease-standard);
+}
+
+.trigger:hover {
+  background: var(--panel);
+}
+
+/* Built from live custom properties, so it previews the current theme for
+   free — no state, no lookup, correct the instant the attribute changes. */
+.triggerSwatch {
+  display: flex;
+  flex: 0 0 auto;
+  width: 26px;
+  height: 16px;
+  overflow: hidden;
+  border: 1px solid var(--line-2);
+  /* Half the control radius: a 26×16 chip at the full 10px would read as a
+     lozenge rather than as a scaled-down version of the app's own geometry. */
+  border-radius: calc(var(--r-ctl-sm) / 2);
+}
+
+.triggerSwatch > i {
+  flex: 1;
+}
+
+.triggerLabel {
+  color: var(--ink-3);
+  font-size: 11.5px;
+}
+
+.triggerValue {
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.triggerChevron {
+  flex: 0 0 auto;
+  width: 13px;
+  height: 13px;
+  margin-left: auto;
+  color: var(--ink-3);
+}
+
+.backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 55;
+  background: transparent;
+}
+
+/* Fixed, not in-flow: the sidebar is its own scroll container, and an in-flow
+   popover would be clipped by it the moment the nav grew past the viewport. */
+.panel {
+  position: fixed;
+  left: 14px;
+  bottom: 102px;
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  width: 236px;
+  padding: 6px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-card-sm);
+  background: var(--panel);
+  box-shadow: var(--sh-4);
+}
+
+.panelLabel {
+  padding: 3px 8px 6px;
+  color: var(--ink-3);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+}
+
+.option {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 9px;
+  padding: 6px 8px;
+  border: 0;
+  border-radius: var(--r-ctl-sm);
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+  transition: background var(--dur-1) var(--ease-standard);
+}
+
+.option:hover {
+  background: var(--chip);
+}
+
+.option[data-selected="true"] {
+  background: var(--chip);
+}
+
+/* Literal hexes and that theme's own radius, set inline from THEME_OPTIONS.
+   The radius is the point: it is the only part of a theme you cannot infer
+   from four colour stops. */
+.optionSwatch {
+  display: flex;
+  flex: 0 0 auto;
+  width: 32px;
+  height: 19px;
+  overflow: hidden;
+  border: 1px solid var(--line-2);
+}
+
+.optionText {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  line-height: 1.25;
+}
+
+.optionText > strong {
+  color: var(--ink);
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+.optionText > span {
+  color: var(--ink-3);
+  font-size: 10.5px;
+}
+
+.optionTick {
+  flex: 0 0 auto;
+  width: 12px;
+  height: 12px;
+  color: var(--ink);
+  stroke-width: 2.6;
+  opacity: 0;
+}
+
+.option[data-selected="true"] .optionTick {
+  opacity: 1;
+}
+
+/* On the mobile drawer the sidebar is a sheet, not a fixed rail, so anchoring
+   the panel to the viewport's bottom-left would float it over the content
+   behind. It becomes an in-flow block instead. */
+@media (max-width: 900px) {
+  .panel {
+    position: static;
+    width: auto;
+    margin-bottom: 8px;
+    box-shadow: none;
+  }
+
+  .backdrop {
+    display: none;
+  }
+}

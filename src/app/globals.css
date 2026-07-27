@@ -1,61 +1,428 @@
-/* ── LINES ────────────────────────────────────────────────────────────────
-   One accent, no gradients, no glass. Hierarchy is carried by hairline rules
-   and space rather than by cards, glows and blur.
+/* ── Theme tokens ─────────────────────────────────────────────────────────
+   Five themes, one token layer. Ivory lives on `:root` so a server render with
+   no attribute paints correctly and a JS-disabled visitor gets a complete
+   theme; the other four are `[data-oz-theme]` blocks stamped onto <html> by
+   the pre-paint guard in src/app/layout.tsx.
 
-   These tokens are the whole theme. Nearly every rule on the site reads them,
-   so the identity changes here rather than page by page — which is also why
-   the few values that do NOT belong here (the connector-shape colours in
-   src/lib/blocks.ts) are documented as deliberately separate: those encode
-   which kind of value is on a wire, and collapsing them into the accent would
+   Voltage is not a new theme — it is the identity this app shipped with,
+   preserved exactly (#FFFC00 on #050505, zero radius, no shadows), so nobody
+   who liked the old app is forced off it.
+
+   The landing page at `/` is deliberately NOT themed by this layer. Every one
+   of its tokens is redeclared on `.landing` in landing.module.css, so `/`
+   stays the black-and-yellow brand front door whatever the app is set to.
+   That isolation is why this file could be replaced wholesale without
+   touching a single landing rule.
+
+   Nothing below the token blocks should hardcode a colour. The one documented
+   exception remains src/lib/blocks.ts, whose connector-shape colours encode
+   which KIND of value is on a wire — collapsing those into the brand would
    delete information the builder needs to show.
    ──────────────────────────────────────────────────────────────────────── */
-:root {
+:root,
+[data-oz-theme="ivory"] {
+  --bg: #f6f3ec;
+  --sunk: #efebe1;
+  --panel: #ffffff;
+  --panel-2: #fbf9f4;
+  --chip: #f3f0e8;
+  --track: #e4dfd4;
+  --token-dot: #dcd8ce;
+  --hover: rgba(255, 255, 255, 0.7);
+
+  --ink: #1e1b16;
+  --ink-prose: #3a362e;
+  --ink-2: #5c564a;
+  /* AA-checked at 4.66:1 on --sunk and 5.55:1 on --panel. It carries every
+     10.5–12.5px meta label in the app, which is exactly why it must not be
+     lightened "just a little" to look softer. */
+  --ink-3: #6e6858;
+
+  --line: rgba(30, 27, 22, 0.1);
+  --line-2: rgba(30, 27, 22, 0.08);
+  --line-soft: rgba(30, 27, 22, 0.06);
+  --line-softer: rgba(30, 27, 22, 0.05);
+  --line-strong: rgba(30, 27, 22, 0.14);
+  --line-btn: rgba(30, 27, 22, 0.12);
+  --line-hover: rgba(30, 27, 22, 0.26);
+  --scroll: rgba(30, 27, 22, 0.16);
+
+  --btn: #1e1b16;
+  --btn-hover: #332e26;
+  --btn-ink: #fbf9f4;
+  --btn-ink-2: rgba(251, 249, 244, 0.75);
+  --btn-ink-3: rgba(251, 249, 244, 0.5);
+
+  --zap: #fffc00;
+  /* Ink ON the brand fill. Never --ink: on the dark themes --ink is light, so
+     using it here makes every label on a yellow surface disappear. */
+  --on-zap: #1e1b16;
+  /* A brand mark sitting ON the primary fill. Never --zap: in Voltage the
+     primary fill IS yellow, so the mark would vanish into it. */
+  --zap-on-btn: #fffc00;
+  --zap-deep: #b6a400;
+  --zap-wash: #fcf6c9;
+  --zap-wash-ink: #5c5400;
+  --zap-tint: #fffdf2;
+  --zap-line: rgba(255, 252, 0, 0.5);
+  --link: #7a7600;
+  --spot: rgba(182, 164, 0, 0.1);
+
+  --ok: #3f6b4a;
+  --ok-wash: #e8f0e7;
+  --warn: #9a6407;
+  --warn-wash: #fbf0de;
+  --danger: #a33a1f;
+  --danger-wash: #f8e6df;
+  --danger-wash-2: #f5dcd3;
+  --danger-tint: #fdf7f4;
+  --danger-ink: #7e2c17;
+  --danger-line: rgba(163, 58, 31, 0.28);
+  --info: #3b4a6b;
+  --info-wash: #e7eaf2;
+
+  --sh-1: 0 1px 2px rgba(30, 27, 22, 0.04);
+  --sh-seg: 0 1px 2px rgba(30, 27, 22, 0.14);
+  --sh-btn: 0 1px 2px rgba(30, 27, 22, 0.18);
+  --sh-2: 0 8px 24px -14px rgba(30, 27, 22, 0.28);
+  --sh-3: 0 4px 14px -10px rgba(30, 27, 22, 0.35);
+  --sh-4: 0 12px 30px -16px rgba(30, 27, 22, 0.45);
+
+  --r-card: 14px;
+  --r-card-sm: 12px;
+  --r-ctl: 10px;
+  --r-ctl-sm: 8px;
+  --r-chip: 6px;
+  --r-pill: 999px;
+}
+
+[data-oz-theme="paper"] {
+  --bg: #f4f4f5;
+  --sunk: #eaeaec;
+  --panel: #ffffff;
+  --panel-2: #fafafb;
+  --chip: #f0f0f2;
+  --track: #e2e2e5;
+  --token-dot: #d8d8dc;
+  --hover: rgba(255, 255, 255, 0.8);
+
+  --ink: #16161a;
+  --ink-prose: #2e2e33;
+  --ink-2: #55555c;
+  --ink-3: #67676f; /* AA-checked: 4.67:1 on --sunk, 5.61:1 on --panel */
+
+  --line: rgba(20, 20, 26, 0.11);
+  --line-2: rgba(20, 20, 26, 0.09);
+  --line-soft: rgba(20, 20, 26, 0.07);
+  --line-softer: rgba(20, 20, 26, 0.055);
+  --line-strong: rgba(20, 20, 26, 0.15);
+  --line-btn: rgba(20, 20, 26, 0.13);
+  --line-hover: rgba(20, 20, 26, 0.28);
+  --scroll: rgba(20, 20, 26, 0.17);
+
+  --btn: #16161a;
+  --btn-hover: #2c2c33;
+  --btn-ink: #fafafb;
+  --btn-ink-2: rgba(250, 250, 251, 0.75);
+  --btn-ink-3: rgba(250, 250, 251, 0.5);
+
+  --zap: #fffc00;
+  --on-zap: #16161a;
+  --zap-on-btn: #fffc00;
+  --zap-deep: #a8a600;
+  --zap-wash: #f6f4d6;
+  --zap-wash-ink: #55520a;
+  --zap-tint: #fdfdf1;
+  --zap-line: rgba(255, 252, 0, 0.55);
+  --link: #2e4c7e;
+  --spot: rgba(168, 166, 0, 0.1);
+
+  --ok: #356b4c;
+  --ok-wash: #e4f0e8;
+  --warn: #8a6300;
+  --warn-wash: #f6eedc;
+  --danger: #a32f2f;
+  --danger-wash: #f7e3e3;
+  --danger-wash-2: #f2d6d6;
+  --danger-tint: #fdf6f6;
+  --danger-ink: #7c2222;
+  --danger-line: rgba(163, 47, 47, 0.28);
+  --info: #35507e;
+  --info-wash: #e5e9f2;
+
+  --sh-1: 0 1px 2px rgba(20, 20, 26, 0.05);
+  --sh-seg: 0 1px 2px rgba(20, 20, 26, 0.15);
+  --sh-btn: 0 1px 2px rgba(20, 20, 26, 0.2);
+  --sh-2: 0 8px 24px -14px rgba(20, 20, 26, 0.3);
+  --sh-3: 0 4px 14px -10px rgba(20, 20, 26, 0.36);
+  --sh-4: 0 12px 30px -16px rgba(20, 20, 26, 0.46);
+
+  --r-card: 6px;
+  --r-card-sm: 5px;
+  --r-ctl: 5px;
+  --r-ctl-sm: 4px;
+  --r-chip: 3px;
+  --r-pill: 999px;
+}
+
+[data-oz-theme="graphite"] {
+  --bg: #191712;
+  --sunk: #12100b;
+  --panel: #211e17;
+  --panel-2: #1c1a14;
+  --chip: #262319;
+  --track: #302c22;
+  --token-dot: #3a3628;
+  --hover: rgba(255, 255, 255, 0.05);
+
+  --ink: #f2eee4;
+  --ink-prose: #ded9cd;
+  --ink-2: #a9a292;
+  /* Lifted 13% from the handed-off #7D7768, which measured 3.52:1 on --chip
+     and 3.73:1 on --panel — below AA on every surface in this theme. The
+     handoff's "--ink-3 is AA-checked, do not lighten it" note was measured on
+     Ivory only; on the two custom dark themes the value was simply too dark,
+     and it carries every 10.5–12.5px meta label in the app. Now ≥4.50:1
+     everywhere, and still 1.4 stops quieter than --ink-2 (4.77 vs 6.55 on
+     --panel) so the three-level ink hierarchy survives. See
+     src/app/theme-tokens.test.ts, which fails if this regresses. */
+  --ink-3: #8e897c;
+
+  --line: rgba(242, 238, 228, 0.13);
+  --line-2: rgba(242, 238, 228, 0.1);
+  --line-soft: rgba(242, 238, 228, 0.075);
+  --line-softer: rgba(242, 238, 228, 0.06);
+  --line-strong: rgba(242, 238, 228, 0.17);
+  --line-btn: rgba(242, 238, 228, 0.15);
+  --line-hover: rgba(242, 238, 228, 0.3);
+  --scroll: rgba(242, 238, 228, 0.16);
+
+  --btn: #f2eee4;
+  --btn-hover: #fffdf6;
+  --btn-ink: #191712;
+  --btn-ink-2: rgba(25, 23, 18, 0.72);
+  --btn-ink-3: rgba(25, 23, 18, 0.5);
+
+  --zap: #fffc00;
+  --on-zap: #191712;
+  --zap-on-btn: #8a8700;
+  --zap-deep: #c9c400;
+  --zap-wash: #2e2b0c;
+  --zap-wash-ink: #fffa8a;
+  --zap-tint: #24220f;
+  --zap-line: rgba(255, 252, 0, 0.42);
+  --link: #e4e07c;
+  --spot: rgba(255, 252, 0, 0.1);
+
+  --ok: #86c79a;
+  --ok-wash: #1c2a21;
+  --warn: #e2a455;
+  --warn-wash: #2e2415;
+  --danger: #f0947c;
+  --danger-wash: #2e1a15;
+  --danger-wash-2: #3a211a;
+  --danger-tint: #241713;
+  --danger-ink: #ffc3b2;
+  --danger-line: rgba(240, 148, 124, 0.32);
+  --info: #9cb2e8;
+  --info-wash: #1a2030;
+
+  --sh-1: 0 1px 2px rgba(0, 0, 0, 0.3);
+  --sh-seg: 0 1px 3px rgba(0, 0, 0, 0.5);
+  --sh-btn: 0 1px 3px rgba(0, 0, 0, 0.5);
+  --sh-2: 0 10px 26px -14px rgba(0, 0, 0, 0.7);
+  --sh-3: 0 6px 16px -10px rgba(0, 0, 0, 0.65);
+  --sh-4: 0 14px 34px -16px rgba(0, 0, 0, 0.8);
+
+  --r-card: 14px;
+  --r-card-sm: 12px;
+  --r-ctl: 10px;
+  --r-ctl-sm: 8px;
+  --r-chip: 6px;
+  --r-pill: 999px;
+}
+
+/* The identity this app shipped with, preserved as a theme. */
+[data-oz-theme="voltage"] {
   --bg: #050505;
-  --bg-2: #0b0b0b;
-  --fg: #f4f4f1;
-  --text: #b9b9b4;
-  --muted: #8f8f8a;
-  --muted-2: #7e7e79;
+  --sunk: #000000;
+  --panel: #0b0b0b;
+  --panel-2: #0f0f0f;
+  --chip: #151515;
+  --track: #242424;
+  --token-dot: #2e2e2e;
+  --hover: rgba(255, 255, 255, 0.05);
 
-  /* OpenZaps yellow — pure #FFFC00, owned the way Uniswap owns pink. ~19:1
-     on the ground, and ink-on-accent is the same, so it works as both ink
-     and surface. Matches the landing page's scoped palette exactly. */
-  --accent: #fffc00;
-  --accent-bright: #fffd66;
-  --accent-deep: #cfcc00;
-
-  /* Quieter accent, NOT a neutral. This was briefly set to #8f8f8a, which is
-     byte-for-byte --muted — and the old token it replaced (--indigo) was the
-     colour that told an inline link apart from the prose around it. Collapsing
-     the two made those links invisible as links: same colour, same weight, no
-     underline. Kept in the accent family so it still reads as "this is
-     interactive", and 12:1 on the ground. */
-  --accent-dim: #b9b752;
+  --ink: #f4f4f1;
+  --ink-prose: #d6d6d2;
+  --ink-2: #b9b9b4;
+  --ink-3: #8f8f8a;
 
   --line: rgba(244, 244, 241, 0.13);
+  --line-2: rgba(244, 244, 241, 0.1);
   --line-soft: rgba(244, 244, 241, 0.06);
+  --line-softer: rgba(244, 244, 241, 0.05);
+  --line-strong: rgba(244, 244, 241, 0.18);
+  --line-btn: rgba(244, 244, 241, 0.16);
+  --line-hover: rgba(255, 252, 0, 0.55);
+  --scroll: rgba(244, 244, 241, 0.18);
 
-  /* Was a translucent gradient with an inset highlight and a 92px drop
-     shadow — the glass-card look this identity is defined against. A panel is
-     now a hairline box on the page's own ground. */
-  --card: transparent;
-  --card-shadow: none;
+  --btn: #fffc00;
+  --btn-hover: #fffd66;
+  --btn-ink: #050505;
+  --btn-ink-2: rgba(5, 5, 5, 0.72);
+  --btn-ink-3: rgba(5, 5, 5, 0.5);
 
-  /* Kept as tokens because a lot of rules reference them, but both are flat
-     now. A gradient is the one thing a design made of rules cannot contain. */
-  --grad-brand: var(--accent);
-  --grad-text: var(--accent);
+  --zap: #fffc00;
+  --on-zap: #050505;
+  --zap-on-btn: #050505;
+  --zap-deep: #cfcc00;
+  --zap-wash: #201f00;
+  --zap-wash-ink: #fffd66;
+  --zap-tint: #141400;
+  --zap-line: rgba(255, 252, 0, 0.5);
+  --link: #fffd66;
+  --spot: rgba(255, 252, 0, 0.1);
+
+  --ok: #9effb8;
+  --ok-wash: #0e2013;
+  --warn: #ffbd6d;
+  --warn-wash: #241a0c;
+  --danger: #ff8a8a;
+  --danger-wash: #2a1010;
+  --danger-wash-2: #3a1616;
+  --danger-tint: #1c0d0d;
+  --danger-ink: #ffadad;
+  --danger-line: rgba(255, 138, 138, 0.34);
+  --info: #9cbaff;
+  --info-wash: #0f1523;
+
+  --sh-1: none;
+  --sh-seg: none;
+  --sh-btn: none;
+  --sh-2: none;
+  --sh-3: none;
+  --sh-4: none;
+
+  --r-card: 0px;
+  --r-card-sm: 0px;
+  --r-ctl: 0px;
+  --r-ctl-sm: 0px;
+  --r-chip: 0px;
+  --r-pill: 0px;
+}
+
+[data-oz-theme="dusk"] {
+  --bg: #14161f;
+  --sunk: #0e1018;
+  --panel: #1b1e29;
+  --panel-2: #171a24;
+  --chip: #212533;
+  --track: #2a2f40;
+  --token-dot: #333a4d;
+  --hover: rgba(255, 255, 255, 0.06);
+
+  --ink: #eceef6;
+  --ink-prose: #d5d8e4;
+  --ink-2: #a0a6ba;
+  /* Lifted 12% from the handed-off #757C93 for the same reason as Graphite:
+     3.67:1 on --chip, 4.00:1 on --panel. Now ≥4.50:1 on every surface. */
+  --ink-3: #858ba0;
+
+  --line: rgba(236, 238, 246, 0.13);
+  --line-2: rgba(236, 238, 246, 0.1);
+  --line-soft: rgba(236, 238, 246, 0.075);
+  --line-softer: rgba(236, 238, 246, 0.06);
+  --line-strong: rgba(236, 238, 246, 0.17);
+  --line-btn: rgba(236, 238, 246, 0.15);
+  --line-hover: rgba(236, 238, 246, 0.3);
+  --scroll: rgba(236, 238, 246, 0.16);
+
+  --btn: #eceef6;
+  --btn-hover: #ffffff;
+  --btn-ink: #14161f;
+  --btn-ink-2: rgba(20, 22, 31, 0.72);
+  --btn-ink-3: rgba(20, 22, 31, 0.5);
+
+  --zap: #fffc00;
+  --on-zap: #14161f;
+  --zap-on-btn: #8c8a00;
+  --zap-deep: #c6c300;
+  --zap-wash: #2b2d12;
+  --zap-wash-ink: #fff98f;
+  --zap-tint: #1f2118;
+  --zap-line: rgba(255, 252, 0, 0.42);
+  --link: #aebcf2;
+  --spot: rgba(255, 252, 0, 0.1);
+
+  --ok: #7ed3a6;
+  --ok-wash: #16281f;
+  --warn: #e0a85e;
+  --warn-wash: #2a2317;
+  --danger: #f08b8b;
+  --danger-wash: #2b1620;
+  --danger-wash-2: #371c27;
+  --danger-tint: #1e1319;
+  --danger-ink: #ffbdbd;
+  --danger-line: rgba(240, 139, 139, 0.32);
+  --info: #9cb2e8;
+  --info-wash: #1b2133;
+
+  --sh-1: 0 1px 2px rgba(0, 0, 0, 0.35);
+  --sh-seg: 0 1px 3px rgba(0, 0, 0, 0.55);
+  --sh-btn: 0 1px 3px rgba(0, 0, 0, 0.55);
+  --sh-2: 0 10px 26px -14px rgba(0, 0, 0, 0.75);
+  --sh-3: 0 6px 16px -10px rgba(0, 0, 0, 0.7);
+  --sh-4: 0 14px 34px -16px rgba(0, 0, 0, 0.85);
+
+  --r-card: 18px;
+  --r-card-sm: 14px;
+  --r-ctl: 12px;
+  --r-ctl-sm: 10px;
+  --r-chip: 8px;
+  --r-pill: 999px;
+}
+
+/* ── Migration aliases ───────────────────────────────────────────────────
+   The CSS modules written against the previous identity read --fg/--text/
+   --muted/--accent/--card/--radius. Pointing them at the new tokens is what
+   let the whole token layer land before a single component was rewritten:
+   every existing module themes correctly, in all five themes, on day one.
+
+   These are scaffolding, not API. Delete an alias once nothing references it
+   (`grep -rn "var(--muted-2)" src/`). Two behave differently than their names
+   suggest and are worth knowing about while they live here:
+     --accent-bright  was a lighter yellow; it now resolves to ink ON a yellow
+                      wash, which is near-black on the light themes.
+     --accent-dim     was a desaturated yellow; it is now the link colour,
+                      which is blue in Paper and lavender in Dusk.
+   Both are the intended new behaviour — but a rule that used either as a
+   decorative highlight rather than as text wants a real token instead.
+   ──────────────────────────────────────────────────────────────────────── */
+:root {
+  --fg: var(--ink);
+  --text: var(--ink-2);
+  --muted: var(--ink-3);
+  --muted-2: var(--ink-3);
+  --bg-2: var(--panel);
+  --accent: var(--zap);
+  --accent-bright: var(--zap-wash-ink);
+  --accent-deep: var(--zap-deep);
+  --accent-dim: var(--link);
+  --card: var(--panel);
+  --card-shadow: var(--sh-1);
+  --grad-brand: var(--zap);
+  --grad-text: var(--zap);
+  --radius: var(--r-card);
+  --pill: var(--r-pill);
 
   --container: min(1440px, calc(100% - 3rem));
 
-  /* Square. Rounded corners belong to the card idiom that this replaces; the
-     only radius left is the one on a control's focus ring. */
-  --radius: 0;
-  --pill: 0;
-  /* Live height of the sticky nav, republished by SiteNav on every resize and
-     every condense. This value is only the pre-hydration fallback — near the
-     one-row desktop height, so the first paint is not visibly wrong. Anything
-     that has to clear the nav should read this rather than guess. */
+  /* Height of the chrome above a page's scrollport. The old sticky nav
+     republished its measured height here on every resize; the app shell moves
+     the scroll onto <main>, so anything sticky inside the app is already below
+     the context bar and AppShell sets this to 0 on its scroll container. The
+     value below is what the landing page and any non-shell route see. */
   --nav-h: 4.4rem;
 
   /* ---- motion tokens ----
@@ -76,6 +443,15 @@
   /* Distance an element travels on entrance. Zeroed under reduced motion so a
      single override neutralises every reveal at once. */
   --reveal-shift: 16px;
+
+  /* Fonts. The app moved from Inter to Newsreader (screen titles, section
+     headings) + DM Sans (everything else); JetBrains Mono is unchanged and
+     still carries every number, address and hash. The two old names stay as
+     aliases because ~15 rules still ask for them by their original name, and
+     an unresolved font variable falls back to system sans without warning. */
+  --font-inter: var(--font-sans);
+  --font-jetbrains-mono: var(--font-mono);
+  --font-display: var(--font-serif);
 }
 
 * {
@@ -109,18 +485,28 @@ body {
   min-height: 100%;
   display: flex;
   flex-direction: column;
-  color: var(--fg);
+  color: var(--ink);
   background: var(--bg);
-  font-family: var(--font-inter), system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  font-feature-settings: "cv01", "ss03";
+  font-family: var(--font-sans), system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
 
-/* The ground is flat. The two corner washes that used to sit here — violet
-   from the top-left, green from the bottom-right — were the main thing making
-   every page read as "glass over a gradient", and no amount of retheming the
-   panels above them would have changed that. */
+/* Form controls do NOT inherit colour or family by default — they fall back to
+   the UA's `buttontext` (black) and system font. Black is invisible on every
+   dark theme, so this one rule prevents a whole class of theming bug that only
+   shows up after someone switches to Graphite. */
+input,
+select,
+button,
+textarea {
+  font-family: inherit;
+  color: inherit;
+}
+
+/* The ground is flat. On app routes the shell paints `--bg` across the whole
+   viewport, so the texture below only ever reaches the landing page — which is
+   where the horizontal-rule motif belongs. */
 body::before {
   position: fixed;
   inset: 0;
@@ -130,10 +516,9 @@ body::before {
   background: var(--bg);
 }
 
-/* Ruled ground: horizontal only, because the identity is horizontal rules.
-   The old overlay was a 76px square grid, which reads as graph paper and
-   fights the one motif this design has. Faint enough to be texture rather
-   than content, and masked out before it reaches the fold. */
+/* Ruled ground: horizontal only, because the landing identity is horizontal
+   rules. Faint enough to be texture rather than content, and masked out before
+   it reaches the fold. */
 body::after {
   position: fixed;
   inset: 0;
@@ -154,10 +539,18 @@ a {
   text-decoration: none;
 }
 
+/* Ink, not the brand. The focus ring has to be legible on the brand yellow
+   too — a yellow ring around a yellow button is not a focus indicator. */
 :focus-visible {
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--ink);
   outline-offset: 2px;
-  border-radius: 4px;
+  border-radius: var(--r-ctl-sm);
+}
+
+/* A range's thumb sits proud of its track, so the ring needs more clearance
+   before it stops looking like part of the control. */
+input[type="range"]:focus-visible {
+  outline-offset: 4px;
 }
 
 .skipLink {
@@ -166,13 +559,13 @@ a {
   top: 0;
   z-index: 100;
   padding: 0.65rem 1rem;
-  background: var(--accent);
-  /* Ink, not white. The accent is a light yellow — white text on it is
-     roughly 1.1:1, i.e. invisible. It was white because the old accent was a
-     mid violet, and this is exactly the kind of pairing that survives a
-     retheme unnoticed: the one control almost nobody looks at is the first one
-     a keyboard user meets. */
-  color: var(--bg);
+  border-radius: var(--r-ctl-sm);
+  background: var(--zap);
+  /* --on-zap, not --bg. This was `var(--bg)` when the ground was always black;
+     under Ivory that resolves to cream, i.e. cream-on-yellow at about 1.2:1.
+     The first control a keyboard user meets is exactly the one nobody notices
+     has broken. */
+  color: var(--on-zap);
   font-size: 0.85rem;
   font-weight: 600;
 }
@@ -181,9 +574,25 @@ a {
   left: 0;
 }
 
+/* Visually hidden, still announced. This lived only inside landing.module.css,
+   where CSS Modules hashed the class name — so the two global `className="srOnly"`
+   call sites (the profile filter legend and the nav's wallet error) were
+   getting no styles at all and rendering as visible stray text. */
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
 ::selection {
-  color: var(--bg);
-  background: var(--accent);
+  color: var(--on-zap);
+  background: var(--zap);
 }
 
 /* ---------------- shared primitives ---------------- */
@@ -195,25 +604,29 @@ a {
   margin: 0 auto;
 }
 
+/* Muted, not branded. The obvious migration was `--accent-dim` → `--link`,
+   since that is what the alias maps to — but `--link` is blue in Paper and
+   lavender in Dusk, and an eyebrow is not a link. Every section label on every
+   app page would have turned blue on one theme and violet on another, which is
+   an identity decision nobody made. Meta text is `--ink-3`; the brand shows up
+   in the rule beside it. */
 .eyebrow {
   display: inline-flex;
   align-items: center;
   gap: 0.5rem;
-  color: var(--accent-dim);
-  font-family: var(--font-jetbrains-mono), ui-monospace, monospace;
+  color: var(--ink-3);
+  font-family: var(--font-mono), ui-monospace, monospace;
   font-size: 0.76rem;
   font-weight: 500;
   letter-spacing: 0.06em;
   text-transform: uppercase;
 }
 
-/* A rule, not a glowing dot. Same job — mark the start of the label — in the
-   vocabulary the rest of the site is drawn in. */
 .eyebrow::before {
   width: 1.4rem;
   height: 1px;
   content: "";
-  background: var(--accent);
+  background: var(--zap-deep);
 }
 
 .badge {
@@ -222,8 +635,10 @@ a {
   gap: 0.5rem;
   padding: 0.4rem 0.75rem;
   border: 1px solid var(--line);
-  color: var(--accent);
-  font-family: var(--font-jetbrains-mono), ui-monospace, monospace;
+  border-radius: var(--r-pill);
+  background: var(--panel-2);
+  color: var(--ink-2);
+  font-family: var(--font-mono), ui-monospace, monospace;
   font-size: 0.74rem;
   font-weight: 500;
   letter-spacing: 0.08em;
@@ -231,123 +646,91 @@ a {
 }
 
 /* The blink stays. It is the one piece of motion here that carries meaning —
-   it marks a live reading rather than a static one — so it survives the
-   flattening that removed the decorative glows around it. */
+   it marks a live reading rather than a static one. */
 .badge::before {
   width: 0.4rem;
   height: 0.4rem;
+  border-radius: 50%;
   content: "";
-  background: var(--accent);
+  background: var(--ok);
   animation: blink 2.4s ease-in-out infinite;
 }
 
 .mono {
-  font-family: var(--font-jetbrains-mono), ui-monospace, monospace;
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-variant-numeric: tabular-nums;
 }
 
+/* The brand, as text.
+   There is no version of #FFFC00 that is readable as text on cream — that is
+   the unavoidable tension of a yellow brand on a light theme. Measured on
+   Ivory's ground: `--zap` is 1.07:1, and `--zap-deep` is 2.28:1, which fails
+   even WCAG's relaxed 3:1 large-text floor. `--zap-wash-ink` is the token that
+   exists for this — brand-family INK rather than brand-family fill — and it
+   resolves to a deep gold on the light themes (≈8:1) and to a bright yellow on
+   the dark ones. It carries the `0xZAPS` wordmark on /token.
+   If that wordmark needs to be the true yellow, the answer is to put it on an
+   ink plate with `--on-zap`, not to make the text lighter. */
 .gradientText {
-  /* The accent is flat now, so this no longer needs to clip a gradient to the
-     glyphs — and the sweep it used to run animated background-position on a
-     solid colour, which is an infinite compositor job for no visible change. */
-  color: var(--accent);
+  color: var(--zap-wash-ink);
 }
 
 /* Buttons (shared across nav, hero, pages) */
 .btn {
+  position: relative;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 0.45rem;
-  min-height: 44px;
+  min-height: 40px;
   padding: 0 1.15rem;
-  border-radius: 0;
-  font-size: 0.9rem;
+  border-radius: var(--r-ctl);
+  font-size: 0.875rem;
   font-weight: 600;
   letter-spacing: 0;
   white-space: nowrap;
   cursor: pointer;
-  transition: transform 160ms ease, box-shadow 200ms ease, border-color 160ms ease, background 160ms ease, color 160ms ease;
-}
-
-.btnLg {
-  min-height: 52px;
-  padding: 0 1.5rem;
-  font-size: 1rem;
-  border-radius: 0;
-}
-
-.btn {
-  position: relative;
-  overflow: hidden;
   transition:
-    transform var(--dur-2) var(--ease-emphasis),
     box-shadow var(--dur-3) var(--ease-standard),
     border-color var(--dur-2) var(--ease-standard),
     background var(--dur-2) var(--ease-standard),
     color var(--dur-2) var(--ease-standard);
 }
 
-/* A light sweep that crosses the button on hover. Sits behind the label via
-   z-index on the children, so it never washes out text. */
-.btn::before {
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  left: -60%;
-  z-index: 0;
-  width: 45%;
-  content: "";
-  background: linear-gradient(100deg, transparent, rgba(255, 255, 255, 0.28), transparent);
-  transform: skewX(-18deg);
-  opacity: 0;
-  pointer-events: none;
+.btnLg {
+  min-height: 48px;
+  padding: 0 1.5rem;
+  font-size: 0.95rem;
 }
 
-.btn > * {
-  position: relative;
-  z-index: 1;
-}
-
-.btn:hover::before {
-  animation: btnSweep 720ms var(--ease-standard);
-}
-
-/* Press feedback: every button dips toward the surface it sits on. */
-.btn:active {
-  transform: translateY(1px) scale(0.985);
-  transition-duration: var(--dur-1);
-}
-
+/* The old sweep-and-lift press was built for a design made of glowing edges on
+   black. On paper it reads as a smudge, so a press is now a colour change and
+   nothing moves. */
 .btnPrimary {
-  color: var(--bg);
-  background: var(--grad-brand);
-  box-shadow: none;
+  border: 1px solid transparent;
+  /* --on-zap, not --bg. Under Ivory the primary fill is ink and the label is
+     cream; under Voltage the fill is yellow and the label is black. Both come
+     out of the token pair rather than out of a hardcoded assumption about
+     which one the ground happens to be. */
+  color: var(--btn-ink);
+  background: var(--btn);
+  box-shadow: var(--sh-btn);
 }
 
 .btnPrimary:hover {
-  transform: translateY(-2px);
-  box-shadow: none;
-}
-
-.btnPrimary:active {
-  transform: translateY(0) scale(0.985);
+  background: var(--btn-hover);
 }
 
 .btnGhost {
-  border: 1px solid var(--line);
-  color: var(--text);
-  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--line-btn);
+  color: var(--ink-2);
+  background: var(--panel-2);
 }
 
 .btnGhost:hover {
-  transform: translateY(-2px);
-  border-color: rgba(255, 255, 255, 0.2);
-  background: rgba(255, 255, 255, 0.06);
-  color: var(--fg);
-}
-
-.btnGhost:active {
-  transform: translateY(0) scale(0.985);
+  border-color: var(--line-hover);
+  background: var(--panel);
+  color: var(--ink);
 }
 
 /* Disabled buttons stop advertising interactivity entirely. */
@@ -355,14 +738,7 @@ a {
 .btn[aria-disabled="true"] {
   cursor: not-allowed;
   opacity: 0.55;
-  transform: none !important;
   animation: none;
-}
-
-.btn[disabled]::before,
-.btn[aria-disabled="true"]::before,
-.btn[data-busy="true"]::before {
-  animation: none !important;
 }
 
 /* Busy is distinct from disabled: the action was accepted and is in flight, so
@@ -373,7 +749,6 @@ a {
   /* Wins over the `[disabled]` dimming above: these buttons are disabled while
      the transaction is in flight, but must not read as rejected. */
   opacity: 1;
-  transform: none !important;
 }
 
 .btn[data-busy="true"]::after {
@@ -402,28 +777,20 @@ a {
 }
 
 /* ---------------- animations ---------------- */
-@keyframes aurora {
-  0% { background-position: 0% 0%, 100% 0%, 50% 100%, 0 0; }
-  100% { background-position: 30% 20%, 70% 30%, 40% 80%, 0 0; }
-}
-
-@keyframes shift {
-  0%, 100% { background-position: 0% 50%; }
-  50% { background-position: 100% 50%; }
-}
-
 @keyframes blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
+
+/* Marks a live reading. Named for the brand rather than for the effect because
+   the README specifies it by name; identical curve to `blink`. */
+@keyframes zpulse {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.35; }
 }
 
 @keyframes spin {
   to { transform: rotate(360deg); }
-}
-
-@keyframes btnSweep {
-  from { left: -60%; opacity: 1; }
-  to { left: 130%; opacity: 0; }
 }
 
 /* Skeleton shimmer: a band of light travelling across a placeholder block. */
@@ -444,13 +811,13 @@ a {
 
 /* A ring that expands and dissolves — used to acknowledge a completed action. */
 @keyframes ripple {
-  from { box-shadow: 0 0 0 0 rgba(255, 252, 0, 0.5); }
-  to { box-shadow: 0 0 0 12px rgba(255, 252, 0, 0); }
+  from { box-shadow: 0 0 0 0 var(--zap-line); }
+  to { box-shadow: 0 0 0 12px transparent; }
 }
 
 /* One-shot highlight when a row's value changes underneath the user. */
 @keyframes flashIn {
-  0% { background-color: rgba(255, 252, 0, 0.18); }
+  0% { background-color: var(--zap-wash); }
   100% { background-color: transparent; }
 }
 
@@ -493,14 +860,8 @@ a {
 .skeleton {
   position: relative;
   overflow: hidden;
-  border-radius: 0;
-  background:
-    linear-gradient(
-      90deg,
-      rgba(255, 255, 255, 0.04) 0%,
-      rgba(255, 255, 255, 0.1) 45%,
-      rgba(255, 255, 255, 0.04) 90%
-    );
+  border-radius: var(--r-ctl-sm);
+  background: linear-gradient(90deg, var(--chip) 0%, var(--hover) 45%, var(--chip) 90%);
   background-size: 220% 100%;
   color: transparent;
   animation: shimmer 1.5s var(--ease-standard) infinite;
@@ -520,11 +881,7 @@ a {
   z-index: 0;
   content: "";
   border-radius: inherit;
-  background: radial-gradient(
-    18rem 18rem at var(--mx, 50%) var(--my, 50%),
-    rgba(255, 252, 0, 0.10),
-    transparent 68%
-  );
+  background: radial-gradient(18rem 18rem at var(--mx, 50%) var(--my, 50%), var(--spot), transparent 68%);
   opacity: 0;
   transition: opacity var(--dur-3) var(--ease-standard);
   pointer-events: none;
@@ -535,47 +892,75 @@ a {
   opacity: 1;
 }
 
-/* Persisted manual motion control, adapted from Hedger's Calm/Cinematic
-   switch. It is global because the composer and receipt surfaces also contain
-   functional motion, not just the landing page. */
+/* ---------------- motion control ----------------
+   Persisted manual Calm/Cinematic switch. Global because the composer and
+   receipt surfaces contain functional motion, not just the landing page.
+
+   Bottom-RIGHT, not bottom-left: the app shell's theme picker opens a popover
+   anchored at the sidebar's bottom-left corner, and two floating controls in
+   the same corner is one of them covering the other. */
 .motionControl {
   position: fixed;
   z-index: 90;
   bottom: max(0.75rem, env(safe-area-inset-bottom));
-  left: max(0.75rem, env(safe-area-inset-left));
+  right: max(0.75rem, env(safe-area-inset-right));
   display: inline-flex;
   gap: 0.48rem;
   align-items: center;
-  min-height: 44px;
-  padding: 0.62rem 0.78rem;
-  border: 1px solid rgba(255, 252, 0, 0.25);
-  border-radius: 0;
-  background: rgba(5, 5, 5, 0.9);
-  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.55), 0 0.8rem 2.4rem rgba(0, 0, 0, 0.32);
-  color: var(--accent-bright);
-  font-family: var(--font-jetbrains-mono), ui-monospace, monospace;
+  min-height: 34px;
+  padding: 0.5rem 0.7rem;
+  border: 1px solid var(--line);
+  border-radius: var(--r-pill);
+  background: var(--panel);
+  box-shadow: var(--sh-2);
+  color: var(--ink-3);
+  font-family: var(--font-mono), ui-monospace, monospace;
   font-size: 0.62rem;
   font-weight: 700;
   letter-spacing: 0.12em;
   line-height: 1;
   text-transform: uppercase;
   cursor: pointer;
-  backdrop-filter: blur(12px);
-  transition: border-color var(--dur-2) var(--ease-standard),
+  transition:
+    border-color var(--dur-2) var(--ease-standard),
     background var(--dur-2) var(--ease-standard),
     color var(--dur-2) var(--ease-standard);
 }
 
 .motionControl:hover:not(:disabled),
 .motionControl:focus-visible {
-  border-color: rgba(255, 252, 0, 0.66);
-  background: rgba(255, 252, 0, 0.1);
+  border-color: var(--line-hover);
+  color: var(--ink);
 }
 
 .motionControl:disabled {
-  color: var(--muted);
+  color: var(--ink-3);
   border-color: var(--line-soft);
   cursor: default;
+}
+
+/* Over the landing page's black, painted in the landing page's own colours.
+   MotionControl sets this from the pathname because it is a child of <body>,
+   outside the `.landing` scope that would otherwise hand it these values. */
+.motionControl[data-surface="landing"] {
+  border-color: rgba(255, 252, 0, 0.25);
+  border-radius: 0;
+  background: rgba(5, 5, 5, 0.9);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.55), 0 0.8rem 2.4rem rgba(0, 0, 0, 0.32);
+  color: #fffd66;
+  backdrop-filter: blur(12px);
+}
+
+.motionControl[data-surface="landing"]:hover:not(:disabled),
+.motionControl[data-surface="landing"]:focus-visible {
+  border-color: rgba(255, 252, 0, 0.66);
+  background: rgba(255, 252, 0, 0.1);
+  color: #fffd66;
+}
+
+.motionControl[data-surface="landing"]:disabled {
+  border-color: rgba(244, 244, 241, 0.06);
+  color: #8f8f8a;
 }
 
 .motionControlIcon {
@@ -669,9 +1054,9 @@ html[data-motion="calm"] [data-bolt-intro] {
 
   .motionControl {
     bottom: max(0.5rem, env(safe-area-inset-bottom));
-    left: max(0.5rem, env(safe-area-inset-left));
+    right: max(0.5rem, env(safe-area-inset-right));
     justify-content: center;
-    width: 44px;
+    width: 34px;
     padding-inline: 0;
   }
 
@@ -682,7 +1067,7 @@ html[data-motion="calm"] [data-bolt-intro] {
     padding: 0;
     margin: -1px;
     overflow: hidden;
-    clip: rect(0, 0, 0, 0);
+    clip-path: inset(50%);
     white-space: nowrap;
     border: 0;
   }

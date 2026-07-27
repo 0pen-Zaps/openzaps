@@ -1,5 +1,6 @@
 "use client";
 
+import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import {
   MOTION_STORAGE_KEY,
@@ -11,6 +12,11 @@ import { useReducedMotionPreference } from "@/components/useReducedMotionPrefere
 
 export function MotionControl(): React.JSX.Element {
   const reduced = useReducedMotionPreference();
+  // This control floats over both identities but belongs to neither subtree:
+  // it is a direct child of <body>, so it reads the app's tokens even while
+  // sitting on top of the landing page's black. Telling globals.css which
+  // ground it is over is cheaper than trying to make one palette work on both.
+  const landing = usePathname() === "/";
   // Calm is the safe server/hydration snapshot. The effect replaces it with the
   // real media-query value immediately after mount.
   const [systemReduced, setSystemReduced] = useState(true);
@@ -43,6 +49,7 @@ export function MotionControl(): React.JSX.Element {
     <button
       type="button"
       className="motionControl"
+      data-surface={landing ? "landing" : undefined}
       data-mode={reduced ? "calm" : "cinematic"}
       aria-label={label}
       aria-pressed={reduced}

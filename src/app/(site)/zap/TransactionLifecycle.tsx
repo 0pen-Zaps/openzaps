@@ -53,22 +53,21 @@ export function TransactionLifecycle({
   return (
     <section className={styles.lifecycle} aria-labelledby="transaction-lifecycle-title">
       <div className={styles.lifecycleHead}>
-        <div>
-          <span className="eyebrow">Execution flight recorder</span>
-          <h3 id="transaction-lifecycle-title">From preflight to proof.</h3>
-        </div>
-        <p aria-live="polite">{summary(activity)}</p>
+        <h3 id="transaction-lifecycle-title" className={styles.lifecycleTitle}>
+          Execution flight recorder
+        </h3>
+        <p className={styles.lifecycleSummary} aria-live="polite">{summary(activity)}</p>
       </div>
 
       <ol className={styles.lifecycleTrack}>
         {STEPS.map((step, index) => (
-          <li key={step.id} data-status={statuses[index]}>
+          <li className={styles.lifecycleStep} key={step.id} data-status={statuses[index]}>
             <span className={styles.lifecycleNode} aria-hidden="true">
               {statuses[index] === "done" ? "✓" : statuses[index] === "error" ? "!" : index + 1}
             </span>
             <div>
-              <strong>{step.title}</strong>
-              <small>{step.detail}</small>
+              <strong className={styles.lifecycleName}>{step.title}</strong>
+              <small className={styles.lifecycleDetail}>{step.detail}</small>
             </div>
           </li>
         ))}

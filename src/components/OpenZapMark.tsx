@@ -16,6 +16,16 @@ import { BOLT, BOLT_BOX, scanlines } from "@/lib/scanlines";
  * site already sizes this component through CSS that assumes a square, so
  * keeping the aspect ratio means the identity could change without touching
  * nine layouts and a favicon pipeline.
+ *
+ * The bolt is `currentColor`, not a hardcoded #FFFC00, because the mark now
+ * appears on grounds the brand yellow cannot survive:
+ *   - the app sidebar's brand tile is `--btn`, which IS #FFFC00 under Voltage —
+ *     a yellow bolt on it disappears completely (that is what `--zap-on-btn`
+ *     exists for),
+ *   - the 404 and error pages paint the mark straight onto `--bg`, which is
+ *     cream under the default theme.
+ * Every call site therefore sets `color`. A caller that forgets inherits the
+ * surrounding ink: off-brand, but visible — the right way round for a failure.
  */
 
 /** Rules the mark is sliced into. */
@@ -48,7 +58,7 @@ export function OpenZapMark({ className }: { className?: string }): React.JSX.El
             width={span.x2 - span.x1}
             height={bar}
             rx={Math.min(0.9, bar / 3)}
-            fill="#fffc00"
+            fill="currentColor"
             style={{ "--i": span.i } as CSSProperties}
           />
         ))}

@@ -12,9 +12,19 @@ export function SiteFooter(): React.JSX.Element {
             <OpenZapMark className={styles.mark} />
             <div>
               <strong>OpenZaps</strong>
+              {/* The product's one-line definition, and the only place it
+                  appears outside /docs — so it is what someone landing on
+                  /token or /explore reads first. "Zaps for agent-triggered
+                  DeFi" would be circular against the brand name, which is why
+                  the term it replaces stays here in apposition. */}
+              {/* The explicit {" "} is not noise. A JSXText node that spans
+                  lines loses the space between an interpolation and the word
+                  after it, so `{TOKEN.symbol} is` renders as "0xZAPSis". The
+                  rest of this file already used the same guard. */}
               <p>
-                Policy capsules for agent-triggered DeFi: the target, recipient, asset, and calldata are fixed before
-                signing. {TOKEN.symbol} is the ERC-20 in the protocol&apos;s first live route, traded through {TOKEN_LAUNCH.venue} on{" "}
+                Zaps are immutable policy capsules for agent-triggered DeFi: the target, recipient, asset, and calldata
+                are fixed before signing. {TOKEN.symbol}{" "}
+                is the ERC-20 in the protocol&apos;s first live route, traded through {TOKEN_LAUNCH.venue} on{" "}
                 {TOKEN_LAUNCH.network}.
               </p>
             </div>
