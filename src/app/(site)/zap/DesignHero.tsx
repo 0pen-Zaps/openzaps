@@ -12,13 +12,44 @@ const SHAPES: FlowShape[] = ["token", "lp", "receipt", "yield", "debt"];
 export function DesignHero(): React.JSX.Element {
   return (
     <section className={`container ${buildStyles.hero}`}>
-      <span className="eyebrow">Zap builder</span>
-      <h1>Design it here. Sign it one tab over.</h1>
-      <p>
-        Every DeFi activity is a block that declares its connectors, so a joint seats only where the shapes
-        match. When a design reduces to a deployable route, the readout hands it straight to{" "}
-        <strong>Zap now</strong> — same page, nothing submitted until you sign.
-      </p>
+      <div className={buildStyles.heroGrid}>
+        <div className={buildStyles.heroCopy}>
+          <span className="eyebrow">Visual Zap builder</span>
+          <h1>Build the flow. See the bounds. Sign when it’s right.</h1>
+          <p>
+            Start from a blueprint or compose your own flow. OpenZaps checks connector fit, guard coverage,
+            live-route support, and fees while you build. <strong>Nothing touches your wallet</strong> until you
+            continue to Zap now or Automate.
+          </p>
+          <a className={buildStyles.heroCta} href="#zap-workspace">
+            Start building
+            <span aria-hidden="true">↓</span>
+          </a>
+        </div>
+        <ol className={buildStyles.heroSteps} aria-label="From idea to wallet">
+          <li>
+            <span>01</span>
+            <div>
+              <strong>Compose</strong>
+              <p>Load a blueprint or connect policy blocks that fit.</p>
+            </div>
+          </li>
+          <li>
+            <span>02</span>
+            <div>
+              <strong>Review</strong>
+              <p>Check every connector, guard, live route, fee, and limitation.</p>
+            </div>
+          </li>
+          <li>
+            <span>03</span>
+            <div>
+              <strong>Authorize</strong>
+              <p>Carry exact route values into Zap now or automation policy into Automate.</p>
+            </div>
+          </li>
+        </ol>
+      </div>
       <div className={buildStyles.legend}>
         {SHAPES.map((shape) => (
           <span className={buildStyles.legendItem} key={shape}>

@@ -104,7 +104,7 @@ export function UseSurface(): React.JSX.Element {
 
   return (
     <div>
-      <div className="container" style={{ paddingTop: "1.1rem" }}>
+      <div className={`container ${buildStyles.useNav}`}>
         <div
           className={`${appStyles.segment} ${buildStyles.useTabs}`}
           role="tablist"
@@ -122,8 +122,11 @@ export function UseSurface(): React.JSX.Element {
             className={view === "start" ? appStyles.segOn : appStyles.seg}
             onClick={() => select("start")}
           >
-            Start
-            <em>choose an intent</em>
+            <span className={buildStyles.useTabStep} aria-hidden="true">
+              01 <i>{view === "start" ? "Current" : "Open"}</i>
+            </span>
+            <strong>Start</strong>
+            <em>Choose an intent</em>
           </button>
           <button
             ref={designTabRef}
@@ -136,8 +139,11 @@ export function UseSurface(): React.JSX.Element {
             className={view === "design" ? appStyles.segOn : appStyles.seg}
             onClick={() => select("design")}
           >
-            Compose
-            <em>connect policy blocks</em>
+            <span className={buildStyles.useTabStep} aria-hidden="true">
+              02 <i>{view === "design" ? "Current" : "Open"}</i>
+            </span>
+            <strong>Compose</strong>
+            <em>Connect policy blocks</em>
           </button>
           <button
             ref={signTabRef}
@@ -150,8 +156,11 @@ export function UseSurface(): React.JSX.Element {
             className={view === "sign" ? appStyles.segOn : appStyles.seg}
             onClick={() => select("sign")}
           >
-            Zap now
-            <em>create, fund, Zap</em>
+            <span className={buildStyles.useTabStep} aria-hidden="true">
+              03 <i>{view === "sign" ? "Current" : "Open"}</i>
+            </span>
+            <strong>Zap now</strong>
+            <em>Create, fund, execute</em>
           </button>
           <button
             ref={automateTabRef}
@@ -164,8 +173,11 @@ export function UseSurface(): React.JSX.Element {
             className={view === "automate" ? appStyles.segOn : appStyles.seg}
             onClick={() => select("automate")}
           >
-            Automate
-            <em>recurring &amp; price triggers</em>
+            <span className={buildStyles.useTabStep} aria-hidden="true">
+              04 <i>{view === "automate" ? "Current" : "Open"}</i>
+            </span>
+            <strong>Automate</strong>
+            <em>Recurring &amp; price triggers</em>
           </button>
         </div>
       </div>

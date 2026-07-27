@@ -335,6 +335,7 @@ export function ZapBuilder({
   const cardRefs = useRef(new Map<string, HTMLElement>());
   const dragRef = useRef<DragState | null>(null);
   const canvasRef = useRef<HTMLDivElement>(null);
+  const recipeRowRef = useRef<HTMLDivElement>(null);
   const hintTimer = useRef<number | undefined>(undefined);
   const runTimer = useRef<number | undefined>(undefined);
   const flagTimer = useRef<number | undefined>(undefined);
@@ -829,6 +830,15 @@ export function ZapBuilder({
     trackEvent("builder_preview_run", { blocks: chain.length });
   }, [announce, chain.length, compiled.status]);
 
+  const scrollRecipes = useCallback((direction: -1 | 1): void => {
+    const row = recipeRowRef.current;
+    if (!row) return;
+    row.scrollBy({
+      left: direction * Math.max(row.clientWidth * 0.72, 240),
+      behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth",
+    });
+  }, []);
+
   /**
    * The block the preview highlight is currently on.
    *
@@ -1192,23 +1202,34 @@ export function ZapBuilder({
   return (
     <div className={styles.builder} data-dragging={drag?.active ? "true" : "false"}>
       <section className={styles.recipes} aria-label="Zap blueprints">
-        <div className={styles.recipeHead}>
-          <h2>Start from a blueprint</h2>
-          {/* No count in the copy: it went stale the first time a blueprint was
-              added, and the row is right there to be counted. */}
-          <p>
-            One kind of zap each. <em>Deployable</em> routes can Zap now; <em>automatable</em> designs bind a
-            cadence or price condition on the live aeWETH ↔ 0xZAPS stack. Load any blueprint, then rebuild it
-            piece by piece.
-          </p>
+        <div className={`${styles.recipeHead} ${styles.recipeHeadWithNav}`}>
+          <div className={styles.recipeLead}>
+            <span className={styles.sectionStep}>Quick start</span>
+            <h2>Start from a blueprint</h2>
+            {/* No count in the copy: it went stale the first time a blueprint was
+                added, and the row is right there to be counted. */}
+            <p>
+              Choose an outcome, then inspect every block. <em>Deployable</em> routes can Zap now;{" "}
+              <em>automatable</em> designs bind a cadence or price condition on the live aeWETH ↔ 0xZAPS stack.
+            </p>
+          </div>
+          <div className={styles.recipeNav} aria-label="Browse blueprints">
+            <button type="button" onClick={() => scrollRecipes(-1)} aria-label="Previous blueprints">
+              ←
+            </button>
+            <button type="button" onClick={() => scrollRecipes(1)} aria-label="Next blueprints">
+              →
+            </button>
+          </div>
         </div>
-        <div className={styles.recipeRow}>
+        <div className={styles.recipeRow} ref={recipeRowRef}>
           {RECIPES.map((recipe) => (
             <button
               key={recipe.id}
               type="button"
               className={styles.recipe}
               data-active={recipe.id === recipeId}
+              aria-pressed={recipe.id === recipeId}
               style={{ ["--accent" as string]: SHAPE_COLOR[recipe.accent] }}
               onClick={() => loadRecipe(recipe)}
             >
@@ -1305,11 +1326,12 @@ export function ZapBuilder({
         </section>
       ) : null}
 
-      <div className={styles.workspace}>
+      <div className={styles.workspace} id="zap-workspace">
         {/* ---- palette ---- */}
         <aside className={styles.palette} aria-label="Block palette">
           <div className={styles.paletteHead}>
-            <h2>Blocks</h2>
+            <span className={styles.sectionStep}>01 Choose</span>
+            <h2>Choose blocks</h2>
             <p className={styles.paletteHint}>Drag into the chain, or tap to drop it in the first slot that fits.</p>
           </div>
           <div className={styles.search}>
@@ -1399,6 +1421,7 @@ export function ZapBuilder({
         <section className={styles.canvasWrap} aria-label="Zap chain">
           <header className={styles.canvasHead}>
             <div>
+              <span className={styles.sectionStep}>02 Arrange</span>
               <h2>Your zap</h2>
               <p title={GAS_ESTIMATE_NOTE}>
                 {chain.length} block{chain.length === 1 ? "" : "s"} · ≈{compiled.gas.toLocaleString("en-US")} gas (estimate)
@@ -1446,12 +1469,20 @@ export function ZapBuilder({
             </div>
           </header>
 
-          <p className={styles.scopeBanner} role="note">
-            <strong>Design here; authorize one tab over.</strong> Deployable one-shot routes hand their exact amount
-            and slippage to Zap now. A Recurring deposit or Price trigger on the pinned aeWETH ↔ 0xZAPS route
-            hands cadence or threshold to Automate. Every new capsule also shows the fixed creation fee before the
-            wallet prompt; nothing is submitted from this canvas.
-          </p>
+          <div className={styles.scopeBanner} role="note">
+            <p>
+              <strong>Design safely.</strong> This canvas never connects, approves, funds, signs, or submits. Review
+              the exact route, values, guard coverage, and creation fee before continuing.
+            </p>
+            <details className={styles.scopeDetails}>
+              <summary>How designs become live Zaps</summary>
+              <p>
+                Deployable one-shot routes hand their exact amount and slippage to Zap now. A Recurring deposit or
+                Price trigger on the pinned aeWETH ↔ 0xZAPS route hands cadence or threshold to Automate. The wallet
+                still confirms capsule creation and its fixed creation fee.
+              </p>
+            </details>
+          </div>
 
           <div className={styles.canvas} ref={canvasRef}>
             {chain.length === 0 ? (
@@ -1702,11 +1733,19 @@ export function ZapBuilder({
 
         {/* ---- readout ---- */}
         <aside className={styles.readout} aria-label="Policy readout">
+          <div className={styles.readoutHead}>
+            <span className={styles.sectionStep}>03 Review</span>
+            <p>Confirm what fits, what is enforced, and where this design can run.</p>
+          </div>
           <div className={styles.verdict} data-status={compiled.status}>
             <span className={styles.verdictDot} />
             <div>
               <strong>
-                {compiled.status === "pass" ? "Ready to simulate" : compiled.status === "warn" ? "Needs a review" : "Will not compile"}
+                {compiled.status === "pass"
+                  ? "Ready to preview"
+                  : compiled.status === "warn"
+                    ? "Review recommended"
+                    : "Fix before preview"}
               </strong>
               <span title={GAS_ESTIMATE_NOTE}>
                 ≈{compiled.gas.toLocaleString("en-US")} gas (estimate) · {chain.length} block
