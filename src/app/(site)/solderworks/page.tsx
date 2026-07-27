@@ -60,8 +60,12 @@ const mechanics = [
     body: "The most-executed pattern in a season would pay a fixed share of the escrowed budget to that pattern's First Print author — eligibility derived from onchain adoption only, never from any paid action, and conditioned on the author's own participation that season. It is a contest award for authorship, not passive income on a transferable asset.",
     role: (
       <>
-        <b>{TOKEN.symbol}:</b> a fixed slice of an already-escrowed season budget. Snapshot-bound, so
-        buying the NFT never buys someone else&apos;s earned award.
+        {/* Explicit space: an `&apos;` later in this same text child makes the
+            JSX transform re-trim the segment and eat the leading space, so the
+            label rendered as "0xZAPS:a fixed slice". */}
+        <b>{TOKEN.symbol}:</b>{" "}
+        a fixed slice of an already-escrowed season budget. Snapshot-bound, so buying the NFT never buys someone
+        else&apos;s earned award.
       </>
     ),
   },
@@ -92,8 +96,8 @@ export default function SolderworksPage(): React.JSX.Element {
     <main className={styles.page} id="main">
       <JsonLd data={{ "@context": "https://schema.org", ...breadcrumbJsonLd("/solderworks", "SOLDERWORKS") }} />
 
-      <section className={`container ${styles.hero}`}>
-        <span className="badge">Design preview</span>
+      <section className={styles.hero}>
+        <span className={styles.chip}>Design preview</span>
         <h1 className={styles.title}>
           <span className="gradientText">SOLDERWORKS</span>
         </h1>
@@ -113,7 +117,7 @@ export default function SolderworksPage(): React.JSX.Element {
         </div>
       </section>
 
-      <section className={`container ${styles.section}`}>
+      <section className={styles.section}>
         <header className={styles.head}>
           <span className="eyebrow">The one rule</span>
           <h2>The custody layer is never gamified.</h2>
@@ -122,13 +126,13 @@ export default function SolderworksPage(): React.JSX.Element {
           <strong>Zap deployment, funding, execution, and recovery stay deterministic and token-free.</strong>
           <p>
             Every game element lives in a separate layer that can read the contracts but can never hold your principal,
-            delay a withdrawal, or add a new action a zap can take. A game that gambled with funds would refute the one
-            claim OpenZaps is built on — that a zap cannot do anything it was not signed to do. So it doesn&apos;t.
+            delay a withdrawal, or add a new action a Zap can take. A game that gambled with funds would refute the one
+            claim OpenZaps is built on — that a Zap cannot do anything it was not signed to do. So it doesn&apos;t.
           </p>
         </div>
       </section>
 
-      <section className={`container ${styles.section}`}>
+      <section className={styles.section}>
         <header className={styles.head}>
           <span className="eyebrow">Lineage</span>
           <h2>What we studied, and what we deleted.</h2>
@@ -158,7 +162,7 @@ export default function SolderworksPage(): React.JSX.Element {
         </div>
       </section>
 
-      <section className={`container ${styles.section}`}>
+      <section className={styles.section}>
         <header className={styles.head}>
           <span className="eyebrow">The mechanics</span>
           <h2>Four moving parts, each provable onchain.</h2>
@@ -179,14 +183,14 @@ export default function SolderworksPage(): React.JSX.Element {
         </div>
       </section>
 
-      <section className={`container ${styles.section}`}>
+      <section className={styles.section}>
         <header className={styles.head}>
           <span className="eyebrow">What {TOKEN.symbol} does here</span>
           <h2>Sinks and incentives for performed actions — nothing else.</h2>
           <p>
             {TOKEN.symbol} would gain burn sinks and a way to compensate real executions. It would gain no governance,
             no revenue share, no protocol access, and no claim on any asset — exactly as today. Creating, funding,
-            executing, and recovering a zap never require holding it.
+            executing, and recovering a Zap never require holding it.
           </p>
         </header>
         <div className={styles.flows}>
@@ -213,7 +217,7 @@ export default function SolderworksPage(): React.JSX.Element {
         </div>
       </section>
 
-      <section className={`container ${styles.section}`}>
+      <section className={styles.section}>
         <header className={styles.head}>
           <span className="eyebrow">Before anything ships</span>
           <h2>The gates this design holds itself to.</h2>
@@ -225,7 +229,7 @@ export default function SolderworksPage(): React.JSX.Element {
         </ol>
       </section>
 
-      <section className={`container ${styles.section}`}>
+      <section className={styles.section}>
         <header className={styles.head}>
           <span className="eyebrow">Read it plainly</span>
           <h2>What this page is, and is not.</h2>

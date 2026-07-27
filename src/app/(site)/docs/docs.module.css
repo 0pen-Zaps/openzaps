@@ -1,462 +1,782 @@
-.page {
-  position: relative;
-  z-index: 1;
-  padding: clamp(2rem, 5vw, 4rem) 0 5rem;
-}
+/* ==========================================================================
+   The reading surfaces: /docs, /legal, /roadmap.
 
-.hero {
+   One stylesheet for all three, as it has always been, because they are one
+   grammar — a serif title, a 68ch prose measure at --ink-prose, and a small
+   set of card shapes (defs, steps, cards, facts) the three pages assemble
+   differently. /docs adds a sticky table of contents; the other two are the
+   same column without one.
+
+   Token-only. The file this replaces was drawn for a single dark theme and
+   carried hardcoded yellow hovers and rgba(255,255,255,.035) surfaces: on the
+   four light themes every card flattened into the page and the hierarchy
+   disappeared. Nothing below hardcodes a colour.
+
+   These pages render CONTENT ONLY. The app shell owns the viewport, the scroll
+   container and the content measure, so there is no page padding, no hero
+   background and no container width in here.
+   ========================================================================== */
+
+/* ── Layout ────────────────────────────────────────────────────────────── */
+
+.screen {
   display: grid;
-  grid-template-columns: minmax(0, 0.85fr) minmax(18rem, 0.45fr);
-  gap: clamp(1.5rem, 4vw, 3rem);
-  align-items: end;
-  padding-bottom: clamp(2rem, 5vw, 4rem);
-}
-
-.hero h1 {
-  margin-top: 0.8rem;
-  font-size: clamp(2.5rem, 6vw, 5.3rem);
-  font-weight: 560;
-  line-height: 1;
-  letter-spacing: 0;
-  text-wrap: balance;
-}
-
-.hero p {
-  max-width: 48rem;
-  margin-top: 1rem;
-  color: var(--text);
-  font-size: clamp(1rem, 1.6vw, 1.2rem);
-  line-height: 1.6;
-}
-
-.heroCard {
-  border: 1px solid var(--line);
-  border-radius: 0;
-  background: rgba(255, 255, 255, 0.035);
-  box-shadow: var(--card-shadow);
-  padding: 1rem;
-}
-
-.heroCard span,
-.metric span,
-.row span,
-.callout span {
-  color: var(--muted);
-  font-size: 0.78rem;
-}
-
-.heroCard strong {
-  display: block;
-  margin-top: 0.35rem;
-  font-family: var(--font-jetbrains-mono), ui-monospace, monospace;
-  font-size: 1rem;
-}
-
-.heroActions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.75rem;
-  margin-top: 1.4rem;
-}
-
-.grid {
-  display: grid;
-  grid-template-columns: minmax(0, 0.72fr) minmax(0, 1.28fr);
-  gap: 1rem;
+  grid-template-columns: 200px minmax(0, 1fr);
+  gap: 40px;
   align-items: start;
 }
 
+/* Grid and flex children default to min-width: auto, which refuses to shrink
+   below the min-content of the widest descendant. That is what let ONE
+   unbreakable 42-char address size this column past its track and clip the h1
+   and the security copy off the right edge of every phone. Every track below
+   is minmax(0, …) or a fixed px value for the same reason. */
+.article,
+.reader {
+  min-width: 0;
+}
+
+/* /legal and /roadmap have no table of contents, so nothing else is holding
+   their measure down to something readable. */
+.reader {
+  max-width: 860px;
+}
+
+/* ── Table of contents ─────────────────────────────────────────────────── */
+
 .toc {
   position: sticky;
-  top: calc(var(--nav-h) + 1rem);
-  display: grid;
-  gap: 0.35rem;
-  padding: 1rem;
-  border: 1px solid var(--line);
-  border-radius: 0;
-  background: rgba(255, 255, 255, 0.035);
-}
-
-.toc a {
-  min-height: 2.35rem;
+  top: 0;
+  align-self: start;
   display: flex;
+  flex-direction: column;
+  gap: 2px;
+  /* A sticky box with no height ceiling has no room to pin — this repo has
+     already shipped one that never pinned. Fourteen entries is taller than a
+     short laptop viewport; 106px is the context bar plus the shell's own top
+     padding. */
+  max-height: calc(100vh - 106px);
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--scroll) transparent;
+}
+
+.tocLabel {
+  flex: 0 0 auto;
+  padding: 0 10px 8px;
+  color: var(--ink-3);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.09em;
+}
+
+.tocLink {
+  display: flex;
+  flex: 0 0 auto;
   align-items: center;
-  padding: 0 0.65rem;
-  border-radius: 0;
-  color: var(--text);
-  font-size: 0.86rem;
+  min-height: 30px;
+  padding: 6px 10px;
+  border-radius: var(--r-ctl-sm);
+  color: var(--ink-2);
+  font-size: 13px;
+  font-weight: 400;
+  transition:
+    background var(--dur-1) var(--ease-standard),
+    color var(--dur-1) var(--ease-standard);
 }
 
-.toc a:hover {
-  background: rgba(255, 255, 255, 0.055);
+.tocLink:hover {
+  background: var(--panel);
+  color: var(--ink);
 }
 
-.content {
-  display: grid;
-  gap: 1rem;
-}
-
-.section,
-.callout,
-.metric,
-.codeBlock,
-.table,
-.timeline,
-.twoCol > article {
-  border: 1px solid var(--line);
-  border-radius: 0;
-  background: rgba(255, 255, 255, 0.035);
-}
-
-.section {
-  padding: clamp(1.1rem, 2.5vw, 1.6rem);
-}
-
-.section h2 {
-  font-size: clamp(1.55rem, 3vw, 2.45rem);
-  font-weight: 560;
-  letter-spacing: 0;
-}
-
-.section h3 {
-  margin-top: 1.2rem;
-  font-size: 1.08rem;
-  font-weight: 620;
-}
-
-.section p,
-.section li {
-  color: var(--text);
-  line-height: 1.65;
-}
-
-.section p {
-  margin-top: 0.7rem;
-}
-
-.section ul,
-.section ol {
-  display: grid;
-  gap: 0.5rem;
-  margin-top: 0.85rem;
-  padding-left: 1.15rem;
-}
-
-.twoCol {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 1rem;
-  margin-top: 1rem;
-}
-
-.twoCol > article {
-  padding: 1rem;
-}
-
-.twoCol h3 {
-  margin-top: 0;
-}
-
-.callout {
-  display: grid;
-  gap: 0.35rem;
-  padding: 1rem;
-  border-color: rgba(255, 194, 107, 0.28);
-  background: rgba(255, 194, 107, 0.06);
-}
-
-.callout strong {
-  color: #ffe0a8;
-}
-
-.metrics {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 1rem;
-}
-
-.metric {
-  min-height: 7rem;
-  display: grid;
-  align-content: center;
-  gap: 0.35rem;
-  padding: 1rem;
-}
-
-.metric strong {
-  color: var(--fg);
-  font-size: clamp(1.4rem, 3vw, 2rem);
+/* The plate alone marks the current section — no border, no left accent bar.
+   A second marker on top of a filled plate is one signal too many at 13px. */
+.tocOn {
+  background: var(--panel);
+  color: var(--ink);
   font-weight: 600;
 }
 
-.codeBlock {
-  margin-top: 1rem;
-  overflow: hidden;
-}
+/* ── Article head ──────────────────────────────────────────────────────── */
 
-.codeBlock pre {
+.title {
   margin: 0;
-  padding: 1rem;
-  overflow: auto;
-  color: var(--text);
-  background: rgba(0, 0, 0, 0.24);
-  font-family: var(--font-jetbrains-mono), ui-monospace, monospace;
-  font-size: 0.78rem;
-  line-height: 1.65;
+  color: var(--ink);
+  font-family: var(--font-serif), Georgia, serif;
+  font-size: 42px;
+  font-weight: 500;
+  letter-spacing: -0.025em;
+  line-height: 1.08;
+  text-wrap: balance;
 }
 
-.table {
-  display: grid;
-  overflow: hidden;
-  margin-top: 1rem;
+.lede {
+  max-width: 68ch;
+  margin: 16px 0 0;
+  color: var(--ink-prose);
+  font-size: 16px;
+  line-height: 1.7;
 }
 
-.row {
-  display: grid;
-  grid-template-columns: minmax(10rem, 0.5fr) minmax(0, 1fr);
-  gap: 1rem;
-  padding: 0.9rem 1rem;
-  border-top: 1px solid var(--line-soft);
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin-top: 20px;
 }
 
-.row:first-child {
-  border-top: 0;
+.primaryBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  height: 40px;
+  padding: 0 16px;
+  border: 0;
+  border-radius: var(--r-ctl);
+  background: var(--btn);
+  box-shadow: var(--sh-btn);
+  color: var(--btn-ink);
+  font-size: 13.5px;
+  font-weight: 600;
+  white-space: nowrap;
+  transition: background var(--dur-2) var(--ease-standard);
 }
 
-.row strong {
-  color: var(--fg);
+.primaryBtn:hover {
+  background: var(--btn-hover);
 }
 
-.row p {
-  margin: 0;
-  color: var(--text);
-}
-
-.timeline {
-  display: grid;
-  margin-top: 1rem;
-}
-
-.phase {
-  display: grid;
-  grid-template-columns: 5.5rem minmax(0, 1fr);
-  gap: 1rem;
-  padding: 1rem;
-  border-top: 1px solid var(--line-soft);
-}
-
-.phase:first-child {
-  border-top: 0;
-}
-
-.phase span {
-  color: var(--accent-bright);
-  font-family: var(--font-jetbrains-mono), ui-monospace, monospace;
-  font-size: 0.8rem;
-}
-
-.phase h3 {
-  margin: 0;
-}
-
-.phase p {
-  margin-top: 0.35rem;
-}
-
-@media (max-width: 920px) {
-  /* minmax(0, 1fr), never bare 1fr or an implicit `auto` track: both refuse to
-     shrink below the min-content of the widest descendant, so ONE unbreakable
-     42-char address sized the hero track to 437px and the callout track to 550px
-     inside a 355px container. html/body use overflow-x: clip, so the excess was
-     not even scrollable — the h1 and the security copy were simply cut off the
-     right edge on every phone. */
-  .hero,
-  .grid,
-  .twoCol,
-  .metrics,
-  .content,
-  .callout,
-  .section {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
-  /* Grid and flex children default to min-width: auto. Without this the track
-     above can still be widened from the inside. */
-  .content,
-  .callout,
-  .section,
-  .metric,
-  .codeBlock {
-    min-width: 0;
-  }
-
-  .toc {
-    position: static;
-  }
-}
-
-@media (max-width: 560px) {
-  .row,
-  .phase {
-    grid-template-columns: 1fr;
-  }
-}
-
-/* ---------------- motion layer ----------------
-   Shared by /docs, /pricing, /security, /roadmap, and /legal. Only hover and
-   state transitions live here; entrance opacity is driven by the JS-gated
-   Reveal component so content is never hidden by an unevaluated animation. */
-
-.heroCard {
+.ghostBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  height: 40px;
+  padding: 0 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-ctl);
+  background: var(--panel-2);
+  color: var(--ink);
+  font-size: 12.5px;
+  font-weight: 500;
+  white-space: nowrap;
   transition:
-    transform var(--dur-3) var(--ease-emphasis),
+    background var(--dur-2) var(--ease-standard),
+    border-color var(--dur-2) var(--ease-standard);
+}
+
+.ghostBtn:hover {
+  background: var(--panel);
+  border-color: var(--line-hover);
+}
+
+/* Replaces the hero's floating address card: one fact, on the same line as the
+   actions, rather than a panel competing with the title. */
+.metaChip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 26px;
+  padding: 4px 11px;
+  border: 1px solid var(--line-2);
+  border-radius: var(--r-pill);
+  background: var(--panel-2);
+  color: var(--ink-2);
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-size: 11px;
+  overflow-wrap: anywhere;
+}
+
+.metaChip b {
+  flex: 0 0 auto;
+  color: var(--ink-3);
+  font-family: var(--font-sans), system-ui, sans-serif;
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+/* ── Sections and prose ────────────────────────────────────────────────── */
+
+.section {
+  min-width: 0;
+  margin-top: 32px;
+  /* Mandatory now. `html { scroll-padding-top }` in globals.css stopped
+     applying the moment the scroll moved onto the shell's own container, so
+     an anchor jump would otherwise land the heading flush against the
+     context bar. */
+  scroll-margin-top: 20px;
+}
+
+.h2 {
+  margin: 0;
+  color: var(--ink);
+  font-family: var(--font-serif), Georgia, serif;
+  font-size: 24px;
+  font-weight: 500;
+  letter-spacing: -0.015em;
+  line-height: 1.2;
+}
+
+.prose {
+  max-width: 68ch;
+  margin: 12px 0 0;
+  color: var(--ink-prose);
+  font-size: 16px;
+  line-height: 1.7;
+}
+
+.prose + .prose {
+  margin-top: 14px;
+}
+
+.prose a {
+  color: var(--link);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  text-decoration-thickness: 1px;
+}
+
+.prose code,
+.defBody code,
+.cardBody code,
+.stepBody code {
+  padding: 1px 5px;
+  border-radius: var(--r-chip);
+  background: var(--chip);
+  color: var(--ink);
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-size: 0.86em;
+  /* Identifiers and addresses are unbreakable tokens; without this they set
+     the min-content width of whatever contains them. */
+  overflow-wrap: anywhere;
+}
+
+/* A plain block list, not a flex or grid one: a list item that becomes a flex
+   or grid child is not guaranteed to keep its marker, and a bullet list with
+   no bullets reads as four stranded sentences. */
+.list {
+  max-width: 68ch;
+  margin-top: 14px;
+  padding-left: 1.15rem;
+}
+
+.list li {
+  color: var(--ink-prose);
+  font-size: 15px;
+  line-height: 1.6;
+}
+
+.list li + li {
+  margin-top: 10px;
+}
+
+.list li::marker {
+  color: var(--zap-deep);
+}
+
+/* ── Definition rows ───────────────────────────────────────────────────── */
+
+.defs {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.def {
+  display: grid;
+  grid-template-columns: 150px minmax(0, 1fr);
+  gap: 16px;
+  min-width: 0;
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-card-sm);
+  background: var(--panel);
+  transition: border-color var(--dur-2) var(--ease-standard);
+}
+
+/* Border only, never a lift: these sit in a stack where a Y-shift breaks the
+   shared edges of its neighbours. */
+.def:hover {
+  border-color: var(--line-hover);
+}
+
+.defTerm {
+  color: var(--ink);
+  font-size: 13.5px;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+/* Policy-schema fields are identifiers, not labels — they are typed into a
+   draft exactly as spelled. */
+.defTermMono {
+  color: var(--ink);
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-size: 12.5px;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.defBody {
+  min-width: 0;
+  margin: 0;
+  color: var(--ink-prose);
+  font-size: 13.5px;
+  line-height: 1.6;
+}
+
+/* ── Cards ─────────────────────────────────────────────────────────────── */
+
+.cards {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+  margin-top: 14px;
+  align-items: start;
+}
+
+.card {
+  min-width: 0;
+  padding: 18px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-card);
+  background: var(--panel);
+  transition:
     border-color var(--dur-3) var(--ease-standard),
     box-shadow var(--dur-3) var(--ease-standard);
 }
 
-.heroCard:hover {
-  transform: translateY(-4px);
-  border-color: rgba(255, 252, 0, 0.42);
-  box-shadow: 0 20px 46px rgba(0, 0, 0, 0.45);
+.card:hover {
+  border-color: var(--line-hover);
+  box-shadow: var(--sh-2);
 }
 
-/* Table-of-contents links get a marker that wipes in from the left. */
-.toc a {
-  position: relative;
-  transition: color var(--dur-2) var(--ease-standard), padding-left var(--dur-2) var(--ease-emphasis);
+.cardTitle {
+  margin: 0;
+  color: var(--ink);
+  font-size: 14px;
+  font-weight: 600;
 }
 
-.toc a::before {
-  position: absolute;
-  top: 50%;
-  left: 0;
-  width: 3px;
-  height: 1.05em;
-  content: "";
-  border-radius: 0;
-  background: var(--grad-brand);
-  transform: translateY(-50%) scaleY(0);
-  transform-origin: 50% 50%;
-  transition: transform var(--dur-3) var(--ease-spring);
+.cardBody {
+  margin: 8px 0 0;
+  color: var(--ink-prose);
+  font-size: 13.5px;
+  line-height: 1.6;
 }
 
-.toc a:hover {
-  padding-left: 0.6rem;
+.cardBody + .cardBody {
+  margin-top: 10px;
 }
 
-.toc a:hover::before {
-  transform: translateY(-50%) scaleY(1);
+/* A template's production status, as three states rather than a sentence.
+   `deferred` is deliberately muted and not a colour: it is not a warning, it
+   is a thing nobody has started. */
+.chip {
+  display: inline-flex;
+  align-items: center;
+  height: 22px;
+  margin-top: 12px;
+  padding: 0 8px;
+  border-radius: var(--r-chip);
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  white-space: nowrap;
 }
 
-.section,
-.callout,
-.metric,
-.codeBlock,
-.table,
-.timeline,
-.twoCol > article {
-  transition:
-    border-color var(--dur-3) var(--ease-standard),
-    background var(--dur-3) var(--ease-standard);
+.chipOk {
+  background: var(--ok-wash);
+  color: var(--ok);
 }
 
-.twoCol > article {
-  transition:
-    transform var(--dur-3) var(--ease-emphasis),
-    border-color var(--dur-3) var(--ease-standard);
+.chipWarn {
+  background: var(--warn-wash);
+  color: var(--warn);
 }
 
-.twoCol > article:hover {
-  transform: translateY(-4px);
-  border-color: rgba(255, 252, 0, 0.38);
+.chipMuted {
+  background: var(--chip);
+  color: var(--ink-3);
 }
 
-.callout:hover,
-.codeBlock:hover {
-  border-color: rgba(255, 252, 0, 0.32);
-}
+/* ── Code ──────────────────────────────────────────────────────────────── */
 
-/* Rows nudge rather than lift — they sit in a bordered stack where a Y-shift
-   would break the shared edges. */
-.row {
-  transition: background var(--dur-2) var(--ease-standard), padding-left var(--dur-2) var(--ease-emphasis);
-}
-
-.row:hover {
-  padding-left: 1.15rem;
-  background: rgba(255, 255, 255, 0.028);
-}
-
-.metric {
-  transition: transform var(--dur-3) var(--ease-emphasis), border-color var(--dur-3) var(--ease-standard);
-}
-
-.metric strong {
-  font-variant-numeric: tabular-nums;
-}
-
-.metric:hover {
-  transform: translateY(-3px);
-  border-color: rgba(255, 252, 0, 0.4);
-}
-
-/* Timeline: the step number becomes the focal point on hover, and a connecting
-   rail fills downward so the sequence reads as progressing. */
-.timeline {
-  position: relative;
-}
-
-.phase {
-  position: relative;
-  transition: background var(--dur-3) var(--ease-standard);
-}
-
-.phase:hover {
-  background: rgba(255, 255, 255, 0.024);
-}
-
-.phase span {
-  display: inline-block;
-  transition: transform var(--dur-3) var(--ease-spring), color var(--dur-2) var(--ease-standard);
-}
-
-.phase:hover span {
-  color: var(--accent-bright);
-  transform: scale(1.08);
-}
-
-.codeBlock {
-  position: relative;
+.code {
+  min-width: 0;
+  margin-top: 14px;
   overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: var(--r-card-sm);
+  background: var(--sunk);
 }
 
-/* A slow scanline over code blocks, echoing the hero's exec card. */
-.codeBlock::after {
-  position: absolute;
-  top: -30%;
-  right: 0;
-  left: 0;
-  height: 24%;
-  content: "";
-  background: linear-gradient(180deg, transparent, rgba(255, 252, 0, 0.07), transparent);
-  animation: docScan 7.5s var(--ease-standard) infinite;
-  animation-delay: var(--scan-delay, 0s);
-  pointer-events: none;
+.code pre {
+  margin: 0;
+  padding: 14px 16px;
+  /* Long curl lines scroll inside their own card. Without this the widest
+     line sets the page's min-content width and the whole screen scrolls. */
+  overflow-x: auto;
+  color: var(--ink-2);
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-size: 12px;
+  line-height: 1.65;
+  tab-size: 2;
 }
 
-@keyframes docScan {
-  0%, 55% { top: -30%; }
-  100% { top: 130%; }
+/* ── Step lists ────────────────────────────────────────────────────────── */
+
+.steps {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 14px;
 }
 
-/* Addresses and hashes are unbreakable tokens; without this they set the
-   min-content width of whatever contains them, which is what clipped the hero
-   and the security callout on mobile. */
-.heroCard strong,
-.heroCard code,
-.callout strong,
-.callout code,
-.page code,
-.page dd {
+.step {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr);
+  gap: 14px;
+  align-items: start;
+  min-width: 0;
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-card-sm);
+  background: var(--panel);
+  transition: border-color var(--dur-2) var(--ease-standard);
+}
+
+.step:hover {
+  border-color: var(--line-hover);
+}
+
+/* /roadmap's phases are words, not numerals, so they need a column that fits
+   one. */
+.stepPhased {
+  grid-template-columns: 104px minmax(0, 1fr);
+}
+
+.stepNum {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  /* 50%, not a radius token: a circle stays a circle in Voltage, where every
+     other radius resolves to 0. */
+  border-radius: 50%;
+  background: var(--zap-wash);
+  color: var(--zap-wash-ink);
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+/* Production gates and roadmap phases both get a neutral tag, deliberately not
+   --ok or --zap: none of these has completed, and a done-looking badge on an
+   unmet gate is a false claim in a badge. */
+.stepTag {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 22px;
+  padding: 0 6px;
+  border-radius: var(--r-chip);
+  background: var(--track);
+  color: var(--ink-3);
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-size: 10.5px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.stepTitle {
+  margin: 0;
+  color: var(--ink);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.stepBody {
+  margin: 6px 0 0;
+  color: var(--ink-prose);
+  font-size: 13.5px;
+  line-height: 1.6;
+}
+
+/* ── Callouts ──────────────────────────────────────────────────────────── */
+
+/* The audit disclosure. It is the loudest thing on the page on purpose: real
+   funds, unaudited contracts. */
+.warn {
+  display: flex;
+  gap: 12px;
+  margin-top: 24px;
+  padding: 16px;
+  border: 1px solid var(--danger-line);
+  border-radius: var(--r-card-sm);
+  background: var(--danger-wash);
+}
+
+/* Glyph inherits currentColor and ships no width/height, so the size has to
+   come from here. */
+.warnIcon {
+  flex: 0 0 auto;
+  width: 18px;
+  height: 18px;
+  margin-top: 1px;
+  color: var(--danger);
+}
+
+.warnCopy {
+  min-width: 0;
+  margin: 0;
+  color: var(--danger-ink);
+  font-size: 13.5px;
+  line-height: 1.6;
+}
+
+.warnEyebrow {
+  display: block;
+  margin-bottom: 6px;
+  color: var(--danger-ink);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  opacity: 0.8;
+}
+
+.warnTitle {
+  display: block;
+  margin-bottom: 5px;
+  font-weight: 600;
+}
+
+/* A disclosure that is not a hazard — the "no financial advice" block. Warm
+   enough not to be skipped, not red, because nothing here has gone wrong. */
+.note {
+  margin-top: 24px;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-card-sm);
+  background: var(--warn-wash);
+}
+
+.noteEyebrow {
+  display: block;
+  margin-bottom: 6px;
+  color: var(--warn);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+}
+
+.noteTitle {
+  display: block;
+  color: var(--ink);
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.45;
+}
+
+.noteCopy {
+  max-width: 68ch;
+  margin: 8px 0 0;
+  color: var(--ink-prose);
+  font-size: 13.5px;
+  line-height: 1.6;
+}
+
+/* ── Fact cards ────────────────────────────────────────────────────────── */
+
+.facts {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 14px;
+}
+
+.fact {
+  min-width: 0;
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-card-sm);
+  background: var(--panel-2);
+}
+
+.factLabel {
+  display: block;
+  color: var(--ink-3);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+}
+
+.factValue {
+  display: block;
+  margin-top: 6px;
+  color: var(--ink);
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-size: 14px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
   overflow-wrap: anywhere;
+}
+
+/* ── Token utility panel ───────────────────────────────────────────────── */
+
+/* TokenUtilityPanel is shared with the landing page and /explore, so it is
+   restyled from the outside rather than forked. The class is doubled because
+   both selectors are single-class and CSS Module bundle order is not
+   something this page gets to decide. */
+.tokenPanel.tokenPanel {
+  gap: 26px;
+  margin-top: 32px;
+  padding: 20px;
+  scroll-margin-top: 20px;
+  border: 1px solid var(--zap-line);
+  border-radius: var(--r-card);
+  background: var(--zap-tint);
+  box-shadow: none;
+}
+
+/* A 16rem "0x" watermark drawn in hardcoded yellow. It was texture on black;
+   on cream it is a stain. */
+.tokenPanel.tokenPanel::after {
+  display: none;
+}
+
+/* Its own heading is clamp(1.85rem, 4vw, 3.2rem) — three times the section
+   headings around it, which on this page makes the token panel read as a
+   second page rather than a section of this one. */
+.tokenPanel.tokenPanel h2 {
+  max-width: none;
+  font-family: var(--font-serif), Georgia, serif;
+  font-size: 24px;
+  font-weight: 500;
+  letter-spacing: -0.015em;
+  line-height: 1.2;
+}
+
+/* ==========================================================================
+   Mobile — designed here, not in the handoff.
+
+   The shell drops its content minimum below 900px, so the job left to this
+   file is to stop being two columns and to stop any one unbreakable token
+   from widening the page. The table of contents becomes a horizontal chip
+   rail under the context bar: still sticky, still the page outline, but it
+   costs one row instead of a third of the screen.
+   ========================================================================== */
+
+@media (max-width: 900px) {
+  .screen {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 20px;
+  }
+
+  .toc {
+    z-index: 5;
+    flex-direction: row;
+    gap: 6px;
+    max-height: none;
+    padding: 8px 0;
+    overflow-x: auto;
+    overflow-y: visible;
+    background: var(--bg);
+    scrollbar-width: none;
+  }
+
+  .toc::-webkit-scrollbar {
+    display: none;
+  }
+
+  .tocLabel {
+    display: none;
+  }
+
+  .tocLink {
+    min-height: 32px;
+    padding: 6px 12px;
+    border: 1px solid var(--line);
+    border-radius: var(--r-pill);
+    background: var(--panel-2);
+    white-space: nowrap;
+  }
+
+  .tocOn {
+    background: var(--panel);
+    border-color: var(--line-hover);
+  }
+
+  .title {
+    font-size: 32px;
+    letter-spacing: -0.02em;
+  }
+
+  .h2 {
+    font-size: 21px;
+  }
+
+  .lede,
+  .prose {
+    font-size: 15px;
+    line-height: 1.65;
+  }
+
+  .section {
+    margin-top: 26px;
+  }
+
+  .cards,
+  .facts {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  /* Term above body: 150px of label beside 13.5px of prose is two words a
+     line on a phone. */
+  .def {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 6px;
+    padding: 13px 16px;
+  }
+
+  .stepPhased {
+    grid-template-columns: 84px minmax(0, 1fr);
+  }
+
+  .code pre {
+    padding: 12px 14px;
+    font-size: 11.5px;
+  }
+
+  .tokenPanel.tokenPanel {
+    padding: 16px;
+  }
+
+  .primaryBtn,
+  .ghostBtn {
+    height: 38px;
+  }
+}
+
+@media (max-width: 560px) {
+  /* A 42-char address gets its own line rather than sharing one with two
+     buttons. */
+  .actions > * {
+    flex: 1 1 100%;
+    justify-content: center;
+  }
+
+  .metaChip {
+    width: 100%;
+  }
 }

@@ -1,9 +1,12 @@
+/* No top margin of its own. This footer used to end a page-length scroll and
+   needed the air; it now sits at the bottom of the app shell's scroll
+   container, which owns the gap above it. Two sources of spacing meant a
+   ~9rem hole under every short screen. */
 .footer {
   position: relative;
   z-index: 1;
-  margin-top: clamp(4rem, 10vw, 9rem);
-  border-top: 1px solid rgba(255, 255, 255, 0.08);
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.018), transparent);
+  border-top: 1px solid var(--line-2);
+  background: var(--panel-2);
 }
 
 .inner {
@@ -21,14 +24,18 @@
   gap: 0.85rem;
 }
 
+/* --zap-deep, not --zap: the mark sits straight on the footer's own surface,
+   and #FFFC00 on cream is about 1.1:1. This is the brand darkened just enough
+   to be a shape, and it is still the full yellow on the dark themes. */
 .mark {
   width: 2.6rem;
   height: 2.6rem;
   flex: 0 0 auto;
+  color: var(--zap-deep);
 }
 
 .brand strong {
-  color: #f4f4f1;
+  color: var(--ink);
   font-size: 1.05rem;
   font-weight: 600;
 }
@@ -36,7 +43,7 @@
 .brand p {
   max-width: 24rem;
   margin-top: 0.35rem;
-  color: #8f8f8a;
+  color: var(--ink-3);
   font-size: 0.92rem;
   line-height: 1.55;
 }
@@ -44,7 +51,7 @@
 .note {
   max-width: 26rem;
   margin-top: 1.4rem;
-  color: var(--muted-2);
+  color: var(--ink-3);
   font-size: 0.8rem;
   line-height: 1.55;
 }
@@ -61,10 +68,10 @@
   gap: 0.7rem;
 }
 
-.col h3 {
+.col h2 {
   margin-bottom: 0.3rem;
-  color: var(--muted-2);
-  font-family: var(--font-jetbrains-mono), ui-monospace, monospace;
+  color: var(--ink-3);
+  font-family: var(--font-mono), ui-monospace, monospace;
   font-size: 0.72rem;
   font-weight: 500;
   letter-spacing: 0.08em;
@@ -74,14 +81,14 @@
 .col a {
   width: max-content;
   max-width: 100%;
-  color: #b9b9b4;
+  color: var(--ink-2);
   font-size: 0.92rem;
   overflow-wrap: anywhere;
   transition: color 160ms ease;
 }
 
 .col a:hover {
-  color: #fffc00;
+  color: var(--link);
 }
 
 .legal {
@@ -92,9 +99,9 @@
   width: var(--container);
   margin: 0 auto;
   padding: 1.5rem 0 2.5rem;
-  border-top: 1px solid rgba(255, 255, 255, 0.06);
-  color: var(--muted-2);
-  font-family: var(--font-jetbrains-mono), ui-monospace, monospace;
+  border-top: 1px solid var(--line-soft);
+  color: var(--ink-3);
+  font-family: var(--font-mono), ui-monospace, monospace;
   font-size: 0.75rem;
 }
 
@@ -148,5 +155,5 @@
 
 .brand:hover .mark {
   transform: rotate(8deg) scale(1.07);
-  filter: drop-shadow(0 0 18px rgba(255, 252, 0, 0.55));
+  filter: drop-shadow(0 0 18px var(--zap-line));
 }

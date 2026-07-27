@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
-import Link from "next/link";
-import { OpenZapMark } from "@/components/OpenZapMark";
+import { RouteNotFound } from "@/components/RouteNotFound";
 import styles from "./status.module.css";
 
 export const metadata: Metadata = {
@@ -9,42 +8,14 @@ export const metadata: Metadata = {
   robots: { index: false, follow: true },
 };
 
-const SUGGESTIONS = [
-  { href: "/zap", label: "Zap" },
-  { href: "/explore", label: "Explore" },
-  { href: "/docs", label: "Docs" },
-  { href: "/docs#security", label: "Security" },
-  { href: "/token", label: "Tokenomics" },
-  { href: "/roadmap", label: "Roadmap" },
-] as const;
-
+/**
+ * 404 for anything outside the app: the bare root layout, no sidebar.
+ * `(site)/not-found.tsx` handles misses inside the app, where the shell stays.
+ */
 export default function NotFound(): React.JSX.Element {
   return (
     <main className={`container ${styles.page}`} id="main">
-      <div className={styles.inner}>
-        <OpenZapMark className={styles.mark} />
-        <span className={styles.code}>404</span>
-        <h1 className={styles.title}>This route was never in the policy.</h1>
-        <p className={styles.body}>
-          The page you asked for does not exist. Nothing failed and nothing was executed. The address has no
-          capsule behind it.
-        </p>
-        <div className={styles.actions}>
-          <Link href="/" className="btn btnPrimary btnLg">
-            <span>Back to home</span>
-          </Link>
-          <Link href="/docs" className="btn btnGhost btnLg">
-            <span>Read the docs</span>
-          </Link>
-        </div>
-        <div className={styles.suggest}>
-          {SUGGESTIONS.map((item) => (
-            <Link href={item.href} key={item.href}>
-              {item.label}
-            </Link>
-          ))}
-        </div>
-      </div>
+      <RouteNotFound />
     </main>
   );
 }

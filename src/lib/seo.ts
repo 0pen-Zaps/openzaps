@@ -20,12 +20,17 @@ type StaticPageSeo = {
 /**
  * Single source of truth for indexable routes. Route metadata, JSON-LD, sitemap entries, and
  * regression tests all consume this map so titles, canonicals, and crawl discovery cannot drift.
+ *
+ * Indexable is the whole membership test: `/profile` and `/solderworks` set
+ * `robots: { index: false }` in their own metadata, so they are deliberately absent here and
+ * therefore absent from the sitemap. The app shell's sidebar carries its own link list — that is
+ * navigation, not crawl discovery — so a route can legitimately appear in one and not the other.
  */
 export const STATIC_PAGE_SEO = {
   home: {
     title: "One-Transaction DeFi Zaps for Agents",
     description:
-      "Build one-transaction DeFi zaps with immutable policy capsules that lock targets, assets, recipients, and calldata before signing. Live on Robinhood Chain.",
+      "Build one-transaction DeFi Zaps — immutable policy capsules that lock targets, assets, recipients, and calldata before signing. Live on Robinhood Chain.",
     path: "/",
     ogImage: OG_IMAGE,
     changeFrequency: "weekly",
@@ -34,7 +39,7 @@ export const STATIC_PAGE_SEO = {
   zap: {
     title: "Build One-Transaction DeFi Zaps",
     description:
-      "Design, simulate, sign, and run one-transaction DeFi zaps with bounded policy capsules on Robinhood Chain. Your wallet keeps control of every action.",
+      "Design, simulate, sign, and run one-transaction DeFi Zaps — bounded policy capsules — on Robinhood Chain. Your wallet keeps control of every action.",
     path: "/zap",
     ogImage: "/og/app.png",
     changeFrequency: "weekly",
@@ -43,7 +48,7 @@ export const STATIC_PAGE_SEO = {
   explore: {
     title: "Explore DeFi Zaps on Robinhood Chain",
     description:
-      "Explore verified OpenZap policy capsules, owners, routes, execution history, and lifecycle state read directly from Robinhood Chain contracts and logs.",
+      "Explore verified Zaps — the immutable policy capsules the factory deploys — with owners, routes, execution history, and lifecycle read from Robinhood Chain.",
     path: "/explore",
     ogImage: OG_IMAGE,
     changeFrequency: "daily",
@@ -120,12 +125,12 @@ export const HOME_FAQS = [
   {
     question: "What is a DeFi zap?",
     answer:
-      "A DeFi zap packages multiple supported protocol steps into one wallet transaction. OpenZaps executes only routes backed by allowlisted adapters and tokens; approval, capsule creation, and funding can require separate wallet confirmations.",
+      "A DeFi zap packages multiple supported protocol steps into one wallet transaction. OpenZaps executes only routes backed by allowlisted adapters and tokens; approval, Zap creation, and funding can require separate wallet confirmations.",
   },
   {
     question: "Does every OpenZap require only one transaction?",
     answer:
-      "The bounded route executes its protocol hops and settlement atomically in one transaction after setup. Token approval, capsule creation, and funding can each require a separate wallet confirmation.",
+      "The bounded route executes its protocol hops and settlement atomically in one transaction after setup. Token approval, Zap creation, and funding can each require a separate wallet confirmation.",
   },
   {
     question: "Can an AI agent change my OpenZap policy?",
@@ -135,7 +140,7 @@ export const HOME_FAQS = [
   {
     question: "How can an owner stop or recover from an intent?",
     answer:
-      "The owner can invalidate an unused intent nonce and use the contract's emergency-exit path for tracked assets. The deployed policy stays immutable, and the live v1.1 capsule does not expose a generic pause control.",
+      "The owner can invalidate an unused intent nonce and use the contract's emergency-exit path for tracked assets. The deployed policy stays immutable, and the live v1.1 Zap does not expose a generic pause control.",
   },
   {
     question: "Does OpenZaps support every DeFi protocol?",

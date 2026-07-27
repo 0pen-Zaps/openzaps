@@ -1,0 +1,679 @@
+/* ==========================================================================
+   App shell: sidebar · context bar · one scrolling column.
+
+   The whole layout is a two-column grid pinned to the viewport, with the only
+   scroll living on <main>. That is what keeps the sidebar and the context bar
+   still while a 2,000-row activity feed goes past — and it is why nothing in
+   here uses `position: sticky` to hold the chrome in place.
+   ========================================================================== */
+
+.root {
+  display: grid;
+  grid-template-columns: 264px minmax(0, 1fr);
+  height: 100vh;
+  height: 100dvh;
+  overflow: hidden;
+  background: var(--bg);
+  color: var(--ink);
+}
+
+/* ── Sidebar ───────────────────────────────────────────────────────────── */
+
+.sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 18px 14px 14px;
+  overflow-y: auto;
+  background: var(--sunk);
+  border-right: 1px solid var(--line-2);
+  scrollbar-width: thin;
+  scrollbar-color: var(--scroll) transparent;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 6px 16px;
+}
+
+/* The tile is the primary fill, and the bolt on it is `--zap-on-btn` — NOT
+   `--zap`. Under Voltage `--btn` already is #FFFC00, so a brand-yellow bolt
+   there is a yellow mark on a yellow square: the whole logo vanishes. This is
+   the exact pair the token was added for. */
+.brandTile {
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  width: 30px;
+  height: 30px;
+  overflow: hidden;
+  border-radius: var(--r-ctl);
+  background: var(--btn);
+  color: var(--zap-on-btn);
+}
+
+.brandMark {
+  display: block;
+  width: 24px;
+  height: 24px;
+}
+
+.brandText {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  line-height: 1.15;
+}
+
+.brandText > strong {
+  font-family: var(--font-serif), Georgia, serif;
+  font-size: 17px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.brandText > span {
+  overflow: hidden;
+  color: var(--ink-3);
+  font-size: 10.5px;
+  letter-spacing: 0.04em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.newZap {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  height: 40px;
+  padding: 0 12px;
+  margin-bottom: 16px;
+  border-radius: var(--r-ctl);
+  background: var(--btn);
+  box-shadow: var(--sh-btn);
+  color: var(--btn-ink);
+  font-size: 13.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background var(--dur-2) var(--ease-standard);
+}
+
+.newZap:hover {
+  background: var(--btn-hover);
+}
+
+/* --zap-on-btn, never --zap: in Voltage the button's fill IS the brand yellow,
+   and a yellow bolt on it would be invisible. */
+.newZapBolt {
+  flex: 0 0 auto;
+  width: 15px;
+  height: 15px;
+  color: var(--zap-on-btn);
+}
+
+.newZapHint {
+  margin-left: auto;
+  color: var(--btn-ink-3);
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-size: 10.5px;
+}
+
+/* A real box, not `display: contents`. Contents would let the groups become
+   flex children of the sidebar directly — tidier CSS — at the cost of taking a
+   labelled `nav` landmark out of the accessibility tree in more than one
+   shipping browser. */
+.nav {
+  display: flex;
+  flex-direction: column;
+}
+
+.group {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.group + .group {
+  margin-top: 16px;
+}
+
+.groupLabel {
+  padding: 0 8px 6px;
+  color: var(--ink-3);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+}
+
+.navItem {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 34px;
+  padding: 0 10px;
+  border-radius: var(--r-ctl);
+  color: var(--ink-2);
+  font-size: 13.5px;
+  font-weight: 500;
+  transition:
+    background var(--dur-1) var(--ease-standard),
+    color var(--dur-1) var(--ease-standard);
+}
+
+.navItem:hover {
+  background: var(--hover);
+}
+
+/* The plate alone marks the active item — no border, no left accent bar. A
+   second marker on top of a filled plate is one signal too many at this size. */
+.navItem[data-active] {
+  background: var(--panel);
+  color: var(--ink);
+}
+
+.navIcon {
+  flex: 0 0 auto;
+  width: 16px;
+  height: 16px;
+  opacity: 0.75;
+}
+
+.navItem[data-active] .navIcon {
+  opacity: 1;
+}
+
+.navChip {
+  margin-left: auto;
+  padding: 1px 6px;
+  border-radius: var(--r-pill);
+  background: var(--zap-wash);
+  color: var(--zap-wash-ink);
+  font-size: 10px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+/* ── Pick up again ─────────────────────────────────────────────────────── */
+
+.reuse {
+  margin-top: 20px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line-2);
+}
+
+.reuseHead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  padding-right: 8px;
+}
+
+.reuseAll {
+  color: var(--ink-3);
+  font-size: 11px;
+}
+
+.reuseAll:hover {
+  color: var(--ink);
+}
+
+.reuseEmpty {
+  padding: 0 8px 4px;
+  color: var(--ink-3);
+  font-size: 11.5px;
+  line-height: 1.45;
+}
+
+.reuseRow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 2px 8px;
+  width: 100%;
+  padding: 8px 10px;
+  border-radius: var(--r-ctl);
+  text-align: left;
+  transition: background var(--dur-1) var(--ease-standard);
+}
+
+.reuseRow:hover {
+  background: var(--hover);
+}
+
+.reuseRow > strong {
+  overflow: hidden;
+  color: var(--ink);
+  font-size: 12.5px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.reuseIcon {
+  grid-row: 1 / 3;
+  align-self: center;
+  width: 14px;
+  height: 14px;
+  color: var(--ink-2);
+}
+
+.reuseMeta {
+  overflow: hidden;
+  color: var(--ink-3);
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-size: 10.5px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ── Sidebar foot ──────────────────────────────────────────────────────── */
+
+.sidebarFoot {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: auto;
+  padding-top: 18px;
+}
+
+.wallet {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  height: 42px;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-ctl);
+  background: var(--panel-2);
+  text-align: left;
+  cursor: pointer;
+  transition: background var(--dur-2) var(--ease-standard);
+}
+
+.wallet:hover:not(:disabled) {
+  background: var(--panel);
+}
+
+.wallet:disabled {
+  cursor: default;
+  opacity: 0.7;
+}
+
+.walletAvatar {
+  flex: 0 0 auto;
+  width: 22px;
+  height: 22px;
+  /* Drawn with 50%, not a radius token: a circle stays a circle in Voltage,
+     where every other radius resolves to 0. */
+  border-radius: 50%;
+  background: linear-gradient(140deg, var(--zap), var(--zap-deep));
+}
+
+.walletAvatar[data-idle] {
+  background: var(--track);
+}
+
+.walletText {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  line-height: 1.2;
+}
+
+.walletText > strong {
+  overflow: hidden;
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-size: 11.5px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wallet[data-network] .walletText > strong {
+  font-family: var(--font-sans), system-ui, sans-serif;
+  font-size: 12.5px;
+}
+
+.walletChain {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--ok);
+  font-size: 10.5px;
+}
+
+.walletHint {
+  overflow: hidden;
+  color: var(--ink-3);
+  font-size: 10.5px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wallet[data-network="wrong"] .walletHint {
+  color: var(--warn);
+}
+
+.walletChevron {
+  flex: 0 0 auto;
+  width: 14px;
+  height: 14px;
+  margin-left: auto;
+  color: var(--ink-3);
+}
+
+/* A live reading, not decoration: the pulse is the difference between "this
+   number is being refreshed" and "this number was true once". */
+.livePip {
+  flex: 0 0 auto;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--ok);
+  animation: zpulse 2.4s ease-in-out infinite;
+}
+
+/* Declared HERE even though globals.css has an identical `zpulse`. Turbopack
+   scopes `animation-name` per CSS Module, so a reference to a keyframe defined
+   in globals resolves to nothing — and it fails silently: the property is
+   dropped, `animationName` computes to `none`, and the dot just sits there
+   looking like a live indicator. Every module that animates declares its own;
+   see the guard in src/app/css-animations.test.ts. */
+@keyframes zpulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
+
+/* ── Main column ───────────────────────────────────────────────────────── */
+
+.column {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.contextBar {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 14px;
+  height: 56px;
+  padding: 0 26px;
+  background: var(--bg);
+  border-bottom: 1px solid var(--line-2);
+}
+
+.crumb {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  color: var(--ink-3);
+  font-size: 12.5px;
+}
+
+.crumb > strong {
+  overflow: hidden;
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.crumbSep {
+  flex: 0 0 auto;
+  width: 12px;
+  height: 12px;
+}
+
+.chainChip {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 7px;
+  height: 26px;
+  padding: 0 9px;
+  margin-left: auto;
+  border: 1px solid var(--line-2);
+  border-radius: var(--r-pill);
+  background: var(--panel-2);
+  color: var(--ink-2);
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+/* No wallet, no live reading — so no pulse. An idle pip that keeps blinking is
+   the chip claiming to be watching something it is not. */
+.chainChip:not([data-live]) .livePip {
+  background: var(--ink-3);
+  animation: none;
+}
+
+.barButton {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 7px;
+  height: 30px;
+  padding: 0 11px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-ctl);
+  background: var(--panel-2);
+  color: var(--ink);
+  font-size: 12.5px;
+  font-weight: 500;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background var(--dur-2) var(--ease-standard);
+}
+
+.barButton:hover {
+  background: var(--panel);
+}
+
+.barIcon {
+  width: 13px;
+  height: 13px;
+}
+
+.scroll {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  /* Chrome above the scrollport is gone: it is now beside and above this box,
+     not inside it. Modules that add --nav-h to a sticky offset were written
+     against a page-level scroll and would otherwise push themselves 4.4rem
+     down for no reason. */
+  --nav-h: 0px;
+  scrollbar-color: var(--scroll) transparent;
+}
+
+.content {
+  min-width: 1040px;
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: 26px 26px 40px;
+}
+
+/* Compose claims the wider measure by declaring itself, rather than the shell
+   reading `?view=design` to find out. Knowing the view here would mean
+   `useSearchParams` in the wrapper that renders `children`, and a Suspense
+   fallback around that wrapper renders `children` a second time — two
+   `<main id="main">` in the document, and every console's mount effects and RPC
+   polling running twice. A selector costs nothing and cannot do that. */
+.content:has([data-screen-label="Compose"]) {
+  min-width: 1180px;
+  max-width: 1320px;
+}
+
+/* A reading measure. 1180px of 16px prose is roughly 130 characters a line,
+   about double what anyone reads comfortably. */
+.content[data-measure="read"] {
+  min-width: 1000px;
+  max-width: 1080px;
+}
+
+/* Release the minimum as soon as the viewport cannot honour it.
+   The handoff asks for a hard `min-width` so a desktop layout never squeezes
+   below the width it was drawn for, scrolling sideways instead. But it also
+   calls the design desktop-only at ≥1240px — and those two numbers do not
+   agree: Compose's 1180px minimum plus the 264px rail needs a 1444px viewport,
+   and even the standard 1040px measure needs 1304px. Taken literally, a
+   1280×800 laptop — the single most common desktop size there is — gets a
+   horizontally scrolling app on every screen.
+   Sideways scrolling is the worse failure, and the screens have real responsive
+   tiers now (1100/900/560), so below 1440px the measure gives way and those
+   tiers do their job. Above it, the minimum holds exactly as specified. */
+@media (max-width: 1439px) {
+  .content,
+  .content:has([data-screen-label="Compose"]),
+  .content[data-measure="read"] {
+    min-width: 0;
+  }
+}
+
+.footer {
+  margin-top: 40px;
+}
+
+/* ── Drawer toggle ─────────────────────────────────────────────────────── */
+
+.drawerToggle {
+  display: none;
+  position: fixed;
+  z-index: 70;
+  top: 10px;
+  left: 12px;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-ctl);
+  background: var(--panel);
+  box-shadow: var(--sh-1);
+  color: var(--ink);
+  cursor: pointer;
+}
+
+.drawerToggleIcon {
+  width: 18px;
+  height: 18px;
+}
+
+/* The one deliberate colour literal in this file. A scrim's job is to dim what
+   is behind it, and dimming is darkening in every theme — a token that inverts
+   with the palette would brighten the page on the light themes instead of
+   pushing it back. */
+.drawerScrim {
+  display: none;
+  position: fixed;
+  inset: 0;
+  z-index: 58;
+  background: rgba(0, 0, 0, 0.42);
+}
+
+/* ==========================================================================
+   Mobile — designed here, not in the handoff.
+
+   The design brief was explicitly desktop-only (§11.1), which left the shell
+   with a 264px fixed rail and a 1040px minimum content measure: on a phone that
+   is a sideways-scrolling app. The rules below are the missing half.
+
+   Three things change and nothing else does:
+     1. the rail becomes a sheet that slides in over the content,
+     2. the content measure stops being a minimum, so cards reflow instead of
+        forcing a horizontal scroll,
+     3. every two-column console stacks. That last one belongs to the screens
+        themselves; what the shell guarantees is that they are free to.
+   ========================================================================== */
+
+@media (max-width: 900px) {
+  .root {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .drawerToggle,
+  .drawerScrim {
+    display: flex;
+  }
+
+  .root:not([data-drawer]) .drawerScrim {
+    display: none;
+  }
+
+  .sidebar {
+    position: fixed;
+    z-index: 60;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    width: min(300px, 86vw);
+    padding-top: 56px;
+    box-shadow: var(--sh-4);
+    transform: translateX(-102%);
+    transition: transform var(--dur-3) var(--ease-emphasis);
+  }
+
+  .root[data-drawer] .sidebar {
+    transform: none;
+  }
+
+  /* The toggle sits where the breadcrumb would start, so the bar indents to
+     clear it rather than putting a button on top of a word. */
+  .contextBar {
+    gap: 10px;
+    padding: 0 14px 0 60px;
+  }
+
+  /* Duplicate and Share both have a glyph; at this width the labels are what
+     goes, not the controls. */
+  .barButton {
+    padding: 0 9px;
+  }
+
+  .content {
+    min-width: 0;
+    max-width: none;
+    padding: 18px 14px 32px;
+  }
+
+  .content:has([data-screen-label="Compose"]),
+  .content[data-measure="read"] {
+    min-width: 0;
+    max-width: none;
+  }
+}
+
+/* Below the phone breakpoint the context bar keeps the breadcrumb and Share and
+   drops the rest — a chain chip and a Duplicate button are both recoverable
+   from inside the screen, and the breadcrumb is the one thing that tells you
+   where you are. */
+@media (max-width: 560px) {
+  .chainChip {
+    display: none;
+  }
+
+  .barButton {
+    gap: 0;
+    font-size: 0;
+  }
+
+  .barIcon {
+    width: 15px;
+    height: 15px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sidebar {
+    transition: none;
+  }
+}

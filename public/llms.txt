@@ -1,24 +1,26 @@
 # OpenZaps
 
-> OpenZaps turns supported DeFi workflows into bounded zaps: policy capsules that a human or AI agent can simulate, submit, and monitor without discretionary wallet authority. A supported route can execute its protocol hops and settlement in one transaction after any required approval, capsule-creation, and funding confirmations. 0xZAPS is live on Robinhood Chain through a creator-verified Clanker V4 market (contract 0xDd90bFa4adC7F4401E611AbaC692D939F9F4CB07).
+> OpenZaps turns supported DeFi workflows into bounded Zaps: immutable policy capsules that a human or AI agent can simulate, submit, and monitor without discretionary wallet authority. A Zap is the deployed contract; one execution of it is a run. A supported route can execute its protocol hops and settlement in one transaction after any required approval, Zap-creation, and funding confirmations. 0xZAPS is live on Robinhood Chain through a creator-verified Clanker V4 market (contract 0xDd90bFa4adC7F4401E611AbaC692D939F9F4CB07).
 
 Key facts:
-- Production v1.1, v3, and v3.1 contracts are live on Robinhood Chain (chain ID 4663). Supported swaps, stitched routes, aeWETH/USDG liquidity, recurring series, and price triggers are exposed through source-backed, allowlisted adapters. The contracts remain pre-external-audit, and deposits carry funds-at-risk warnings. An earlier Base mainnet factory is historical only and is not used by the production app.
-- The token confers no yield, equity, revenue claim, governance, staking, or protocol access guarantee. Live app-level holder utilities exist: wallets holding 100,000+ 0xZAPS unlock auto-refreshing quotes, extended zap/receipt history, and receipt JSON export in the app console (1,000,000+ extends history further). Core workflows are never token-gated.
+- Production v1.1, v3, and v3.1 contracts are live on Robinhood Chain (chain ID 4663). Supported swaps, stitched routes, full-range aeWETH/USDG liquidity, the ozUSDG ERC-4626 receipt, recurring series, and price triggers are exposed through source-backed, allowlisted adapters. The contracts remain pre-external-audit, and deposits carry funds-at-risk warnings. An earlier Base mainnet factory is historical only and is not used by the production app.
+- The token confers no yield, equity, revenue claim, governance, staking, or protocol access guarantee. Live app-level holder utilities exist: wallets holding 100,000+ 0xZAPS unlock auto-refreshing quotes, extended saved-Zap and receipt history, and receipt JSON export in the app (1,000,000+ extends history further). Core workflows are never token-gated.
 - Execution authority is bound in EIP-712-signed policies: fixed adapters, spend ceilings, recipients, deadlines, and postconditions, plus owner-only nonce invalidation and emergency asset recovery.
 
 ## Pages
 
-- [Home](https://www.0xzaps.com): what OpenZaps are, authority models, security posture, FAQ
-- [DeFi zap builder](https://www.0xzaps.com/zap): connect a wallet to design, quote, create, fund, execute, automate, and recover supported policy-bound routes
-- [Explore](https://www.0xzaps.com/explore): the live feed of creations, executions, and recoveries read from Robinhood Chain logs, every capsule the factory deployed, and the verified contract set — one page
+- [Home](https://www.0xzaps.com): what a Zap is, the authority model, security posture, FAQ
+- [DeFi Zap builder](https://www.0xzaps.com/zap): connect a wallet to design, quote, create, fund, execute, automate, and recover supported policy-bound routes. One route with four surfaces — Start, Compose, Zap now, Automate — selected by `?view=start|design|sign|automate` and reached from the app sidebar
+- [Explore](https://www.0xzaps.com/explore): the live feed of creations, executions, and recoveries read from Robinhood Chain logs, every Zap the factory deployed, and the verified contract set — one page
 - [Developer docs & security](https://www.0xzaps.com/docs): policy schema, simulation API, templates, execution lifecycle, and the security model (threat model, controls, production gates) at /docs#security
 - [Roadmap](https://www.0xzaps.com/roadmap): current live capabilities, proposed route expansion, submission tooling, and hardening gates
 - [0xZAPS token](https://www.0xzaps.com/token): verified contract, official Clanker market, FAQ
 - [0xZAPS automation fee pot](https://www.0xzaps.com/pot): source-backed pot balances, conversion records, participant credits, rounds, and payouts
+- [ZapDraw](https://www.0xzaps.com/zapdraw): a sealed-draw game whose entry and payouts are 0xZAPS — each seat commits the hash of a claim on one round's shared capacity, and the smallest claims are paid in full first
+- [How a ZapDraw round plays out](https://www.0xzaps.com/zapdraw/how): a step-by-step walkthrough of a single round, from four sealed claims to the payout order
 - [Risk disclosures](https://www.0xzaps.com/legal): pre-audit software, onchain irreversibility, token risk
 
-Every verified factory-created capsule has a canonical detail page at `https://www.0xzaps.com/explore/{checksummed-address}` with crawlable policy, provenance, lifecycle, and onchain execution evidence.
+Every verified factory-created Zap has a canonical detail page at `https://www.0xzaps.com/explore/{checksummed-address}` with crawlable policy, provenance, lifecycle, and onchain execution evidence.
 
 ## Discovery
 
@@ -38,6 +40,7 @@ Every verified factory-created capsule has a canonical detail page at `https://w
 
 - POST https://www.0xzaps.com/api/policies/simulate — deterministic policy simulation; never broadcasts and never requests wallet authority
 - GET https://www.0xzaps.com/api/health — public protocol status
-- GET https://www.0xzaps.com/api/protocol/activity — live zap creations, executions, and recoveries aggregated from Robinhood Chain logs (rows verified against the factory's ZapCreated set)
+- GET https://www.0xzaps.com/api/protocol/activity — live Zap creations, executions, and recoveries aggregated from Robinhood Chain logs (rows verified against the factory's ZapCreated set)
+- GET https://www.0xzaps.com/api/protocol/pot — onchain lottery-pot balances, ticket counts, and rounds; returns 503 rather than a zero when the RPC reads are unavailable
 
 Not financial advice. Always verify the token contract address on this site before trading.

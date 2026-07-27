@@ -12,9 +12,19 @@ export function SiteFooter(): React.JSX.Element {
             <OpenZapMark className={styles.mark} />
             <div>
               <strong>OpenZaps</strong>
+              {/* The product's one-line definition, and the only place it
+                  appears outside /docs — so it is what someone landing on
+                  /token or /explore reads first. "Zaps for agent-triggered
+                  DeFi" would be circular against the brand name, which is why
+                  the term it replaces stays here in apposition. */}
+              {/* The explicit {" "} is not noise. A JSXText node that spans
+                  lines loses the space between an interpolation and the word
+                  after it, so `{TOKEN.symbol} is` renders as "0xZAPSis". The
+                  rest of this file already used the same guard. */}
               <p>
-                Policy capsules for agent-triggered DeFi: the target, recipient, asset, and calldata are fixed before
-                signing. {TOKEN.symbol} is the ERC-20 in the protocol&apos;s first live route, traded through {TOKEN_LAUNCH.venue} on{" "}
+                Zaps are immutable policy capsules for agent-triggered DeFi: the target, recipient, asset, and calldata
+                are fixed before signing. {TOKEN.symbol}{" "}
+                is the ERC-20 in the protocol&apos;s first live route, traded through {TOKEN_LAUNCH.venue} on{" "}
                 {TOKEN_LAUNCH.network}.
               </p>
             </div>
@@ -25,16 +35,20 @@ export function SiteFooter(): React.JSX.Element {
           </p>
         </div>
 
+        {/* h2, not h3. The app shell renders this footer under every screen,
+            and a screen whose only heading is its h1 — the disconnected My
+            zaps state, for one — then jumped straight to h3, breaking the
+            document outline on a route that had done nothing wrong. */}
         <nav className={styles.cols} aria-label="Footer">
           <div className={styles.col}>
-            <h3>Product</h3>
+            <h2>Product</h2>
             <Link href="/zap">Zap</Link>
             <Link href="/explore">Explore</Link>
             <Link href="/docs">Developer docs</Link>
             <Link href="/roadmap">Roadmap</Link>
           </div>
           <div className={styles.col}>
-            <h3>Build</h3>
+            <h2>Build</h2>
             <a href={LINKS.contractSource} target="_blank" rel="noreferrer">
               Contract source
             </a>
@@ -45,7 +59,7 @@ export function SiteFooter(): React.JSX.Element {
             <Link href="/zap">Visual builder</Link>
           </div>
           <div className={styles.col}>
-            <h3>Token</h3>
+            <h2>Token</h2>
             <Link href="/token">{TOKEN.symbol} token</Link>
             <Link href={LINKS.buyWithOpenZaps}>Zap in with OpenZaps</Link>
             <a href={LINKS.buy} target="_blank" rel="noreferrer">

@@ -24,13 +24,16 @@ const STEPS = [
   },
   {
     id: "verify",
+    // "Postconditions" belongs to the contract: the Zap asserts those onchain,
+    // inside the execution. What happens after a receipt is the app reading the
+    // result back — the nonce, the balances, the owner and policy of a new Zap.
     title: "Receipt verify",
-    detail: "Receipt status closes the broadcast loop; Zap actions then read their postconditions.",
+    detail: "Receipt status closes the broadcast loop; the result is then read back onchain.",
   },
 ] as const;
 
 function summary(activity: TransactionLifecycleState | null): string {
-  if (!activity) return "No wallet write is active. Every submission will trace these four boundaries.";
+  if (!activity) return "No wallet write is active. Every submission traces these four stages.";
   if (activity.stage === "wallet") return `${activity.label}: waiting for wallet review.`;
   if (activity.stage === "not-submitted") return `${activity.label}: nothing was submitted onchain.`;
   if (activity.stage === "submitted") return `${activity.label}: submitted and waiting for a receipt.`;
@@ -53,22 +56,23 @@ export function TransactionLifecycle({
   return (
     <section className={styles.lifecycle} aria-labelledby="transaction-lifecycle-title">
       <div className={styles.lifecycleHead}>
-        <div>
-          <span className="eyebrow">Execution flight recorder</span>
-          <h3 id="transaction-lifecycle-title">From preflight to proof.</h3>
-        </div>
-        <p aria-live="polite">{summary(activity)}</p>
+        {/* Not "execution": this traces every wallet write on the screen —
+            wrapping, funding, recovery — not only the Zap's execution. */}
+        <h3 id="transaction-lifecycle-title" className={styles.lifecycleTitle}>
+          Transaction flight recorder
+        </h3>
+        <p className={styles.lifecycleSummary} aria-live="polite">{summary(activity)}</p>
       </div>
 
       <ol className={styles.lifecycleTrack}>
         {STEPS.map((step, index) => (
-          <li key={step.id} data-status={statuses[index]}>
+          <li className={styles.lifecycleStep} key={step.id} data-status={statuses[index]}>
             <span className={styles.lifecycleNode} aria-hidden="true">
               {statuses[index] === "done" ? "✓" : statuses[index] === "error" ? "!" : index + 1}
             </span>
             <div>
-              <strong>{step.title}</strong>
-              <small>{step.detail}</small>
+              <strong className={styles.lifecycleName}>{step.title}</strong>
+              <small className={styles.lifecycleDetail}>{step.detail}</small>
             </div>
           </li>
         ))}

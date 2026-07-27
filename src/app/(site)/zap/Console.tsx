@@ -15,13 +15,11 @@ import {
   type Address,
   type Hex,
 } from "viem";
-import { OpenZapMark } from "@/components/OpenZapMark";
 import { useWalletSession } from "@/components/WalletProvider";
 import { BlockGlyph } from "./BlockGlyph";
 import { CreationWorkspace } from "./CreationWorkspace";
 import { TransactionLifecycle } from "./TransactionLifecycle";
 import { trackEvent } from "@/lib/analytics";
-import { LINKS } from "@/lib/config";
 import {
   ACTIVITY_FROM_BLOCK,
   assetDecimalsFor,
@@ -85,7 +83,6 @@ import {
   openZapFactoryAbi,
   openZapProtocolConfigured,
   robinhoodChain,
-  watchZapsAsset,
   wethAbi,
 } from "@/lib/robinhood";
 import { protocolsForRouteKind } from "@/lib/protocols";
@@ -106,6 +103,20 @@ const ROUTE_KIND_LABEL: Record<Route["kind"], string> = {
   "lp-withdraw": "Zap out of liquidity",
 };
 
+/**
+ * What the on-screen estimate actually came from, per the route's real quote
+ * source — not per `kind`. A stitched `swap-route` is two pool quotes and has no
+ * vault in it, so the old swap/vault split announced it as a "Vault preview";
+ * an LP route is a pool quote AND a vault preview, and says so.
+ */
+function quoteSourceLabel(route: Route | null): string {
+  if (route === null) return "Quote";
+  const source = route.quote.source;
+  if (source === "v4" || source === "v4-route") return "Pool quote";
+  if (source === "erc4626-deposit" || source === "erc4626-redeem") return "Vault preview";
+  return "Pool quote + vault preview";
+}
+
 type BusyAction =
   | "connect"
   | "quote"
@@ -115,7 +126,6 @@ type BusyAction =
   | "execute"
   | "recover"
   | "load"
-  | "watch"
   | null;
 
 type TransactionRecord = {
@@ -140,17 +150,6 @@ const publicClient = createPublicClient({
   chain: robinhoodChain,
   transport: http(ROBINHOOD_RPC_URL, { retryCount: 2, timeout: 10_000 }),
 });
-/**
- * The saved-zap chip and its "open the onchain page" link, side by side.
- *
- * Inline so this change touches no shared stylesheet; it is the one piece of
- * layout on this page that is not in app.module.css.
- */
-const SAVED_ZAP_ROW: React.CSSProperties = {
-  display: "grid",
-  gridTemplateColumns: "minmax(0, 1fr) auto",
-  gap: "0.45rem",
-};
 const LEGACY_STORAGE_KEY = "openzaps:robinhood-live-zap:v1";
 const ZAP_STORAGE_KEY = "openzaps:robinhood-live-zaps:v2";
 const TX_STORAGE_KEY = "openzaps:robinhood-transactions:v1";
@@ -179,6 +178,11 @@ export default function AppPage(): React.JSX.Element {
   const [offeredReady, setOfferedReady] = useState(false);
   const [amount, setAmount] = useState("0.001");
   const [slippageBps, setSlippageBps] = useState(100);
+  // The two disclosures on the signing card. Both start closed: the card's job
+  // is to show the one route being signed, and ten route cards on first paint
+  // buries it. "Change route" is in the header, next to what it changes.
+  const [routeOpen, setRouteOpen] = useState(false);
+  const [advancedOpen, setAdvancedOpen] = useState(false);
   const [maxExecutionGas, setMaxExecutionGas] = useState(MAX_EXECUTION_GAS_UNITS);
   const [maxFeePerGasGwei, setMaxFeePerGasGwei] = useState(MAX_EXECUTION_FEE_GWEI);
   const [quote, setQuote] = useState<bigint | null>(null);
@@ -581,7 +585,7 @@ export default function AppPage(): React.JSX.Element {
       // (balance still loading), and a truncating read followed by a persisting
       // write would permanently destroy a holder's extended history.
       setTransactions(readTransactions(account, MAX_RECEIPT_RETENTION));
-      if (!rpcHealthy) setNotice("Saved zaps could not be verified right now — Robinhood RPC is unreachable. They remain saved.");
+      if (!rpcHealthy) setNotice("Saved Zaps could not be verified right now — Robinhood RPC is unreachable. They remain saved.");
       const firstVerified = merged.find((record) => verified.has(record.address));
       // An import from the builder is an explicit "start a new zap" — selecting
       // a saved capsule here would overwrite the imported direction and amount
@@ -647,9 +651,7 @@ export default function AppPage(): React.JSX.Element {
         setReviewedQuote(amountOut);
         setAutoRefreshedAt(null);
         setNotice(
-          route.kind === "swap"
-            ? "Live pool quote loaded. The signed minimum is enforced after the adapter returns."
-            : "Vault preview loaded. The signed minimum output is enforced by OpenZap after the vault call.",
+          `${quoteSourceLabel(route)} loaded. The signed minimum output is enforced by the Zap after the adapter returns.`,
         );
       }
       return amountOut;
@@ -682,7 +684,7 @@ export default function AppPage(): React.JSX.Element {
   const refreshCreationFeeQuote = useCallback(async (): Promise<CreationFeeQuote | null> => {
     if (!feeConfigured) {
       setCreationFeeQuote(null);
-      setCreationFeeError("Creation-fee gateway is not configured. New zap creation is paused.");
+      setCreationFeeError("Creation-fee gateway is not configured. New Zap creation is paused.");
       return null;
     }
     try {
@@ -747,9 +749,9 @@ export default function AppPage(): React.JSX.Element {
       const owner = requireAccount(account);
       requireProtocolReady(protocolReady);
       if (!feeConfigured || OPENZAP_CREATION_FEE_CONTRACTS.gateway === zeroAddress) {
-        throw new Error("Creation-fee gateway is not configured. New zap creation is paused.");
+        throw new Error("Creation-fee gateway is not configured. New Zap creation is paused.");
       }
-      if (!creationFeeQuote) throw new Error("Review a creation-fee conversion quote before creating this zap.");
+      if (!creationFeeQuote) throw new Error("Review a creation-fee conversion quote before creating this Zap.");
       if (!route) throw new Error("Select a deployed route first.");
       // Fail closed: never create a capsule for a route that is not offered —
       // an undeployed adapter, or a vault whose totalSupply is 0 (grief-able).
@@ -782,7 +784,7 @@ export default function AppPage(): React.JSX.Element {
       });
       const { hash, status } = await submitAndConfirm(
         owner,
-        "Create immutable zap + convert fee",
+        "Create the Zap + convert fee",
         () => wallet.writeContract(request),
       );
       if (status !== "success") throw new Error("Creation gateway transaction reverted.");
@@ -801,7 +803,7 @@ export default function AppPage(): React.JSX.Element {
       setCreationResult(nextZap);
       selectZap(nextZap);
       setNotice(
-        `Immutable zap created at ${shortAddress(predicted)}. The ${formatToken(OPENZAP_CREATION_FEE, 18)} ETH creation fee converted atomically with the reviewed ${formatToken(creationFeeQuote.minZapsOut, 18)} 0xZAPS floor. Fund the capsule before execution.`,
+        `Immutable Zap created at ${shortAddress(predicted)}. The ${formatToken(OPENZAP_CREATION_FEE, 18)} ETH creation fee converted atomically with the reviewed ${formatToken(creationFeeQuote.minZapsOut, 18)} 0xZAPS floor. Fund the Zap before execution.`,
       );
       trackEvent("robinhood_zap_created", {
         zap: predicted,
@@ -849,7 +851,7 @@ export default function AppPage(): React.JSX.Element {
     clearMessages();
     try {
       const owner = requireAccount(account);
-      if (!zap) throw new Error("Create or load a zap first.");
+      if (!zap) throw new Error("Create or load a Zap first.");
       requireProtocolReady(protocolReady);
       const verifiedZap = await inspectOwnedZap(publicClient, zap.address, owner);
       const tokenIn = verifiedZap.route.tokenIn;
@@ -882,7 +884,7 @@ export default function AppPage(): React.JSX.Element {
       });
       const { status } = await submitAndConfirm(
         owner,
-        `Fund zap with ${tokenIn.symbol}`,
+        `Fund the Zap with ${tokenIn.symbol}`,
         () => wallet.writeContract(request),
       );
       if (status !== "success") throw new Error("Funding transfer reverted.");
@@ -926,7 +928,7 @@ export default function AppPage(): React.JSX.Element {
     clearMessages();
     try {
       const owner = requireAccount(account);
-      if (!zap) throw new Error("Create or load a zap first.");
+      if (!zap) throw new Error("Create or load a Zap first.");
       requireProtocolReady(protocolReady);
       const verifiedZap = await inspectOwnedZap(publicClient, zap.address, owner);
       const zapRoute = verifiedZap.route;
@@ -938,7 +940,7 @@ export default function AppPage(): React.JSX.Element {
         functionName: "balanceOf",
         args: [verifiedZap.address],
       });
-      if (liveInputBalance < verifiedZap.amountIn) throw new Error("Fund the zap before execution.");
+      if (liveInputBalance < verifiedZap.amountIn) throw new Error("Fund the Zap before execution.");
 
       // The signed minOut derives from a click-time re-quote (a swap pool quote,
       // or an ERC-4626 preview for a vault route); require a quote the user
@@ -1017,7 +1019,7 @@ export default function AppPage(): React.JSX.Element {
       });
       const { hash, status } = await submitAndConfirm(
         owner,
-        `${tokenIn.symbol} → ${tokenOut.symbol} zap`,
+        `${tokenIn.symbol} → ${tokenOut.symbol} Zap`,
         () => wallet.writeContract(request),
       );
       if (status !== "success") throw new Error("Zap execution reverted.");
@@ -1049,7 +1051,7 @@ export default function AppPage(): React.JSX.Element {
     clearMessages();
     try {
       const owner = requireAccount(account);
-      if (!zap) throw new Error("Create or load a zap first.");
+      if (!zap) throw new Error("Create or load a Zap first.");
       const verifiedZap = await inspectOwnedZap(publicClient, zap.address, owner);
       const wallet = await requireWallet(owner);
       // Sweep the ZAP's OWN tracked assets — not a hardcoded [aeWETH, 0xZAPS],
@@ -1069,7 +1071,7 @@ export default function AppPage(): React.JSX.Element {
       );
       if (status !== "success") throw new Error("Recovery transaction reverted.");
       setNotice(
-        `Tracked ${verifiedZap.route.tokenIn.symbol} and ${verifiedZap.route.tokenOut.symbol} balances returned to the zap owner.`,
+        `Tracked ${verifiedZap.route.tokenIn.symbol} and ${verifiedZap.route.tokenOut.symbol} balances returned to the Zap owner.`,
       );
       trackEvent("robinhood_zap_recovered", { zap: verifiedZap.address, tx: hash });
     } catch (cause) {
@@ -1097,7 +1099,7 @@ export default function AppPage(): React.JSX.Element {
       };
       rememberZap(owner, record);
       selectZap(record);
-      setNotice(`Loaded verified zap ${shortAddress(address)}.`);
+      setNotice(`Loaded verified Zap ${shortAddress(address)}.`);
     } catch (cause) {
       setError(readableError(cause));
     } finally {
@@ -1105,29 +1107,18 @@ export default function AppPage(): React.JSX.Element {
     }
   }
 
-  async function watchToken(): Promise<void> {
-    setBusy("watch");
+  /** Funding is a plain transfer from any wallet, so the address is the whole
+   *  instruction — and it is the one string on this screen nobody should retype. */
+  async function copyZapAddress(): Promise<void> {
+    if (!zap) return;
     clearMessages();
     try {
-      const provider = getInjectedProvider();
-      if (!provider) throw new Error("No injected wallet found.");
-      await ensureRobinhoodChain(provider);
-      const added = await watchZapsAsset(provider, new URL("/0xzaps-token.png", window.location.origin).href);
-      setNotice(added ? "0xZAPS was added to your wallet." : "Wallet closed the add-token request.");
-    } catch (cause) {
-      setError(readableError(cause));
-    } finally {
-      setBusy(null);
-    }
-  }
-
-  async function copyTokenAddress(): Promise<void> {
-    clearMessages();
-    try {
-      await navigator.clipboard.writeText(ROBINHOOD_ASSETS.zaps);
-      setNotice("0xZAPS contract address copied.");
+      await navigator.clipboard.writeText(zap.address);
+      setNotice("Zap address copied.");
     } catch {
-      setError("Clipboard access was unavailable. Copy the address from the token page.");
+      // Every address on this screen is truncated for reading, so "copy it from
+      // the panel" is not an instruction anyone can follow. The explorer link is.
+      setError("Clipboard access was unavailable. Open the Zap on the explorer and copy its address there.");
     }
   }
 
@@ -1243,7 +1234,7 @@ export default function AppPage(): React.JSX.Element {
     const resultRoute = resolveRouteById(creationResult.routeId);
     const summary = [
       "OpenZaps creation receipt",
-      `Capsule: ${creationResult.address}`,
+      `Zap: ${creationResult.address}`,
       `Transaction: ${creationResult.createTx}`,
       `Policy: ${creationResult.policyHash}`,
       `Route: ${resultRoute ? `${resultRoute.tokenIn.symbol} -> ${resultRoute.tokenOut.symbol}` : creationResult.routeId}`,
@@ -1252,7 +1243,7 @@ export default function AppPage(): React.JSX.Element {
     ].join("\n");
     try {
       await navigator.clipboard.writeText(summary);
-      setNotice("Creation receipt copied. The capsule address, transaction, policy, and route are included.");
+      setNotice("Creation receipt copied. The Zap address, transaction, policy, and route are included.");
     } catch {
       setError("The browser blocked clipboard access. Use the explorer links in the creation receipt instead.");
     }
@@ -1357,7 +1348,7 @@ export default function AppPage(): React.JSX.Element {
       setMaxExecutionGas(imported.executionPolicy.maxGas);
       setMaxFeePerGasGwei(imported.executionPolicy.maxFeePerGasGwei);
       setNotice(
-        `Imported from the builder: ${imported.route.tokenIn.symbol} → ${imported.route.tokenOut.symbol}, ${imported.amount} ${imported.route.tokenIn.symbol}, ${(imported.bps / 100).toFixed(2)}% max slippage, ${imported.executionPolicy.maxGas.toLocaleString("en-US")} gas, and ${imported.executionPolicy.maxFeePerGasGwei} gwei. Nothing has been created — check the numbers, then press Create zap.`,
+        `Imported from the builder: ${imported.route.tokenIn.symbol} → ${imported.route.tokenOut.symbol}, ${imported.amount} ${imported.route.tokenIn.symbol}, ${(imported.bps / 100).toFixed(2)}% max slippage, ${imported.executionPolicy.maxGas.toLocaleString("en-US")} gas, and ${imported.executionPolicy.maxFeePerGasGwei} gwei. Nothing has been created — check the numbers, then press Create the Zap.`,
       );
       trackEvent("robinhood_builder_import", { route: imported.routeId });
     });
@@ -1368,28 +1359,80 @@ export default function AppPage(): React.JSX.Element {
   const creationResultActive = creationResult !== null && zap?.address === creationResult.address;
   const creationResultFunded = creationResultActive && funded;
   const creationResultExecuted = creationResultActive && executionComplete;
-  const stepLabel = !account
-    ? "1. Connect wallet"
-    : wrongNetwork
-      ? "2. Switch network"
-      : !zap
-        ? "2. Create zap"
-        : executionComplete
-          ? "Zap confirmed"
-          : !funded
-            ? "3. Fund zap"
-            : "4. Sign & Zap";
+  /**
+   * The four steps of getting a Zap onchain, as state rather than as a label.
+   *
+   * "Switch network" is not a fifth step: it is step 1 unfinished. Folding it
+   * in here is what keeps the wrong-chain case from being a screen where every
+   * button is disabled and nothing says why — the step expands with the
+   * warning and the switch button in it.
+   */
+  const stepIndex = !account || wrongNetwork ? 1 : !zap ? 2 : !funded ? 3 : 4;
+  const stepDone: readonly boolean[] = [
+    account !== null && !wrongNetwork,
+    zap !== null,
+    funded,
+    executionComplete,
+  ];
+  const stepStateFor = (step: number): StepState =>
+    executionComplete || stepDone[step - 1] ? "done" : step === stepIndex ? "current" : "future";
+
+  // Fail-closed rail: a row only exists when there is something real to check.
+  // "Zap balance" appears with the Zap, never as a pre-emptive zero.
+  const verifications: readonly VerifyCheck[] = [
+    {
+      // Not "Factory health": this row is the whole protocol check — the
+      // factory version and implementation, bytecode at the adapter, registry,
+      // allowlist, fee gateway and pot, and the gateway's own fee config.
+      label: "Protocol health",
+      value: protocolReady ? "Contracts and gateway verified" : protocolHealth,
+      href: configured ? explorerAddress(OPENZAP_CONTRACTS.factory) : undefined,
+      ok: protocolReady,
+    },
+    {
+      // A vault or LP route has no pool of its own, so this cannot claim to be
+      // pool-bound. It is the adapter the selected route resolves to.
+      label: "Route adapter",
+      value: route ? shortAddress(route.adapter) : "—",
+      href: route ? explorerAddress(route.adapter) : undefined,
+      ok: route !== null,
+    },
+    { label: "Settles through", value: settlementLabel, ok: route !== null },
+    { label: "Adapter allowance", value: "Exact amount, reset to zero", ok: true },
+    { label: "Permit2 allowance", value: "Cleared after every swap", ok: true },
+    { label: "Output protection", value: "Signed minOut in OpenZap", ok: true },
+    ...(zap
+      ? [{
+          label: "Zap balance",
+          // A drained balance is the expected end state, not a failure — the
+          // row only reads red while funding is still owed.
+          value: executionComplete
+            ? `${formatToken(zapInBalance, inDecimals)} ${inputSymbol} — input spent`
+            : `${formatToken(zapInBalance, inDecimals)} ${inputSymbol} — ${funded ? "funded" : "not funded"}`,
+          ok: funded || executionComplete,
+        }]
+      : []),
+  ];
+  const passCount = verifications.filter((check) => check.ok).length;
+  const allChecksPass = passCount === verifications.length;
+
+  // A frozen policy has nothing to pick, so the disclosure closes with it.
+  const routeVisible = routeOpen && zap === null;
+  const slippagePresets = [50, 100, 200] as const;
+  const customSlippage = !slippagePresets.includes(slippageBps as 50 | 100 | 200);
 
   return (
-    <main className={styles.page} id="main">
-      <section className={`container ${styles.statusBar}`} aria-label="Protocol status">
+    <main className={styles.screen} id="main" data-screen-label="Zap now">
+      <section className={styles.statusBar} aria-label="Protocol status">
         <span className={protocolReady ? styles.statusLive : styles.statusPreview} role="status">
           {protocolHealth === "checking" ? "Checking contracts" : protocolReady ? "Live" : "Transactions paused"}
         </span>
         <p>
           {protocolReady ? (
             <>
-              Pool-bound {routePairLabel} creation is open through factory{" "}
+              {/* Not "pool-bound": the offered set includes ERC-4626 vault and
+                  full-range LP routes, which have no pool of their own. */}
+              {routePairLabel} creation is open through factory{" "}
               <a href={explorerAddress(OPENZAP_CONTRACTS.factory)} target="_blank" rel="noreferrer">
                 {shortAddress(OPENZAP_CONTRACTS.factory)}
               </a>
@@ -1401,40 +1444,31 @@ export default function AppPage(): React.JSX.Element {
         </p>
       </section>
 
-      <section className={`container ${styles.appHead}`}>
-        <div className={styles.titleRow}>
-          <OpenZapMark className={styles.headMark} />
-          <div>
-            <span className="eyebrow">Live zap console</span>
-            <h1>One policy. One bounded route.</h1>
-            <p>Create an immutable capsule, fund only its exact input, sign the output floor, and execute on Robinhood Chain.</p>
-          </div>
+      <div className={styles.head}>
+        <div>
+          <h1 className={styles.title}>Zap now</h1>
+          <p className={styles.lede}>
+            Create an immutable Zap contract, fund only its exact input, sign the output floor, and execute. A Zap
+            cannot do anything it was not signed to do.
+          </p>
         </div>
-        <div className={styles.wallet}>
-          {account ? (
+        <div className={styles.headAside}>
+          <span className={styles.lineageChip}>v1.1 · one-shot nonce</span>
+          {holderTier !== "none" && <span className={styles.holderChip}>{tierLabel(holderTier)}</span>}
+          {account && (
             <>
               <a className={styles.addr} href={explorerAddress(account)} target="_blank" rel="noreferrer">
                 {shortAddress(account)}
               </a>
-              {holderTier !== "none" && <span className={styles.holderChip}>{tierLabel(holderTier)}</span>}
-              {wrongNetwork && (
-                <button data-busy={busy === "connect"} className="btn btnPrimary" disabled={busy !== null} onClick={() => void switchWalletNetwork()} type="button">
-                  {busy === "connect" ? "Switching…" : "Switch network"}
-                </button>
-              )}
-              <button className="btn btnGhost" onClick={() => void disconnect()} type="button">Disconnect</button>
+              <button className={styles.headGhost} onClick={() => void disconnect()} type="button">Disconnect</button>
             </>
-          ) : (
-            <button data-busy={busy === "connect"} className="btn btnPrimary" disabled={busy !== null} onClick={() => void connectWallet()} type="button">
-              {busy === "connect" ? "Connecting…" : "Connect wallet"}
-            </button>
           )}
         </div>
-      </section>
+      </div>
 
       {/* The link is conditional on the notice so the live region still
           collapses to nothing (`.notice:empty`) when there is no message. */}
-      <div className={`container ${styles.notice}`} ref={noticeRef} role="status" tabIndex={-1}>
+      <div className={styles.notice} ref={noticeRef} role="status" tabIndex={-1}>
         {notice}
         {notice && zap ? (
           <>
@@ -1442,13 +1476,13 @@ export default function AppPage(): React.JSX.Element {
             {/* Global `a` inherits its colour, so the underline is what separates
                 the link from the notice text it sits inside. */}
             <Link href={`/explore/${zap.address}`} style={{ textDecoration: "underline" }}>
-              Open this zap&apos;s onchain page →
+              Open this Zap&apos;s onchain page →
             </Link>
           </>
         ) : null}
       </div>
       {error && (
-        <div className={`container ${styles.error}`} role="alert">
+        <div className={styles.error} role="alert">
           <BlockGlyph name="alert" className={styles.bannerGlyph} />
           {error}
         </div>
@@ -1457,11 +1491,11 @@ export default function AppPage(): React.JSX.Element {
       {creationResult ? (
         <CreationWorkspace
           eyebrow="Creation receipt · v1.1"
-          title="Your immutable zap is live."
-          detail="The gateway transaction confirmed, the capsule owner and bytecode were verified through Robinhood RPC, and the reviewed creation-fee floor settled atomically. Funding and execution are separate wallet-confirmed steps."
+          title="Your immutable Zap is live."
+          detail="The gateway transaction confirmed, the Zap's owner and bytecode were verified through Robinhood RPC, and the reviewed creation-fee floor settled atomically. Funding and execution are separate wallet-confirmed steps."
           facts={[
             {
-              label: "Capsule",
+              label: "Zap",
               value: shortAddress(creationResult.address),
               href: explorerAddress(creationResult.address),
               mono: true,
@@ -1501,10 +1535,10 @@ export default function AppPage(): React.JSX.Element {
             {
               label: "Fund",
               detail: creationResultFunded
-                ? "Exact input is held by the capsule."
+                ? "Exact input is held by the Zap."
                 : creationResultActive
                   ? "Transfer only the route's exact input."
-                  : "Re-open this capsule to continue.",
+                  : "Re-open this Zap to continue.",
               status: creationResultFunded ? "done" : creationResultActive ? "current" : "pending",
             },
             {
@@ -1520,7 +1554,7 @@ export default function AppPage(): React.JSX.Element {
         >
           {!creationResultActive ? (
             <button className="btn btnPrimary" disabled={busy !== null} onClick={() => selectZap(creationResult)} type="button">
-              Open in console
+              Re-open this Zap
             </button>
           ) : !creationResultExecuted ? (
             <a className="btn btnPrimary" href="#zap-lifecycle">
@@ -1536,161 +1570,387 @@ export default function AppPage(): React.JSX.Element {
         </CreationWorkspace>
       ) : null}
 
-      <section className={`container ${styles.metrics}`} aria-label="Live protocol metrics">
-        <Metric glyph="bridge" label="Network" value={wrongNetwork ? `Wrong chain · ${walletChainId ?? "?"}` : "Robinhood 4663"} />
-        <Metric glyph="pool" label="Venue" value={venueLabel} />
-        <Metric glyph="wallet" label="Wallet input" value={`${formatToken(walletInputBalance, inDecimals)} ${inputSymbol}`} />
-        <Metric glyph="gauge" label="Current step" value={stepLabel} />
-      </section>
-
-      <section className={`container ${styles.tokenTools}`} aria-label="0xZAPS token tools">
-        <div>
-          <span>Live token · Robinhood Chain</span>
-          <strong>0xZAPS</strong>
-          <code>{ROBINHOOD_ASSETS.zaps}</code>
-          <span className={styles.utilStatus}>
-            {!account
-              ? "Holding 100,000+ 0xZAPS turns on app conveniences: auto-refreshing quotes, more saved zaps and receipts, and receipt JSON export."
-              : holderTier === "none"
-                ? "Hold 100,000+ 0xZAPS in this wallet to turn on auto-refreshing quotes, more saved zaps and receipts, and receipt JSON export."
-                : `${tierLabel(holderTier)} conveniences active: auto-refreshing quotes, more saved zaps and receipts, and receipt JSON export.`}
-            {" "}
-            <Link href="/token#utilities">Details →</Link>
-          </span>
-        </div>
-        <div className={styles.tokenActions}>
-          <a className="btn btnPrimary" href={LINKS.buy} target="_blank" rel="noreferrer">Zap in via Clanker ↗</a>
-          <button className="btn btnGhost" onClick={() => void copyTokenAddress()} type="button">Copy address</button>
-          <button data-busy={busy === "watch"} className="btn btnGhost" disabled={busy !== null} onClick={() => void watchToken()} type="button">
-            {busy === "watch" ? "Opening wallet…" : "Add to wallet"}
-          </button>
-          <a className="btn btnGhost" href={explorerAddress(ROBINHOOD_ASSETS.zaps)} target="_blank" rel="noreferrer">View token ↗</a>
-        </div>
-      </section>
-
-      <section className={`container ${styles.workspace}`}>
-        <section className={styles.builder} aria-label="Build a live zap">
-          <div className={styles.builderTop}>
-            <div>
-              <span className={styles.cardHead}>Policy builder</span>
-              <h2>Fixed-input {routePairLabel}</h2>
-              <p>Each adapter is welded to one pool or vault: it cannot route to another token, spender, hook, DEX, or market.</p>
-            </div>
-            <span className={styles.liveBadge}>onchain</span>
-          </div>
-
-          <div className={styles.segment}>
-            {offeredRoutes.map((offered) => (
+      <div className={styles.grid}>
+        <div className={styles.col}>
+          <section className={`${styles.card} ${styles.signingCard}`} aria-label="What you are signing">
+            <div className={styles.cardBar}>
+              <h2 className={styles.cardTitle}>What you are signing</h2>
+              {/* Not "frozen at creation": the route and amount are, but the
+                  slippage and gas bounds in this same card are signed per
+                  execution and stay editable after the Zap exists. */}
+              <span className={styles.cardNote}>— enforced by the Zap, not by this page</span>
               <button
-                key={offered.id}
-                className={routeId === offered.id ? styles.segOn : styles.seg}
-                onClick={() => changeRoute(offered.id)}
+                className={`${styles.cardAction} ${styles.cardActionEnd}`}
                 disabled={zap !== null}
+                onClick={() => setRouteOpen(!routeVisible)}
+                title={zap !== null ? "Route is frozen once the Zap exists" : undefined}
                 type="button"
               >
-                {offered.tokenIn.symbol} → {offered.tokenOut.symbol}
-                <em>
-                  <ProtocolStack protocols={protocolsForRouteKind(offered.kind)} size={12} />{" "}
-                  {ROUTE_KIND_LABEL[offered.kind]}
-                </em>
+                {routeVisible ? "Hide routes" : "Change route"}
               </button>
-            ))}
-          </div>
-
-          <div className={styles.formGrid}>
-            <Field label={`Exact input (${inputSymbol})`}>
-              <input className={styles.input} inputMode="decimal" value={amount} onChange={(event) => changeAmount(sanitizeDecimal(event.target.value))} disabled={zap !== null} />
-            </Field>
-            <Field label={`Signed max slippage (${(slippageBps / 100).toFixed(2)}%)`}>
-              <input className={styles.range} min="10" max="500" step="10" type="range" value={slippageBps} onChange={(event) => setSlippageBps(Number(event.target.value))} />
-            </Field>
-            <Field label={`Signed gas limit (${maxExecutionGas.toLocaleString("en-US")})`}>
-              <input
-                className={styles.range}
-                type="range"
-                min={MIN_EXECUTION_GAS_UNITS}
-                max={MAX_EXECUTION_GAS_UNITS}
-                step={50_000}
-                value={maxExecutionGas}
-                onChange={(event) => setMaxExecutionGas(Number(event.target.value))}
-                disabled={busy !== null}
-              />
-            </Field>
-            <Field label={`Signed gas price cap (${maxFeePerGasGwei} gwei)`}>
-              <input
-                className={styles.range}
-                type="range"
-                min={MIN_EXECUTION_FEE_GWEI}
-                max={MAX_EXECUTION_FEE_GWEI}
-                step={1}
-                value={maxFeePerGasGwei}
-                onChange={(event) => setMaxFeePerGasGwei(Number(event.target.value))}
-                disabled={busy !== null}
-              />
-            </Field>
-          </div>
-
-          <div className={styles.quoteBox}>
-            <div><span>{route?.kind === "swap" ? "Live quote" : "Vault preview"}</span><strong>{quote === null ? "Not requested" : `${formatToken(quote, outDecimals)} ${outputSymbol}`}</strong></div>
-            <div><span>Signed minimum</span><strong>{minOut === null ? "—" : `${formatToken(minOut, outDecimals)} ${outputSymbol}`}</strong></div>
-            <div><span>Quoter gas</span><strong>{quoteGas === null ? "—" : quoteGas.toLocaleString()}</strong></div>
-            {autoRefreshedAt && <div className={styles.autoRefreshed}>Auto-updated {autoRefreshedAt} — your signed floor stays at the quote you last requested.</div>}
-            <button data-busy={busy === "quote"} className="btn btnGhost" data-testid="quote-button" disabled={busy !== null || amountIn <= 0n} onClick={() => void requestQuote()} type="button">
-              {busy === "quote" ? "Quoting…" : quote === null ? "Get live quote" : "Refresh quote"}
-            </button>
-          </div>
-
-          <div className={styles.creationFeeBox} data-ready={creationFeeQuote !== null} role="note">
-            <div>
-              <span>App creation fee</span>
-              <strong>{formatToken(OPENZAP_CREATION_FEE, 18)} ETH</strong>
+              <button
+                data-busy={busy === "quote"}
+                className={styles.cardAction}
+                data-testid="quote-button"
+                disabled={busy !== null || amountIn <= 0n}
+                onClick={() => void requestQuote()}
+                type="button"
+              >
+                {busy === "quote" ? "Quoting…" : quote === null ? "Get live quote" : "Refresh quote"}
+              </button>
             </div>
-            <div>
-              <span>Atomic 0xZAPS conversion</span>
-              <strong>
-                {creationFeeQuote
-                  ? `est. ${formatToken(creationFeeQuote.amountOut, 18)} · min ${formatToken(creationFeeQuote.minZapsOut, 18)} 0xZAPS`
-                  : creationFeeError || "Reading the pinned aeWETH → 0xZAPS route…"}
-              </strong>
-              {feeConfigured ? (
-                <small>
-                  <a href={explorerAddress(OPENZAP_CREATION_FEE_CONTRACTS.gateway)} rel="noreferrer" target="_blank">
-                    Fee gateway
-                  </a>
-                  {" · "}
-                  <a href={explorerAddress(OPENZAP_CREATION_FEE_CONTRACTS.pot)} rel="noreferrer" target="_blank">
-                    0xZAPS pot
-                  </a>
-                </small>
-              ) : null}
+
+            {routeVisible && (
+              <div className={styles.routeOptions}>
+                {offeredRoutes.map((offered) => (
+                  <button
+                    key={offered.id}
+                    className={routeId === offered.id ? styles.routeOptionOn : styles.routeOption}
+                    onClick={() => changeRoute(offered.id)}
+                    disabled={zap !== null}
+                    type="button"
+                  >
+                    {offered.tokenIn.symbol} → {offered.tokenOut.symbol}
+                    <em>
+                      <ProtocolStack protocols={protocolsForRouteKind(offered.kind)} size={12} />{" "}
+                      {ROUTE_KIND_LABEL[offered.kind]}
+                    </em>
+                  </button>
+                ))}
+              </div>
+            )}
+
+            <div className={styles.route}>
+              <div className={styles.leg}>
+                <span className={styles.legLabel}>YOU SEND — EXACTLY</span>
+                <div className={styles.amountRow}>
+                  <input
+                    className={styles.amountInput}
+                    inputMode="decimal"
+                    aria-label={`Exact input in ${inputSymbol}`}
+                    value={amount}
+                    onChange={(event) => changeAmount(sanitizeDecimal(event.target.value))}
+                    disabled={zap !== null}
+                  />
+                  <span className={styles.tokenTag}>
+                    <i className={styles.tokenDot} aria-hidden="true" />
+                    {inputSymbol}
+                  </span>
+                </div>
+                {/* Gated on a connected account. `walletInBalance` initialises
+                    to 0n, so ungated this reads "Wallet holds 0 aeWETH" to
+                    someone who has not connected — a statement about a balance
+                    nothing has read. The same reason the rest of this console
+                    prints "—" rather than a zero. */}
+                <span className={styles.legHint}>
+                  {account
+                    ? `Wallet holds ${formatToken(walletInputBalance, inDecimals)} ${inputSymbol}`
+                    : `Connect a wallet to see your ${inputSymbol} balance`}
+                </span>
+              </div>
+
+              <div className={styles.arrow} aria-hidden="true">
+                <BlockGlyph name="boltFill" className={styles.arrowGlyph} />
+              </div>
+
+              <div className={styles.leg}>
+                <span className={styles.legLabel}>YOU RECEIVE — AT LEAST</span>
+                <div className={styles.floorRow}>
+                  {/* An em dash, never a zero. A zero here would be a price
+                      claim nothing has read. */}
+                  <strong className={minOut === null ? `${styles.floor} ${styles.floorPending}` : styles.floor}>
+                    {minOut === null ? "—" : formatToken(minOut, outDecimals)}
+                  </strong>
+                  <span className={styles.floorSymbol}>{outputSymbol}</span>
+                </div>
+                <span className={styles.legHintLive}>
+                  {quote === null
+                    ? "Request a live quote to see the floor you would sign."
+                    : `${quoteSourceLabel(route)} ${formatToken(quote, outDecimals)} · floor is what the Zap enforces`}
+                </span>
+                {autoRefreshedAt && (
+                  <span className={styles.legHint}>
+                    Auto-updated {autoRefreshedAt} — signing takes a fresh quote and stops if it has fallen below the
+                    minimum you reviewed.
+                  </span>
+                )}
+              </div>
             </div>
-            {creationFeeError ? (
-              <button className="btn btnGhost" type="button" onClick={() => void refreshCreationFeeQuote()}>
-                Retry fee quote
-              </button>
-            ) : null}
-          </div>
 
-          <div className={styles.flow} id="zap-lifecycle">
-            <FlowStep number="1" glyph="lock" title="Create immutable zap" detail="Policy binds owner, recipient, adapter, spender, input token, and exact amount. The separate fee converts only if creation succeeds; any conversion-floor failure reverts the whole transaction." done={zap !== null}>
-              <button data-busy={busy === "create"} className="btn btnPrimary" data-testid="create-zap" disabled={!account || !protocolReady || !feeConfigured || creationFeeQuote === null || wrongNetwork || zap !== null || busy !== null || chainedRun || amountIn <= 0n} onClick={() => void createZap()} type="button">
-                {busy === "create" ? "Creating…" : "Create zap"}
-              </button>
-
-            </FlowStep>
-            <FlowStep
-              number="2"
-              glyph="coins"
-              title={`Fund with ${inputSymbol} — then Zap`}
-              detail="Direct ERC-20 transfer only. No standing wallet allowance is created. With a reviewed quote in hand, Fund & Zap does the transfer and signed execution back to back, so a funded capsule never sits idle."
-              done={funded}
-            >
-              {canWrapInput && (
-                <button data-busy={busy === "wrap"} className="btn btnGhost" disabled={!account || wrongNetwork || busy !== null || chainedRun || amountIn <= 0n || nativeBalance < amountIn} onClick={() => void wrapEth()} type="button">
-                  {busy === "wrap" ? "Wrapping…" : "Wrap ETH"}
+            <div className={styles.bounds}>
+              <span className={styles.boundsLabel} id="slippage-label">Slippage you sign</span>
+              <div className={styles.segTrack} role="group" aria-labelledby="slippage-label">
+                {slippagePresets.map((preset) => (
+                  <button
+                    key={preset}
+                    type="button"
+                    aria-pressed={slippageBps === preset}
+                    className={slippageBps === preset ? styles.segOptionOn : styles.segOption}
+                    onClick={() => setSlippageBps(preset)}
+                  >
+                    {(preset / 100).toFixed(2)}%
+                  </button>
+                ))}
+                <button
+                  type="button"
+                  aria-pressed={customSlippage}
+                  aria-expanded={advancedOpen}
+                  className={customSlippage ? styles.segOptionOn : styles.segOption}
+                  onClick={() => setAdvancedOpen(true)}
+                >
+                  {customSlippage ? `${(slippageBps / 100).toFixed(2)}%` : "Custom…"}
                 </button>
+              </div>
+              <span className={styles.boundsHint}>Tighter is safer, but more Zaps revert.</span>
+              <span className={styles.pillRow}>
+                {/* The real signed bounds, not a design mock: these are the two
+                    values the EIP-712 intent actually caps. */}
+                <button className={styles.pillButton} onClick={() => setAdvancedOpen(true)} type="button">
+                  ≤{maxExecutionGas.toLocaleString("en-US")} gas
+                </button>
+                <button className={styles.pillButton} onClick={() => setAdvancedOpen(true)} type="button">
+                  ≤{maxFeePerGasGwei} gwei
+                </button>
+                <span className={styles.pill}>owner-signed</span>
+                {quoteGas !== null && (
+                  <span className={styles.pill}>quoter {quoteGas.toLocaleString("en-US")} gas</span>
+                )}
+              </span>
+            </div>
+
+            {advancedOpen && (
+              <div className={styles.advanced}>
+                <div className={styles.advField}>
+                  <label className={styles.advLabel} htmlFor="slippage-range">
+                    Signed max slippage ({(slippageBps / 100).toFixed(2)}%)
+                  </label>
+                  <input
+                    id="slippage-range"
+                    className={styles.range}
+                    min="10"
+                    max="500"
+                    step="10"
+                    type="range"
+                    value={slippageBps}
+                    onChange={(event) => setSlippageBps(Number(event.target.value))}
+                  />
+                </div>
+                <div className={styles.advField}>
+                  <label className={styles.advLabel} htmlFor="gas-range">
+                    Signed gas limit ({maxExecutionGas.toLocaleString("en-US")})
+                  </label>
+                  <input
+                    id="gas-range"
+                    className={styles.range}
+                    type="range"
+                    min={MIN_EXECUTION_GAS_UNITS}
+                    max={MAX_EXECUTION_GAS_UNITS}
+                    step={50_000}
+                    value={maxExecutionGas}
+                    onChange={(event) => setMaxExecutionGas(Number(event.target.value))}
+                    disabled={busy !== null}
+                  />
+                </div>
+                <div className={styles.advField}>
+                  <label className={styles.advLabel} htmlFor="fee-range">
+                    Signed gas price cap ({maxFeePerGasGwei} gwei)
+                  </label>
+                  <input
+                    id="fee-range"
+                    className={styles.range}
+                    type="range"
+                    min={MIN_EXECUTION_FEE_GWEI}
+                    max={MAX_EXECUTION_FEE_GWEI}
+                    step={1}
+                    value={maxFeePerGasGwei}
+                    onChange={(event) => setMaxFeePerGasGwei(Number(event.target.value))}
+                    disabled={busy !== null}
+                  />
+                </div>
+              </div>
+            )}
+          </section>
+
+          <section className={`${styles.card} ${styles.stepsCard}`} id="zap-lifecycle" aria-label="Getting it onchain">
+            <div className={styles.cardBar}>
+              <h2 className={styles.cardTitle}>Getting it onchain</h2>
+              <span className={styles.progress}>
+                {[1, 2, 3, 4].map((step) => {
+                  const state = stepStateFor(step);
+                  return (
+                    <i
+                      key={step}
+                      aria-hidden="true"
+                      className={`${styles.pip} ${state === "done" ? styles.pipDone : state === "current" ? styles.pipCurrent : styles.pipPending}`}
+                    />
+                  );
+                })}
+                <span className={styles.progressCount}>
+                  {executionComplete ? "Zap confirmed" : `step ${stepIndex} of 4`}
+                </span>
+              </span>
+            </div>
+
+            <Step
+              index={1}
+              state={stepStateFor(1)}
+              title={stepStateFor(1) === "done" ? "Wallet connected" : "Connect wallet"}
+              detail={
+                account && !wrongNetwork
+                  ? `${shortAddress(account)} · chain ${ROBINHOOD_CHAIN_ID}`
+                  : "The wallet that connects here is the owner the policy is bound to."
+              }
+            >
+              {wrongNetwork ? (
+                <>
+                  <p className={styles.stepBody}>
+                    This wallet is on chain {walletChainId ?? "unknown"}. Every OpenZap contract lives on Robinhood
+                    Chain {ROBINHOOD_CHAIN_ID}, so creation, funding and execution all stay disabled until you switch.
+                  </p>
+                  <div className={styles.stepActions}>
+                    <button
+                      data-busy={busy === "connect"}
+                      className="btn btnPrimary"
+                      disabled={busy !== null}
+                      onClick={() => void switchWalletNetwork()}
+                      type="button"
+                    >
+                      {busy === "connect" ? "Switching…" : "Switch network"}
+                    </button>
+                    <span className={styles.actionNote}>≈ 1 wallet confirmation</span>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <p className={styles.stepBody}>
+                    Connecting reads addresses and balances, and asks your wallet to switch to Robinhood Chain{" "}
+                    {ROBINHOOD_CHAIN_ID}. Nothing is created, approved or signed by it.
+                  </p>
+                  <div className={styles.stepActions}>
+                    <button
+                      data-busy={busy === "connect"}
+                      className="btn btnPrimary"
+                      disabled={busy !== null}
+                      onClick={() => void connectWallet()}
+                      type="button"
+                    >
+                      {busy === "connect" ? "Connecting…" : "Connect wallet"}
+                    </button>
+                  </div>
+                </>
               )}
-              {!funded && (
+            </Step>
+
+            <Step
+              index={2}
+              state={stepStateFor(2)}
+              title={zap ? "Zap created" : "Create the Zap"}
+              detail={
+                // A Zap loaded by address carries no creation transaction of
+                // ours, so claiming the app's creation fee was paid for it would
+                // be a fact about a transaction this browser never saw.
+                zap
+                  ? zap.createTx
+                    ? `${shortAddress(zap.address)} · fee ${formatToken(OPENZAP_CREATION_FEE, 18)} ETH paid`
+                    : `${shortAddress(zap.address)} · verified onchain`
+                  : "The factory deploys one contract with the policy above frozen into it."
+              }
+              link={
+                zap?.createTx ? (
+                  <a
+                    className={styles.cardLinkSm}
+                    href={explorerTransaction(zap.createTx)}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    Creation tx ↗
+                  </a>
+                ) : undefined
+              }
+            >
+              <p className={styles.stepBody}>
+                The policy binds owner, recipient, adapter, spender, input token, and exact amount. The separate fee
+                converts only if creation succeeds; any conversion-floor failure reverts the whole transaction.
+              </p>
+
+              <div className={styles.creationFeeBox} data-ready={creationFeeQuote !== null} role="note">
+                <div>
+                  <span>App creation fee</span>
+                  <strong>{formatToken(OPENZAP_CREATION_FEE, 18)} ETH</strong>
+                </div>
+                <div>
+                  <span>Atomic 0xZAPS conversion</span>
+                  <strong>
+                    {creationFeeQuote
+                      ? `est. ${formatToken(creationFeeQuote.amountOut, 18)} · min ${formatToken(creationFeeQuote.minZapsOut, 18)} 0xZAPS`
+                      : creationFeeError || "Reading the pinned aeWETH → 0xZAPS route…"}
+                  </strong>
+                  {feeConfigured ? (
+                    <small>
+                      <a href={explorerAddress(OPENZAP_CREATION_FEE_CONTRACTS.gateway)} rel="noreferrer" target="_blank">
+                        Fee gateway
+                      </a>
+                      {" · "}
+                      <a href={explorerAddress(OPENZAP_CREATION_FEE_CONTRACTS.pot)} rel="noreferrer" target="_blank">
+                        0xZAPS pot
+                      </a>
+                    </small>
+                  ) : null}
+                </div>
+                {creationFeeError ? (
+                  <button className="btn btnGhost" type="button" onClick={() => void refreshCreationFeeQuote()}>
+                    Retry fee quote
+                  </button>
+                ) : null}
+              </div>
+
+              <div className={styles.stepActions}>
+                <button
+                  data-busy={busy === "create"}
+                  className="btn btnPrimary"
+                  data-testid="create-zap"
+                  disabled={!account || !protocolReady || !feeConfigured || creationFeeQuote === null || wrongNetwork || zap !== null || busy !== null || chainedRun || amountIn <= 0n}
+                  onClick={() => void createZap()}
+                  type="button"
+                >
+                  {busy === "create" ? "Creating…" : "Create the Zap"}
+                </button>
+                <span className={styles.actionNote}>≈ 1 wallet confirmation</span>
+              </div>
+            </Step>
+
+            <Step
+              index={3}
+              state={stepStateFor(3)}
+              title={funded || executionComplete ? "Zap funded" : "Fund the Zap"}
+              detail={
+                // After a confirmed execution the input is gone, so reading the
+                // live balance back would print "0 aeWETH held" under a tick.
+                executionComplete
+                  ? `${formatToken(requiredAmount, inDecimals)} ${inputSymbol} spent by the execution`
+                  : funded
+                    ? `${formatToken(zapInBalance, inDecimals)} ${inputSymbol} held by the Zap`
+                    : "Direct ERC-20 transfer only. No standing wallet allowance is created."
+              }
+            >
+              <p className={styles.stepBody}>
+                Send exactly <strong>{formatToken(requiredAmount, inDecimals)} {inputSymbol}</strong> to the Zap. It can
+                only spend that input on the route above — nothing else, no approvals to widen. With a reviewed quote in
+                hand, Fund &amp; Zap does the transfer and the signed execution back to back, so a funded Zap never sits
+                idle.
+              </p>
+              <div className={styles.stepActions}>
+                {canWrapInput && (
+                  <button
+                    data-busy={busy === "wrap"}
+                    className="btn btnGhost"
+                    disabled={!account || wrongNetwork || busy !== null || chainedRun || amountIn <= 0n || nativeBalance < amountIn}
+                    onClick={() => void wrapEth()}
+                    type="button"
+                  >
+                    {busy === "wrap" ? "Wrapping…" : "Wrap ETH"}
+                  </button>
+                )}
                 <button
                   data-busy={chainedRun}
                   className="btn btnPrimary"
@@ -1703,117 +1963,364 @@ export default function AppPage(): React.JSX.Element {
                   <BlockGlyph name="bolt" className={styles.btnGlyph} />
                   {chainedRun ? (busy === "execute" ? "Zapping…" : "Funding…") : "Fund & Zap"}
                 </button>
+                <button
+                  data-busy={busy === "fund"}
+                  className="btn btnGhost"
+                  disabled={!zap || !protocolReady || wrongNetwork || funded || busy !== null || chainedRun}
+                  onClick={() => void fundZap()}
+                  type="button"
+                >
+                  {busy === "fund" && !chainedRun ? "Funding…" : "Fund only"}
+                </button>
+                <button className="btn btnGhost" disabled={!zap} onClick={() => void copyZapAddress()} type="button">
+                  Copy Zap address
+                </button>
+                {/* Fund only is one confirmation; "Fund & Zap" runs the funding
+                    transfer, the EIP-712 signature, and the execution. */}
+                <span className={styles.actionNote}>
+                  ≈ 1 wallet confirmation to fund · Fund &amp; Zap adds the signature and one more confirmation
+                </span>
+              </div>
+            </Step>
+
+            <Step
+              index={4}
+              state={stepStateFor(4)}
+              title={executionComplete ? "Zap confirmed" : "Sign the floor and Zap"}
+              detail={
+                executionComplete
+                  ? "signed, submitted, and receipt-verified"
+                  : "EIP-712 over the reviewed minimum output, then anyone can submit it."
+              }
+            >
+              <p className={styles.stepBody}>
+                EIP-712 over the reviewed minimum output, then anyone can submit it. The Zap reverts if the price drops
+                below your displayed minimum; the intent expires in ten minutes and caps gas and fee price.
+              </p>
+              <div className={styles.stepActions}>
+                <button
+                  data-busy={busy === "execute"}
+                  className="btn btnPrimary"
+                  disabled={!protocolReady || wrongNetwork || !funded || reviewedQuote === null || busy !== null || chainedRun || executionComplete}
+                  onClick={() => void executeZap()}
+                  type="button"
+                >
+                  {busy === "execute" ? "Zapping…" : executionComplete ? "Zap confirmed" : "Sign & Zap"}
+                </button>
+                <span className={styles.actionNote}>≈ 1 wallet signature + 1 confirmation</span>
+              </div>
+            </Step>
+          </section>
+
+          <section className={`${styles.card} ${styles.logCard}`} aria-label="This Zap's log">
+            <div className={styles.cardBar}>
+              <h2 className={styles.cardTitle}>This Zap&apos;s log</h2>
+              {zap && (
+                <Link className={styles.cardLink} href={`/explore/${zap.address}`}>
+                  Open in Explore →
+                </Link>
               )}
-              <button data-busy={busy === "fund"} className={funded ? "btn btnPrimary" : "btn btnGhost"} disabled={!zap || !protocolReady || wrongNetwork || funded || busy !== null || chainedRun} onClick={() => void fundZap()} type="button">
-                {busy === "fund" && !chainedRun ? "Funding…" : funded ? "Funded" : "Fund only"}
-              </button>
-            </FlowStep>
-            <FlowStep number="3" glyph="bolt" title="Sign and Zap" detail="Requires a reviewed live quote; the Zap reverts if the price drops below your displayed minimum. The EIP-712 intent expires in ten minutes and caps gas and fee price." done={executionComplete}>
-              <button data-busy={busy === "execute"} className="btn btnPrimary" disabled={!protocolReady || wrongNetwork || !funded || reviewedQuote === null || busy !== null || chainedRun || executionComplete} onClick={() => void executeZap()} type="button">
-                {busy === "execute" ? "Zapping…" : executionComplete ? "Zap confirmed" : "Sign & Zap"}
-              </button>
-            </FlowStep>
-          </div>
-        </section>
+            </div>
 
-        <aside className={styles.review} aria-label="Live verification">
-          <span className={styles.cardHead}>Verification</span>
-          <h2>Nothing hidden.</h2>
-          <div className={styles.verifyList}>
-            <VerifyRow glyph="gauge" label="Factory health" value={protocolReady ? "RPC reads ready" : protocolHealth} href={configured ? explorerAddress(OPENZAP_CONTRACTS.factory) : undefined} ok={protocolReady} />
-            <VerifyRow glyph="pool" label="Pool-bound adapter" value={route ? shortAddress(route.adapter) : "—"} href={route ? explorerAddress(route.adapter) : undefined} ok={route !== null} />
-            <VerifyRow glyph="send" label="Settles through" value={settlementLabel} ok={route !== null} />
-            <VerifyRow glyph="shield" label="Router allowance" value="Cleared after every call" ok />
-            <VerifyRow glyph="lock" label="Permit2 allowance" value="Cleared after every swap" ok />
-            <VerifyRow glyph="safe" label="Output protection" value="Signed minOut in OpenZap" ok />
-          </div>
-
-          <div className={styles.currentZap}>
-            <span>Current zap</span>
-            {zap ? (
+            {/* "From the rail" would only be true on a wide screen: the two
+                columns stack on a phone, where Your Zaps ends up below this. */}
+            {zap === null ? (
+              <p className={styles.logEmpty}>
+                No Zap loaded — create one above, or pick one under Your Zaps.
+              </p>
+            ) : (
               <>
-                <a href={explorerAddress(zap.address)} target="_blank" rel="noreferrer">{zap.address}</a>
-                {/* Direct child of .currentZap so it picks up the same block
-                    treatment as the explorer link above it. */}
-                <Link href={`/explore/${zap.address}`}>Onchain zap page: policy, executions, recoveries →</Link>
-                <div><small>Required</small><strong>{formatToken(requiredAmount, inDecimals)} {inputSymbol}</strong></div>
-                <div><small>Zap {inputSymbol}</small><strong>{formatToken(zapInBalance, inDecimals)} {inputSymbol}</strong></div>
-                <div><small>Zap {outputSymbol}</small><strong>{formatToken(zapOutBalance, outDecimals)} {outputSymbol}</strong></div>
-                <div><small>Zap native</small><strong>{formatToken(zapNativeBalance, 18)} ETH</strong></div>
-                <div><small>Wallet output</small><strong>{formatToken(walletOutputBalance, outDecimals)} {outputSymbol}</strong></div>
-                <div className={styles.zapHistory}>
-                  <small>Onchain history</small>
-                  {zapHistory === "loading" && <span>Reading zap logs…</span>}
-                  {zapHistory === "unavailable" && <span>History unavailable — the RPC log query failed.</span>}
-                  {Array.isArray(zapHistory) && zapHistory.length === 0 && <span>No executions or recoveries yet.</span>}
-                  {Array.isArray(zapHistory) &&
-                    zapHistory.map((entry) => (
+                <div className={styles.logRow}>
+                  <span className={styles.logChipOk}>created</span>
+                  <span className={styles.logText}>
+                    Policy frozen behind hash <code>{shortHash(zap.policyHash)}</code>
+                  </span>
+                  <code className={styles.logMeta}>{formatReceiptTime(zap.createdAt)}</code>
+                  {zap.createTx ? (
+                    <a
+                      className={styles.logLink}
+                      href={explorerTransaction(zap.createTx)}
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      tx ↗
+                    </a>
+                  ) : (
+                    <span />
+                  )}
+                </div>
+
+                {/* The chip states are the three real ones. "waiting" after a
+                    confirmed execution would be a lie about a spent Zap. */}
+                <div className={styles.logRow}>
+                  <span className={executionComplete ? styles.logChipNeutral : funded ? styles.logChipOk : styles.logChipWarn}>
+                    {executionComplete ? "spent" : funded ? "funded" : "waiting"}
+                  </span>
+                  <span className={styles.logText}>
+                    Zap balance {formatToken(zapInBalance, inDecimals)} {inputSymbol}
+                    {executionComplete
+                      ? " — the input was spent by the confirmed execution"
+                      : funded
+                        ? " — exact input held"
+                        : " — nothing can execute until it is funded"}
+                  </span>
+                  <code className={styles.logMeta}>read just now</code>
+                  <span />
+                </div>
+
+                {zapHistory === "loading" && <p className={styles.logEmpty}>Reading Zap logs…</p>}
+                {zapHistory === "unavailable" && (
+                  <div className={styles.logRow}>
+                    <span className={styles.logChipDanger}>unavailable</span>
+                    <span className={styles.logText}>History unavailable — the RPC log query failed.</span>
+                    <span />
+                    <span />
+                  </div>
+                )}
+                {Array.isArray(zapHistory) && zapHistory.length === 0 && (
+                  <p className={styles.logEmpty}>No executions or recoveries yet.</p>
+                )}
+                {Array.isArray(zapHistory) &&
+                  zapHistory.map((entry) => (
+                    <div className={styles.logRow} key={`${entry.txHash}:${entry.label}:${entry.assetSymbol}`}>
+                      <span className={entry.label === "Executed" ? styles.logChipOk : styles.logChipNeutral}>
+                        {entry.label.toLowerCase()}
+                      </span>
+                      <span className={styles.logText}>
+                        {formatToken(entry.amount, entry.assetDecimals)} {entry.assetSymbol}
+                      </span>
+                      <span />
                       <a
+                        className={styles.logLink}
                         href={explorerTransaction(entry.txHash)}
-                        key={`${entry.txHash}:${entry.label}:${entry.assetSymbol}`}
                         target="_blank"
                         rel="noreferrer"
                       >
-                        {entry.label}: {formatToken(entry.amount, entry.assetDecimals)} {entry.assetSymbol} ↗
+                        tx ↗
                       </a>
-                    ))}
-                </div>
-                <button className="btn btnGhost" disabled={busy !== null} onClick={exportCurrentZap} type="button">Export public config</button>
-                <button data-busy={busy === "recover"} className="btn btnGhost" disabled={wrongNetwork || busy !== null || recoverableBalance === 0n} onClick={() => void recoverFunds()} type="button">
-                  {busy === "recover" ? "Recovering…" : "Emergency recover"}
-                </button>
+                    </div>
+                  ))}
               </>
-            ) : <p>No zap loaded.</p>}
-          </div>
+            )}
+          </section>
+        </div>
 
-          <div className={styles.loadZap}>
-            <label htmlFor="load-zap">Resume or recover an owned canonical zap</label>
-            <input id="load-zap" className={styles.input} placeholder="0x…" value={manualZap} onChange={(event) => setManualZap(event.target.value)} />
-            <button data-busy={busy === "load"} className="btn btnGhost" disabled={!account || !protocolReady || busy !== null || manualZap.length !== 42} onClick={() => void loadExistingZap()} type="button">
-              {busy === "load" ? "Loading…" : "Load verified zap"}
-            </button>
-          </div>
-
-          {savedZaps.length > 0 && (
-            <div aria-label="Verified zap history" className={styles.savedZaps} role="group">
-              <span aria-hidden="true">Verified zap history</span>
-              {savedZaps.map((record) => {
-                const active = zap?.address === record.address;
-                const recordRoute = resolveRouteById(record.routeId);
-                const recordLabel = recordRoute ? `${recordRoute.tokenIn.symbol} → ${recordRoute.tokenOut.symbol}` : "Unknown route";
-                return (
-                  // Two controls, not one: selecting a zap for this console and
-                  // opening its public page are different intents, and a link
-                  // cannot live inside the button.
-                  <div style={SAVED_ZAP_ROW} key={record.address}>
-                    <button
-                      aria-pressed={active}
-                      className={active ? styles.savedZapActive : styles.savedZap}
-                      disabled={busy !== null}
-                      onClick={() => selectZap(record)}
-                      type="button"
-                    >
-                      <strong>{active ? "✓ " : ""}{recordLabel}</strong>
-                      <code>{shortAddress(record.address)}</code>
-                    </button>
-                    <Link
-                      aria-label={`Open the onchain page for zap ${record.address}`}
-                      className="btn btnGhost"
-                      href={`/explore/${record.address}`}
-                    >
-                      ↗
-                    </Link>
-                  </div>
-                );
-              })}
+        <div className={styles.col}>
+          <section className={`${styles.card} ${styles.verifyCard}`} aria-label="Live verification">
+            <div className={`${styles.cardBar} ${styles.cardBarTight}`}>
+              <h2 className={styles.cardTitle}>Verification</h2>
+              <span className={allChecksPass ? styles.verifyCount : styles.verifyCountFail}>
+                {passCount} of {verifications.length} pass
+              </span>
             </div>
-          )}
-        </aside>
-      </section>
+            <div className={styles.verifyList}>
+              {verifications.map((check) => (
+                <VerifyRow key={check.label} {...check} />
+              ))}
+            </div>
+          </section>
 
-      <section id="receipts" className={`container ${styles.receipts}`} aria-label="Transaction receipts">
+          <section className={`${styles.card} ${styles.factsCard}`} aria-label="Zap facts">
+            <div className={`${styles.cardBar} ${styles.cardBarTight}`}>
+              <h2 className={styles.cardTitle}>Zap</h2>
+            </div>
+            {zap === null ? (
+              <p className={styles.logEmpty}>No Zap loaded.</p>
+            ) : (
+              <>
+                <div className={styles.factRow}>
+                  <span className={styles.factLabel}>Address</span>
+                  <a className={styles.factValue} href={explorerAddress(zap.address)} target="_blank" rel="noreferrer">
+                    {shortAddress(zap.address)} ↗
+                  </a>
+                </div>
+                <div className={styles.factRow}>
+                  <span className={styles.factLabel}>Policy hash</span>
+                  <code className={styles.factValue}>{shortHash(zap.policyHash)}</code>
+                </div>
+                <div className={styles.factRow}>
+                  <span className={styles.factLabel}>Lineage</span>
+                  <code className={styles.factValue}>v1.1 · one-shot nonce</code>
+                </div>
+                <div className={styles.factRow}>
+                  <span className={styles.factLabel}>Venue</span>
+                  <span className={styles.factValue}>{venueLabel}</span>
+                </div>
+                <div className={styles.factRow}>
+                  <span className={styles.factLabel}>Owner withdraw</span>
+                  <span className={styles.factOk}>always available</span>
+                </div>
+                <div className={styles.factRow}>
+                  <span className={styles.factLabel}>Required</span>
+                  <code className={styles.factValue}>{formatToken(requiredAmount, inDecimals)} {inputSymbol}</code>
+                </div>
+                <div className={styles.factRow}>
+                  <span className={styles.factLabel}>Zap {inputSymbol}</span>
+                  <code className={styles.factValue}>{formatToken(zapInBalance, inDecimals)} {inputSymbol}</code>
+                </div>
+                <div className={styles.factRow}>
+                  <span className={styles.factLabel}>Zap {outputSymbol}</span>
+                  <code className={styles.factValue}>{formatToken(zapOutBalance, outDecimals)} {outputSymbol}</code>
+                </div>
+                <div className={styles.factRow}>
+                  <span className={styles.factLabel}>Zap native</span>
+                  <code className={styles.factValue}>{formatToken(zapNativeBalance, 18)} ETH</code>
+                </div>
+                <div className={styles.factRow}>
+                  <span className={styles.factLabel}>Wallet output</span>
+                  <code className={styles.factValue}>{formatToken(walletOutputBalance, outDecimals)} {outputSymbol}</code>
+                </div>
+                <div className={styles.railActions}>
+                  <Link className={styles.ghostFull} href={`/explore/${zap.address}`}>
+                    Onchain Zap page →
+                  </Link>
+                  <button className={styles.ghostFull} disabled={busy !== null} onClick={exportCurrentZap} type="button">
+                    Export public config
+                  </button>
+                  <button
+                    data-busy={busy === "recover"}
+                    className={styles.ghostFull}
+                    disabled={wrongNetwork || busy !== null || recoverableBalance === 0n}
+                    onClick={() => void recoverFunds()}
+                    type="button"
+                  >
+                    {busy === "recover" ? "Recovering…" : "Emergency recover"}
+                  </button>
+                </div>
+              </>
+            )}
+          </section>
+
+          <section className={`${styles.card} ${styles.zapsCard}`}>
+            <div className={`${styles.cardBar} ${styles.cardBarTight}`}>
+              <h2 className={styles.cardTitle}>Your Zaps</h2>
+            </div>
+            {savedZaps.length > 0 ? (
+              <div aria-label="Saved verified Zaps" className={styles.zapList} role="group">
+                {savedZaps.map((record) => {
+                  const active = zap?.address === record.address;
+                  const recordRoute = resolveRouteById(record.routeId);
+                  const recordLabel = recordRoute
+                    ? `${recordRoute.tokenIn.symbol} → ${recordRoute.tokenOut.symbol}`
+                    : "Unknown route";
+                  return (
+                    // Two controls, not one: selecting a Zap for this console and
+                    // opening its public page are different intents, and a link
+                    // cannot live inside the button.
+                    <div className={styles.zapRow} key={record.address}>
+                      <button
+                        aria-pressed={active}
+                        className={active ? styles.zapItemOn : styles.zapItem}
+                        disabled={busy !== null}
+                        onClick={() => selectZap(record)}
+                        type="button"
+                      >
+                        <strong className={styles.zapItemName}>{active ? "✓ " : ""}{recordLabel}</strong>
+                        <code className={styles.zapItemMeta}>{shortAddress(record.address)}</code>
+                      </button>
+                      <Link
+                        aria-label={`Open the onchain page for Zap ${record.address}`}
+                        className={styles.zapItemLink}
+                        href={`/explore/${record.address}`}
+                      >
+                        ↗
+                      </Link>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <p className={styles.logEmpty}>No verified Zaps saved in this browser yet.</p>
+            )}
+
+            <div className={styles.loadRow}>
+              <label className={styles.loadLabel} htmlFor="load-zap">
+                Resume or recover an owned canonical Zap
+              </label>
+              <input
+                id="load-zap"
+                className={styles.loadInput}
+                placeholder="0x…"
+                value={manualZap}
+                onChange={(event) => setManualZap(event.target.value)}
+              />
+              <button
+                data-busy={busy === "load"}
+                className={styles.ghostFull}
+                disabled={!account || !protocolReady || busy !== null || manualZap.length !== 42}
+                onClick={() => void loadExistingZap()}
+                type="button"
+              >
+                {busy === "load" ? "Loading…" : "Load verified Zap"}
+              </button>
+            </div>
+          </section>
+
+          <section className={`${styles.sunkCard} ${styles.reuseCard}`}>
+            <h2 className={styles.sunkTitle}>Do it again, later</h2>
+            {/* Not "everything above": this card sits in the right-hand rail, so
+                nothing is above it on a wide screen. Name the design instead. */}
+            {/* Not "a Zap runs once": v1.1 consumes one NONCE per execution, so
+                a refunded Zap can run again on a newly signed intent. */}
+            <p className={styles.sunkNote}>
+              One signature, one run. Start the next Zap on the same route, amount, and bounds, or keep this one&apos;s
+              config for your records.
+            </p>
+            <div className={styles.reuseList}>
+              {/* This clears the selected Zap and leaves the route, amount, and
+                  bounds in place. It does not create anything — Create the Zap
+                  still does that — so it cannot promise a duplicate. */}
+              <button
+                className={styles.reuseRow}
+                disabled={busy !== null || chainedRun}
+                onClick={startNewZap}
+                type="button"
+              >
+                <BlockGlyph name="copy" className={styles.reuseGlyph} />
+                Start a new Zap, same design
+              </button>
+              {/* Labelled for what it is. There is no template store behind
+                  this — it is the same public-config JSON download as the Zap
+                  panel's, and it needs a created Zap to have anything to write. */}
+              <button className={styles.reuseRow} disabled={!zap} onClick={exportCurrentZap} type="button">
+                <BlockGlyph name="download" className={styles.reuseGlyph} />
+                Download this Zap&apos;s config (JSON)
+              </button>
+              {/* A real handoff, not three ignored params. `readAutomationHandoff`
+                  rejects anything without `src=build` AND a `mode`, so the
+                  previous href carried route/amount/bps that Automate silently
+                  dropped — the one thing worse than not carrying a design over
+                  is appearing to. It also only accepts BOUNDED_SWAP_IDS, so a
+                  vault or LP route still lands on an empty Automate; that is the
+                  same outcome as before, reached honestly. */}
+              <Link
+                className={styles.reuseRow}
+                href={`/zap?view=automate&src=build&mode=recurring&route=${routeId}&amount=${amount}&bps=${slippageBps}&interval=daily&runs=10`}
+              >
+                <BlockGlyph name="repeat" className={styles.reuseGlyph} />
+                Set up a recurring Zap
+              </Link>
+            </div>
+          </section>
+
+          <section className={`${styles.sunkCard} ${styles.holderCard}`} aria-label="Holder conveniences">
+            <h2 className={styles.sunkTitle}>Holder conveniences</h2>
+            <p className={styles.sunkNote}>
+              {!account
+                ? "Holding 100,000+ 0xZAPS turns on app conveniences: auto-refreshing quotes, more saved Zaps and receipts, and receipt JSON export."
+                : holderTier === "none"
+                  ? "Hold 100,000+ 0xZAPS in this wallet to turn on auto-refreshing quotes, more saved Zaps and receipts, and receipt JSON export."
+                  : `${tierLabel(holderTier)} conveniences active: auto-refreshing quotes, more saved Zaps and receipts, and receipt JSON export.`}
+              {" "}
+              <Link href="/token#utilities">Details →</Link>
+            </p>
+          </section>
+        </div>
+      </div>
+
+      <section id="receipts" className={styles.receipts} aria-label="Transaction receipts">
         <div className={styles.receiptHead}>
-          <div><span className="eyebrow">Receipts</span><h2>Wallet activity, verified by receipts.</h2></div>
+          <h2 className={styles.receiptsTitle}>Receipts</h2>
           <div className={styles.receiptLinks}>
             <button
               className="btn btnGhost"
@@ -2063,64 +2570,80 @@ function readableError(cause: unknown): string {
   return "Unknown wallet or RPC error.";
 }
 
-function Metric({ label, value, glyph }: { label: string; value: string; glyph?: string }): React.JSX.Element {
-  return (
-    <div className={styles.metric}>
-      <strong>{value}</strong>
-      <span>
-        {glyph ? <BlockGlyph name={glyph} className={styles.rowGlyph} /> : null}
-        {label}
-      </span>
-    </div>
-  );
-}
+type StepState = "done" | "current" | "future";
+
+type VerifyCheck = {
+  label: string;
+  value: string;
+  href?: string;
+  ok: boolean;
+};
 
 function unixNowSeconds(): number {
   return Math.floor(Date.now() / 1_000);
 }
 
-function Field({ label, children }: { label: string; children: React.ReactNode }): React.JSX.Element {
-  return <label className={styles.field}><span>{label}</span>{children}</label>;
-}
-
-function FlowStep({ number, title, detail, done, glyph, children }: {
-  number: string;
+/**
+ * One row of "Getting it onchain".
+ *
+ * A finished step collapses to a single line — its mark, its name, and the one
+ * fact that proves it happened — because a wall of four fully expanded panels
+ * is what made the old flow impossible to read at a glance. Only the step the
+ * user can actually act on gets the body copy and the buttons, and nothing
+ * that is not `current` renders its actions at all: a disabled Create button
+ * sitting under a finished Create step is noise that reads as a failure.
+ */
+function Step({ index, state, title, detail, link, children }: {
+  index: number;
+  state: StepState;
   title: string;
-  detail: string;
-  done: boolean;
-  /** BlockGlyph name — the step's meaning at a glance, beside the counter. */
-  glyph?: string;
-  children: React.ReactNode;
+  /** Mono evidence when the step is done, plain prose when it is still ahead. */
+  detail?: string;
+  /** Trailing link on a completed step (e.g. the creation transaction). */
+  link?: React.ReactNode;
+  children?: React.ReactNode;
 }): React.JSX.Element {
-  return (
-    <div className={styles.flowStep} data-done={done}>
-      <span>{done ? <BlockGlyph name="check" className={styles.stepMark} /> : number}</span>
-      <div>
-        <strong>
-          {glyph ? <BlockGlyph name={glyph} className={styles.stepGlyph} /> : null}
-          {title}
-        </strong>
-        <p>{detail}</p>
-        <div className={styles.flowActions}>{children}</div>
+  if (state === "current") {
+    return (
+      <div className={styles.stepCurrent}>
+        <span className={styles.stepBadge} aria-hidden="true">{index}</span>
+        <div>
+          <strong className={styles.stepTitle}>{title}</strong>
+          {children}
+        </div>
       </div>
+    );
+  }
+
+  if (state === "done") {
+    return (
+      <div className={styles.stepDone}>
+        <span className={styles.stepMarkOk} aria-hidden="true">
+          <BlockGlyph name="tick" className={styles.stepMarkGlyph} />
+        </span>
+        <strong className={styles.stepDoneLabel}>{title}</strong>
+        {detail ? <code className={styles.stepDetail}>{detail}</code> : null}
+        {link}
+      </div>
+    );
+  }
+
+  return (
+    <div className={styles.stepFuture}>
+      <span className={styles.stepNumeral} aria-hidden="true">{index}</span>
+      <strong className={styles.stepFutureTitle}>{title}</strong>
+      {detail ? <span className={styles.stepFutureDetail}>{detail}</span> : null}
     </div>
   );
 }
 
-function VerifyRow({ label, value, href, ok, glyph }: {
-  label: string;
-  value: string;
-  href?: string;
-  ok: boolean;
-  /** BlockGlyph name for what this row checks; falls back to the pass/fail mark. */
-  glyph?: string;
-}): React.JSX.Element {
+function VerifyRow({ label, value, href, ok }: VerifyCheck): React.JSX.Element {
   return (
-    // data-ok drives the failed state: every mark used to render in the same pass-yellow, so a check
+    // data-ok drives the failed state: every mark used to render in the same pass colour, so a check
     // that did NOT pass looked exactly like one that did.
     <div className={styles.verifyRow} data-ok={ok}>
       <span>
-        <BlockGlyph name={glyph ?? (ok ? "check" : "alert")} className={styles.rowGlyph} />
+        <BlockGlyph name={ok ? "tick" : "alert"} className={styles.rowGlyph} />
       </span>
       <div><small>{label}</small>{href ? <a href={href} target="_blank" rel="noreferrer">{value}</a> : <strong>{value}</strong>}</div>
     </div>

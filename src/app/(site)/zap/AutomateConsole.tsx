@@ -15,10 +15,8 @@ import {
   type Address,
   type Hex,
 } from "viem";
-import { OpenZapMark } from "@/components/OpenZapMark";
 import { useWalletSession } from "@/components/WalletProvider";
 import { BlockGlyph } from "./BlockGlyph";
-import { CreationWorkspace } from "./CreationWorkspace";
 import { trackEvent } from "@/lib/analytics";
 import {
   INTERVAL_PRESETS,
@@ -98,7 +96,7 @@ import {
   robinhoodChain,
   v4QuoterAbi,
 } from "@/lib/robinhood";
-import styles from "./app.module.css";
+import styles from "./automate.module.css";
 
 const publicClient = createPublicClient({ chain: robinhoodChain, transport: http(ROBINHOOD_RPC_URL) });
 
@@ -108,6 +106,24 @@ const WRAP_GAS_RESERVE = 500_000_000_000_000n; // 0.0005 ETH
 
 type BusyAction = "connect" | "create" | "fund" | "sign" | "cancel" | "recover" | "refresh" | "send" | "publish" | null;
 type ExecutorMode = ExecutorAccess | "custom";
+type StepState = "done" | "current" | "pending";
+
+/**
+ * Who may submit. Explanatory cards rather than a <select>, because the choice
+ * that used to read "Custom executor" is the one people got wrong: it decides
+ * who races, and nothing about what a submitter is allowed to do.
+ */
+const ACCESS_OPTIONS: readonly { id: ExecutorMode; title: string; copy: string }[] = [
+  { id: "anyone", title: "Anyone", copy: "Executors compete. Fastest is fine." },
+  { id: "owner-only", title: "Owner only", copy: "You submit every Zap yourself." },
+  { id: "custom", title: "Pinned", copy: "One executor address you name." },
+];
+
+const CHAIN_ENFORCES: readonly string[] = [
+  "Nothing Zaps early, twice, or past the end",
+  "The recipient stays your wallet, forever",
+  "You can revoke the nonce and withdraw at any time",
+];
 
 /** The reference daemon's localhost intake (executor/intake.mjs). Probed only after signing. */
 const EXECUTOR_INTAKE_URL = "http://127.0.0.1:8477";
@@ -541,7 +557,7 @@ export default function AutomateConsole(): React.JSX.Element {
       const activeRoute = route;
       if (!activeRoute) throw new Error("Route unavailable.");
       if (perRunAmount <= 0n) throw new Error("Enter a per-Zap amount first.");
-      if (mode === "recurring" && (maxRuns < 1 || maxRuns > 1000)) throw new Error("Zaps must be between 1 and 1000.");
+      if (mode === "recurring" && (maxRuns < 1 || maxRuns > 1000)) throw new Error("Total Zaps must be between 1 and 1000.");
 
       // recurring → v3.1 (relative floor); trigger → v3. Same factory ABI (identical Policy tuple).
       const stack = mode === "recurring" ? OPENZAP_V3_1_CONTRACTS : OPENZAP_V3_CONTRACTS;
@@ -572,7 +588,7 @@ export default function AutomateConsole(): React.JSX.Element {
         publicClient.readContract({ address: predicted, abi: openZapV3Abi, functionName: "policyHash" }),
       ]);
       if (code !== expectedCloneRuntime(stack.implementation)) {
-        throw new Error("Deployed zap bytecode does not match the expected implementation. Do not fund it.");
+        throw new Error("Deployed Zap bytecode does not match the expected implementation. Do not fund it.");
       }
 
       const next: CreatedAutomationResult = {
@@ -590,7 +606,7 @@ export default function AutomateConsole(): React.JSX.Element {
       setCreationResult(next);
       setSelected(predicted);
       setNotice(
-        `${mode === "recurring" ? "v3.1" : "v3"} zap created and verified at ${shortAddress(predicted)}. The ${formatToken(OPENZAP_CREATION_FEE, 18)} ETH fee converted with the reviewed ${formatToken(creationFeeQuote.minZapsOut, 18)} 0xZAPS floor. Fund it next.`,
+        `${mode === "recurring" ? "v3.1" : "v3"} Zap created and verified at ${shortAddress(predicted)}. The ${formatToken(OPENZAP_CREATION_FEE, 18)} ETH fee converted with the reviewed ${formatToken(creationFeeQuote.minZapsOut, 18)} 0xZAPS floor. Fund it next.`,
       );
       trackEvent("automate_create", { mode, fee: OPENZAP_CREATION_FEE.toString() });
     } catch (cause) {
@@ -625,7 +641,7 @@ export default function AutomateConsole(): React.JSX.Element {
     const resultRoute = resolveRouteById(creationResult.routeId);
     const summary = [
       "OpenZaps automation creation receipt",
-      `Capsule: ${creationResult.address}`,
+      `Zap: ${creationResult.address}`,
       `Transaction: ${creationResult.createTx}`,
       `Policy: ${creationResult.policyHash}`,
       `Lineage: ${creationResult.mode === "recurring" ? "v3.1 recurring" : "v3 price trigger"}`,
@@ -635,7 +651,7 @@ export default function AutomateConsole(): React.JSX.Element {
     ].join("\n");
     try {
       await navigator.clipboard.writeText(summary);
-      setNotice("Automation creation receipt copied with its capsule, transaction, policy, and terms.");
+      setNotice("Automation creation receipt copied with its Zap address, transaction, policy, and terms.");
     } catch {
       setError("The browser blocked clipboard access. Use the explorer links in the creation receipt instead.");
     }
@@ -646,7 +662,7 @@ export default function AutomateConsole(): React.JSX.Element {
     setError("");
     try {
       const owner = requireAccount(account);
-      if (!record || !recordRoute) throw new Error("Create a zap first.");
+      if (!record || !recordRoute) throw new Error("Create a Zap first.");
       // Fresh reads, never React state: a stale balance here is a double-funding, not a stale pixel.
       const fresh = await loadAutomationStatus(record, recordRoute);
       if (fresh.balance === null) throw new Error("Zap balance is unreadable right now. Try again.");
@@ -654,7 +670,7 @@ export default function AutomateConsole(): React.JSX.Element {
       const missing = target - fresh.balance;
       if (missing <= 0n) {
         await applyLoad(record);
-        setNotice("Your capsule already holds everything the remaining Zaps can spend.");
+        setNotice("This Zap already holds everything its remaining runs can spend.");
         return;
       }
       const wallet = await requireWallet(owner);
@@ -707,7 +723,7 @@ export default function AutomateConsole(): React.JSX.Element {
       const hash = await wallet.writeContract(request);
       await publicClient.waitForTransactionReceipt({ hash });
       await applyLoad(record);
-      setNotice(`Funded ${formatToken(missing, recordRoute.tokenIn.decimals)} ${recordRoute.tokenIn.symbol} into the zap.`);
+      setNotice(`Funded ${formatToken(missing, recordRoute.tokenIn.decimals)} ${recordRoute.tokenIn.symbol} into the Zap.`);
       trackEvent("automate_fund");
     } catch (cause) {
       setError(readableError(cause));
@@ -721,7 +737,7 @@ export default function AutomateConsole(): React.JSX.Element {
     setError("");
     try {
       const owner = requireAccount(account);
-      if (!record || !recordRoute) throw new Error("Create a zap first.");
+      if (!record || !recordRoute) throw new Error("Create a Zap first.");
       if (recordRoute.quote.source !== "v4") throw new Error("Automation supports the bounded pool routes only.");
       const wallet = await requireWallet(owner);
       const nowSec = BigInt(Math.floor(Date.now() / 1000));
@@ -818,8 +834,8 @@ export default function AutomateConsole(): React.JSX.Element {
         deliveredTo === "relay"
           ? executorMode === "anyone"
             ? "Signed and published to the executor network — any executor can Zap it now. Nothing else to do."
-            : "Signed and published. The capsule will accept Zaps only from the executor bound in this intent."
-          : "Standing intent signed. Publish it to an executor below, or export the file.",
+            : "Signed and published. This Zap will accept runs only from the executor bound in this intent."
+          : "Standing intent signed. Publish it to the executor network, or download the file for an executor you run.",
       );
       trackEvent("automate_sign", { mode: record.mode, published: deliveredTo === "relay" });
     } catch (cause) {
@@ -1021,7 +1037,7 @@ export default function AutomateConsole(): React.JSX.Element {
       };
       persist(records.map((candidate) => candidate.address === record.address ? revoked : candidate));
       await applyLoad(record);
-      setNotice("Automation cancelled on-chain. The signed intent can never execute again.");
+      setNotice("Automation cancelled onchain. The signed intent can never execute again.");
       trackEvent("automate_cancel");
     } catch (cause) {
       setError(readableError(cause));
@@ -1035,7 +1051,7 @@ export default function AutomateConsole(): React.JSX.Element {
     setError("");
     try {
       const owner = requireAccount(account);
-      if (!record || !recordRoute) throw new Error("No zap selected.");
+      if (!record || !recordRoute) throw new Error("No Zap selected.");
       const wallet = await requireWallet(owner);
       const { request } = await publicClient.simulateContract({
         account: owner,
@@ -1069,11 +1085,13 @@ export default function AutomateConsole(): React.JSX.Element {
   const stepLabel = !account
     ? "1. Connect wallet"
     : wrongNetwork
-      ? "2. Switch network"
+      // Unnumbered on purpose: switching networks is the wrong-network banner's
+      // action, not one of the four numbered lifecycle steps.
+      ? "Switch network"
     : !record
-      ? "2. Create zap"
+      ? "2. Create Zap"
       : !funded
-        ? "3. Fund zap"
+        ? "3. Fund Zap"
         : !signed
           ? "4. Sign standing intent"
           : "Automation armed";
@@ -1082,677 +1100,993 @@ export default function AutomateConsole(): React.JSX.Element {
   const executorPct = Number(EXECUTOR_SHARE_BPS) / 100;
 
   const fundingDetail = !record || !recordRoute
-    ? "Transfer exactly what the automation will spend. Nothing else can leave the zap."
+    ? "Transfer exactly what the automation will spend. Nothing else can leave the Zap."
     : capsuleBalance === null
       ? "Zap balance is unavailable — refresh before funding. Funding is disabled until the balance reads."
       : `Remaining target ${formatToken(remainingTarget, recordRoute.tokenIn.decimals)} ${recordRoute.tokenIn.symbol} — holds ${formatToken(capsuleBalance, recordRoute.tokenIn.decimals)}.`;
 
+  // The plain-English restatement of the form. It is the reason the execution
+  // bounds can sit behind a disclosure, so it has to be generated from live
+  // state — a static sentence here would be a claim about terms nobody set.
+  const summaryRoute = recordRoute ?? route;
+  const inSymbol = summaryRoute?.tokenIn.symbol ?? "—";
+  const outSymbol = summaryRoute?.tokenOut.symbol ?? "—";
+  // A deployed Zap's per-Zap amount is frozen in its policy; `amount` is only a
+  // draft until then, and after a reload it has fallen back to the default. Read
+  // the record first so the sentence describes the contract, not the form.
+  const recordPerRun = record ? parseRecordAmount(record) : null;
+  const summaryAmount = record
+    ? recordPerRun === null
+      ? "—"
+      : formatToken(recordPerRun, summaryRoute?.tokenIn.decimals ?? 18)
+    : amount || "—";
+  const slipPct = (slippageBps / 100).toFixed(1);
+
+  // Which lifecycle step is live. `current` is the first one that is not done,
+  // so exactly one step is ever expanded.
+  const stepDone: readonly boolean[] = [
+    account !== null,
+    record !== null,
+    record !== null && funded,
+    signed,
+  ];
+  const currentStepIndex = stepDone.findIndex((done) => !done);
+  const stepStateAt = (index: number): StepState =>
+    stepDone[index] ? "done" : index === currentStepIndex ? "current" : "pending";
+
+  // Zaps this automation still owes. Fails closed to "—": a zero where the read
+  // failed would be a claim that nothing is pending.
+  const zapsOwed = !record || !status
+    ? "—"
+    : status.kind === "recurring"
+      ? status.consumed
+        ? "0"
+        : String(Math.max(runsInRecord(record) - status.runs, 0))
+      : status.consumed
+        ? "0"
+        : "1";
+
+  const railState = !record
+    ? { label: "", tone: styles.chipMuted }
+    : record.revokedAt
+      ? { label: "cancelled", tone: styles.chipDanger }
+      : !signed
+        ? { label: "draft", tone: styles.chipMuted }
+        : status === null
+          ? { label: "state unavailable", tone: styles.chipMuted }
+          : status.kind === "recurring"
+            ? status.consumed
+              ? { label: "finished", tone: styles.chipMuted }
+              : { label: "live", tone: styles.chipOk }
+            : status.consumed
+              ? { label: "fired", tone: styles.chipMuted }
+              : status.armed
+                ? { label: "armed", tone: styles.chipWarn }
+                : { label: "waiting", tone: styles.chipMuted };
+
+  const railMeta = !record
+    ? ""
+    : !signed
+      ? "created — fund and sign to arm"
+      : status === null
+        ? "state unavailable — refresh"
+        : status.kind === "recurring"
+          ? status.consumed
+            ? "finished or cancelled"
+            : describeSeries(status.runs, status.lastRun, status.intent, status.nowSec)
+          : status.consumed
+            ? "fired or cancelled"
+            : status.armed
+              ? "ARMED — condition met, awaiting an executor"
+              : "waiting for the signed move";
+
+  // A 100-Zap series would draw hairlines, so the bar is capped and the mono
+  // meta line below it stays the authoritative count.
+  const progressTotal =
+    record && status?.kind === "recurring" && !status.consumed
+      ? Math.min(Math.max(runsInRecord(record), 1), 24)
+      : 0;
+  const progressFilled =
+    progressTotal > 0 && record && status?.kind === "recurring"
+      ? Math.min(progressTotal, Math.round((status.runs / runsInRecord(record)) * progressTotal))
+      : 0;
+
+  const otherRecords = records.filter((candidate) => candidate.address !== record?.address);
+
   return (
-    <main className={styles.page} id="main">
-      <section className={`container ${styles.statusBar}`} aria-label="v3 protocol status">
-        <span className={configured ? styles.statusLive : styles.statusPreview} role="status">
-          {configured ? "v3 live" : "v3 unavailable"}
-        </span>
-        <p>
-          {configured ? (
-            <>
-              Recurring and price-triggered zaps run through factory{" "}
-              <a href={explorerAddress(activeContracts.factory)} target="_blank" rel="noreferrer">
-                {shortAddress(activeContracts.factory)}
-              </a>
-              . Each run pays a {feePct}% protocol fee from output — {executorPct}% of the fee to the executor that
-              submits it, the rest to the 0xZAPS lottery pot. Depositing funds can result in total loss.
-            </>
-          ) : (
-            <>The v3 contract set is not configured. Automation is disabled.</>
-          )}
+    <main className={styles.screen} id="main">
+      <header className={styles.head}>
+        <h1 className={styles.title}>Automate</h1>
+        <p className={styles.lede}>
+          One signature authorizes a whole series. The Zap enforces the interval and the count onchain, so
+          nothing can run early, twice, or past the end.
         </p>
-      </section>
+      </header>
 
-      <section className={`container ${styles.appHead}`}>
-        <div className={styles.titleRow}>
-          <OpenZapMark className={styles.headMark} />
-          <div>
-            <span className="eyebrow">Automate</span>
-            <h1>Sign once. The chain keeps the terms.</h1>
-            <p>
-              A v3 zap executes your frozen route on a cadence or on a price move — the interval and the
-              threshold are enforced by the contract, so any executor can submit a run that is owed and none can
-              submit one that is not. Runs land only when an executor submits them: the zap enforces the terms,
-              executors provide the liveness.
-            </p>
-          </div>
-        </div>
-        <div className={styles.wallet}>
-          {account ? (
-            <>
-              <a className={styles.addr} href={explorerAddress(account)} target="_blank" rel="noreferrer">
-                {shortAddress(account)}
-              </a>
-              {wrongNetwork ? (
-                <button data-busy={busy === "connect"} className="btn btnPrimary" disabled={busy !== null} onClick={() => void switchWalletNetwork()} type="button">
-                  {busy === "connect" ? "Switching…" : "Switch network"}
-                </button>
-              ) : null}
-            </>
-          ) : (
-            <button data-busy={busy === "connect"} className="btn btnPrimary" disabled={busy !== null} onClick={() => void connectWallet()} type="button">
-              {busy === "connect" ? "Connecting…" : "Connect wallet"}
-            </button>
-          )}
-        </div>
-      </section>
+      {!configured ? (
+        <p className={`${styles.banner} ${styles.bannerWarn}`} role="status">
+          The v3 contract set is not configured. Automation is disabled.
+        </p>
+      ) : null}
 
-      <div className={`container ${styles.notice}`} role="status">{notice}</div>
-      {error && (
-        <div className={`container ${styles.error}`} role="alert">
+      {wrongNetwork ? (
+        <div className={`${styles.banner} ${styles.bannerWarn}`} role="status">
+          <span>This wallet is on chain {walletChainId}. Robinhood Chain {ROBINHOOD_CHAIN_ID} is required.</span>
+          <button
+            data-busy={busy === "connect"}
+            className={`${styles.btnGhost} ${styles.bannerAction}`}
+            disabled={busy !== null}
+            onClick={() => void switchWalletNetwork()}
+            type="button"
+          >
+            {busy === "connect" ? "Switching…" : "Switch network"}
+          </button>
+        </div>
+      ) : null}
+
+      {/* Stays mounted while empty so the live region is announced on change. */}
+      <div className={`${styles.banner} ${styles.bannerNotice}`} role="status">{notice}</div>
+
+      {error ? (
+        <div className={`${styles.banner} ${styles.bannerError}`} role="alert">
           <BlockGlyph name="alert" className={styles.bannerGlyph} />
           {error}
         </div>
-      )}
-
-      {creationResult ? (
-        <CreationWorkspace
-          eyebrow={`Creation receipt · ${creationResult.mode === "recurring" ? "v3.1" : "v3"}`}
-          title="Your automation capsule is live."
-          detail="The gateway transaction confirmed and the clone runtime matched the expected implementation before funding. The capsule now holds the immutable route; funding and the standing EIP-712 authorization remain separate wallet actions."
-          facts={[
-            {
-              label: "Capsule",
-              value: shortAddress(creationResult.address),
-              href: explorerAddress(creationResult.address),
-              mono: true,
-            },
-            {
-              label: "Creation transaction",
-              value: shortHex(creationResult.createTx),
-              href: explorerTransaction(creationResult.createTx),
-              mono: true,
-            },
-            {
-              label: "Policy hash",
-              value: shortHex(creationResult.policyHash),
-              mono: true,
-            },
-            {
-              label: "Lineage",
-              value: creationResult.mode === "recurring" ? "v3.1 · recurring series" : "v3 · price trigger",
-            },
-            {
-              label: "Bounded route",
-              value: creationResultRoute
-                ? `${creationResultRoute.tokenIn.symbol} → ${creationResultRoute.tokenOut.symbol}`
-                : creationResult.routeId,
-            },
-            {
-              label: "Per Zap",
-              value: `${formatToken(BigInt(creationResult.amountPerRun), creationResultRoute?.tokenIn.decimals ?? 18)} ${creationResultRoute?.tokenIn.symbol ?? "tokens"}${creationResult.mode === "recurring" ? ` · ${creationResult.plannedRuns ?? 1} Zaps planned` : " · one trigger"}`,
-            },
-          ]}
-          stages={[
-            {
-              label: "Created",
-              detail: "Confirmed and runtime-verified.",
-              status: "done",
-            },
-            {
-              label: "Fund",
-              detail: creationResultFunded
-                ? "Remaining Zap budget is held."
-                : creationResultActive
-                  ? "Deposit only the planned spend."
-                  : "Re-open this capsule to continue.",
-              status: creationResultFunded ? "done" : creationResultActive ? "current" : "pending",
-            },
-            {
-              label: "Authorize",
-              detail: creationResultSigned
-                ? "Standing intent signed and inspectable."
-                : creationResultFunded
-                  ? "Review terms, then sign EIP-712."
-                  : "Available after funding.",
-              status: creationResultSigned ? "done" : creationResultFunded ? "current" : "pending",
-            },
-          ]}
-        >
-          {!creationResultActive ? (
-            <button className="btn btnPrimary" disabled={busy !== null} onClick={() => setSelected(creationResult.address)} type="button">
-              Open in console
-            </button>
-          ) : !creationResultSigned ? (
-            <a className="btn btnPrimary" href="#automation-lifecycle">
-              {creationResultFunded ? "Continue to authorization" : "Continue to funding"}
-            </a>
-          ) : null}
-          <Link className="btn btnGhost" href={`/explore/${creationResult.address}`}>Onchain page</Link>
-          <Link className="btn btnGhost" href="/profile">View profile</Link>
-          <button className="btn btnGhost" onClick={() => void copyCreationResult()} type="button">Copy receipt</button>
-          <button className={creationResultSigned ? "btn btnPrimary" : "btn btnGhost"} disabled={busy !== null} onClick={startAnotherAutomation} type="button">
-            Create another
-          </button>
-        </CreationWorkspace>
       ) : null}
 
-      <section className={`container ${styles.metrics}`} aria-label="Automation metrics">
-        <Metric glyph="repeat" label="Execution type" value={record ? (record.mode === "recurring" ? "Recurring" : "Price trigger") : mode === "recurring" ? "Recurring" : "Price trigger"} />
-        <Metric glyph="gauge" label="Current step" value={stepLabel} />
-        <Metric glyph="sparkle" label="Lottery round" value={pot ? `#${pot.round.toString()} · ${formatToken(pot.prize)} 0xZAPS` : "—"} />
-        <Metric glyph="safe" label="Your tickets" value={pot && account ? formatToken(pot.tickets) : "—"} />
-      </section>
-
-      <section className={`container ${styles.workspace}`}>
-        <section className={styles.builder} aria-label="Configure the automation">
-          <div className={styles.builderTop}>
-            <div>
-              <span className={styles.cardHead}>Automation builder</span>
-              <h2>{(record?.mode ?? mode) === "recurring" ? "Repeat a bounded swap on a cadence" : "Fire a bounded swap on a price move"}</h2>
-              <p>
-                The zap holds ONE frozen swap on the pinned aeWETH ⇄ 0xZAPS pool. Automation adds only timing:
-                route, amounts, recipient, and the net output floor stay signed and immutable.
+      <div className={styles.grid}>
+        <div className={styles.col}>
+          {creationResult ? (
+            <section className={styles.card} aria-label="Creation receipt">
+              <div className={styles.receiptHead}>
+                <span className={styles.receiptChip}>
+                  <BlockGlyph name="check" className={styles.receiptChipGlyph} />
+                  Confirmed
+                </span>
+                <h2 className={styles.receiptTitle}>Your automation Zap is live.</h2>
+                <span className={styles.receiptLineage}>
+                  {creationResult.mode === "recurring" ? "v3.1" : "v3"}
+                </span>
+              </div>
+              <p className={styles.receiptDetail}>
+                The gateway transaction confirmed and the clone runtime matched the expected implementation
+                before funding. The Zap now holds the immutable route; funding and the standing EIP-712
+                authorization remain separate wallet actions.
               </p>
-            </div>
-            <span className={styles.liveBadge}>onchain</span>
-          </div>
-
-          <div className={styles.segment} role="group" aria-label="Execution type">
-            <button type="button" className={activeMode === "recurring" ? styles.segOn : styles.seg} onClick={() => selectMode("recurring")} disabled={busy !== null || record !== null}>
-              <BlockGlyph name="repeat" className={styles.segGlyph} />
-              Recurring
-              <em>every X time, N runs</em>
-            </button>
-            <button type="button" className={activeMode === "trigger" ? styles.segOn : styles.seg} onClick={() => selectMode("trigger")} disabled={busy !== null || record !== null}>
-              <BlockGlyph name="band" className={styles.segGlyph} />
-              Price trigger
-              <em>fires once at ±X%</em>
-            </button>
-          </div>
-
-          <div className={styles.segment} role="group" aria-label="Direction">
-            {BOUNDED_SWAP_IDS.map((id) => {
-              const r = resolveRouteById(id);
-              if (!r) return null;
-              return (
-                <button
-                  key={id}
-                  type="button"
-                  className={routeId === id ? styles.segOn : styles.seg}
-                  onClick={() => setRouteId(id)}
-                  disabled={busy !== null || record !== null}
-                >
-                  {r.tokenIn.symbol} → {r.tokenOut.symbol}
-                  <em>{id === BOUNDED_SWAP_IDS[0] ? "accumulate 0xZAPS" : "take profit to aeWETH"}</em>
+              <dl className={styles.facts}>
+                <div className={styles.fact}>
+                  <dt>Zap</dt>
+                  <dd className={styles.factMono}>
+                    <a href={explorerAddress(creationResult.address)} target="_blank" rel="noreferrer">
+                      {shortAddress(creationResult.address)}
+                    </a>
+                  </dd>
+                </div>
+                <div className={styles.fact}>
+                  <dt>Creation transaction</dt>
+                  <dd className={styles.factMono}>
+                    <a href={explorerTransaction(creationResult.createTx)} target="_blank" rel="noreferrer">
+                      {shortHex(creationResult.createTx)}
+                    </a>
+                  </dd>
+                </div>
+                <div className={styles.fact}>
+                  <dt>Policy hash</dt>
+                  <dd className={styles.factMono}>{shortHex(creationResult.policyHash)}</dd>
+                </div>
+                <div className={styles.fact}>
+                  <dt>Lineage</dt>
+                  <dd>{creationResult.mode === "recurring" ? "v3.1 · recurring series" : "v3 · price trigger"}</dd>
+                </div>
+                <div className={styles.fact}>
+                  <dt>Bounded route</dt>
+                  <dd>
+                    {creationResultRoute
+                      ? `${creationResultRoute.tokenIn.symbol} → ${creationResultRoute.tokenOut.symbol}`
+                      : creationResult.routeId}
+                  </dd>
+                </div>
+                <div className={styles.fact}>
+                  <dt>Per Zap</dt>
+                  <dd>
+                    {`${formatToken(BigInt(creationResult.amountPerRun), creationResultRoute?.tokenIn.decimals ?? 18)} ${creationResultRoute?.tokenIn.symbol ?? "tokens"}${creationResult.mode === "recurring" ? ` · ${creationResult.plannedRuns ?? 1} Zaps planned` : " · one trigger"}`}
+                  </dd>
+                </div>
+              </dl>
+              <div className={styles.receiptActions}>
+                {!creationResultActive ? (
+                  <button
+                    className={styles.btnPrimary}
+                    disabled={busy !== null}
+                    onClick={() => setSelected(creationResult.address)}
+                    type="button"
+                  >
+                    Re-open this Zap
+                  </button>
+                ) : !creationResultSigned ? (
+                  <a className={styles.btnPrimary} href="#automation-lifecycle">
+                    {creationResultFunded ? "Continue to authorization" : "Continue to funding"}
+                  </a>
+                ) : null}
+                <Link className={styles.btnGhost} href={`/explore/${creationResult.address}`}>Onchain page</Link>
+                <Link className={styles.btnGhost} href="/profile">View profile</Link>
+                <button className={styles.btnGhost} onClick={() => void copyCreationResult()} type="button">
+                  Copy receipt
                 </button>
-              );
-            })}
-          </div>
+                <button
+                  className={creationResultSigned ? styles.btnPrimary : styles.btnGhost}
+                  disabled={busy !== null}
+                  onClick={startAnotherAutomation}
+                  type="button"
+                >
+                  Create another
+                </button>
+              </div>
+            </section>
+          ) : null}
 
-          <div className={styles.formGrid}>
-            <Field label={`Per-Zap amount (${route?.tokenIn.symbol ?? ""})`}>
-              <input
-                className={styles.input}
-                inputMode="decimal"
-                value={amount}
-                onChange={(event) => setAmount(sanitizeDecimal(event.target.value))}
+          <section className={`${styles.card} ${styles.cardLift}`} aria-label="Configure the automation">
+            <div className={styles.modeBar} role="group" aria-label="Execution type">
+              <button
+                type="button"
+                className={activeMode === "recurring" ? styles.modeOn : styles.mode}
+                onClick={() => selectMode("recurring")}
                 disabled={busy !== null || record !== null}
-              />
-            </Field>
-            <Field label="Who may Zap it">
-              <select
-                className={styles.input}
-                value={executorMode}
-                onChange={(event) => setExecutorMode(event.target.value as ExecutorMode)}
-                disabled={busy !== null || signed}
               >
-                <option value="anyone">Anyone (recommended)</option>
-                <option value="owner-only">Connected owner wallet only</option>
-                <option value="custom">Custom executor</option>
-              </select>
-            </Field>
-            {executorMode === "custom" && (
-              <Field label="Executor address">
-                <input
-                  className={styles.input}
-                  value={customExecutor}
-                  onChange={(event) => setCustomExecutor(event.target.value)}
-                  placeholder="0x…"
-                  spellCheck={false}
-                  disabled={busy !== null || signed}
-                  aria-invalid={!executorValid}
-                />
-              </Field>
-            )}
-            <Field label={`Slippage tolerance (${(slippageBps / 100).toFixed(2)}%)`}>
-              <input
-                className={styles.range}
-                type="range"
-                min={5}
-                max={500}
-                step={5}
-                value={slippageBps}
-                onChange={(event) => setSlippageBps(Number(event.target.value))}
-                disabled={busy !== null || signed}
-              />
-            </Field>
-            <Field label={`Execution gas limit (${maxExecutionGas.toLocaleString("en-US")})`}>
-              <input
-                className={styles.range}
-                type="range"
-                min={MIN_EXECUTION_GAS_UNITS}
-                max={MAX_EXECUTION_GAS_UNITS}
-                step={50_000}
-                value={maxExecutionGas}
-                onChange={(event) => setMaxExecutionGas(Number(event.target.value))}
-                disabled={busy !== null || signed}
-              />
-            </Field>
-            <Field label={`Gas price cap (${maxFeePerGasGwei} gwei)`}>
-              <input
-                className={styles.range}
-                type="range"
-                min={MIN_EXECUTION_FEE_GWEI}
-                max={MAX_EXECUTION_FEE_GWEI}
-                step={1}
-                value={maxFeePerGasGwei}
-                onChange={(event) => setMaxFeePerGasGwei(Number(event.target.value))}
-                disabled={busy !== null || signed}
-              />
-            </Field>
-            {activeMode === "recurring" ? (
-              <>
-                <Field label="Cadence">
-                  <select className={styles.input} value={intervalId} onChange={(event) => setIntervalId(event.target.value)} disabled={busy !== null || signed}>
-                    {INTERVAL_PRESETS.map((p) => (
-                      <option key={p.id} value={p.id}>{p.label}</option>
-                    ))}
-                  </select>
-                </Field>
-                <Field label={`Total Zaps (${maxRuns})`}>
+                <BlockGlyph name="repeat" className={styles.modeGlyph} />
+                Recurring
+              </button>
+              <button
+                type="button"
+                className={activeMode === "trigger" ? styles.modeOn : styles.mode}
+                onClick={() => selectMode("trigger")}
+                disabled={busy !== null || record !== null}
+              >
+                <BlockGlyph name="band" className={styles.modeGlyph} />
+                Price trigger
+              </button>
+              <span className={styles.stepChip} aria-live="polite">{stepLabel}</span>
+              <span className={styles.versionChip}>
+                {activeMode === "recurring"
+                  ? "v3.1 · per-Zap floor from live spot"
+                  : "v3 · floor from a fresh quote at signing"}
+              </span>
+            </div>
+
+            <div className={styles.body}>
+              <p className={styles.summary} aria-live="polite">
+                {activeMode === "recurring" ? (
+                  // A one-run series has no cadence to state: the interval never gates a
+                  // series that ends on its first run, and "every day, 1 times" is neither
+                  // true nor English.
+                  recurringRuns === 1 ? (
+                    <>
+                      Zap <strong>{summaryAmount} {inSymbol}</strong> into <strong>{outSymbol}</strong> once, never
+                      worse than <strong>{slipPct}%</strong> off spot.
+                    </>
+                  ) : (
+                    <>
+                      Zap <strong>{summaryAmount} {inSymbol}</strong> into <strong>{outSymbol}</strong>,{" "}
+                      <strong>{interval.label.toLowerCase()}</strong>, <strong>{recurringRuns} times</strong>, never
+                      worse than <strong>{slipPct}%</strong> off spot.
+                    </>
+                  )
+                ) : (
+                  <>
+                    Zap <strong>{summaryAmount} {inSymbol}</strong> into <strong>{outSymbol}</strong> once, when{" "}
+                    <strong>{threshold.label}</strong>, valid{" "}
+                    <strong>{validDays} {validDays === 1 ? "day" : "days"}</strong>, never worse than{" "}
+                    <strong>{slipPct}%</strong> off the quote.
+                  </>
+                )}
+              </p>
+
+              <div className={styles.routeSeg} role="group" aria-label="Direction">
+                {BOUNDED_SWAP_IDS.map((id) => {
+                  const r = resolveRouteById(id);
+                  if (!r) return null;
+                  return (
+                    <button
+                      key={id}
+                      type="button"
+                      className={routeId === id ? styles.routeSegOn : styles.routeSegBtn}
+                      onClick={() => setRouteId(id)}
+                      disabled={busy !== null || record !== null}
+                    >
+                      {r.tokenIn.symbol} → {r.tokenOut.symbol}
+                    </button>
+                  );
+                })}
+              </div>
+
+              <div className={styles.fields}>
+                <Field label={`Amount per Zap (${route?.tokenIn.symbol ?? ""})`}>
                   <input
-                    className={styles.range}
-                    type="range"
-                    min={1}
-                    max={100}
-                    step={1}
-                    value={maxRuns}
-                    onChange={(event) => setMaxRuns(Number(event.target.value))}
+                    className={`${styles.input} ${styles.inputMono}`}
+                    inputMode="decimal"
+                    value={amount}
+                    onChange={(event) => setAmount(sanitizeDecimal(event.target.value))}
                     disabled={busy !== null || record !== null}
                   />
                 </Field>
-                <Field label="Series expiry">
-                  <select
-                    className={styles.input}
-                    value={recurringValidDays === null ? "auto" : String(recurringValidDays)}
-                    onChange={(event) =>
-                      setRecurringValidDays(event.target.value === "auto" ? null : Number(event.target.value))
-                    }
-                    disabled={busy !== null || signed}
-                  >
-                    <option value="auto">Auto · schedule + headroom</option>
-                    <option value="7">7 days</option>
-                    <option value="30">30 days</option>
-                    <option value="90">90 days</option>
-                  </select>
-                </Field>
-              </>
-            ) : (
-              <>
-                <Field label="Condition (0xZAPS price move)">
-                  <select className={styles.input} value={thresholdId} onChange={(event) => setThresholdId(event.target.value)} disabled={busy !== null || signed}>
-                    {THRESHOLD_PRESETS.map((p) => (
-                      <option key={p.id} value={p.id}>{p.label}</option>
-                    ))}
-                  </select>
-                </Field>
-                <Field label={`Valid for (${validDays} days)`}>
-                  <input
-                    className={styles.range}
-                    type="range"
-                    min={1}
-                    max={90}
-                    step={1}
-                    value={validDays}
-                    onChange={(event) => setValidDays(Number(event.target.value))}
-                    disabled={busy !== null || signed}
-                  />
-                </Field>
-              </>
-            )}
-          </div>
+                {activeMode === "recurring" ? (
+                  <>
+                    <Field label="Cadence">
+                      <select
+                        className={styles.input}
+                        value={intervalId}
+                        onChange={(event) => setIntervalId(event.target.value)}
+                        disabled={busy !== null || signed}
+                      >
+                        {INTERVAL_PRESETS.map((p) => (
+                          <option key={p.id} value={p.id}>{p.label}</option>
+                        ))}
+                      </select>
+                    </Field>
+                    <Field label="Total Zaps">
+                      <input
+                        className={`${styles.input} ${styles.inputMono}`}
+                        type="number"
+                        min={1}
+                        max={100}
+                        step={1}
+                        value={maxRuns}
+                        // Clamped on change: a blank number input parses to NaN and would
+                        // otherwise surface as a create-time revert instead of a disabled button.
+                        onChange={(event) => setMaxRuns(clampInt(event.target.value, 1, 100))}
+                        onFocus={(event) => event.currentTarget.select()}
+                        disabled={busy !== null || record !== null}
+                      />
+                    </Field>
+                    <Field label="Expires after">
+                      <select
+                        className={styles.input}
+                        value={recurringValidDays === null ? "auto" : String(recurringValidDays)}
+                        onChange={(event) =>
+                          setRecurringValidDays(event.target.value === "auto" ? null : Number(event.target.value))
+                        }
+                        disabled={busy !== null || signed}
+                      >
+                        <option value="auto">Auto · schedule + headroom</option>
+                        <option value="7">7 days</option>
+                        <option value="30">30 days</option>
+                        <option value="90">90 days</option>
+                      </select>
+                    </Field>
+                  </>
+                ) : (
+                  <>
+                    <Field label="Condition (0xZAPS price move)">
+                      <select
+                        className={styles.input}
+                        value={thresholdId}
+                        onChange={(event) => setThresholdId(event.target.value)}
+                        disabled={busy !== null || signed}
+                      >
+                        {THRESHOLD_PRESETS.map((p) => (
+                          <option key={p.id} value={p.id}>{p.label}</option>
+                        ))}
+                      </select>
+                    </Field>
+                    <Field label="Valid for (days)">
+                      <input
+                        className={`${styles.input} ${styles.inputMono}`}
+                        type="number"
+                        min={1}
+                        max={90}
+                        step={1}
+                        value={validDays}
+                        onChange={(event) => setValidDays(clampInt(event.target.value, 1, 90))}
+                        onFocus={(event) => event.currentTarget.select()}
+                        disabled={busy !== null || signed}
+                      />
+                    </Field>
+                  </>
+                )}
+              </div>
 
-          {activeMode === "recurring" && !recurringWindowSufficient ? (
-            <p className={styles.execNote} role="alert">
-              This expiry ends before all {recurringRuns} runs can become due. Choose a longer window, fewer runs, or a
-              shorter cadence.
-            </p>
-          ) : null}
-
-          <p className={styles.execNote} aria-live="polite">
-            {executorMode === "anyone" ? (
-              <>
-                Open · any executor may submit a Zap this capsule owes and earns 80% of its 1% fee. The capsule still
-                refuses every Zap it does not owe, so this only decides <em>who races</em>, never what they can do.
-              </>
-            ) : executorMode === "owner-only" && account ? (
-              <>
-                Owner only · the intent binds <code>{account}</code>. Every other submitter reverts, so no executor
-                network can keep the automation live for you.
-              </>
-            ) : executorMode === "owner-only" ? (
-              <>Connect the owner wallet before signing an owner-only execution policy.</>
-            ) : executorValid ? (
-              <>
-                Pinned · only <code>{executorPin.trim()}</code> may submit. If it goes offline the series stalls
-                until you submit a run yourself — open is the more reliable choice unless you run your own executor.
-              </>
-            ) : (
-              <>That is not a valid address. Signing would name a submitter no wallet can match, stalling the series.</>
-            )}
-          </p>
-          <p className={styles.execNote}>
-            Every signed run also rejects a transaction above {maxExecutionGas.toLocaleString("en-US")} gas or{" "}
-            {maxFeePerGasGwei} gwei.
-          </p>
-
-          {activeMode === "recurring" && (
-            <p className={styles.floorPreview} aria-live="polite">
-              {spot === null ? (
-                <>Projected floor · spot is unavailable right now — the capsule still enforces your slippage band onchain for every Zap.</>
-              ) : projectedFloor > 0n && route ? (
-                <>
-                  Projected floor · at current spot each Zap delivers at least{" "}
-                  <strong>
-                    {formatToken(projectedFloor, route.tokenOut.decimals)} {route.tokenOut.symbol}
-                  </strong>{" "}
-                  (−{(slippageBps / 100).toFixed(1)}%). Recomputed from live spot for every Zap, so it never goes stale.
-                </>
-              ) : (
-                <>Projected floor · enter a per-Zap amount to preview each Zap&apos;s guaranteed minimum.</>
-              )}
-            </p>
-          )}
-
-          <div className={styles.creationFeeBox} data-ready={creationFeeQuote !== null} role="note">
-            <div>
-              <span>App creation fee</span>
-              <strong>{formatToken(OPENZAP_CREATION_FEE, 18)} ETH</strong>
-            </div>
-            <div>
-              <span>Atomic 0xZAPS conversion</span>
-              <strong>
-                {creationFeeQuote
-                  ? `est. ${formatToken(creationFeeQuote.amountOut, 18)} · min ${formatToken(creationFeeQuote.minZapsOut, 18)} 0xZAPS`
-                  : creationFeeError || "Reading the pinned aeWETH → 0xZAPS route…"}
-              </strong>
-              {feeConfigured ? (
-                <small>
-                  <a href={explorerAddress(OPENZAP_CREATION_FEE_CONTRACTS.gateway)} rel="noreferrer" target="_blank">
-                    Fee gateway
-                  </a>
-                  {" · "}
-                  <a href={explorerAddress(OPENZAP_CREATION_FEE_CONTRACTS.pot)} rel="noreferrer" target="_blank">
-                    0xZAPS pot
-                  </a>
-                </small>
-              ) : null}
-            </div>
-            {creationFeeError ? (
-              <button className="btn btnGhost" type="button" onClick={() => void refreshCreationFeeQuote()}>
-                Retry fee quote
-              </button>
-            ) : null}
-          </div>
-
-          <div className={styles.flow} id="automation-lifecycle">
-            <FlowStep number="1" glyph="plug" title="Connect wallet" detail="Robinhood Chain (4663), injected wallet." done={account !== null}>
-              {!account && (
-                <button data-busy={busy === "connect"} className="btn btnPrimary" disabled={busy !== null} onClick={() => void connectWallet()} type="button">
-                  {busy === "connect" ? "Connecting…" : "Connect"}
-                </button>
-              )}
-            </FlowStep>
-
-            <FlowStep
-              number="2"
-              glyph="lock"
-              title={`Create the ${activeMode === "recurring" ? "v3.1" : "v3"} zap`}
-              detail="The fee gateway calls the existing lineage factory, atomically converts the separate native fee, then the app verifies clone bytecode before anything is funded."
-              done={record !== null}
-            >
-              {!record && (
-                <button
-                  data-busy={busy === "create"}
-                  className="btn btnPrimary"
-                  disabled={busy !== null || !account || wrongNetwork || !configured || !feeConfigured || creationFeeQuote === null || perRunAmount <= 0n}
-                  onClick={() => void createCapsule()}
-                  type="button"
-                >
-                  {busy === "create" ? "Creating…" : "Create zap"}
-                </button>
-              )}
-            </FlowStep>
-
-            <FlowStep number="3" glyph="coins" title="Fund the zap" detail={fundingDetail} done={record !== null && funded}>
-              {record && recordRoute && balanceKnown && !funded && (
-                <p className={funding.status === "short" ? `${styles.fundCheck} ${styles.fundShort}` : styles.fundCheck} aria-live="polite">
-                  {funding.status === "short" ? (
+              <div className={styles.access}>
+                <div className={styles.accessHead}>
+                  <strong className={styles.accessTitle}>Who may Zap it</strong>
+                  <span className={styles.accessHint}>
+                    This only decides who races — never what they can do.
+                  </span>
+                </div>
+                <div className={styles.accessGrid}>
+                  {ACCESS_OPTIONS.map((option) => (
+                    <button
+                      key={option.id}
+                      type="button"
+                      className={executorMode === option.id ? `${styles.accessOpt} ${styles.accessOptOn}` : styles.accessOpt}
+                      aria-pressed={executorMode === option.id}
+                      onClick={() => setExecutorMode(option.id)}
+                      disabled={busy !== null || signed}
+                    >
+                      <strong>{option.title}</strong>
+                      <span>{option.copy}</span>
+                    </button>
+                  ))}
+                </div>
+                {executorMode === "custom" ? (
+                  <label className={styles.pinnedField}>
+                    <span className={styles.fieldLabel}>Executor address</span>
+                    <input
+                      className={`${styles.input} ${styles.inputMono}`}
+                      value={customExecutor}
+                      onChange={(event) => setCustomExecutor(event.target.value)}
+                      placeholder="0x…"
+                      spellCheck={false}
+                      disabled={busy !== null || signed}
+                      aria-invalid={!executorValid}
+                    />
+                  </label>
+                ) : null}
+                <p className={styles.note} aria-live="polite">
+                  {executorMode === "anyone" ? (
                     <>
-                      Wallet holds{" "}
-                      <strong>
-                        {formatToken(walletBalanceForToken ?? 0n, recordRoute.tokenIn.decimals)} {recordRoute.tokenIn.symbol}
-                      </strong>
-                      {isWethFunding && ethBalance !== null ? <> + {formatToken(ethBalance)} ETH</> : null} — short{" "}
-                      {formatToken(funding.shortfall, recordRoute.tokenIn.decimals)}{" "}
-                      {isWethFunding ? "ETH" : recordRoute.tokenIn.symbol} of the{" "}
-                      {formatToken(fundingNeeded, recordRoute.tokenIn.decimals)} this step transfers. Add{" "}
-                      {isWethFunding ? "ETH or aeWETH" : recordRoute.tokenIn.symbol} first.
+                      Anyone · any executor may submit a run this Zap owes, and earns 80% of the 1% fee for it. The
+                      Zap still refuses every run it does not owe.
                     </>
-                  ) : funding.status === "sufficient" && funding.wrapEth > 0n ? (
+                  ) : executorMode === "owner-only" && account ? (
                     <>
-                      Wallet holds{" "}
-                      <strong>
-                        {formatToken(walletBalanceForToken ?? 0n, recordRoute.tokenIn.decimals)} {recordRoute.tokenIn.symbol}
-                      </strong>{" "}
-                      — this deposit wraps{" "}
-                      <strong>{formatToken(funding.wrapEth)} ETH → {recordRoute.tokenIn.symbol}</strong> to cover the{" "}
-                      {formatToken(fundingNeeded, recordRoute.tokenIn.decimals)} it transfers. ✓ One extra signature wraps
-                      it — no need to hold {recordRoute.tokenIn.symbol} first.
+                      Owner only · the intent binds <code>{account}</code>. Every other submitter reverts, so no
+                      executor network can keep the automation live for you.
                     </>
-                  ) : funding.status === "sufficient" && walletBalanceForToken !== null ? (
+                  ) : executorMode === "owner-only" ? (
+                    <>Connect the owner wallet before signing an owner-only execution policy.</>
+                  ) : executorValid ? (
                     <>
-                      Wallet holds{" "}
-                      <strong>
-                        {formatToken(walletBalanceForToken, recordRoute.tokenIn.decimals)} {recordRoute.tokenIn.symbol}
-                      </strong>{" "}
-                      — covers the {formatToken(fundingNeeded, recordRoute.tokenIn.decimals)} {recordRoute.tokenIn.symbol}{" "}
-                      this step transfers. ✓
+                      Pinned · only <code>{executorPin.trim()}</code> may submit; every other submitter reverts. If
+                      it stops submitting, nothing runs until it resumes — Anyone is the more reliable choice unless
+                      this is an executor you control.
                     </>
                   ) : (
-                    <>Wallet balance unavailable — the funding transfer will still verify on-chain.</>
+                    <>That is not a valid address. Signing would name a submitter no wallet can match, so nothing could ever run.</>
                   )}
                 </p>
-              )}
-              {record && balanceKnown && !funded && (
-                <button data-busy={busy === "fund"} className="btn btnPrimary" disabled={wrongNetwork || busy !== null || funding.status === "short"} onClick={() => void fundCapsule()} type="button">
-                  {busy === "fund" ? "Funding…" : "Fund"}
-                </button>
-              )}
-              {record && !balanceKnown && (
-                <button data-busy={busy === "refresh"} className="btn btnGhost" disabled={busy !== null} onClick={() => void refresh()} type="button">
-                  {busy === "refresh" ? "Reading…" : "Retry balance read"}
-                </button>
-              )}
-            </FlowStep>
+              </div>
 
-            <FlowStep
-              number="4"
-              glyph="hand"
-              title="Sign the standing intent"
-              detail={
-                (record?.mode ?? mode) === "recurring"
-                  ? "One EIP-712 signature authorizes the whole series. The capsule enforces the interval and total Zap count."
-                  : "One EIP-712 signature arms the trigger. The baseline price is read at signing time, and the zap re-reads the market itself on every attempt."
-              }
-              done={signed}
-            >
-              {record && funded && !signed && (
-                <button
-                  data-busy={busy === "sign"}
-                  className="btn btnPrimary"
-                  disabled={wrongNetwork || busy !== null || !executorValid || (activeMode === "recurring" && !recurringWindowSufficient)}
-                  onClick={() => void signIntent()}
-                  type="button"
+              <details className={styles.advanced}>
+                <summary className={styles.advancedSummary}>
+                  <BlockGlyph name="chevronDown" className={styles.advancedChevron} />
+                  Execution bounds
+                </summary>
+                <div className={styles.advancedGrid}>
+                  <Field label={`Slippage tolerance (${(slippageBps / 100).toFixed(2)}%)`}>
+                    <input
+                      className={styles.range}
+                      type="range"
+                      min={5}
+                      max={500}
+                      step={5}
+                      value={slippageBps}
+                      onChange={(event) => setSlippageBps(Number(event.target.value))}
+                      disabled={busy !== null || signed}
+                    />
+                  </Field>
+                  <Field label={`Execution gas limit (${maxExecutionGas.toLocaleString("en-US")})`}>
+                    <input
+                      className={styles.range}
+                      type="range"
+                      min={MIN_EXECUTION_GAS_UNITS}
+                      max={MAX_EXECUTION_GAS_UNITS}
+                      step={50_000}
+                      value={maxExecutionGas}
+                      onChange={(event) => setMaxExecutionGas(Number(event.target.value))}
+                      disabled={busy !== null || signed}
+                    />
+                  </Field>
+                  <Field label={`Gas price cap (${maxFeePerGasGwei} gwei)`}>
+                    <input
+                      className={styles.range}
+                      type="range"
+                      min={MIN_EXECUTION_FEE_GWEI}
+                      max={MAX_EXECUTION_FEE_GWEI}
+                      step={1}
+                      value={maxFeePerGasGwei}
+                      onChange={(event) => setMaxFeePerGasGwei(Number(event.target.value))}
+                      disabled={busy !== null || signed}
+                    />
+                  </Field>
+                  <p className={styles.advancedNote}>
+                    The Zap also rejects any run submitted with more than{" "}
+                    {maxExecutionGas.toLocaleString("en-US")} gas, or above {maxFeePerGasGwei} gwei.
+                  </p>
+                </div>
+              </details>
+
+              {activeMode === "recurring" && !recurringWindowSufficient ? (
+                <p className={styles.noteWarn} role="alert">
+                  This expiry ends before all {recurringRuns} Zaps can become due. Choose a longer window, fewer
+                  Zaps, or a shorter cadence.
+                </p>
+              ) : null}
+
+              {activeMode === "recurring" ? (
+                <div className={styles.floorNote} aria-live="polite">
+                  <BlockGlyph name="clock" className={styles.floorGlyph} />
+                  <p className={styles.floorText}>
+                    {spot === null ? (
+                      <>
+                        Projected floor · spot is unavailable right now — the Zap still enforces your slippage band
+                        onchain on every run.
+                      </>
+                    ) : projectedFloor > 0n && route ? (
+                      <>
+                        Each run&apos;s floor is recomputed from live spot at the moment it lands, minus your{" "}
+                        {slipPct}% — at today&apos;s spot that is at least{" "}
+                        <strong>
+                          {formatToken(projectedFloor, route.tokenOut.decimals)} {route.tokenOut.symbol}
+                        </strong>
+                        , so a series signed today protects its last run as tightly as its first.
+                      </>
+                    ) : (
+                      <>Projected floor · enter a per-Zap amount to preview each run&apos;s guaranteed minimum.</>
+                    )}
+                  </p>
+                </div>
+              ) : null}
+
+              <div className={styles.steps} id="automation-lifecycle">
+                <Step
+                  index={1}
+                  glyph="plug"
+                  title="Connect wallet"
+                  detail={`Robinhood Chain (${ROBINHOOD_CHAIN_ID}), injected wallet.`}
+                  state={stepStateAt(0)}
                 >
-                  {busy === "sign" ? "Awaiting wallet…" : "Sign intent"}
-                </button>
-              )}
-              {signed && (
-                <>
-                  {record?.deliveredTo === "relay" ? (
-                    <span className={styles.utilStatus}>✓ published to the executor network — nothing else to do</span>
-                  ) : (
-                    <button data-busy={busy === "publish"} className="btn btnPrimary" disabled={busy !== null} onClick={() => void publishToRelay()} type="button">
-                      {busy === "publish" ? "Publishing…" : "Publish to network"}
+                  {!account ? (
+                    <button
+                      data-busy={busy === "connect"}
+                      className={styles.btnPrimary}
+                      disabled={busy !== null}
+                      onClick={() => void connectWallet()}
+                      type="button"
+                    >
+                      {busy === "connect" ? "Connecting…" : "Connect"}
                     </button>
-                  )}
-                  <button className="btn btnGhost" onClick={exportIntent} type="button">Download file</button>
-                  <button className="btn btnGhost" onClick={() => void copyIntent()} type="button">Copy JSON</button>
-                </>
-              )}
-            </FlowStep>
-          </div>
+                  ) : null}
+                </Step>
 
-          {signed && executorHealth && (
-            <div className={styles.formGrid}>
-              <Field label={`Local executor detected${executorHealth.executing ? "" : " (watch-only — it will simulate, not broadcast)"}`}>
-                <input
-                  className={styles.input}
-                  type="password"
-                  placeholder="intake token — from `node executor/index.mjs status`"
-                  value={intakeToken}
-                  onChange={(event) => updateIntakeToken(event.target.value)}
-                  autoComplete="off"
-                />
-              </Field>
-              <div className={styles.flowActions}>
+                <Step
+                  index={2}
+                  glyph="lock"
+                  title={`Create the ${activeMode === "recurring" ? "v3.1" : "v3"} Zap`}
+                  detail="The fee gateway calls the existing lineage factory, atomically converts the separate native fee, then the app verifies clone bytecode before anything is funded."
+                  state={stepStateAt(1)}
+                >
+                  {!record ? (
+                    <>
+                      <button
+                        data-busy={busy === "create"}
+                        className={styles.btnPrimary}
+                        disabled={busy !== null || !account || wrongNetwork || !configured || !feeConfigured || creationFeeQuote === null || perRunAmount <= 0n}
+                        onClick={() => void createCapsule()}
+                        type="button"
+                      >
+                        {busy === "create" ? "Creating…" : "Create Zap"}
+                      </button>
+                      <div className={styles.feeNote} data-ready={creationFeeQuote !== null} role="note">
+                        <div className={styles.feeCell}>
+                          <span>App creation fee</span>
+                          <strong className={styles.feeMono}>{formatToken(OPENZAP_CREATION_FEE, 18)} ETH</strong>
+                        </div>
+                        <div className={styles.feeCell}>
+                          <span>Atomic 0xZAPS conversion</span>
+                          <strong className={creationFeeQuote ? styles.feeMono : undefined}>
+                            {creationFeeQuote
+                              ? `est. ${formatToken(creationFeeQuote.amountOut, 18)} · min ${formatToken(creationFeeQuote.minZapsOut, 18)} 0xZAPS`
+                              : creationFeeError || "Reading the pinned aeWETH → 0xZAPS route…"}
+                          </strong>
+                          {feeConfigured ? (
+                            <span className={styles.feeLinks}>
+                              <a href={explorerAddress(OPENZAP_CREATION_FEE_CONTRACTS.gateway)} rel="noreferrer" target="_blank">
+                                Fee gateway
+                              </a>
+                              <a href={explorerAddress(OPENZAP_CREATION_FEE_CONTRACTS.pot)} rel="noreferrer" target="_blank">
+                                0xZAPS pot
+                              </a>
+                            </span>
+                          ) : null}
+                        </div>
+                        {creationFeeError ? (
+                          <button className={styles.btnGhost} type="button" onClick={() => void refreshCreationFeeQuote()}>
+                            Retry fee quote
+                          </button>
+                        ) : null}
+                      </div>
+                    </>
+                  ) : null}
+                </Step>
+
+                <Step index={3} glyph="coins" title="Fund the Zap" detail={fundingDetail} state={stepStateAt(2)}>
+                  {record && recordRoute && balanceKnown && !funded ? (
+                    <p
+                      className={funding.status === "short" ? `${styles.preflight} ${styles.preflightShort}` : styles.preflight}
+                      aria-live="polite"
+                    >
+                      {funding.status === "short" ? (
+                        <>
+                          Wallet holds{" "}
+                          <strong>
+                            {formatToken(walletBalanceForToken ?? 0n, recordRoute.tokenIn.decimals)} {recordRoute.tokenIn.symbol}
+                          </strong>
+                          {isWethFunding && ethBalance !== null ? <> + {formatToken(ethBalance)} ETH</> : null} — short{" "}
+                          {formatToken(funding.shortfall, recordRoute.tokenIn.decimals)}{" "}
+                          {isWethFunding ? "ETH" : recordRoute.tokenIn.symbol} of the{" "}
+                          {formatToken(fundingNeeded, recordRoute.tokenIn.decimals)} this step transfers. Add{" "}
+                          {isWethFunding ? "ETH or aeWETH" : recordRoute.tokenIn.symbol} first.
+                        </>
+                      ) : funding.status === "sufficient" && funding.wrapEth > 0n ? (
+                        <>
+                          Wallet holds{" "}
+                          <strong>
+                            {formatToken(walletBalanceForToken ?? 0n, recordRoute.tokenIn.decimals)} {recordRoute.tokenIn.symbol}
+                          </strong>{" "}
+                          — this deposit wraps{" "}
+                          <strong>{formatToken(funding.wrapEth)} ETH → {recordRoute.tokenIn.symbol}</strong> to cover the{" "}
+                          {formatToken(fundingNeeded, recordRoute.tokenIn.decimals)} it transfers. One extra signature
+                          wraps it — no need to hold {recordRoute.tokenIn.symbol} first.
+                        </>
+                      ) : funding.status === "sufficient" && walletBalanceForToken !== null ? (
+                        <>
+                          Wallet holds{" "}
+                          <strong>
+                            {formatToken(walletBalanceForToken, recordRoute.tokenIn.decimals)} {recordRoute.tokenIn.symbol}
+                          </strong>{" "}
+                          — covers the {formatToken(fundingNeeded, recordRoute.tokenIn.decimals)}{" "}
+                          {recordRoute.tokenIn.symbol} this step transfers.
+                        </>
+                      ) : (
+                        <>Wallet balance unavailable — the funding transfer will still verify onchain.</>
+                      )}
+                    </p>
+                  ) : null}
+                  {record && balanceKnown && !funded ? (
+                    <button
+                      data-busy={busy === "fund"}
+                      className={styles.btnPrimary}
+                      disabled={wrongNetwork || busy !== null || funding.status === "short"}
+                      onClick={() => void fundCapsule()}
+                      type="button"
+                    >
+                      {busy === "fund" ? "Funding…" : "Fund"}
+                    </button>
+                  ) : null}
+                  {record && !balanceKnown ? (
+                    <button
+                      data-busy={busy === "refresh"}
+                      className={styles.btnGhost}
+                      disabled={busy !== null}
+                      onClick={() => void refresh()}
+                      type="button"
+                    >
+                      {busy === "refresh" ? "Reading…" : "Retry balance read"}
+                    </button>
+                  ) : null}
+                </Step>
+
+                <Step
+                  index={4}
+                  glyph="hand"
+                  title="Sign the standing intent"
+                  detail={
+                    activeMode === "recurring"
+                      ? "One EIP-712 signature authorizes the whole series. The Zap enforces the interval and the total run count."
+                      : "One EIP-712 signature arms the trigger. The baseline price is read at signing time, and the Zap re-reads the market itself on every attempt."
+                  }
+                  state={stepStateAt(3)}
+                >
+                  {record && funded && !signed ? (
+                    <>
+                      <button
+                        data-busy={busy === "sign"}
+                        className={styles.btnPrimary}
+                        disabled={wrongNetwork || busy !== null || !executorValid || (activeMode === "recurring" && !recurringWindowSufficient)}
+                        onClick={() => void signIntent()}
+                        type="button"
+                      >
+                        {busy === "sign" ? "Awaiting wallet…" : "Sign intent"}
+                      </button>
+                      <span className={styles.stepCaption}>
+                        Signing publishes it to the shared executor network automatically — no files, no setup.
+                      </span>
+                    </>
+                  ) : null}
+                  {signed ? (
+                    <>
+                      {record?.deliveredTo === "relay" ? (
+                        <span className={styles.okStatus}>
+                          <BlockGlyph name="check" className={styles.okGlyph} />
+                          published to the executor network — nothing else to do
+                        </span>
+                      ) : (
+                        <button
+                          data-busy={busy === "publish"}
+                          className={styles.btnPrimary}
+                          disabled={busy !== null}
+                          onClick={() => void publishToRelay()}
+                          type="button"
+                        >
+                          {busy === "publish" ? "Publishing…" : "Publish to network"}
+                        </button>
+                      )}
+                      <button className={styles.btnGhost} onClick={exportIntent} type="button">Download file</button>
+                      <button className={styles.btnGhost} onClick={() => void copyIntent()} type="button">Copy JSON</button>
+                    </>
+                  ) : null}
+                </Step>
+              </div>
+
+              {signed ? (
+                <p className={styles.note}>
+                  Signing publishes your intent to the shared executor network automatically — no files, no setup.
+                  The buttons in step 4 are fallbacks: run your own executor and point it at the network, or hand the
+                  file to any executor directly. Any executor can submit the runs this Zap owes; none can change what
+                  those runs do, and if no executor serves it, nothing runs. Cancel any time from Your automations;
+                  cancellation is onchain and final.
+                </p>
+              ) : null}
+            </div>
+          </section>
+
+          <section className={styles.card} aria-label="The executor network">
+            <div className={styles.execHead}>
+              <h2 className={styles.execTitle}>The executor network</h2>
+              {configured ? (
+                <span className={styles.execLive}>
+                  <i className={styles.execDot} aria-hidden />
+                  v3 live
+                </span>
+              ) : (
+                <span className={styles.execIdle}>v3 unavailable</span>
+              )}
+              <span className={styles.execMeta}>
+                factory{" "}
+                <a href={explorerAddress(activeContracts.factory)} target="_blank" rel="noreferrer">
+                  {shortAddress(activeContracts.factory)}
+                </a>
+              </span>
+            </div>
+            <div className={styles.stats}>
+              <div className={styles.stat}>
+                <strong className={styles.statValue}>{feePct.toFixed(1)}%</strong>
+                <span className={styles.statLabel}>protocol fee per automated Zap</span>
+              </div>
+              <div className={styles.stat}>
+                <strong className={styles.statValue}>{executorPct} / {100 - executorPct}</strong>
+                <span className={styles.statLabel}>submitter share · lottery pot</span>
+              </div>
+              <div className={styles.stat}>
+                <strong className={styles.statValue}>{zapsOwed}</strong>
+                <span className={styles.statLabel}>Zaps owed right now</span>
+              </div>
+              <div className={styles.stat}>
+                <strong className={styles.statValue}>{pot ? `#${pot.round.toString()}` : "—"}</strong>
+                <span className={styles.statLabel}>lottery round</span>
+              </div>
+              <div className={styles.stat}>
+                <strong className={styles.statValue}>{pot ? formatToken(pot.prize) : "—"}</strong>
+                <span className={styles.statLabel}>0xZAPS in the pot</span>
+              </div>
+              <div className={styles.stat}>
+                <strong className={styles.statValue}>{pot && account ? formatToken(pot.tickets) : "—"}</strong>
+                <span className={styles.statLabel}>your tickets</span>
+              </div>
+            </div>
+            <p className={styles.execFoot}>
+              The executor pool is untrusted. Every field an executor submits is re-verified onchain, so the worst a
+              bad actor can do is waste their own gas.
+              <span className={styles.execRisk}>Depositing funds can result in total loss.</span>
+            </p>
+          </section>
+
+          {signed && executorHealth ? (
+            <section className={styles.card} aria-label="Local executor">
+              <div className={styles.localExecHead}>
+                <h2 className={styles.execTitle}>Local executor detected</h2>
+                {!executorHealth.executing ? (
+                  <span className={styles.localExecChip}>watch-only</span>
+                ) : null}
+              </div>
+              <div className={styles.localExecBody}>
+                <label className={styles.localExecField}>
+                  <span className={styles.fieldLabel}>Intake token</span>
+                  <input
+                    className={styles.input}
+                    type="password"
+                    placeholder="intake token — from `node executor/index.mjs status`"
+                    value={intakeToken}
+                    onChange={(event) => updateIntakeToken(event.target.value)}
+                    autoComplete="off"
+                  />
+                </label>
                 <button
                   data-busy={busy === "send"}
-                  className="btn btnPrimary"
+                  className={styles.btnPrimary}
                   disabled={busy !== null || !intakeToken.trim()}
                   onClick={() => void sendToExecutor()}
                   type="button"
                 >
                   {busy === "send" ? "Delivering…" : record?.deliveredTo === "local-executor" ? "Send again" : "Send to executor"}
                 </button>
-                {record?.deliveredTo === "local-executor" && <span className={styles.utilStatus}>✓ delivered to your local executor</span>}
+                {record?.deliveredTo === "local-executor" ? (
+                  <span className={styles.okStatus}>
+                    <BlockGlyph name="check" className={styles.okGlyph} />
+                    delivered to your local executor
+                  </span>
+                ) : null}
+                {/* The chip alone says "watch-only" and nothing about what that costs you.
+                    A daemon with no key simulates every run and broadcasts none, so an
+                    intent delivered to it never executes. */}
+                {!executorHealth.executing ? (
+                  <span className={styles.stepCaption}>
+                    Watch-only: no executor key is configured, so this daemon simulates runs and never broadcasts
+                    one. It will hold the intent, not execute it.
+                  </span>
+                ) : null}
               </div>
+            </section>
+          ) : null}
+        </div>
+
+        <div className={styles.col}>
+          <section className={styles.card} aria-label="Your automations">
+            <div className={styles.railHead}>
+              <h2 className={styles.railTitle}>Your automations</h2>
+              {/* The visible word is one glance-sized "All"; the label spells out where
+                  it goes, for anyone reading the link list out of context. */}
+              <Link href="/profile" className={styles.railAll} aria-label="All automations in your profile">
+                All
+              </Link>
             </div>
-          )}
 
-          {signed && (
-            <p className={styles.utilStatus}>
-              Signing publishes your intent to the shared executor network automatically — no files, no setup.
-              The buttons above are fallbacks: run your own executor and point it at the network, or hand the
-              file to any executor directly. Any executor can submit runs the zap owes; none can change what
-              runs, and if no executor serves it, nothing runs. Cancel any time below; cancellation is on-chain
-              and final.
-            </p>
-          )}
-        </section>
+            {record ? (
+              <>
+                <div className={styles.railItem}>
+                  <div className={styles.railItemTop}>
+                    <BlockGlyph
+                      name={record.mode === "recurring" ? "repeat" : "band"}
+                      className={styles.railItemGlyph}
+                    />
+                    <strong className={styles.railItemName}>{shortAddress(record.address)}</strong>
+                    <span className={`${styles.railChip} ${railState.tone}`}>{railState.label}</span>
+                  </div>
+                  {progressTotal > 0 ? (
+                    <div className={styles.progress} aria-hidden>
+                      {Array.from({ length: progressTotal }, (_, i) => (
+                        <i key={i} className={i < progressFilled ? `${styles.seg} ${styles.segOn}` : styles.seg} />
+                      ))}
+                    </div>
+                  ) : null}
+                  <span className={styles.railMeta}>{railMeta}</span>
+                </div>
 
-        <aside className={styles.review} aria-label="Automation status">
-          <span className={styles.cardHead}>Status</span>
-          {record ? (
-            <div className={styles.verifyList}>
-              <VerifyRow label="Zap" value={shortAddress(record.address)} href={explorerAddress(record.address)} ok />
-              <VerifyRow
-                label="Terms"
-                value={
-                  record.terms ??
-                  (record.mode === "recurring"
-                    ? `Recurring · ${runsInRecord(record)} Zaps · cadence set when you sign`
-                    : "Price trigger · condition set when you sign")
-                }
-                ok
-              />
-              <VerifyRow
-                label="Funding"
-                value={
-                  !recordRoute
+                <RailRow label="Zap" ok>
+                  <a
+                    className={styles.railRowMono}
+                    href={explorerAddress(record.address)}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    {shortAddress(record.address)}
+                  </a>
+                </RailRow>
+                <RailRow label="Terms" ok>
+                  {record.terms ??
+                    (record.mode === "recurring"
+                      ? `Recurring · ${runsInRecord(record)} Zaps · cadence set when you sign`
+                      : "Price trigger · condition set when you sign")}
+                </RailRow>
+                <RailRow label="Funding" ok={funded}>
+                  {!recordRoute
                     ? "—"
                     : capsuleBalance === null
                       ? "balance unavailable — refresh"
-                      : `${formatToken(capsuleBalance, recordRoute.tokenIn.decimals)} / ${formatToken(remainingTarget, recordRoute.tokenIn.decimals)} ${recordRoute.tokenIn.symbol} remaining`
-                }
-                ok={funded}
-              />
-              {status?.kind === "recurring" && (
-                <VerifyRow
-                  label="Series"
-                  value={status.consumed ? "finished or cancelled" : describeSeries(status.runs, status.lastRun, status.intent, status.nowSec)}
-                  ok={!status.consumed}
-                />
-              )}
-              {status?.kind === "trigger" && (
-                <VerifyRow
-                  label="Trigger"
-                  value={status.consumed ? "fired or cancelled" : status.armed ? "ARMED — condition met, awaiting an executor" : "waiting for the signed move"}
-                  ok={!status.consumed}
-                />
-              )}
-              <div className={styles.flowActions}>
-                <button data-busy={busy === "refresh"} className="btn btnGhost" disabled={busy !== null} onClick={() => void refresh()} type="button">
-                  {busy === "refresh" ? "Refreshing…" : "Refresh"}
-                </button>
-                {signed && status && !status.consumed && (
-                  <button data-busy={busy === "cancel"} className="btn btnGhost" disabled={wrongNetwork || busy !== null} onClick={() => void cancelAutomation()} type="button">
-                    {busy === "cancel" ? "Cancelling…" : "Cancel automation"}
+                      : `${formatToken(capsuleBalance, recordRoute.tokenIn.decimals)} / ${formatToken(remainingTarget, recordRoute.tokenIn.decimals)} ${recordRoute.tokenIn.symbol} remaining`}
+                </RailRow>
+                {status?.kind === "recurring" ? (
+                  <RailRow label="Series" ok={!status.consumed}>
+                    {status.consumed
+                      ? "finished or cancelled"
+                      : describeSeries(status.runs, status.lastRun, status.intent, status.nowSec)}
+                  </RailRow>
+                ) : null}
+                {status?.kind === "trigger" ? (
+                  <RailRow label="Trigger" ok={!status.consumed}>
+                    {status.consumed
+                      ? "fired or cancelled"
+                      : status.armed
+                        ? "ARMED — condition met, awaiting an executor"
+                        : "waiting for the signed move"}
+                  </RailRow>
+                ) : null}
+
+                <div className={styles.railActions}>
+                  <button
+                    data-busy={busy === "refresh"}
+                    className={styles.btnGhost}
+                    disabled={busy !== null}
+                    onClick={() => void refresh()}
+                    type="button"
+                  >
+                    {busy === "refresh" ? "Refreshing…" : "Refresh"}
                   </button>
-                )}
-                <button data-busy={busy === "recover"} className="btn btnGhost" disabled={wrongNetwork || busy !== null} onClick={() => void recoverFunds()} type="button">
-                  {busy === "recover" ? "Recovering…" : "Recover funds"}
-                </button>
-              </div>
-            </div>
-          ) : (
-            <p className={styles.empty}>No automation yet. Configure one on the left — the zap, not the executor, holds every bound.</p>
-          )}
+                  {signed && status && !status.consumed ? (
+                    <button
+                      data-busy={busy === "cancel"}
+                      className={styles.btnDanger}
+                      disabled={wrongNetwork || busy !== null}
+                      onClick={() => void cancelAutomation()}
+                      type="button"
+                    >
+                      {busy === "cancel" ? "Cancelling…" : "Cancel automation"}
+                    </button>
+                  ) : null}
+                  <button
+                    data-busy={busy === "recover"}
+                    className={styles.btnDanger}
+                    disabled={wrongNetwork || busy !== null}
+                    onClick={() => void recoverFunds()}
+                    type="button"
+                  >
+                    {busy === "recover" ? "Recovering…" : "Recover funds"}
+                  </button>
+                </div>
+              </>
+            ) : (
+              <p className={styles.railEmpty}>
+                No automation yet. Create one and its state shows up here — the Zap, not the executor, holds every
+                bound.
+              </p>
+            )}
 
-          <span className={styles.cardHead}>Protocol lottery</span>
-          <p className={styles.utilStatus}>
-            Every automated run pays a {feePct}% fee from output: {executorPct}% of it to the executor that
-            submitted the run, the rest to the lottery pot, where a permissionless keeper call converts it to
-            0xZAPS. Fees buy tickets automatically — round {pot ? `#${pot.round.toString()}` : "—"} holds{" "}
-            {pot ? formatToken(pot.prize) : "—"} 0xZAPS
-            {pot && account ? ` and this wallet holds ${formatToken(pot.tickets)} of ${formatToken(pot.totalTickets)} tickets` : ""}
-            . Winner selection is governance-gated until a randomness design lands; payouts can only ever go to
-            ticket holders, only in 0xZAPS.{" "}
-            <Link href="/docs#automation">How the executor economy works →</Link>
-          </p>
-
-          {records.length > 1 && (
-            <>
-              <span className={styles.cardHead}>Your automations</span>
-              <div className={styles.savedZaps}>
-                {records.map((r) => (
+            {otherRecords.length > 0 ? (
+              <div className={styles.railList}>
+                {otherRecords.map((r) => (
                   <button
                     key={r.address}
                     type="button"
-                    // Unselected rows need the base class too — `undefined` left them as bare UA
-                    // buttons beside a fully styled active row.
-                    className={record?.address === r.address ? styles.savedZapActive : styles.savedZap}
+                    className={styles.railItemBtn}
                     onClick={() => setSelected(r.address)}
                   >
                     {/* Geometry, not emoji: U+26A1 renders as full-colour Apple/Segoe emoji and broke
                         the monochrome list. BlockGlyph inherits the row's currentColor. */}
-                    <BlockGlyph name={r.mode === "recurring" ? "repeat" : "band"} className={styles.rowGlyph} />
+                    <BlockGlyph name={r.mode === "recurring" ? "repeat" : "band"} className={styles.railItemGlyph} />
                     {shortAddress(r.address)}
                   </button>
                 ))}
               </div>
-            </>
-          )}
-        </aside>
-      </section>
+            ) : null}
+          </section>
+
+          <section className={styles.railSunk}>
+            <h2 className={styles.railSunkTitle}>What the chain enforces</h2>
+            <div className={styles.enforce}>
+              {CHAIN_ENFORCES.map((line) => (
+                <div className={styles.enforceRow} key={line}>
+                  <BlockGlyph name="check" className={styles.enforceCheck} />
+                  <span className={styles.enforceText}>{line}</span>
+                </div>
+              ))}
+            </div>
+          </section>
+
+          <section className={styles.railSunk}>
+            <h2 className={styles.railSunkTitle}>Protocol lottery</h2>
+            <p className={styles.railProse}>
+              Every automated Zap pays a {feePct}% fee from output: {executorPct}% of it to the executor that
+              submitted it, the rest to the lottery pot, where a permissionless keeper call converts it to
+              0xZAPS. Fees buy tickets automatically — round {pot ? `#${pot.round.toString()}` : "—"} holds{" "}
+              {pot ? formatToken(pot.prize) : "—"} 0xZAPS
+              {pot && account ? ` and this wallet holds ${formatToken(pot.tickets)} of ${formatToken(pot.totalTickets)} tickets` : ""}
+              . Winner selection is governance-gated until a randomness design lands; payouts can only ever go to
+              ticket holders, only in 0xZAPS.{" "}
+              <Link href="/docs#automation" className={styles.railLink}>How the executor economy works →</Link>
+            </p>
+          </section>
+        </div>
+      </div>
     </main>
   );
 }
@@ -1799,6 +2133,26 @@ function runsInRecord(record: AutomationRecord): number {
     if (parsed?.kind === "recurring") return (parsed.intent as RecurringIntent).maxRuns;
   }
   return record.plannedRuns ?? 1;
+}
+
+/** The record's frozen per-Zap amount, or null when the stored string is junk. */
+function parseRecordAmount(record: AutomationRecord): bigint | null {
+  try {
+    return BigInt(record.amountPerRun);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Number inputs hand back "" and "-" while you type, both of which parse to
+ * NaN. Clamping here is what keeps `createCapsule`'s 1..1000 guard from
+ * surfacing as an error toast instead of a disabled button.
+ */
+function clampInt(raw: string, min: number, max: number): number {
+  const parsed = Number.parseInt(raw, 10);
+  if (!Number.isFinite(parsed)) return min;
+  return Math.min(max, Math.max(min, parsed));
 }
 
 function parseAmountSafe(value: string, decimals: number): bigint {
@@ -1984,62 +2338,65 @@ function readableError(cause: unknown): string {
   return "Unknown wallet or RPC error.";
 }
 
-function Metric({ label, value, glyph }: { label: string; value: string; glyph?: string }): React.JSX.Element {
+function Field({ label, children }: { label: string; children: React.ReactNode }): React.JSX.Element {
   return (
-    <div className={styles.metric}>
-      <strong>{value}</strong>
-      <span>
-        {glyph ? <BlockGlyph name={glyph} className={styles.rowGlyph} /> : null}
-        {label}
-      </span>
-    </div>
+    <label className={styles.field}>
+      <span className={styles.fieldLabel}>{label}</span>
+      {children}
+    </label>
   );
 }
 
-function Field({ label, children }: { label: string; children: React.ReactNode }): React.JSX.Element {
-  return <label className={styles.field}><span>{label}</span>{children}</label>;
-}
-
-function FlowStep({ number, title, detail, done, glyph, children }: {
-  number: string;
+/**
+ * One lifecycle step.
+ *
+ * Only the step you are on expands. The prototype collapses create/fund/sign
+ * into a single "Sign intent" button, which this flow cannot do — they are four
+ * separate wallet actions — but showing all four in full turns the console into
+ * a wall, so the ones behind and ahead of you stay one line each.
+ */
+function Step({ index, glyph, title, detail, state, children }: {
+  index: number;
+  /** BlockGlyph name — the step's meaning at a glance, beside the counter. */
+  glyph: string;
   title: string;
   detail: string;
-  done: boolean;
-  /** BlockGlyph name — the step's meaning at a glance, beside the counter. */
-  glyph?: string;
-  children: React.ReactNode;
+  state: StepState;
+  children?: React.ReactNode;
 }): React.JSX.Element {
+  const hasActions = Array.isArray(children) ? children.some((child) => Boolean(child)) : Boolean(children);
+  // A step you cannot reach yet stays a one-liner even when its controls would
+  // render: a disabled "Create Zap" under a greyed row is an invitation to
+  // click the thing that cannot work.
+  const showActions = hasActions && state !== "pending";
   return (
-    <div className={styles.flowStep} data-done={done}>
-      <span>{done ? <BlockGlyph name="check" className={styles.stepMark} /> : number}</span>
-      <div>
-        <strong>
-          {glyph ? <BlockGlyph name={glyph} className={styles.stepGlyph} /> : null}
+    <div className={styles.step} data-state={state}>
+      <span className={styles.stepMark}>
+        {state === "done" ? <BlockGlyph name="check" className={styles.stepCheck} /> : index}
+      </span>
+      <div className={styles.stepBody}>
+        <span className={styles.stepTitle}>
+          <BlockGlyph name={glyph} className={styles.stepGlyph} />
           {title}
-        </strong>
-        <p>{detail}</p>
-        <div className={styles.flowActions}>{children}</div>
+        </span>
+        {state === "current" ? <p className={styles.stepDetail}>{detail}</p> : null}
+        {showActions ? <div className={styles.stepActions}>{children}</div> : null}
       </div>
     </div>
   );
 }
 
-function VerifyRow({ label, value, href, ok, glyph }: {
+function RailRow({ label, ok, children }: {
   label: string;
-  value: string;
-  href?: string;
   ok: boolean;
-  /** BlockGlyph name for what this row checks; falls back to the pass/fail mark. */
-  glyph?: string;
+  children: React.ReactNode;
 }): React.JSX.Element {
+  // data-ok drives the failed state: every value used to render in the same
+  // colour, so a check that did NOT pass looked exactly like one that did.
   return (
-    // data-ok drives the failed state: every mark used to render in the same pass-yellow, so a check
-    // that did NOT pass looked exactly like one that did.
-    <div className={styles.verifyRow} data-ok={ok}>
-      <span>
-        <BlockGlyph name={glyph ?? (ok ? "check" : "alert")} className={styles.rowGlyph} />
-      </span>
-      <div><small>{label}</small>{href ? <a href={href} target="_blank" rel="noreferrer">{value}</a> : <strong>{value}</strong>}</div>
+    <div className={styles.railRow} data-ok={ok}>
+      <span className={styles.railRowLabel}>{label}</span>
+      <span className={styles.railRowValue}>{children}</span>
     </div>
   );
 }

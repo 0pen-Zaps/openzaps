@@ -1,14 +1,16 @@
 import type { Metadata, Viewport } from "next";
-import { Inter, JetBrains_Mono } from "next/font/google";
+import { DM_Sans, JetBrains_Mono, Newsreader } from "next/font/google";
 import Script from "next/script";
 import { Analytics } from "@vercel/analytics/next";
 import "./globals.css";
 import { Spotlight } from "@/components/Spotlight";
 import { MotionControl } from "@/components/MotionControl";
 import { JsonLd } from "@/components/JsonLd";
+import { ThemeProvider } from "@/components/ThemeProvider";
 import { WalletProvider } from "@/components/WalletProvider";
 import { LINKS, TOKEN, TOKEN_LAUNCH, X_HANDLE } from "@/lib/config";
 import { MOTION_STORAGE_KEY } from "@/lib/motion-preference";
+import { THEME_BG, THEME_GUARD } from "@/lib/theme";
 import {
   SITE_URL,
   SITE_NAME,
@@ -19,14 +21,33 @@ import {
   absoluteUrl,
 } from "@/lib/seo";
 
-const inter = Inter({
-  variable: "--font-inter",
+/**
+ * Three families, three jobs.
+ *
+ * Newsreader carries screen titles and section headings; DM Sans carries
+ * everything else; JetBrains Mono keeps every number, address and hash, as it
+ * did before. Inter is gone.
+ *
+ * The variables are named by ROLE, not by typeface — `--font-sans`, not
+ * `--font-dm-sans` — so the next change of mind is one line here instead of a
+ * find-and-replace across forty stylesheets. globals.css maps the two former
+ * names onto these, because an unresolved font variable does not warn: it
+ * silently falls through to system sans and the page just looks slightly off.
+ */
+const newsreader = Newsreader({
+  variable: "--font-serif",
+  subsets: ["latin"],
+  display: "swap",
+});
+
+const dmSans = DM_Sans({
+  variable: "--font-sans",
   subsets: ["latin"],
   display: "swap",
 });
 
 const jetBrainsMono = JetBrains_Mono({
-  variable: "--font-jetbrains-mono",
+  variable: "--font-mono",
   subsets: ["latin"],
   display: "swap",
 });
@@ -96,11 +117,23 @@ export const metadata: Metadata = {
   },
 };
 
+/**
+ * The app ships five themes, three of them light, so a single hardcoded dark
+ * `themeColor` is wrong for more visitors than it is right for. These two
+ * entries are the pre-JS answer: the browser matches the visitor's OS
+ * preference and paints its chrome to suit.
+ *
+ * The real, per-theme value is written client-side by ThemeProvider once the
+ * picked theme is known — metadata cannot know which of five was chosen.
+ * `manifest.webmanifest` carries its own `theme_color`; an installed PWA keeps
+ * whatever that says.
+ */
 export const viewport: Viewport = {
-  colorScheme: "dark",
-  // Ink, matching the manifest. Colours the mobile browser chrome so the
-  // address bar blends into the dark site rather than the old violet.
-  themeColor: "#050505",
+  colorScheme: "light dark",
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: THEME_BG.ivory },
+    { media: "(prefers-color-scheme: dark)", color: THEME_BG.graphite },
+  ],
 };
 
 const siteGraph = {
@@ -214,7 +247,7 @@ export default function RootLayout({
     // hydration mismatch on every repeat visit.
     <html
       lang="en-US"
-      className={`${inter.variable} ${jetBrainsMono.variable}`}
+      className={`${dmSans.variable} ${newsreader.variable} ${jetBrainsMono.variable}`}
       suppressHydrationWarning
     >
       <head>
@@ -222,6 +255,12 @@ export default function RootLayout({
         <link rel="alternate" type="text/plain" href="/llms.txt" title={`${SITE_NAME} for AI systems`} />
       </head>
       <body>
+        {/* First, before either of the others: the theme decides what colour
+            everything else is painted, and Ivory flashing on a Voltage visitor
+            is worse than having no themes at all. */}
+        <Script id="theme-guard" strategy="beforeInteractive">
+          {THEME_GUARD}
+        </Script>
         <Script id="motion-guard" strategy="beforeInteractive">
           {MOTION_GUARD}
         </Script>
@@ -232,7 +271,9 @@ export default function RootLayout({
         <a href="#main" className="skipLink">
           Skip to content
         </a>
-        <WalletProvider>{children}</WalletProvider>
+        <ThemeProvider>
+          <WalletProvider>{children}</WalletProvider>
+        </ThemeProvider>
         <Spotlight />
         <MotionControl />
         <Analytics />

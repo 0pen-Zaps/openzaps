@@ -57,7 +57,7 @@ const SCENES: readonly Scene[] = [
       </>
     ),
   },
-  { caption: "Each seals a secret claim.", sub: "A slice of the bus. Hidden until they open it." },
+  { caption: "Each seals a secret draw.", sub: "A slice of the bus. Hidden until they open it." },
   {
     caption: "Open them.",
     sub: (
@@ -80,7 +80,7 @@ const SCENES: readonly Scene[] = [
     sub: CUT ? (
       <>
         It asks <strong>{tokens(CUT.wants)}</strong>. Only <strong>{tokens(DEMO.carry)}</strong> is left, so it gets{" "}
-        <strong>nothing</strong> — and the rest charges the next round.
+        <strong>nothing</strong> — and what was left charges the next round.
       </>
     ) : null,
   },
@@ -124,7 +124,7 @@ export function RoundFilm(): React.JSX.Element {
 
   return (
     <section className={styles.film} aria-label="How one round plays out">
-      <header className={styles.head}>
+      <header className={styles.filmHead}>
         <p className={styles.step}>
           {String(step + 1).padStart(2, "0")} / {String(SCENES.length).padStart(2, "0")}
         </p>

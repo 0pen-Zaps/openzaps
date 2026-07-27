@@ -2,37 +2,27 @@
 
 import { useRef, useState } from "react";
 
-import {
-  ROBINHOOD_ASSETS,
-  ensureRobinhoodChain,
-  getInjectedProvider,
-  watchZapsAsset,
-} from "@/lib/robinhood";
+import { ensureRobinhoodChain, getInjectedProvider, watchZapsAsset } from "@/lib/robinhood";
 import styles from "./TokenUtilities.module.css";
 
-type Action = "copy" | "watch" | null;
+type Action = "watch" | null;
 
-export function TokenUtilities(): React.JSX.Element {
+/**
+ * The add-to-wallet control, plus the two live regions that report what the
+ * wallet actually did.
+ *
+ * Copying the address is deliberately NOT here any more: the contract row on
+ * /token carries a `CopyButton`, and two copy affordances for the same string
+ * is how someone ends up copying from the one that failed silently.
+ *
+ * `className` styles the button itself so the caller owns its geometry — the
+ * control is rendered inside a rail card, not in a standalone action row.
+ */
+export function TokenUtilities({ className = "" }: { className?: string }): React.JSX.Element {
   const [busy, setBusy] = useState<Action>(null);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
-  const copyRef = useRef<HTMLButtonElement>(null);
   const watchRef = useRef<HTMLButtonElement>(null);
-
-  async function copyAddress(): Promise<void> {
-    setBusy("copy");
-    setMessage("");
-    setError("");
-    try {
-      await navigator.clipboard.writeText(ROBINHOOD_ASSETS.zaps);
-      setMessage("Official 0xZAPS contract address copied.");
-    } catch {
-      setError("Clipboard access is unavailable. Select and copy the address above.");
-    } finally {
-      setBusy(null);
-      restoreFocus(copyRef.current);
-    }
-  }
 
   async function addToWallet(): Promise<void> {
     setBusy("watch");
@@ -44,7 +34,9 @@ export function TokenUtilities(): React.JSX.Element {
       await ensureRobinhoodChain(provider);
       const image = new URL("/0xzaps-token.png", window.location.origin).href;
       const added = await watchZapsAsset(provider, image);
-      setMessage(added ? "0xZAPS was added to your wallet." : "Wallet closed the add-token request.");
+      // A user decline REJECTS the request and lands in the catch below, so a
+      // non-true result is a wallet that acknowledged nothing — not a decline.
+      setMessage(added ? "0xZAPS was added to your wallet." : "Wallet did not confirm the add. Check your token list.");
     } catch (cause) {
       setError(readableError(cause));
     } finally {
@@ -55,14 +47,16 @@ export function TokenUtilities(): React.JSX.Element {
 
   return (
     <div className={styles.tools}>
-      <div className={styles.actions}>
-        <button className="btn btnGhost" disabled={busy !== null} onClick={() => void copyAddress()} ref={copyRef} type="button">
-          {busy === "copy" ? "Copying…" : "Copy address"}
-        </button>
-        <button className="btn btnPrimary" disabled={busy !== null} onClick={() => void addToWallet()} ref={watchRef} type="button">
-          {busy === "watch" ? "Opening wallet…" : "Add 0xZAPS to wallet"}
-        </button>
-      </div>
+      <button
+        className={className}
+        data-busy={busy === "watch" ? "true" : undefined}
+        disabled={busy !== null}
+        onClick={() => void addToWallet()}
+        ref={watchRef}
+        type="button"
+      >
+        {busy === "watch" ? "Opening wallet…" : "Add to wallet"}
+      </button>
       <p className={styles.success} role="status">{message}</p>
       {error && <p className={styles.error} role="alert">{error}</p>}
     </div>

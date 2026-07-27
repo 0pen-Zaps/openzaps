@@ -38,16 +38,32 @@ import s from "./busrun.module.css";
  * elsewhere: it is `aria-hidden`, holds no focusable node except the final CTA,
  * and is only mounted when motion is permitted and the viewport can hold it.
  * Everyone else — reduced motion, Calm, phones, short windows, no JS — gets the
- * stepper, which carries the identical beats. The static path is the primary
- * deliverable here, not a fallback.
+ * stepper, which teaches the same round from the same numbers. The static path
+ * is the primary deliverable here, not a fallback.
  */
 
+
+/**
+ * The box this section actually scrolls inside.
+ *
+ * The app shell moved the scroll off the window and onto its own container, so
+ * a `window` scroll listener never fires here and the traverse would sit frozen
+ * on beat one. Returns null when the page itself is the scroller, which is
+ * still the case outside the shell.
+ */
+function scrollportOf(el: HTMLElement): HTMLElement | null {
+  for (let node = el.parentElement; node; node = node.parentElement) {
+    const overflowY = getComputedStyle(node).overflowY;
+    if (overflowY === "auto" || overflowY === "scroll") return node;
+  }
+  return null;
+}
 
 type Beat = { readonly cap: string; readonly sub: React.ReactNode };
 
 const BEATS: readonly Beat[] = [
-  { cap: "One bus.", sub: <>Everything this round can pay: <strong>{tokens(DEMO.capacity)}</strong>.</> },
-  { cap: "Claims are paid smallest first.", sub: "Each one in full, the moment the bus reaches it." },
+  { cap: "One bus.", sub: <>Everything this round can pay: <strong>{tokens(DEMO.capacity)} 0xZAPS</strong>.</> },
+  { cap: "Draws are paid smallest first.", sub: "Each one in full, the moment the bus reaches it." },
   {
     cap: "Three are paid.",
     sub: (
@@ -130,31 +146,55 @@ export function BusRun(): React.JSX.Element | null {
     const sticky = stickyRef.current;
     if (!section || !sticky) return;
 
+    const port = scrollportOf(section);
+
     let frame = 0;
+    /** The pin offset in px, cached: reading it per frame forces a style recalc. */
+    let stickyTop = 0;
+
+    // Publishes the scrollport's own height. The sticky stage must be exactly
+    // as tall as the box it pins inside — a 100svh stage inside the shell's
+    // shorter scrollport hides the CTA and the progress bar below the edge.
+    const relayout = (): void => {
+      const height = `${port ? port.clientHeight : window.innerHeight}px`;
+      if (section.style.getPropertyValue("--stage-h") !== height) {
+        section.style.setProperty("--stage-h", height);
+      }
+      stickyTop = Number.parseFloat(getComputedStyle(sticky).top) || 0;
+    };
+
     const measure = (): void => {
       frame = 0;
       // Progress is the fraction of the section's scrollable travel consumed.
       // Derived from the sticky element's own offset so it needs no knowledge of
       // the `top` value, which is a live custom property.
       const travel = section.offsetHeight - sticky.offsetHeight;
-      // How far the section's top has passed above the viewport top IS the
-      // travel consumed, because `.sticky` is the section's first child with no
-      // margin above it. Do NOT add `sticky.offsetTop`: for an element that is
-      // currently stuck, that returns the shifted offset rather than 0, which
-      // double-counts and runs the whole traverse at roughly twice speed.
-      const scrolled = -section.getBoundingClientRect().top;
+      // Measured from the line the stage pins on, NOT from the viewport top:
+      // inside the shell those are a context bar apart, and using the viewport
+      // starts the traverse already part-consumed. Do NOT add `sticky.offsetTop`
+      // instead: for an element that is currently stuck, that returns the
+      // shifted offset rather than 0, which double-counts and runs the whole
+      // traverse at roughly twice speed.
+      const pin = (port ? port.getBoundingClientRect().top : 0) + stickyTop;
+      const scrolled = pin - section.getBoundingClientRect().top;
       paint(travel > 0 ? clamp01(scrolled / travel) : 0);
     };
     const onScroll = (): void => {
       frame ||= requestAnimationFrame(measure);
     };
+    const onResize = (): void => {
+      relayout();
+      onScroll();
+    };
 
+    relayout();
     measure();
-    window.addEventListener("scroll", onScroll, { passive: true });
-    window.addEventListener("resize", onScroll, { passive: true });
+    const target: EventTarget = port ?? window;
+    target.addEventListener("scroll", onScroll, { passive: true });
+    window.addEventListener("resize", onResize, { passive: true });
     return () => {
-      window.removeEventListener("scroll", onScroll);
-      window.removeEventListener("resize", onScroll);
+      target.removeEventListener("scroll", onScroll);
+      window.removeEventListener("resize", onResize);
       cancelAnimationFrame(frame);
     };
   }, [paint]);
@@ -165,7 +205,7 @@ export function BusRun(): React.JSX.Element | null {
   return (
     <section ref={sectionRef} className={s.section} aria-labelledby="run-title">
       <div ref={stickyRef} className={s.sticky}>
-        <div className={`container ${s.head}`}>
+        <div className={s.head}>
           <p className={s.eyebrow}>One round</p>
           <h2 id="run-title" className={s.caption}>
             {scene?.cap}
@@ -235,16 +275,16 @@ export function BusRun(): React.JSX.Element | null {
             </div>
           </div>
 
-          <div className={`container ${s.cta}`}>
+          <div className={s.cta}>
             <Link href="/zapdraw" className={s.ctaButton}>
-              Zap in to a round &rarr;
+              Take a seat &rarr;
             </Link>
             <span className={s.ctaNote}>
-              {tokens(DEMO.entry)} 0xZAPS a seat. Your claim stays sealed until you open it.
+              Every seat costs the same. Your draw stays sealed until you open it.
             </span>
           </div>
 
-          <div className={`container ${s.progress}`}>
+          <div className={s.progress}>
             <div className={s.progressFill} />
           </div>
         </div>

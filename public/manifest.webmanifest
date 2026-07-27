@@ -2,14 +2,14 @@
   "id": "/",
   "name": "OpenZaps — One-Transaction DeFi Zaps",
   "short_name": "OpenZaps",
-  "description": "Build one-transaction DeFi zaps with immutable policy capsules that lock targets, assets, recipients, and calldata before signing. Live on Robinhood Chain.",
+  "description": "Build one-transaction DeFi Zaps \u2014 immutable policy capsules that lock targets, assets, recipients, and calldata before signing. Live on Robinhood Chain.",
   "start_url": "/zap",
   "scope": "/",
   "lang": "en-US",
   "dir": "ltr",
   "display": "standalone",
-  "background_color": "#050505",
-  "theme_color": "#050505",
+  "background_color": "#F6F3EC",
+  "theme_color": "#F6F3EC",
   "categories": ["finance", "utilities", "developer"],
   "shortcuts": [
     {
@@ -21,7 +21,7 @@
     {
       "name": "Explore Deployed Zaps",
       "short_name": "Explore",
-      "description": "Inspect verified policy capsules and onchain execution history.",
+      "description": "Inspect verified Zaps and their onchain execution history.",
       "url": "/explore"
     },
     {

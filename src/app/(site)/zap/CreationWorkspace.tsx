@@ -25,7 +25,7 @@ interface CreationWorkspaceProps {
   children: ReactNode;
 }
 
-/** Durable, evidence-first receipt shown after a confirmed capsule creation. */
+/** Durable, evidence-first receipt shown after a confirmed Zap creation. */
 export function CreationWorkspace({
   eyebrow,
   title,
@@ -35,22 +35,22 @@ export function CreationWorkspace({
   children,
 }: CreationWorkspaceProps): React.JSX.Element {
   return (
-    <section className={`container ${styles.workspace}`} aria-labelledby="creation-workspace-title">
+    <section className={styles.workspace} aria-labelledby="creation-workspace-title">
       <header className={styles.head}>
         <div className={styles.illustration} aria-hidden>
-          <span><BlockGlyph name="check" /></span>
+          <span><BlockGlyph name="tick" /></span>
           <i />
           <span><BlockGlyph name="lock" /></span>
           <i />
           <span><BlockGlyph name="bolt" /></span>
         </div>
         <div className={styles.copy}>
-          <span className="eyebrow">{eyebrow}</span>
+          <span className={styles.eyebrow}>{eyebrow}</span>
           <h2 id="creation-workspace-title">{title}</h2>
           <p>{detail}</p>
         </div>
         <span className={styles.confirmed}>
-          <BlockGlyph name="check" />
+          <BlockGlyph name="tick" />
           Confirmed
         </span>
       </header>
@@ -68,10 +68,10 @@ export function CreationWorkspace({
         ))}
       </dl>
 
-      <ol className={styles.stages} aria-label="Zap continuation">
+      <ol className={styles.stages} aria-label="Zap progress after creation">
         {stages.map((stage, index) => (
           <li data-status={stage.status} key={stage.label}>
-            <span>{stage.status === "done" ? <BlockGlyph name="check" /> : index + 1}</span>
+            <span>{stage.status === "done" ? <BlockGlyph name="tick" /> : index + 1}</span>
             <div>
               <strong>{stage.label}</strong>
               <small>{stage.detail}</small>
@@ -83,7 +83,7 @@ export function CreationWorkspace({
       <footer className={styles.actions}>
         <div>
           <strong>Creation is complete.</strong>
-          <span>The capsule stays inspectable here until you intentionally start another.</span>
+          <span>The Zap stays inspectable here until you intentionally start another.</span>
         </div>
         <nav aria-label="Creation result actions">{children}</nav>
       </footer>

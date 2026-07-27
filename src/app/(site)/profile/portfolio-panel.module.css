@@ -1,72 +1,143 @@
 .panel {
-  margin-top: 1rem;
+  margin-bottom: 26px;
   border: 1px solid var(--line);
-  background:
-    radial-gradient(circle at 0 0, rgba(156, 186, 255, 0.07), transparent 26rem),
-    var(--bg-2);
-  box-shadow: var(--card-shadow);
+  border-radius: var(--r-card);
+  background: var(--panel);
+  box-shadow: var(--sh-1);
   overflow: hidden;
 }
 
 .head {
   display: flex;
-  align-items: flex-end;
-  justify-content: space-between;
-  gap: 1rem;
-  padding: clamp(1.1rem, 2.5vw, 1.6rem);
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 13px 18px;
   border-bottom: 1px solid var(--line-soft);
 }
 
 .head h2 {
-  margin-top: 0.42rem;
-  font-size: clamp(1.45rem, 3.2vw, 2.45rem);
-  font-weight: 550;
-  letter-spacing: -0.04em;
-  line-height: 1.02;
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.hint {
+  color: var(--ink-3);
+  font-size: 12px;
 }
 
 .head p {
-  max-width: 46rem;
-  margin-top: 0.6rem;
-  color: var(--muted-2);
-  font-size: 0.84rem;
-  line-height: 1.55;
+  flex-basis: 100%;
+  margin: 0;
+  color: var(--ink-2);
+  font-size: 12px;
+  line-height: 1.5;
 }
 
 .headMeta {
   display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 0.55rem;
-  flex: 0 0 auto;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-left: auto;
 }
 
 .headMeta > span,
-.reading {
-  padding: 0.35rem 0.5rem;
-  border: 1px solid var(--line);
-  color: var(--muted);
-  font-size: 0.65rem;
-  font-weight: 620;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
+.reading,
+.provenance > span {
+  padding: 3px 8px;
+  border-radius: var(--r-pill);
+  color: var(--ink-2);
+  background: var(--chip);
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0;
+  text-transform: none;
+  white-space: nowrap;
 }
 
 .headMeta > span[data-status="complete"],
-.headMeta > span[data-status="empty"] {
-  border-color: rgba(158, 255, 184, 0.34);
-  color: #9effb8;
+.headMeta > span[data-status="empty"],
+.provenance > span[data-status="live"] {
+  color: var(--ok);
+  background: var(--ok-wash);
 }
 
-.headMeta > span[data-status="partial"] {
-  border-color: rgba(255, 189, 109, 0.38);
-  color: #ffbd6d;
+.headMeta > span[data-status="partial"],
+.provenance > span[data-status="degraded"] {
+  color: var(--warn);
+  background: var(--warn-wash);
+}
+
+.headMeta > span[data-status="unavailable"],
+.provenance > span[data-status="unavailable"] {
+  color: var(--danger);
+  background: var(--danger-wash);
+}
+
+/* Local, matching the ghost control on the profile screen. The global `.btn`
+   forces a 44px minimum and a press animation that does not belong on a card
+   header. */
+.panelBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  height: 30px;
+  padding: 0 11px;
+  border: 1px solid var(--line-btn);
+  border-radius: var(--r-ctl-sm);
+  color: var(--ink);
+  background: var(--panel-2);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background var(--dur-1) var(--ease-standard), border-color var(--dur-2) var(--ease-standard);
+}
+
+.panelBtn:hover:not(:disabled) {
+  border-color: var(--line-hover);
+  background: var(--panel);
+}
+
+.panelBtn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.panelBtn[data-busy="true"] {
+  opacity: 1;
+  cursor: progress;
+}
+
+.panelBtn[data-busy="true"]::after {
+  width: 0.85em;
+  height: 0.85em;
+  flex: 0 0 auto;
+  content: "";
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  opacity: 0.9;
+  animation: portfolioSpin 620ms linear infinite;
+}
+
+/* Calm mode zeroes every animation with `!important`, and its exception is
+   written against the global `.btn` this panel no longer uses. */
+:global(html[data-motion="calm"]) .panelBtn[data-busy="true"]::after {
+  animation-duration: 1.8s !important;
+  animation-iteration-count: infinite !important;
 }
 
 .summaryGrid {
   display: grid;
-  grid-template-columns: minmax(0, 0.82fr) minmax(22rem, 1.18fr);
+  grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
   gap: 1px;
+  border-bottom: 1px solid var(--line-soft);
   background: var(--line-soft);
 }
 
@@ -74,62 +145,63 @@
   display: flex;
   flex-direction: column;
   justify-content: center;
-  min-height: 19rem;
-  padding: clamp(1.2rem, 3.2vw, 2rem);
-  background: var(--bg-2);
+  min-height: 0;
+  padding: 18px;
+  background: var(--panel);
 }
 
 .valueCard > span {
-  color: var(--muted);
-  font-size: 0.7rem;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-}
-
-.valueCard strong {
-  margin-top: 0.55rem;
-  font-family: var(--font-jetbrains-mono), ui-monospace, monospace;
-  font-size: clamp(2rem, 5vw, 4.4rem);
-  font-weight: 520;
-  letter-spacing: -0.055em;
-  line-height: 0.94;
-}
-
-.valueCard p {
-  max-width: 32rem;
-  margin-top: 0.8rem;
-  color: var(--muted-2);
-  font-size: 0.8rem;
-  line-height: 1.5;
-}
-
-.valueCard em {
-  width: max-content;
-  margin-top: 1rem;
-  padding: 0.28rem 0.42rem;
-  border: 1px solid rgba(255, 189, 109, 0.36);
-  color: #ffbd6d;
-  font-size: 0.63rem;
-  font-style: normal;
-  font-weight: 620;
+  color: var(--ink-3);
+  font-size: 10.5px;
+  font-weight: 600;
   letter-spacing: 0.07em;
   text-transform: uppercase;
 }
 
+.valueCard strong {
+  margin-top: 6px;
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-size: 30px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+}
+
+.valueCard p {
+  margin-top: 8px;
+  color: var(--ink-2);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+/* The subtotal is a priced subset, never a net worth. The pill is the only
+   thing stopping the big number from being read as one. */
+.valueCard em {
+  width: max-content;
+  margin-top: 12px;
+  padding: 3px 8px;
+  border-radius: var(--r-pill);
+  color: var(--warn);
+  background: var(--warn-wash);
+  font-size: 10.5px;
+  font-style: normal;
+  font-weight: 600;
+}
+
 .chart {
   display: grid;
-  grid-template-columns: minmax(13rem, 0.8fr) minmax(11rem, 1fr);
-  gap: 1rem;
+  grid-template-columns: minmax(0, 0.8fr) minmax(0, 1fr);
+  gap: 14px;
   align-items: center;
-  min-height: 19rem;
+  min-height: 0;
   margin: 0;
-  padding: 1.25rem;
-  background: var(--bg-2);
+  padding: 18px;
+  background: var(--panel);
 }
 
 .chart svg {
   width: 100%;
-  max-width: 18rem;
+  max-width: 15rem;
   margin: auto;
   overflow: visible;
   transform: rotate(-90deg);
@@ -142,7 +214,7 @@
 }
 
 .chartTrack {
-  stroke: rgba(255, 255, 255, 0.06);
+  stroke: var(--track);
 }
 
 .chartSlice {
@@ -154,8 +226,8 @@
 }
 
 .chart text {
-  fill: var(--muted);
-  font-family: var(--font-jetbrains-mono), ui-monospace, monospace;
+  fill: var(--ink-3);
+  font-family: var(--font-mono), ui-monospace, monospace;
   font-size: 6px;
   letter-spacing: 0.08em;
   transform: rotate(90deg);
@@ -164,60 +236,68 @@
 
 .chart figcaption {
   display: grid;
-  gap: 0.5rem;
+  gap: 6px;
 }
 
 .chart figcaption div {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;
-  gap: 0.5rem;
+  gap: 8px;
   align-items: center;
-  padding-bottom: 0.5rem;
-  border-bottom: 1px solid var(--line-soft);
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--line-softer);
 }
 
 .chart figcaption i {
-  width: 0.55rem;
-  height: 0.55rem;
+  width: 9px;
+  height: 9px;
+  border-radius: var(--r-chip);
 }
 
 .chart figcaption span {
-  color: var(--muted-2);
-  font-size: 0.72rem;
+  color: var(--ink-2);
+  font-size: 12px;
 }
 
 .chart figcaption strong {
-  font-family: var(--font-jetbrains-mono), ui-monospace, monospace;
-  font-size: 0.68rem;
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
 }
 
 .holdings {
-  border-top: 1px solid var(--line-soft);
+  border-top: 0;
 }
 
 .tableHead,
 .row {
   display: grid;
-  grid-template-columns: minmax(16rem, 1.25fr) minmax(11rem, 0.72fr) minmax(17rem, 1fr);
+  grid-template-columns: minmax(0, 1.25fr) minmax(0, 0.72fr) minmax(0, 1fr);
 }
 
 .tableHead {
-  padding: 0.65rem 1rem 0.65rem 4.55rem;
-  color: var(--muted);
-  font-size: 0.62rem;
-  letter-spacing: 0.08em;
+  padding: 9px 18px 9px 68px;
+  color: var(--ink-3);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.07em;
   text-transform: uppercase;
 }
 
 .row {
   position: relative;
-  border-top: 1px solid var(--line-soft);
+  border-top: 1px solid var(--line-softer);
+  transition: background var(--dur-2) var(--ease-standard);
+}
+
+.row:hover {
+  background: var(--panel-2);
 }
 
 .row > div {
   min-width: 0;
-  padding: 0.95rem 1rem;
-  border-left: 1px solid var(--line-soft);
+  padding: 12px 18px;
+  border-left: 1px solid var(--line-softer);
 }
 
 .row > div:first-of-type {
@@ -225,32 +305,33 @@
 }
 
 .assetGlyph {
-  --asset-color: var(--accent);
+  --asset-color: var(--zap);
   position: absolute;
-  top: 0.95rem;
-  left: 1rem;
+  top: 12px;
+  left: 18px;
   display: grid;
   place-items: center;
-  width: 2.4rem;
-  height: 2.4rem;
-  border: 1px solid color-mix(in oklab, var(--asset-color) 40%, transparent);
-  background: color-mix(in oklab, var(--asset-color) 9%, transparent);
+  width: 38px;
+  height: 38px;
+  border: 0;
+  border-radius: var(--r-card-sm);
   color: var(--asset-color);
+  background: color-mix(in oklab, var(--asset-color) 16%, var(--panel));
 }
 
 .assetGlyph svg {
-  width: 1.1rem;
+  width: 15px;
 }
 
 .assetName {
   display: grid;
-  gap: 0.18rem;
-  padding-left: 4.55rem !important;
+  gap: 2px;
+  padding-left: 68px !important;
 }
 
 .assetName strong {
-  font-size: 0.9rem;
-  font-weight: 620;
+  font-size: 13px;
+  font-weight: 600;
 }
 
 .assetName span,
@@ -260,14 +341,14 @@
 .valuation > span,
 .valuation a,
 .valuation small {
-  color: var(--muted);
-  font-size: 0.67rem;
+  color: var(--ink-3);
+  font-size: 11px;
   line-height: 1.4;
 }
 
 .assetName a,
 .valuation a {
-  color: var(--accent-bright);
+  color: var(--link);
   overflow-wrap: anywhere;
 }
 
@@ -275,60 +356,50 @@
 .valuation {
   display: grid;
   align-content: center;
-  gap: 0.28rem;
+  gap: 3px;
 }
 
 .balance strong,
 .valuation strong {
-  font-family: var(--font-jetbrains-mono), ui-monospace, monospace;
-  font-size: 0.76rem;
-  font-weight: 560;
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-size: 12px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
   overflow-wrap: anywhere;
 }
 
+/* An unpriced or unreadable row says so in the warning tone rather than
+   printing a number it does not have. */
 .valuation[data-status="unpriced"] strong,
 .valuation[data-status="unavailable"] strong {
-  color: #ffbd6d;
+  color: var(--warn);
 }
 
 .provenance {
   display: grid;
-  grid-template-columns: auto minmax(12rem, 0.55fr) minmax(18rem, 1fr);
-  gap: 1rem;
+  grid-template-columns: auto minmax(0, 0.55fr) minmax(0, 1fr);
+  gap: 12px;
   align-items: start;
-  padding: 0.9rem 1rem;
-  border-top: 1px solid var(--line);
-  background: rgba(255, 255, 255, 0.018);
-}
-
-.provenance > span {
-  padding: 0.25rem 0.4rem;
-  border: 1px solid var(--line);
-  color: var(--muted);
-  font-family: var(--font-jetbrains-mono), ui-monospace, monospace;
-  font-size: 0.61rem;
-  white-space: nowrap;
-}
-
-.provenance > span[data-status="live"] {
-  border-color: rgba(158, 255, 184, 0.3);
-  color: #9effb8;
+  padding: 12px 18px;
+  border-top: 1px solid var(--line-soft);
+  background: var(--panel-2);
 }
 
 .provenance div {
   display: grid;
-  gap: 0.25rem;
+  gap: 3px;
 }
 
 .provenance strong {
-  font-size: 0.72rem;
+  font-size: 12px;
   font-weight: 600;
 }
 
 .provenance small,
 .provenance p {
-  color: var(--muted);
-  font-size: 0.65rem;
+  margin: 0;
+  color: var(--ink-3);
+  font-size: 11px;
   line-height: 1.45;
 }
 
@@ -336,31 +407,32 @@
 .unavailable {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;
-  gap: 1rem;
+  gap: 14px;
   align-items: center;
-  min-height: 12rem;
-  padding: clamp(1.2rem, 3vw, 2rem);
+  min-height: 0;
+  padding: 20px;
 }
 
 .empty > svg,
 .unavailable > svg,
 .noChart > svg {
-  width: 2rem;
-  color: var(--accent);
+  width: 20px;
+  color: var(--ink-3);
 }
 
 .empty h3,
 .unavailable h2 {
-  font-size: 1.1rem;
-  font-weight: 560;
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
 }
 
 .empty p,
 .unavailable p {
-  max-width: 48rem;
-  margin-top: 0.4rem;
-  color: var(--muted-2);
-  font-size: 0.8rem;
+  max-width: 78ch;
+  margin: 4px 0 0;
+  color: var(--ink-2);
+  font-size: 12.5px;
   line-height: 1.5;
 }
 
@@ -368,31 +440,39 @@
   display: grid;
   place-items: center;
   align-content: center;
-  gap: 0.6rem;
-  min-height: 19rem;
-  color: var(--muted);
-  background: var(--bg-2);
-  font-size: 0.75rem;
+  gap: 8px;
+  min-height: 0;
+  padding: 18px;
+  color: var(--ink-3);
+  background: var(--panel);
+  font-size: 12px;
 }
 
 .skeleton {
   display: grid;
   grid-template-columns: 1.2fr 0.8fr 1fr;
   gap: 1px;
-  min-height: 13rem;
+  min-height: 160px;
   background: var(--line-soft);
 }
 
 .skeleton i {
   background:
-    linear-gradient(100deg, transparent 28%, rgba(255, 255, 255, 0.055) 48%, transparent 68%),
-    var(--bg-2);
+    linear-gradient(100deg, transparent 28%, var(--hover) 48%, transparent 68%),
+    var(--panel-2);
   background-size: 240% 100%;
   animation: portfolioShimmer 1.4s linear infinite;
 }
 
+/* Both keyframes are declared here on purpose: Turbopack scopes CSS-Module
+   keyframe names, so an `animation:` in this file cannot reach a keyframe
+   defined in globals.css. */
 @keyframes portfolioShimmer {
   to { background-position: -240% 0; }
+}
+
+@keyframes portfolioSpin {
+  to { transform: rotate(360deg); }
 }
 
 @media (max-width: 900px) {
@@ -412,8 +492,8 @@
   }
 
   .row > div {
-    padding-left: 4.55rem;
-    border-top: 1px solid var(--line-soft);
+    padding-left: 68px;
+    border-top: 1px solid var(--line-softer);
     border-left: 0;
   }
 
@@ -422,7 +502,7 @@
   }
 
   .chart {
-    grid-template-columns: minmax(12rem, 0.75fr) minmax(10rem, 1fr);
+    grid-template-columns: minmax(0, 0.75fr) minmax(0, 1fr);
   }
 }
 
@@ -433,7 +513,7 @@
   }
 
   .headMeta {
-    align-items: stretch;
+    margin-left: 0;
   }
 
   .chart {
@@ -441,7 +521,7 @@
   }
 
   .chart svg {
-    max-width: 14rem;
+    max-width: 13rem;
   }
 
   .empty,
@@ -459,11 +539,18 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .skeleton i {
+  .skeleton i,
+  .chartSlice,
+  .row,
+  .panelBtn {
     animation: none;
+    transition: none;
   }
 
-  .chartSlice {
-    transition: none;
+  /* The spinner stays the one exception — it is the only signal that the retry
+     is still in flight. */
+  .panelBtn[data-busy="true"]::after {
+    animation-duration: 1.8s !important;
+    animation-iteration-count: infinite !important;
   }
 }

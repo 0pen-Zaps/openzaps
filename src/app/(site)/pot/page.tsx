@@ -25,7 +25,7 @@ export default async function PotPage(): Promise<React.JSX.Element> {
   }
 
   return (
-    <main className={styles.page} id="main">
+    <main className={styles.screen} id="main" data-screen-label="Pot">
       <JsonLd
         data={{
           "@context": "https://schema.org",
@@ -33,22 +33,58 @@ export default async function PotPage(): Promise<React.JSX.Element> {
         }}
       />
 
-      <section className={`container ${styles.hero}`}>
-        <p className="eyebrow">Protocol fee · 0xZAPS</p>
-        <h1>The fee buys the token.</h1>
-        <p className={styles.lede}>
-          Every automated Zap pays 1% of its output. Eighty percent goes to the executor that
-          submitted it; the other twenty accrues here, becomes 0xZAPS, and is credited to the zap
-          owners whose Zaps paid for it. Nothing about that is a projection — it is the pot&apos;s
-          own balance, its own events, and the addresses below.
-        </p>
-        <p className={styles.heroLinks}>
-          <Link href="/zap?view=automate">Create an automated zap</Link> ·{" "}
-          <Link href="/explore">See the Zaps that fed it</Link>
-        </p>
-      </section>
+      <div className={styles.grid}>
+        <div className={styles.col}>
+          <span className={styles.eyebrow}>PROTOCOL FEE · 0xZAPS</span>
+          <h1 className={styles.title}>The fee buys the token.</h1>
+          <p className={styles.lede}>
+            Every automated Zap pays 1% of its output. Eighty percent goes to the executor that
+            submitted it; the other twenty accrues here, becomes 0xZAPS once anyone converts it, and
+            credits tickets in the current round to the owner of the Zap that paid it. None of that
+            is a projection — it is the pot&apos;s own balance, its own ticket counters, and the
+            addresses below.
+          </p>
+          <p className={styles.heroLinks}>
+            <Link href="/zap?view=automate">Create an automated Zap</Link> ·{" "}
+            <Link href="/explore">See the Zaps that fed it</Link>
+          </p>
 
-      <PotLive initial={initial} />
+          <PotLive initial={initial} />
+        </div>
+
+        {/* Rendered here rather than inside PotLive on purpose: both cards are
+            statements about the protocol, not readings of it, so they must stay
+            on screen while the pot reads are loading, stale, or unavailable. */}
+        <aside className={styles.rail}>
+          <section className={styles.splitCard}>
+            <span className={styles.splitLabel}>THE SPLIT</span>
+            <div className={styles.splitRow}>
+              <strong className={styles.splitPct}>1%</strong>
+              <span className={styles.splitOf}>of each automated Zap&apos;s output</span>
+            </div>
+            {/* The legend below states both numbers, so the bar is decoration. */}
+            <div className={styles.splitBar} aria-hidden="true">
+              <i className={styles.splitBarMajor} />
+              <i className={styles.splitBarMinor} />
+            </div>
+            <div className={styles.splitLegend}>
+              <span>80% executor</span>
+              <span>20% pot</span>
+            </div>
+          </section>
+
+          <section className={styles.noteCard}>
+            <h2 className={styles.noteTitle}>No owner drain</h2>
+            <p className={styles.noteBody}>
+              Winner selection is governance-gated and the pot has no owner drain path. The token
+              confers no yield, equity, revenue claim, governance, or protocol access.
+            </p>
+            <Link className={styles.noteLink} href="/zap?view=automate">
+              Create an automated Zap →
+            </Link>
+          </section>
+        </aside>
+      </div>
     </main>
   );
 }

@@ -152,9 +152,15 @@ function isSavedDesign(value: unknown): value is SavedDesign {
   );
 }
 
-export function readDesignLibrary(): SavedDesign[] {
+/**
+ * Parse a stored library from its raw JSON.
+ *
+ * Split out from the read so a caller that already holds the raw string — the
+ * app shell subscribes to it through `useSyncExternalStore`, which needs a
+ * stable primitive snapshot — can decode without touching storage again.
+ */
+export function parseDesignLibrary(raw: string | null): SavedDesign[] {
   try {
-    const raw = window.localStorage.getItem(STORAGE_KEY);
     if (!raw) return [];
     const parsed: unknown = JSON.parse(raw);
     if (!Array.isArray(parsed)) return [];
@@ -164,6 +170,19 @@ export function readDesignLibrary(): SavedDesign[] {
   } catch {
     return [];
   }
+}
+
+/** The raw stored value, or null when storage is empty or unreadable. */
+export function readDesignLibraryRaw(): string | null {
+  try {
+    return window.localStorage.getItem(STORAGE_KEY);
+  } catch {
+    return null;
+  }
+}
+
+export function readDesignLibrary(): SavedDesign[] {
+  return parseDesignLibrary(readDesignLibraryRaw());
 }
 
 export function writeDesignLibrary(list: readonly SavedDesign[]): void {

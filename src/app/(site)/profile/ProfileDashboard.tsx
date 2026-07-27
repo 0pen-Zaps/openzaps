@@ -17,6 +17,7 @@ import {
 import { useWalletSession } from "@/components/WalletProvider";
 import { BlockGlyph } from "../zap/BlockGlyph";
 import { PortfolioPanel, type PortfolioPanelStatus } from "./PortfolioPanel";
+import { intentFileName } from "@/lib/automate";
 import {
   automationIntentKey,
   automationRecordMatchesIntentKey,
@@ -54,6 +55,8 @@ const publicClient = createPublicClient({
   transport: http(ROBINHOOD_RPC_URL, { retryCount: 2, timeout: 15_000 }),
 });
 
+/** A segmented run bar stops being readable long before this many segments. */
+const MAX_RUN_SEGMENTS = 24;
 
 type ActivityFilter = "all" | "executions" | "automation" | "control";
 type ConfirmAction = { kind: "revoke" | "recover"; key: string } | null;
@@ -78,6 +81,8 @@ interface DashboardAutomation {
   local: AutomationRecord | null;
   relay: RelayRecord | null;
   createdAt: string;
+  /** The exact signed artifact, when one exists. Never re-serialized for export. */
+  intentJson: string | null;
 }
 
 interface DashboardAutomationView extends DashboardAutomation {
@@ -96,7 +101,9 @@ const ACTIVITY_LABELS: Record<WalletActivityEntry["kind"], string> = {
 
 const ACTIVITY_GLYPHS: Record<WalletActivityEntry["kind"], string> = {
   created: "lock",
-  executed: "bolt",
+  // The filled silhouette, as the design draws an execution: a solid bolt reads
+  // at 15px where the outline turns to mush.
+  executed: "boltFill",
   automated: "repeat",
   recovered: "download",
   revoked: "shield",
@@ -278,6 +285,19 @@ export function ProfileDashboard(): React.JSX.Element {
     }
   }, [switchToRobinhood]);
 
+  // The bytes the executor daemon consumes, handed back exactly as they were
+  // signed. Re-serializing would change the JSON and break the signature.
+  const exportIntent = useCallback((automation: DashboardAutomation): void => {
+    if (!automation.intentJson) return;
+    const blob = new Blob([automation.intentJson], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = intentFileName(automation.parsed?.mode ?? automation.local?.mode ?? "recurring", automation.zap);
+    anchor.click();
+    URL.revokeObjectURL(url);
+  }, []);
+
   const submitRevoke = useCallback(async (automation: DashboardAutomationView): Promise<void> => {
     if (!account || !automation.parsed) return;
     const actionKey = `revoke:${automation.key}`;
@@ -335,7 +355,7 @@ export function ProfileDashboard(): React.JSX.Element {
     if (!account) return;
     const zap = profile?.zaps.find((row) => isAddressEqual(row.address, automation.zap));
     if (!zap?.trackedAssets) {
-      setError("Tracked-asset reads are unavailable for this capsule. Recovery is disabled rather than guessing the asset list.");
+      setError("Tracked-asset reads are unavailable for this Zap. Recovery is disabled rather than guessing the asset list.");
       return;
     }
     const actionKey = `recover:${automation.key}`;
@@ -366,7 +386,7 @@ export function ProfileDashboard(): React.JSX.Element {
       if (receipt.status !== "success") throw new Error("The recovery transaction reverted. No balance was reported as recovered.");
       setLocalActions((rows) => rows.filter((row) => row.id !== localActionId));
       setConfirmAction(null);
-      setNotice("Recovery confirmed. The capsule returned its tracked assets and native balance to the owner.");
+      setNotice("Recovery confirmed. The Zap returned its tracked assets and native balance to the owner.");
       await refreshDashboard();
     } catch (cause) {
       const message = readableError(cause);
@@ -398,31 +418,33 @@ export function ProfileDashboard(): React.JSX.Element {
 
   if (!account) {
     return (
-      <main className={styles.page} id="main">
-        <section className={`container ${styles.connectHero}`}>
+      <main className={styles.screen} id="main" data-screen-label="My zaps">
+        <div className={styles.connect}>
           <div>
-            <span className="eyebrow">Profile</span>
-            <h1>Your zaps.<br />One control room.</h1>
-            <p>
-              Connect a wallet to read curated balances plus every confirmed capsule event attributed to it across
-              v1.1, v3, and v3.1, then inspect, revoke, replace, or recover supported automations.
+            <h1 className={styles.connectTitle}>My zaps</h1>
+            <p className={styles.connectLede}>
+              Connect a wallet to read its balances plus every confirmed Zap event across v1.1, v3, and v3.1 — then
+              inspect, revoke, replace, or recover the automations it signed.
             </p>
-            <div className={styles.heroActions}>
-              <button className="btn btnPrimary btnLg" data-busy={busy === "connect"} disabled={busy !== null} onClick={() => void connectWallet()} type="button">
+            <div className={styles.connectActions}>
+              <button className={styles.primaryBtn} data-busy={busy === "connect"} disabled={busy !== null} onClick={() => void connectWallet()} type="button">
                 {busy === "connect" ? "Connecting…" : "Connect wallet"}
               </button>
-              <Link className="btn btnGhost btnLg" href="/zap">Create a zap</Link>
+              <Link className={styles.ghostBtn} href="/zap">New zap</Link>
             </div>
             {error ? <p className={styles.connectError} role="alert">{error}</p> : null}
           </div>
-          <div className={styles.connectPreview} aria-label="Profile capabilities">
+          <div className={styles.connectPreview} aria-label="What this screen shows">
             <PreviewRow glyph="coins" label="Holdings" value="balances · priced subtotal · sources" />
             <PreviewRow glyph="clock" label="History" value="creations · Zaps · recoveries" />
             <PreviewRow glyph="repeat" label="AutoZaps" value="recurring · price triggers" />
             <PreviewRow glyph="shield" label="Control" value="revoke · replace · recover" />
-            <p>No account is uploaded to an OpenZaps profile database. The connected address selects public balances, chain logs, onchain quotes, and its relayed executor records.</p>
+            <p className={styles.previewNote}>
+              OpenZaps keeps no profile database. The connected address only selects public balances, chain logs,
+              onchain quotes, and the executor-relay records it already published.
+            </p>
           </div>
-        </section>
+        </div>
       </main>
     );
   }
@@ -430,44 +452,68 @@ export function ProfileDashboard(): React.JSX.Element {
   const totalRuns = (profile?.stats.oneShotExecutions ?? 0) + (profile?.stats.automatedRuns ?? 0);
   const activeAutomations = automationViews.filter((automation) => automation.state.cancelable).length;
   const chainMismatch = walletChainId !== ROBINHOOD_CHAIN_ID;
+  const reading = loading || portfolioStatus === "loading";
 
   return (
-    <main className={styles.page} id="main">
-      <section className={`container ${styles.profileHead}`}>
+    <main className={styles.screen} id="main" data-screen-label="My zaps">
+      <header className={styles.head}>
         <div className={styles.identity}>
           <span className={styles.identicon} aria-hidden>{account.slice(2, 4)}</span>
-          <div>
-            <span className="eyebrow">Wallet profile</span>
-            <h1>{shortAddress(account)}</h1>
-            <code>{account}</code>
+          <div className={styles.identityText}>
+            <h1 className={styles.title}>My zaps</h1>
+            <code className={styles.address}>{account}</code>
           </div>
         </div>
         <div className={styles.headActions}>
-          <a className="btn btnGhost" href={explorerAddress(account)} target="_blank" rel="noreferrer">Blockscout ↗</a>
-          <button className="btn btnGhost" disabled={loading || portfolioStatus === "loading" || busy !== null} onClick={() => void refreshAll()} type="button">
-            {loading || portfolioStatus === "loading" ? "Reading…" : "Refresh"}
+          <a className={styles.ghostBtn} href={explorerAddress(account)} target="_blank" rel="noreferrer">Blockscout ↗</a>
+          <button className={styles.ghostBtn} data-busy={reading} disabled={reading || busy !== null} onClick={() => void refreshAll()} type="button">
+            {reading ? "Reading…" : "Refresh"}
           </button>
-          <Link className="btn btnPrimary" href="/zap">New zap</Link>
+          <Link className={styles.primaryBtn} href="/zap">New zap</Link>
         </div>
-      </section>
+      </header>
 
       {chainMismatch ? (
-        <div className={`container ${styles.warning}`} role="alert">
-          Wallet network is {walletChainId === null ? "unavailable" : `chain ${walletChainId}`}. Reads still show Robinhood Chain, but writes stay paused until chain 4663 is active.
-          {" "}
-          <button className="btn btnGhost" data-busy={busy === "connect"} disabled={busy !== null} onClick={() => void switchWalletNetwork()} type="button">
+        <div className={`${styles.banner} ${styles.warning}`} role="alert">
+          <span>
+            Wallet network is {walletChainId === null ? "unavailable" : `chain ${walletChainId}`}. Reads still show
+            Robinhood Chain, but writes stay paused until chain 4663 is active.
+          </span>
+          <button className={styles.ghostBtn} data-busy={busy === "connect"} disabled={busy !== null} onClick={() => void switchWalletNetwork()} type="button">
             {busy === "connect" ? "Switching…" : "Switch network"}
           </button>
         </div>
       ) : null}
-      {notice ? <div className={`container ${styles.notice}`} role="status">{notice}</div> : null}
-      {error ? <div className={`container ${styles.error}`} role="alert">{error}</div> : null}
+      {notice ? <div className={`${styles.banner} ${styles.notice}`} role="status">{notice}</div> : null}
+      {error ? <div className={`${styles.banner} ${styles.error}`} role="alert">{error}</div> : null}
       {localActions.map((action) => (
-        <div className={`container ${action.status === "failed" ? styles.error : styles.pending}`} key={action.id} role={action.status === "failed" ? "alert" : "status"}>
+        <div className={`${styles.banner} ${action.status === "failed" ? styles.error : styles.pending}`} key={action.id} role={action.status === "failed" ? "alert" : "status"}>
           <strong>{action.label}</strong> · {shortAddress(action.zap)} · {action.detail}
           {action.txHash ? <a href={explorerTransaction(action.txHash)} target="_blank" rel="noreferrer"> transaction ↗</a> : null}
         </div>
       ))}
+
+      <section className={styles.sourceBar} aria-label="Data source">
+        <span className={styles.sourceChip} data-status={profile?.sourceStatus ?? "unavailable"}>
+          {profile ? `chain reads · ${profile.sourceStatus}` : "chain reads · unavailable"}
+        </span>
+        <p className={styles.sourceCopy}>
+          {profile
+            ? `Read straight from Robinhood Chain logs at block ${Number(profile.headBlock).toLocaleString("en-US")}.${
+              profile.sourceStatus === "degraded"
+                ? " Degraded means at least one Zap's tracked-asset read failed, so its recovery control stays disabled."
+                : ""
+            } ${profile.sourceCaveat}`
+            : "The canonical RPC history could not be read, so no empty state is asserted."}
+        </p>
+      </section>
+
+      <section className={styles.metrics} aria-label="Wallet zap metrics">
+        <Metric value={profile ? String(profile.stats.zapsCreated) : "—"} label="Zaps created" />
+        <Metric value={profile ? String(totalRuns) : "—"} label="Zaps executed" />
+        <Metric value={String(activeAutomations)} label="Live authorizations" />
+        <Metric value={profile ? String(profile.stats.authorizationsRevoked) : "—"} label="Revocations" />
+      </section>
 
       <PortfolioPanel
         status={portfolioStatus}
@@ -476,41 +522,25 @@ export function ProfileDashboard(): React.JSX.Element {
         onRetry={() => void refreshPortfolio()}
       />
 
-      <section className={`container ${styles.sourceBar}`} aria-label="Data source">
-        <span data-status={profile?.sourceStatus ?? "unavailable"}>
-          {profile ? `${profile.sourceStatus} · block ${Number(profile.headBlock).toLocaleString("en-US")}` : "source unavailable"}
-        </span>
-        <p>{profile?.sourceCaveat ?? "The canonical RPC history could not be read, so no empty state is asserted."}</p>
-      </section>
-
-      <section className={`container ${styles.metrics}`} aria-label="Wallet zap metrics">
-        <Metric value={profile ? String(profile.stats.zapsCreated) : "—"} label="Capsules created" />
-        <Metric value={profile ? String(totalRuns) : "—"} label="Confirmed Zaps" />
-        <Metric value={String(activeAutomations)} label="Live authorizations" />
-        <Metric value={profile ? String(profile.stats.authorizationsRevoked) : "—"} label="Revocations" />
-      </section>
-
-      <section className={`container ${styles.automationSection}`} aria-labelledby="automation-heading">
-        <header className={styles.sectionHead}>
-          <div>
-            <span className="eyebrow">Auto zaps</span>
-            <h2 id="automation-heading">Signed terms, live state, enforceable controls.</h2>
-            <p>
-              Relay records make signed automations visible across browsers. Capsule nonce and series reads decide the state.
-              Editing is replacement: revoke the old immutable authorization, then sign new terms.
-            </p>
-          </div>
+      <section aria-labelledby="automation-heading">
+        <div className={styles.sectionHead}>
+          <h2 className={styles.sectionTitle} id="automation-heading">Signed authorizations</h2>
+          <span className={styles.sectionLede}>Every authorization this wallet signed — live, spent, expired, or revoked.</span>
           <span className={styles.relayBadge} data-status={relayStatus}>
             relay {relayStatus === "live" ? "connected" : relayStatus === "unavailable" ? "unavailable" : "idle"}
           </span>
-        </header>
+        </div>
+        <p className={styles.sectionNote}>
+          Relay records make signed automations visible across browsers. Onchain nonce, series, and log reads decide
+          each state. Editing is replacement: revoke the old immutable authorization, then sign new terms.
+        </p>
 
         {automationViews.length === 0 ? (
           <div className={styles.emptyCard}>
             <BlockGlyph name="repeat" />
             <h3>No signed automation found.</h3>
-            <p>Confirmed v3/v3.1 capsules still appear in history. A standing intent appears here after it is signed locally or published to the relay.</p>
-            <Link className="btn btnPrimary" href="/zap?view=automate">Create auto zap</Link>
+            <p>Confirmed v3/v3.1 Zaps still appear in history. A standing intent appears here after it is signed locally or published to the relay.</p>
+            <Link className={styles.primaryBtn} href="/zap?view=automate">Create an AutoZap</Link>
           </div>
         ) : (
           <div className={styles.automationGrid}>
@@ -519,42 +549,43 @@ export function ProfileDashboard(): React.JSX.Element {
               const zapSummary = profile?.zaps.find((row) => isAddressEqual(row.address, automation.zap));
               return (
                 <article className={styles.automationCard} data-state={automation.state.lifecycle} key={automation.key}>
-                  <header>
+                  <header className={styles.autoHeader}>
                     <span className={styles.autoGlyph}>
                       <BlockGlyph name={automation.parsed?.mode === "trigger" ? "band" : "repeat"} />
                     </span>
                     <div>
-                      <span>{automation.parsed?.mode === "trigger" ? "Price trigger" : automation.parsed ? "Recurring" : "Automation draft"}</span>
-                      <h3>{automationTerms(automation)}</h3>
+                      <span className={styles.autoEyebrow}>{automationEyebrow(automation, zapSummary)}</span>
+                      <h3 className={styles.autoTitle}>{automationTerms(automation)}</h3>
                     </div>
                     <span className={styles.stateBadge} data-state={automation.state.lifecycle}>{automation.state.label}</span>
                   </header>
                   <p className={styles.stateDetail}>{automation.state.detail}</p>
+                  <AutomationProgress automation={automation} />
                   <dl className={styles.autoFacts}>
-                    <div><dt>Capsule</dt><dd><Link href={`/explore/${automation.zap}`}>{shortAddress(automation.zap)}</Link></dd></div>
+                    <div><dt>Zap</dt><dd><Link href={`/explore/${automation.zap}`}>{shortAddress(automation.zap)}</Link></dd></div>
                     <div><dt>Authorization</dt><dd>{automation.parsed ? shortId(automation.parsed.authorizationId) : "not signed"}</dd></div>
                     <div><dt>Progress</dt><dd>{automationProgress(automation)}</dd></div>
                     <div><dt>Source</dt><dd>{automation.relay ? "executor relay" : automation.local ? "this browser" : "—"}</dd></div>
                   </dl>
 
                   {confirm === "revoke" ? (
-                    <div className={styles.confirmBox} role="alert">
+                    <div className={styles.confirmBox} data-kind="revoke" role="alert">
                       <strong>Revoke this authorization?</strong>
-                      <p>This writes `invalidateNonce` onchain. It cannot be undone, and the existing signature can never Zap again. Capsule funds stay in place.</p>
-                      <div>
-                        <button className="btn btnGhost" disabled={busy !== null} onClick={() => setConfirmAction(null)} type="button">Keep live</button>
-                        <button className="btn btnPrimary" data-busy={busy === `revoke:${automation.key}`} disabled={chainMismatch || busy !== null} onClick={() => void submitRevoke(automation)} type="button">
+                      <p>This writes invalidateNonce onchain. It cannot be undone, and the existing signature can never Zap again. Zap balances stay in place.</p>
+                      <div className={styles.confirmActions}>
+                        <button className={styles.actionBtn} disabled={busy !== null} onClick={() => setConfirmAction(null)} type="button">Keep live</button>
+                        <button className={`${styles.primaryBtn} ${styles.confirmGo}`} data-busy={busy === `revoke:${automation.key}`} disabled={chainMismatch || busy !== null} onClick={() => void submitRevoke(automation)} type="button">
                           {busy === `revoke:${automation.key}` ? "Revoking…" : "Confirm onchain revoke"}
                         </button>
                       </div>
                     </div>
                   ) : confirm === "recover" ? (
-                    <div className={styles.confirmBox} role="alert">
-                      <strong>Recover capsule balances?</strong>
+                    <div className={styles.confirmBox} data-kind="recover" role="alert">
+                      <strong>Recover Zap balances?</strong>
                       <p>This returns all tracked assets and native balance to the owner. It does not revoke a still-live signature; revoke separately if you want execution authority removed.</p>
-                      <div>
-                        <button className="btn btnGhost" disabled={busy !== null} onClick={() => setConfirmAction(null)} type="button">Keep funded</button>
-                        <button className="btn btnPrimary" data-busy={busy === `recover:${automation.key}`} disabled={chainMismatch || busy !== null || zapSummary?.managementReadsStatus !== "live"} onClick={() => void submitRecovery(automation)} type="button">
+                      <div className={styles.confirmActions}>
+                        <button className={styles.actionBtn} disabled={busy !== null} onClick={() => setConfirmAction(null)} type="button">Keep funded</button>
+                        <button className={`${styles.primaryBtn} ${styles.confirmGo}`} data-busy={busy === `recover:${automation.key}`} disabled={chainMismatch || busy !== null || zapSummary?.managementReadsStatus !== "live"} onClick={() => void submitRecovery(automation)} type="button">
                           {busy === `recover:${automation.key}` ? "Recovering…" : "Confirm recovery"}
                         </button>
                       </div>
@@ -562,10 +593,13 @@ export function ProfileDashboard(): React.JSX.Element {
                   ) : (
                     <div className={styles.autoActions}>
                       {automation.state.cancelable && automation.parsed ? (
-                        <button className="btn btnGhost" disabled={chainMismatch || busy !== null} onClick={() => setConfirmAction({ kind: "revoke", key: automation.key })} type="button">Revoke</button>
+                        <button className={styles.actionBtn} disabled={chainMismatch || busy !== null} onClick={() => setConfirmAction({ kind: "revoke", key: automation.key })} type="button">Revoke</button>
                       ) : null}
-                      <Link className="btn btnGhost" href={replacementHref(automation)}>Create replacement</Link>
-                      <button className="btn btnGhost" disabled={chainMismatch || busy !== null || zapSummary?.managementReadsStatus !== "live"} onClick={() => setConfirmAction({ kind: "recover", key: automation.key })} type="button">Recover funds</button>
+                      {automation.intentJson ? (
+                        <button className={styles.actionBtn} onClick={() => exportIntent(automation)} type="button">Export intent</button>
+                      ) : null}
+                      <Link className={styles.actionZap} href={replacementHref(automation)}>Sign new terms</Link>
+                      <button className={styles.actionBtn} disabled={chainMismatch || busy !== null || zapSummary?.managementReadsStatus !== "live"} onClick={() => setConfirmAction({ kind: "recover", key: automation.key })} type="button">Recover funds</button>
                     </div>
                   )}
                 </article>
@@ -575,63 +609,89 @@ export function ProfileDashboard(): React.JSX.Element {
         )}
       </section>
 
-      <section className={`container ${styles.activitySection}`} aria-labelledby="activity-heading">
-        <header className={styles.activityHead}>
-          <div>
-            <span className="eyebrow">Activity</span>
-            <h2 id="activity-heading">Confirmed wallet history.</h2>
-          </div>
-          <label className={styles.search}>
-            <span className="srOnly">Filter by zap or transaction</span>
-            <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search zap or transaction" />
-          </label>
-        </header>
-        <div className={styles.filters} role="group" aria-label="Filter activity">
-          {(["all", "executions", "automation", "control"] as const).map((value) => (
-            <button className={filter === value ? styles.filterOn : styles.filter} onClick={() => setFilter(value)} type="button" key={value}>
-              {value === "all" ? "All activity" : value === "executions" ? "Zaps" : value === "automation" ? "AutoZaps" : "Create / control"}
-            </button>
-          ))}
-        </div>
-
-        {!profile ? (
-          <div className={styles.unavailable} role="alert">History is unavailable. No zero counts or empty list are inferred.</div>
-        ) : filteredActivity.length === 0 ? (
-          <div className={styles.emptyActivity}>No confirmed event matches this filter.</div>
-        ) : (
-          <ol className={styles.timeline}>
-            {filteredActivity.map((row) => (
-              <li key={row.id} className={styles.timelineRow}>
-                <span className={styles.timelineGlyph} data-kind={row.kind}><BlockGlyph name={ACTIVITY_GLYPHS[row.kind]} /></span>
-                <div className={styles.timelineMain}>
-                  <span className={styles.timelineType}>{ACTIVITY_LABELS[row.kind]} · {row.lineage}</span>
-                  <strong>{activityTitle(row)}</strong>
-                  <p>{row.detail}</p>
-                </div>
-                <div className={styles.timelineMeta}>
-                  <Link href={`/explore/${row.zap}`}>{shortAddress(row.zap)}</Link>
-                  <a href={explorerTransaction(row.txHash)} target="_blank" rel="noreferrer">{row.timestamp ? formatDate(row.timestamp) : `block ${Number(row.blockNumber).toLocaleString("en-US")}`} ↗</a>
-                </div>
-              </li>
-            ))}
-          </ol>
-        )}
-      </section>
-
       {profile && profile.zaps.length > 0 ? (
-        <section className={`container ${styles.capsuleSection}`} aria-labelledby="capsules-heading">
-          <header className={styles.sectionHead}>
-            <div>
-              <span className="eyebrow">Capsules</span>
-              <h2 id="capsules-heading">Every factory creation for this wallet.</h2>
-              <p>Automation records can be browser- or relay-scoped. This list is not: it comes only from canonical factory `ZapCreated` logs.</p>
-            </div>
-          </header>
+        <section aria-labelledby="capsules-heading">
+          <div className={styles.sectionHead}>
+            <h2 className={styles.sectionTitle} id="capsules-heading">Zaps you created</h2>
+            <span className={styles.sectionLede}>Every Zap this wallet created. Open one to read its policy, balances, and confirmed history.</span>
+          </div>
+          <p className={styles.sectionNote}>Automation records can be browser- or relay-scoped. This list is not: it comes only from canonical factory ZapCreated logs.</p>
           <div className={styles.capsuleGrid}>
             {profile.zaps.map((zap) => <CapsuleCard zap={zap} key={zap.address} />)}
           </div>
         </section>
       ) : null}
+
+      <div className={styles.tail}>
+        <section className={styles.activityCard} aria-labelledby="activity-heading">
+          <div className={styles.activityHead}>
+            <h2 className={styles.activityTitle} id="activity-heading">Activity</h2>
+            <span className={styles.activityHint}>every confirmed event on the Zaps this wallet created</span>
+            <div className={styles.search}>
+              <input
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+                aria-label="Search activity by Zap, transaction, or asset"
+                placeholder="Search Zap, tx, or asset…"
+              />
+            </div>
+          </div>
+          <div className={styles.filters} role="group" aria-label="Filter activity">
+            {(["all", "executions", "automation", "control"] as const).map((value) => (
+              <button
+                className={filter === value ? styles.filterOn : styles.filter}
+                aria-pressed={filter === value}
+                onClick={() => setFilter(value)}
+                type="button"
+                key={value}
+              >
+                {value === "all" ? "All" : value === "executions" ? "Zaps" : value === "automation" ? "AutoZaps" : "Created & control"}
+              </button>
+            ))}
+          </div>
+
+          {!profile ? (
+            <div className={styles.unavailable} role="alert">History is unavailable. No zero count or empty list is inferred.</div>
+          ) : filteredActivity.length === 0 ? (
+            <div className={styles.emptyActivity}>No confirmed event matches this filter or search.</div>
+          ) : (
+            <ol className={styles.timeline}>
+              {filteredActivity.map((row) => (
+                <li key={row.id} className={styles.timelineRow}>
+                  <span className={styles.timelineGlyph} data-kind={row.kind}><BlockGlyph name={ACTIVITY_GLYPHS[row.kind]} /></span>
+                  <div className={styles.timelineMain}>
+                    <span className={styles.timelineType}>{ACTIVITY_LABELS[row.kind]} · {row.lineage}</span>
+                    <strong>{activityTitle(row)}</strong>
+                    <p>{row.detail}</p>
+                  </div>
+                  <div className={styles.timelineMeta}>
+                    <Link href={`/explore/${row.zap}`}>{shortAddress(row.zap)}</Link>
+                    <a href={explorerTransaction(row.txHash)} target="_blank" rel="noreferrer">{row.timestamp ? formatDate(row.timestamp) : `block ${Number(row.blockNumber).toLocaleString("en-US")}`} ↗</a>
+                  </div>
+                </li>
+              ))}
+            </ol>
+          )}
+        </section>
+
+        <aside className={styles.recovery} aria-labelledby="recovery-heading">
+          <h2 id="recovery-heading">Recovery</h2>
+          <p>Withdraw and revoke need no one&rsquo;s cooperation — not ours, not an executor&rsquo;s.</p>
+          <div className={styles.recoveryActions}>
+            {/* The design drew a wallet-wide "recover everything" button. There
+                is no such call: `emergencyExit` is per Zap and is gated on that
+                Zap's tracked-asset read. So this points at the cards where the
+                real, confirm-gated control lives instead of promising a
+                transaction the contracts cannot make. */}
+            <a className={styles.recoveryLink} href="#automation-heading">Recover from an authorization</a>
+            <p className={styles.recoveryNote}>
+              Emergency recovery is per Zap and lives on each authorization card: it returns that Zap&rsquo;s tracked
+              assets and native balance to you. A Zap whose tracked-asset read failed keeps its control disabled rather
+              than guessing the asset list.
+            </p>
+          </div>
+        </aside>
+      </div>
     </main>
   );
 }
@@ -645,10 +705,11 @@ function mergeAutomations(
   const merged = new Map<string, DashboardAutomation>();
   for (const relay of relayRecords) {
     if (!sameAddress(relay.owner, owner)) continue;
-    const parsed = parseAutomationIntent(JSON.stringify({ kind: relay.kind, intent: relay.intent, signature: relay.signature }));
+    const intentJson = JSON.stringify({ kind: relay.kind, intent: relay.intent, signature: relay.signature });
+    const parsed = parseAutomationIntent(intentJson);
     if (!parsed || !sameAddress(relay.zap, parsed.zap)) continue;
     const key = automationIntentKey(parsed);
-    merged.set(key, { key, zap: parsed.zap, parsed, local: null, relay, createdAt: relay.createdAt });
+    merged.set(key, { key, zap: parsed.zap, parsed, local: null, relay, createdAt: relay.createdAt, intentJson });
   }
   for (const local of localRecords) {
     const parsed = local.intentFile ? parseAutomationIntent(local.intentFile) : null;
@@ -661,6 +722,7 @@ function mergeAutomations(
       local,
       relay: existing?.relay ?? null,
       createdAt: local.createdAt || existing?.createdAt || new Date(0).toISOString(),
+      intentJson: local.intentFile ?? existing?.intentJson ?? null,
     });
   }
   return [...merged.values()].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
@@ -724,10 +786,15 @@ async function requireWallet(account: Address) {
   return wallet;
 }
 
+function automationEyebrow(automation: DashboardAutomation, zapSummary: WalletZapSummary | undefined): string {
+  const mode = automation.parsed?.mode === "trigger" ? "Price trigger" : automation.parsed ? "Recurring" : "Draft";
+  return zapSummary ? `${mode} · ${zapSummary.lineage}` : mode;
+}
+
 function automationTerms(automation: DashboardAutomation): string {
   if (automation.local?.terms) return automation.local.terms;
   const intent = automation.parsed;
-  if (!intent) return "Unsigned capsule";
+  if (!intent) return "Unsigned Zap";
   if (intent.mode === "recurring") {
     return `${formatInterval(intent.interval)} · ${intent.maxRuns ?? "?"} Zaps · expires ${formatDeadline(intent.deadline)}`;
   }
@@ -736,9 +803,74 @@ function automationTerms(automation: DashboardAutomation): string {
 
 function automationProgress(automation: DashboardAutomationView): string {
   if (!automation.parsed) return "not signed";
-  if (automation.parsed.mode === "trigger") return automation.chain?.nonceUsed ? "nonce spent" : "one Zap";
+  if (automation.parsed.mode === "trigger") return automation.chain?.nonceUsed ? "nonce spent" : "one Zap, unspent";
   const runs = automation.chain?.runs;
   return runs === null || runs === undefined ? "unavailable" : `${runs} / ${automation.parsed.maxRuns ?? "?"} Zaps`;
+}
+
+/**
+ * How far spot has travelled toward a signed price threshold, as 0..1.
+ *
+ * Returns null the moment any input is missing. A bar drawn from a failed price
+ * read would claim "nowhere near" when the truth is "we could not read it" —
+ * the exact false zero the source bar promises this page never shows. The armed
+ * verdict itself still comes from `deriveAutomationLifecycle`; this only draws
+ * the position it implies.
+ */
+function triggerProgress(chain: AutomationChainState | null, intent: ParsedAutomationIntent): number | null {
+  const price = chain?.priceX96;
+  const baseline = intent.baselinePriceX96;
+  if (price === null || price === undefined) return null;
+  if (baseline === null || baseline === 0n) return null;
+  if (intent.thresholdBps === null || intent.thresholdBps <= 0 || intent.above === null) return null;
+  const moveBps = Number(((price - baseline) * 10_000n) / baseline);
+  const towardThreshold = intent.above ? moveBps : -moveBps;
+  return Math.min(1, Math.max(0, towardThreshold / intent.thresholdBps));
+}
+
+function AutomationProgress({ automation }: { automation: DashboardAutomationView }): React.JSX.Element | null {
+  const intent = automation.parsed;
+  if (!intent) return null;
+
+  if (intent.mode === "recurring") {
+    const runs = automation.chain?.runs;
+    if (runs === null || runs === undefined) {
+      return <p className={styles.factNote}>Run progress unavailable — the series read failed.</p>;
+    }
+    const maxRuns = intent.maxRuns;
+    if (maxRuns === null || maxRuns <= 0) {
+      return <p className={styles.factNote}>Run progress unavailable — the signed run count could not be read.</p>;
+    }
+    if (maxRuns <= MAX_RUN_SEGMENTS) {
+      return (
+        <div className={styles.progressTrack}>
+          {Array.from({ length: maxRuns }, (_, index) => (
+            <i className={styles.progressSeg} data-on={index < runs} key={index} />
+          ))}
+        </div>
+      );
+    }
+    // Past the readable segment count the same fact is told as one proportional
+    // bar rather than as 200 hairlines.
+    const done = Math.min(1, Math.max(0, runs / maxRuns));
+    return (
+      <div className={styles.progressTrack}>
+        {done > 0 ? <i className={styles.progressSeg} data-on style={{ flex: done }} /> : null}
+        {done < 1 ? <i className={styles.progressSeg} style={{ flex: 1 - done }} /> : null}
+      </div>
+    );
+  }
+
+  const progress = triggerProgress(automation.chain, intent);
+  if (progress === null) {
+    return <p className={styles.factNote}>Price read unavailable — the trigger position cannot be shown.</p>;
+  }
+  return (
+    <div className={styles.thresholdBar}>
+      <i className={styles.thresholdFill} style={{ width: `${(progress * 100).toFixed(1)}%` }} />
+      <i className={styles.thresholdMark} />
+    </div>
+  );
 }
 
 function replacementHref(automation: DashboardAutomation): string {
@@ -778,7 +910,7 @@ function replacementHref(automation: DashboardAutomation): string {
 function activityTitle(row: WalletActivityEntry): string {
   if (row.amount && row.assetSymbol) return `${formatRawAmount(row.amount, row.assetSymbol)} ${row.assetSymbol}`;
   if (row.authorizationId) return `Authorization ${shortId(BigInt(row.authorizationId))}`;
-  return row.kind === "created" ? `${row.lineage} policy capsule` : ACTIVITY_LABELS[row.kind];
+  return row.kind === "created" ? `${row.lineage} Zap contract` : ACTIVITY_LABELS[row.kind];
 }
 
 function formatRawAmount(raw: string, symbol: string): string {
@@ -810,7 +942,7 @@ function intervalPreset(interval: bigint | null): string {
 
 function formatDeadline(deadline: bigint): string {
   const millis = Number(deadline) * 1000;
-  return Number.isSafeInteger(Number(deadline)) ? new Date(millis).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "signed deadline";
+  return Number.isSafeInteger(Number(deadline)) ? new Date(millis).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "an unreadable date";
 }
 
 function formatDate(timestamp: number): string {
@@ -859,7 +991,7 @@ function CapsuleCard({ zap }: { zap: WalletZapSummary }): React.JSX.Element {
       <code>{shortAddress(zap.address)}</code>
       <strong>{zap.executionCount + zap.automatedRunCount} confirmed Zaps</strong>
       <small>{zap.revocationCount} revoked · {zap.recoveryCount} recoveries</small>
-      <span>Open capsule →</span>
+      <span className={styles.capsuleOpen}>Open →</span>
     </Link>
   );
 }

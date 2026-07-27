@@ -1,249 +1,420 @@
-/* Deployed-zap index and per-zap detail.
-   The chain block reuses the builder's visual vocabulary — stud, typed joint,
+/* Deployed-Zap index and per-Zap detail.
+
+   One module, three call sites: `page.tsx`, `[address]/page.tsx` and
+   `ZapLive.tsx` all import it. Renaming a class here without editing all three
+   in the same commit leaves the detail page rendering unstyled.
+
+   The chain block keeps the builder's visual vocabulary — stud, typed joint,
    accent tinted by the shape flowing along the connector — so the strategy you
-   design on /build and the one already onchain read as the same language.
+   design on /zap and the one already onchain read as the same language.
+
    Keyframes are declared locally: CSS Modules scope animation-name, so a copy
    in globals.css would silently never apply. */
 
-.page {
-  position: relative;
-  z-index: 1;
-  padding: clamp(2rem, 5vw, 4rem) 0 5rem;
+/* The app shell owns the measure, the centring and the page padding. This is
+   only here so the screen has a root to hang `data-screen-label` on. */
+.screen {
+  display: block;
 }
 
 /* ------------------------------------------------------------------ hero */
 
 .hero {
-  padding-bottom: clamp(1.6rem, 4vw, 2.6rem);
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 300px;
+  gap: 36px;
+  align-items: end;
+  margin-bottom: 24px;
 }
 
-.hero h1 {
-  margin-top: 0.8rem;
-  font-size: clamp(2.3rem, 6vw, 4.6rem);
-  font-weight: 560;
-  line-height: 1.02;
-  text-wrap: balance;
+.heroTitle {
+  max-width: 24ch;
+  font-family: var(--font-serif), Georgia, serif;
+  font-size: 44px;
+  font-weight: 500;
+  letter-spacing: -0.025em;
+  line-height: 1.06;
 }
 
-.hero p {
-  max-width: 46rem;
-  margin-top: 1rem;
-  color: var(--text);
-  font-size: clamp(0.98rem, 1.5vw, 1.15rem);
+.heroLede {
+  max-width: 72ch;
+  margin-top: 12px;
+  color: var(--ink-2);
+  font-size: 14.5px;
   line-height: 1.6;
 }
 
-.heroNote {
-  color: var(--muted-2);
-  font-size: 0.92rem;
+.heroCard {
+  padding: 15px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-card);
+  background: var(--panel);
 }
 
-.heroActions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.75rem;
-  margin-top: 1.5rem;
+.heroCardLabel {
+  color: var(--ink-3);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
 }
 
-.detailHero {
-  padding-bottom: clamp(1.4rem, 3vw, 2.2rem);
+.heroCardName {
+  display: block;
+  margin: 7px 0 6px;
+  font-size: 13.5px;
+  font-weight: 600;
 }
 
-.crumb {
-  color: inherit;
-  text-decoration: none;
-}
-
-.crumb:hover {
-  text-decoration: underline;
-}
-
-.detailHero h1 {
-  margin-top: 0.7rem;
-  font-weight: 560;
-  line-height: 1.1;
-}
-
-/* The full address is the title, so it has to wrap rather than overflow the
-   viewport on a phone. */
-.heroAddress {
-  font-family: var(--font-jetbrains-mono), ui-monospace, monospace;
-  font-size: clamp(1.05rem, 3.4vw, 2.3rem);
-  letter-spacing: -0.01em;
+.heroCardId {
+  color: var(--ink-3);
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-size: 11px;
   overflow-wrap: anywhere;
 }
 
-.detailHero p {
-  max-width: 46rem;
-  margin-top: 1rem;
-  color: var(--text);
-  font-size: clamp(0.95rem, 1.4vw, 1.05rem);
-  line-height: 1.6;
+/* ------------------------------------------------------------ vault pulse */
+
+.pulseGrid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 18px;
 }
 
-/* ---------------------------------------------------------- verify strip */
-
-.verifyStrip {
-  display: grid;
-  gap: 1rem;
-  padding: clamp(1.1rem, 2.4vw, 1.6rem);
+/* A card whose read failed is drawn identically to one that succeeded — same
+   ink, same size, the word "unavailable" where the figure would be. Tinting it
+   red would read as a warning about the vault rather than about the RPC, and
+   printing a zero would be a false claim about the vault's balance. */
+.pulseCard {
+  padding: 14px 16px;
   border: 1px solid var(--line);
-  border-radius: 0;
-  background: var(--card);
-  box-shadow: var(--card-shadow);
+  border-radius: var(--r-card-sm);
+  background: var(--panel);
 }
 
-.verifyMain {
-  display: grid;
-  gap: 0.6rem;
-  justify-items: start;
-}
-
-.verifyMain p {
-  max-width: 62rem;
-  margin: 0;
-  color: var(--text);
-  font-size: 0.92rem;
-  line-height: 1.6;
-}
-
-.badge {
-  padding: 0.28rem 0.7rem;
-  border: 1px solid rgba(255, 194, 107, 0.4);
-  border-radius: 0;
-  color: #ffd398;
-  background: rgba(255, 194, 107, 0.09);
-  font-size: 0.78rem;
+.pulseCard strong {
+  display: block;
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-size: 19px;
   font-weight: 600;
-  letter-spacing: 0.02em;
-}
-
-.badge[data-verified="true"] {
-  border-color: rgba(255, 252, 0, 0.42);
-  color: var(--accent-bright);
-  background: rgba(255, 252, 0, 0.11);
-}
-
-.verifyFacts {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 0.9rem;
-  margin: 0;
-  padding-top: 0.9rem;
-  border-top: 1px solid var(--line-soft);
-}
-
-.verifyFacts div {
-  display: grid;
-  gap: 0.25rem;
-}
-
-.verifyFacts dt {
-  color: var(--muted);
-  font-size: 0.76rem;
-}
-
-.verifyFacts dd {
-  margin: 0;
-  color: var(--fg);
-  font-size: 0.9rem;
   font-variant-numeric: tabular-nums;
   overflow-wrap: anywhere;
 }
 
-.refreshLine {
+.pulseCard span {
+  color: var(--ink-3);
+  font-size: 11.5px;
+  line-height: 1.4;
+}
+
+/* ------------------------------------------------------------- card shell */
+
+.card {
+  margin-bottom: 18px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-card);
+  background: var(--panel);
+  overflow: hidden;
+}
+
+.cardHead {
   display: flex;
-  align-items: baseline;
-  gap: 0.45rem;
-  margin: 0;
-  color: var(--muted);
-  font-size: 0.78rem;
+  align-items: center;
+  gap: 10px;
+  padding: 13px 18px;
+  border-bottom: 1px solid var(--line-2);
+}
+
+.cardTitle {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.cardSub {
+  color: var(--ink-3);
+  font-size: 12.5px;
+}
+
+.cardHeadEnd {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-left: auto;
+}
+
+.liveChip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--ok);
+  font-size: 11.5px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.liveDot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--ok);
+  animation: zpulse 2.4s ease-in-out infinite;
+}
+
+.headLink {
+  display: inline-flex;
+  align-items: center;
+  height: 28px;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-ctl-sm);
+  background: var(--panel-2);
+  color: var(--ink-3);
+  font-size: 12px;
+  white-space: nowrap;
+  transition: background var(--dur-2) var(--ease-standard);
+}
+
+.headLink:hover {
+  background: var(--panel);
+}
+
+/* Padded prose inside a card. The fact grids and row lists sit flush against
+   the card edges; sentences cannot. */
+.cardBody {
+  padding: 13px 18px;
+  color: var(--ink-2);
+  font-size: 12.5px;
   line-height: 1.55;
 }
 
-.updatedSpinner {
-  align-self: center;
-  color: var(--accent-dim);
-}
-
-.staleWarning {
-  margin-top: 1rem;
-  padding: 0.7rem 0.9rem;
-  border: 1px solid rgba(255, 194, 107, 0.34);
-  border-radius: 0;
-  color: #ffd398;
-  background: rgba(255, 194, 107, 0.07);
-  font-size: 0.84rem;
+.cardFoot {
+  padding: 13px 18px;
+  border-top: 1px solid var(--line-soft);
+  color: var(--ink-3);
+  font-size: 12px;
   line-height: 1.5;
 }
 
-/* ----------------------------------------------------------------- panel */
-
-.panel {
-  margin-top: clamp(1.6rem, 3.5vw, 2.6rem);
-  padding: clamp(1.2rem, 2.5vw, 1.75rem);
-  border: 1px solid var(--line);
-  border-radius: 0;
-  background: var(--card);
-  box-shadow: var(--card-shadow);
-}
-
-.panelHead {
-  margin-bottom: 1.3rem;
-}
-
-.panelHead h2 {
-  margin-top: 0.45rem;
-  font-size: clamp(1.35rem, 2.6vw, 1.95rem);
-  font-weight: 560;
-}
-
-.panelHead p {
-  max-width: 52rem;
-  margin-top: 0.55rem;
-  color: var(--muted-2);
-  font-size: 0.9rem;
-  line-height: 1.6;
-}
-
-.panelHead a {
-  color: var(--accent-dim);
-  /* 1.2:1 against the paragraph it sits in, so colour cannot be the cue. */
+.cardFoot a {
+  color: var(--link);
+  font-weight: 600;
+  /* Underlined, not just tinted. The prototype colours these links and stops
+     there, but --link against --ink-3 is a hue-only difference in Ivory: under
+     the 3:1 that colour-as-sole-cue needs, and no cue at all for anyone who
+     cannot separate the two hues. */
   text-decoration: underline;
   text-underline-offset: 0.18em;
   text-decoration-thickness: 1px;
 }
 
-/* ------------------------------------------------------------ deviations */
+/* ------------------------------------------------------------ deployed list */
 
-.deviations {
+.zapList {
+  list-style: none;
+}
+
+.zapRow {
+  position: relative;
   display: grid;
-  gap: 0.6rem;
-  margin-bottom: 1.4rem;
-  padding: 0.95rem 1.1rem;
-  border: 1px solid rgba(255, 122, 144, 0.45);
-  border-radius: 0;
-  background: rgba(255, 122, 144, 0.07);
+  grid-template-columns: 120px minmax(0, 1fr) 84px 148px 44px;
+  gap: 14px;
+  align-items: center;
+  padding: 12px 18px;
+  border-bottom: 1px solid var(--line-softer);
+  animation: fadeUp var(--dur-3) var(--ease-emphasis) both;
+  animation-delay: var(--row-delay, 0ms);
+  transition: background var(--dur-2) var(--ease-standard);
 }
 
-.deviations strong {
-  color: #ffadad;
-  font-size: 0.95rem;
-  font-weight: 560;
+.zapRow:last-child {
+  border-bottom: 0;
 }
 
-.deviations ul {
+.zapRow:hover {
+  background: var(--panel-2);
+}
+
+/* The link wraps only the address, and its ::after stretches over the row. A
+   nested <a> inside a <Link> is invalid HTML, so the creation-tx anchor cannot
+   live inside the row link — it sits above the overlay on z-index 1 instead,
+   which keeps both targets reachable by mouse and by tab. */
+.zapLink {
+  color: inherit;
+  text-decoration: none;
+}
+
+.zapLink::after {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  content: "";
+}
+
+.zapAddress {
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+.zapMeta {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--ink-2);
+  font-size: 12.5px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.zapRuns {
+  justify-self: start;
+  padding: 2px 8px;
+  border-radius: var(--r-pill);
+  background: var(--zap-wash);
+  color: var(--zap-wash-ink);
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.zapRuns[data-active="false"] {
+  background: var(--sunk);
+  color: var(--ink-2);
+}
+
+.zapTime {
+  color: var(--ink-3);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.zapTx {
+  position: relative;
+  z-index: 1;
+  justify-self: end;
+  color: var(--ink-3);
+  font-size: 11.5px;
+  white-space: nowrap;
+}
+
+.zapTx:hover {
+  color: var(--ink);
+}
+
+/* -------------------------------------------------------- verified contracts */
+
+/* The 1px gap over a --line-soft ground IS the hairline; the cells paint
+   --panel over it. */
+.contractGrid {
   display: grid;
-  gap: 0.4rem;
-  margin: 0;
-  padding-left: 1.1rem;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1px;
+  background: var(--line-soft);
 }
 
-.deviations li {
-  color: var(--text);
-  font-size: 0.86rem;
-  line-height: 1.55;
+.contractCell {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 12px 18px;
+  background: var(--panel);
+  transition: background var(--dur-2) var(--ease-standard);
+}
+
+.contractCell:hover {
+  background: var(--panel-2);
+}
+
+.contractLabel {
+  color: var(--ink-3);
+  font-size: 11.5px;
+}
+
+.contractAddress {
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-size: 11.5px;
   overflow-wrap: anywhere;
+}
+
+/* -------------------------------------------------------------- detail hero */
+
+.detailHead {
+  margin-bottom: 20px;
+}
+
+.backLink {
+  color: var(--ink-3);
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+.backLink:hover {
+  color: var(--ink);
+}
+
+.unverifiedNote {
+  color: var(--warn);
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+.detailTitle {
+  margin-top: 8px;
+}
+
+/* The full address is the title, so it has to wrap rather than overflow the
+   viewport on a phone. */
+.heroAddress {
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-size: clamp(15px, 2.4vw, 30px);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  overflow-wrap: anywhere;
+}
+
+.detailLede {
+  max-width: 76ch;
+  margin-top: 12px;
+  color: var(--ink-2);
+  font-size: 13.5px;
+  line-height: 1.6;
+}
+
+.heroActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+/* ------------------------------------------------------------- state chips */
+
+.stateChip {
+  flex: 0 0 auto;
+  padding: 3px 8px;
+  border-radius: var(--r-pill);
+  background: var(--warn-wash);
+  color: var(--warn);
+  font-size: 10.5px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.stateChip[data-verified="true"] {
+  background: var(--ok-wash);
+  color: var(--ok);
+}
+
+.refreshLine {
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+}
+
+.updatedSpinner {
+  align-self: center;
+  color: var(--ink-3);
 }
 
 /* ------------------------------------------------------------ lego chain */
@@ -251,6 +422,7 @@
 .chain {
   display: grid;
   max-width: 40rem;
+  padding: 16px 18px;
 }
 
 .slotGroup {
@@ -261,211 +433,224 @@
   position: relative;
   display: grid;
   place-items: center;
-  height: 2.1rem;
+  height: 26px;
 }
 
+/* `--shape` is set inline per node from lib/blocks.ts SHAPE_COLOR — the one
+   documented hardcoded-colour exception in the repo, because the hue encodes
+   which KIND of value is on the wire. Named `--shape` and not `--accent`
+   precisely so it cannot silently fall back to the globals.css migration alias
+   of that name. It is mixed toward --ink rather than used raw: raw brand yellow
+   on a cream panel is invisible, and the mix keeps the hue identity while
+   staying legible in all five themes. */
 .jointLine {
   position: absolute;
   top: 0;
   bottom: 0;
   width: 2px;
-  border-radius: 0;
-  background: color-mix(in oklab, var(--accent) 55%, transparent);
+  background: color-mix(in oklab, var(--shape) 58%, var(--ink));
 }
 
 .joint[data-status="unknown"] .jointLine {
-  background: repeating-linear-gradient(180deg, #ff7a90 0 4px, transparent 4px 8px);
+  background: repeating-linear-gradient(180deg, var(--danger) 0 4px, transparent 4px 8px);
 }
 
 .jointLabel {
   position: relative;
-  padding: 0.12rem 0.5rem;
-  border: 1px solid color-mix(in oklab, var(--accent) 40%, transparent);
-  border-radius: 0;
-  color: color-mix(in oklab, var(--accent) 80%, white);
-  background: var(--bg-2);
-  font-family: var(--font-jetbrains-mono), ui-monospace, monospace;
-  font-size: 0.63rem;
-  letter-spacing: 0.02em;
+  padding: 2px 7px;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--r-chip);
+  background: var(--chip);
+  color: var(--ink-2);
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-size: 10.5px;
   white-space: nowrap;
 }
 
-.card {
+.chainCard {
   position: relative;
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
-  gap: 0.7rem;
-  padding: 0.75rem 0.85rem;
+  gap: 12px;
+  padding: 12px 14px;
   border: 1px solid var(--line);
-  border-radius: 0;
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.055), rgba(255, 255, 255, 0.014));
+  border-radius: var(--r-card-sm);
+  background: var(--panel-2);
   transition: border-color var(--dur-2) var(--ease-standard);
 }
 
-.card:hover {
-  border-color: color-mix(in oklab, var(--accent) 38%, transparent);
+.chainCard:hover {
+  border-color: var(--line-hover);
 }
 
 /* The stud: the piece that makes a block read as something clicked into place.
    Same geometry as the builder's, tinted by what the block emits. */
-.card::after {
+.chainCard::after {
   position: absolute;
-  bottom: -0.3rem;
+  bottom: -5px;
   left: 50%;
   z-index: 1;
-  width: 1.5rem;
-  height: 0.3rem;
-  margin-left: -0.75rem;
+  width: 24px;
+  height: 5px;
+  margin-left: -12px;
   content: "";
-  border-radius: 0;
-  background: color-mix(in oklab, var(--accent) 70%, transparent);
+  border-radius: var(--r-chip);
+  background: color-mix(in oklab, var(--shape) 62%, var(--ink));
 }
 
-.card[data-kind="sink"]::after {
+.chainCard[data-kind="sink"]::after {
   display: none;
 }
 
-/* A capsule that does not match the live route must not read as a standard
-   one, so the whole chain is tinted rather than only the deviation list. */
-.chain[data-standard="false"] .card {
-  border-color: rgba(255, 122, 144, 0.4);
+/* A Zap that does not match the live route must not read as a standard one, so
+   the whole chain is tinted rather than only the deviation list. */
+.chain[data-standard="false"] .chainCard {
+  border-color: var(--danger-line);
 }
 
-.cardGlyph {
+.chainGlyphTile {
   display: grid;
   place-items: center;
-  width: 2.1rem;
-  height: 2.1rem;
-  border-radius: 0;
-  color: var(--accent);
-  background: color-mix(in oklab, var(--accent) 15%, transparent);
+  width: 38px;
+  height: 38px;
+  border-radius: var(--r-card-sm);
+  background: color-mix(in oklab, var(--shape) 16%, transparent);
+  color: color-mix(in oklab, var(--shape) 58%, var(--ink));
 }
 
 .glyph {
-  width: 1.05rem;
-  height: 1.05rem;
+  width: 17px;
+  height: 17px;
 }
 
-.cardText {
+.chainText {
   display: grid;
-  gap: 0.15rem;
+  gap: 2px;
   min-width: 0;
 }
 
-.cardText strong {
-  font-size: 0.92rem;
-  font-weight: 540;
+.chainText strong {
+  font-size: 13.5px;
+  font-weight: 600;
 }
 
-.cardText span {
-  color: var(--muted);
-  font-size: 0.79rem;
+.chainText span {
+  color: var(--ink-3);
+  font-size: 11.5px;
   line-height: 1.45;
   overflow-wrap: anywhere;
 }
 
-.cardLink {
-  color: var(--accent-dim);
-  font-family: var(--font-jetbrains-mono), ui-monospace, monospace;
-  font-size: 0.7rem;
+.chainLink {
+  color: var(--link);
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-size: 11px;
+  font-weight: 600;
   white-space: nowrap;
 }
 
 /* ------------------------------------------------------------ fact grids */
 
+/* Hairlines are cell borders here, not the 1px-gap-over-a-tinted-ground trick
+   the contract grid uses. A fact count that does not fill its last row — seven
+   provenance facts across three columns — would leave that ground showing as an
+   empty slab in a colour no cell has. */
 .factGrid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 1px;
-  margin: 1.6rem 0 0;
-  border: 1px solid var(--line);
-  border-radius: 0;
-  overflow: hidden;
-  background: var(--line);
+  background: var(--panel-2);
 }
 
 .fact {
-  display: grid;
-  gap: 0.35rem;
-  padding: 0.9rem 1rem;
-  background: var(--bg-2);
+  padding: 12px 16px;
+  border-right: 1px solid var(--line-soft);
+  border-bottom: 1px solid var(--line-soft);
+}
+
+.fact:nth-child(3n) {
+  border-right: 0;
+}
+
+/* The bottom row's hairline is already the footnote's top border; both would
+   read as a heavier rule than every other line in the card. */
+.factGrid + .cardFoot {
+  border-top: 0;
 }
 
 .fact dt {
-  color: var(--muted);
-  font-size: 0.76rem;
+  color: var(--ink-3);
+  font-size: 10.5px;
 }
 
 .fact dd {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 0.4rem 0.6rem;
-  margin: 0;
-  color: var(--fg);
-  font-size: 0.88rem;
+  gap: 4px 8px;
+  margin-top: 2px;
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-size: 11.5px;
   overflow-wrap: anywhere;
 }
 
+.fact dd strong {
+  font-weight: 600;
+}
+
 .fact dd a {
-  color: var(--accent-dim);
-  font-family: var(--font-jetbrains-mono), ui-monospace, monospace;
-  font-size: 0.8rem;
+  color: var(--link);
+  font-weight: 600;
 }
 
 .factNote {
   flex-basis: 100%;
-  color: var(--muted);
-  font-size: 0.74rem;
+  color: var(--ink-3);
+  font-family: var(--font-sans), system-ui, sans-serif;
+  font-size: 11px;
   line-height: 1.45;
 }
 
+/* Size only. CopyButton brings its own themed surface, border and copied/failed
+   states; restating colour here would just race it on specificity. */
 .hexCopy {
-  font-size: 0.74rem;
+  font-size: 11px;
 }
 
 .assetList {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.5rem;
+  gap: 8px;
 }
 
 /* --------------------------------------------------------------- metrics */
 
-.metrics {
+.metricGrid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 1px;
-  border: 1px solid var(--line);
-  border-radius: 0;
-  overflow: hidden;
-  background: var(--line);
+  gap: 12px;
+  padding: 16px 18px;
 }
 
-.metric {
-  display: grid;
-  gap: 0.3rem;
-  padding: 1.05rem 1.1rem;
-  background: var(--bg-2);
-  transition: background var(--dur-3) var(--ease-standard);
+.metricCard {
+  padding: 14px 16px;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--r-card-sm);
+  background: var(--panel-2);
 }
 
-.metric:hover {
-  background: rgba(255, 255, 255, 0.045);
-}
-
-.metric strong {
-  color: var(--fg);
-  font-size: clamp(1rem, 1.8vw, 1.35rem);
+.metricCard strong {
+  display: block;
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-size: 22px;
   font-weight: 600;
   font-variant-numeric: tabular-nums;
   overflow-wrap: anywhere;
 }
 
-.metric span {
-  color: var(--muted);
-  font-size: 0.78rem;
+.metricCard span {
+  color: var(--ink-3);
+  font-size: 12px;
 }
 
 /* ---------------------------------------------------------------- totals */
@@ -473,285 +658,269 @@
 .totalsGrid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 0.7rem;
-  margin-top: 0.7rem;
+  gap: 14px;
+  padding: 0 18px 18px;
 }
 
 .totalsCard {
   display: grid;
   align-content: start;
-  gap: 0.55rem;
-  padding: 0.95rem 1.05rem;
+  gap: 8px;
+  padding: 14px 16px;
   border: 1px solid var(--line-soft);
-  border-radius: 0;
-  background: rgba(255, 255, 255, 0.018);
+  border-radius: var(--r-card-sm);
+  background: var(--panel-2);
 }
 
 .totalsCard h3 {
-  color: var(--muted);
-  font-size: 0.78rem;
-  font-weight: 540;
-  letter-spacing: 0.03em;
+  color: var(--ink-3);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.07em;
   text-transform: uppercase;
 }
 
 .totalsList {
   display: grid;
-  gap: 0.6rem;
-  margin: 0;
-  padding: 0;
+  gap: 10px;
   list-style: none;
 }
 
 .totalsList li {
   display: grid;
-  gap: 0.2rem;
+  gap: 3px;
 }
 
 .amount {
-  color: var(--fg);
-  font-size: 1rem;
-  font-weight: 560;
+  display: block;
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-size: 15px;
+  font-weight: 600;
   font-variant-numeric: tabular-nums;
   overflow-wrap: anywhere;
 }
 
 .amount em {
-  color: var(--muted);
-  font-size: 0.72rem;
+  color: var(--ink-3);
+  font-family: var(--font-sans), system-ui, sans-serif;
+  font-size: 11px;
   font-style: normal;
   font-weight: 400;
 }
 
 .totalsNote {
-  color: var(--muted);
-  font-size: 0.74rem;
+  color: var(--ink-3);
+  font-size: 11.5px;
   line-height: 1.5;
 }
 
 /* ------------------------------------------------------------- event rows */
 
 .rowsHead {
-  margin: 1.4rem 0 0.7rem;
-  color: var(--muted);
-  font-size: 0.78rem;
-  font-weight: 540;
-  letter-spacing: 0.03em;
+  padding: 13px 18px 0;
+  color: var(--ink-3);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.07em;
   text-transform: uppercase;
 }
 
-.rowsHead:first-of-type {
-  margin-top: 0;
-}
-
-.rows {
+.eventRow {
   display: grid;
-  gap: 0.5rem;
-}
-
-.row {
-  display: grid;
-  grid-template-columns: 8rem minmax(0, 1fr) auto;
+  grid-template-columns: 38px minmax(0, 1fr) 132px;
+  gap: 12px;
   align-items: center;
-  gap: 0.9rem;
-  padding: 0.7rem 0.85rem;
-  border: 1px solid var(--line-soft);
-  border-radius: 0;
-  background: rgba(255, 255, 255, 0.018);
-  color: var(--text);
-  text-decoration: none;
+  padding: 12px 18px;
+  border-bottom: 1px solid var(--line-softer);
+  color: inherit;
   animation: fadeUp var(--dur-3) var(--ease-emphasis) both;
   animation-delay: var(--row-delay, 0ms);
-  transition:
-    transform var(--dur-2) var(--ease-emphasis),
-    border-color var(--dur-2) var(--ease-standard),
-    background var(--dur-2) var(--ease-standard);
+  transition: background var(--dur-2) var(--ease-standard);
 }
 
-.row:hover {
-  transform: translateX(3px);
-  border-color: rgba(255, 252, 0, 0.3);
-  background: rgba(255, 255, 255, 0.03);
+/* `of-type`, not `child`: the event card ends with a second heading and its own
+   row group, so `:last-child` would strip the wrong row's hairline. */
+.eventRow:last-of-type {
+  border-bottom: 0;
 }
 
-.rowType {
-  font-size: 0.74rem;
+.eventRow:hover {
+  background: var(--panel-2);
+}
+
+.eventGlyph {
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  border-radius: var(--r-card-sm);
+  background: var(--zap-wash);
+  color: var(--zap-wash-ink);
+}
+
+.eventGlyph[data-type="recovered"] {
+  background: var(--warn-wash);
+  color: var(--warn);
+}
+
+.eventGlyph svg {
+  width: 15px;
+  height: 15px;
+}
+
+.eventBody {
+  min-width: 0;
+}
+
+.eventKind {
+  color: var(--ink-3);
+  font-size: 10px;
   font-weight: 600;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.07em;
   text-transform: uppercase;
 }
 
-.rowType[data-type="executed"] {
-  color: var(--accent-bright);
-}
-
-.rowType[data-type="recovered"] {
-  color: #ffd398;
-}
-
-.rowDetail {
-  min-width: 0;
-  font-size: 0.85rem;
+.eventTitle {
+  display: block;
+  margin-top: 2px;
+  font-size: 13.5px;
+  font-weight: 600;
   overflow-wrap: anywhere;
 }
 
-.rowNonce {
-  margin-left: 0.5rem;
-  color: var(--muted);
-  font-family: var(--font-jetbrains-mono), ui-monospace, monospace;
-  font-size: 0.7rem;
+.eventDetail {
+  display: block;
+  margin-top: 2px;
+  color: var(--ink-3);
+  font-size: 11.5px;
+  overflow-wrap: anywhere;
+}
+
+.eventEnd {
+  display: grid;
+  justify-items: end;
+  gap: 3px;
+}
+
+.eventTx {
+  color: var(--link);
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-size: 11px;
+  font-weight: 600;
   white-space: nowrap;
 }
 
-.rowTime {
-  color: var(--muted);
-  font-size: 0.76rem;
+.eventTime {
+  color: var(--ink-3);
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-size: 10.5px;
   font-variant-numeric: tabular-nums;
-  text-align: right;
-}
-
-/* ------------------------------------------------------------ index list */
-
-.listHead {
-  margin-bottom: 1.1rem;
-}
-
-.listHead h2 {
-  font-size: clamp(1.25rem, 2.4vw, 1.7rem);
-  font-weight: 560;
-}
-
-.listHead p {
-  margin-top: 0.4rem;
-  color: var(--muted);
-  font-size: 0.85rem;
-}
-
-.list {
-  display: grid;
-  gap: 0.5rem;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.listItem {
-  position: relative;
-  animation: fadeUp var(--dur-3) var(--ease-emphasis) both;
-  animation-delay: var(--row-delay, 0ms);
-}
-
-.listLink {
-  display: grid;
-  grid-template-columns: 10rem minmax(0, 1fr) minmax(0, 1fr) 8rem 11rem;
-  align-items: center;
-  gap: 0.9rem;
-  padding: 0.8rem 6.5rem 0.8rem 0.9rem;
-  border: 1px solid var(--line-soft);
-  border-radius: 0;
-  background: rgba(255, 255, 255, 0.018);
-  color: var(--text);
-  text-decoration: none;
-  transition:
-    transform var(--dur-2) var(--ease-emphasis),
-    border-color var(--dur-2) var(--ease-standard),
-    background var(--dur-2) var(--ease-standard);
-}
-
-.listLink:hover {
-  transform: translateX(3px);
-  border-color: rgba(255, 252, 0, 0.42);
-  background: rgba(255, 255, 255, 0.03);
-}
-
-.listAddress {
-  color: var(--fg);
-  font-size: 0.86rem;
-}
-
-.listOwner,
-.listPolicy {
-  min-width: 0;
-  overflow: hidden;
-  color: var(--muted);
-  font-family: var(--font-jetbrains-mono), ui-monospace, monospace;
-  font-size: 0.73rem;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.listRuns {
-  color: var(--muted);
-  font-size: 0.78rem;
-}
-
-.listRuns[data-active="true"] {
-  color: var(--accent-bright);
-}
-
-.listTime {
-  color: var(--muted);
-  font-size: 0.76rem;
-  text-align: right;
-}
-
-/* Sits over the row rather than inside it: a nested <a> is invalid, and the
-   creation tx belongs to the explorer, not to the detail page. */
-.listTx {
-  position: absolute;
-  top: 50%;
-  right: 0.9rem;
-  z-index: 1;
-  transform: translateY(-50%);
-  color: var(--accent-dim);
-  font-size: 0.73rem;
   white-space: nowrap;
 }
 
 /* -------------------------------------------------------------- messaging */
 
 .empty {
-  margin: 0.4rem 0;
-  color: var(--muted);
-  font-size: 0.88rem;
+  padding: 16px 18px;
+  color: var(--ink-3);
+  font-size: 12.5px;
   line-height: 1.55;
+}
+
+/* Inside a totals card the "none yet" sentence is already inset, so it drops
+   the card padding and keeps only the type. */
+.totalsCard .empty {
+  padding: 0;
 }
 
 .note {
-  margin: 1.3rem 0 0;
-  color: var(--muted);
-  font-size: 0.8rem;
+  padding: 0 18px 14px;
+  color: var(--ink-3);
+  font-size: 12px;
   line-height: 1.55;
-}
-
-.note a {
-    color: var(--accent-dim);
-  /* Underlined, not just tinted. These sit inside muted prose, and colour
-     alone does not carry a link: --accent-dim against --muted is about 1.5:1,
-     well under the 3:1 that colour-as-sole-cue needs, and it fails outright
-     for anyone who cannot separate the two hues. The underline is the cue;
-     the tint is reinforcement. */
-  text-decoration: underline;
-  text-underline-offset: 0.18em;
-  text-decoration-thickness: 1px;
 }
 
 .unavailable {
   display: grid;
   justify-items: start;
-  gap: 0.8rem;
-  padding: 0.95rem 1.1rem;
-  border: 1px solid rgba(255, 110, 110, 0.32);
-  border-radius: 0;
-  background: rgba(255, 78, 78, 0.06);
+  gap: 10px;
+  margin: 16px 18px;
+  padding: 14px 16px;
+  border: 1px solid var(--danger-line);
+  border-radius: var(--r-card-sm);
+  background: var(--danger-wash);
 }
 
 .unavailable p {
-  margin: 0;
-  max-width: 56rem;
-  color: #ffadad;
-  font-size: 0.88rem;
+  max-width: 72ch;
+  color: var(--danger-ink);
+  font-size: 12.5px;
   line-height: 1.55;
+}
+
+.deviations {
+  display: grid;
+  gap: 8px;
+  margin: 16px 18px;
+  padding: 14px 16px;
+  border: 1px solid var(--danger-line);
+  border-radius: var(--r-card-sm);
+  background: var(--danger-tint);
+}
+
+.deviations strong {
+  color: var(--danger-ink);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.deviations ul {
+  display: grid;
+  gap: 6px;
+  padding-left: 18px;
+}
+
+.deviations li {
+  color: var(--ink-2);
+  font-size: 12.5px;
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+}
+
+/* Standalone: on the detail page this banner sits between cards, not inside
+   one, so it takes the page rhythm rather than a card's inset. */
+.staleWarning {
+  margin-bottom: 18px;
+  padding: 10px 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-ctl);
+  background: var(--warn-wash);
+  color: var(--warn);
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+
+/* A ghost control sized for a dense card, in place of the global `btn btnGhost`
+   which is drawn for a page-level call to action. */
+.ghostBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  height: 30px;
+  padding: 0 12px;
+  border: 1px solid var(--line-btn);
+  border-radius: var(--r-ctl);
+  background: var(--panel-2);
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background var(--dur-2) var(--ease-standard);
+}
+
+.ghostBtn:hover {
+  background: var(--panel);
 }
 
 /* ------------------------------------------------------------- skeletons */
@@ -759,21 +928,21 @@
 .skelGrid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 0.6rem;
-  margin-top: 1rem;
+  gap: 12px;
+  padding: 0 18px 18px;
 }
 
 .skelCard {
   display: grid;
-  gap: 0.55rem;
-  padding: 0.95rem 1rem;
+  gap: 8px;
+  padding: 14px 16px;
   border: 1px solid var(--line-soft);
-  border-radius: 0;
-  background: rgba(255, 255, 255, 0.018);
+  border-radius: var(--r-card-sm);
+  background: var(--panel-2);
 }
 
 .skelCard > i {
-  height: 0.85rem;
+  height: 12px;
   /* Negative, index-derived delays start each bar mid-cycle so the shimmer
      travels across the grid instead of every card pulsing in lockstep. */
   animation-delay: var(--row-delay, 0ms);
@@ -781,100 +950,216 @@
 
 .skelCard > i:first-child {
   width: 55%;
-  height: 1.3rem;
+  height: 20px;
 }
 
 /* ----------------------------------------------------------- breakpoints */
 
-@media (max-width: 1180px) {
-  .listLink {
-    grid-template-columns: 9rem minmax(0, 1fr) 7.5rem 10rem;
+@media (max-width: 900px) {
+  .hero {
+    grid-template-columns: 1fr;
+    gap: 20px;
+    align-items: start;
+    margin-bottom: 20px;
   }
 
-  .listPolicy {
-    display: none;
+  .heroTitle {
+    font-size: clamp(30px, 7vw, 44px);
   }
-}
 
-@media (max-width: 860px) {
-  .factGrid,
-  .verifyFacts,
-  .skelGrid {
+  .pulseGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+  }
+
+  .cardHead {
+    flex-wrap: wrap;
+    row-gap: 6px;
+    padding: 12px 14px;
+  }
+
+  /* The factory link and the live chip wrap to their own line rather than
+     crushing the title into two characters. */
+  .cardHeadEnd {
+    width: 100%;
+    margin-left: 0;
+  }
+
+  .headLink,
+  .ghostBtn {
+    height: 36px;
+  }
+
+  /* Three lines, placed explicitly: address + date, then the full meta string,
+     then the run count + the tx link. Auto-placement would drop the tx link on
+     a fourth line of its own, right-aligned under nothing. */
+  .zapRow {
+    grid-template-columns: minmax(0, 1fr) auto;
+    row-gap: 6px;
+    padding: 12px 14px;
+  }
+
+  .zapLink {
+    grid-area: 1 / 1;
+  }
+
+  .zapTime {
+    grid-area: 1 / 2;
+    justify-self: end;
+  }
+
+  .zapMeta {
+    grid-area: 2 / 1 / 3 / -1;
+    overflow: visible;
+    white-space: normal;
+  }
+
+  .zapRuns {
+    grid-area: 3 / 1;
+  }
+
+  .zapTx {
+    grid-area: 3 / 2;
+    justify-self: end;
+  }
+
+  .contractGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .cardBody,
+  .cardFoot,
+  .empty,
+  .rowsHead,
+  .eventRow {
+    padding-right: 14px;
+    padding-left: 14px;
+  }
+
+  .note {
+    padding-right: 14px;
+    padding-left: 14px;
+  }
+
+  .unavailable,
+  .deviations {
+    margin-right: 14px;
+    margin-left: 14px;
+  }
+
+  .factGrid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  .metrics {
+  .fact:nth-child(3n) {
+    border-right: 1px solid var(--line-soft);
+  }
+
+  .fact:nth-child(2n) {
+    border-right: 0;
+  }
+
+  .metricGrid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+    padding: 14px;
   }
 
   .totalsGrid {
     grid-template-columns: 1fr;
+    padding: 0 14px 14px;
   }
 
-  .listLink {
-    grid-template-columns: minmax(0, 1fr) auto;
-    row-gap: 0.35rem;
-    padding-right: 0.9rem;
-    padding-bottom: 2.3rem;
+  .skelGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    padding: 0 14px 14px;
   }
 
-  .listOwner {
-    text-align: right;
+  .chain {
+    max-width: none;
+    padding: 14px;
   }
 
-  .listRuns {
-    grid-column: 1;
-  }
-
-  .listTime {
-    text-align: right;
-  }
-
-  .listTx {
-    top: auto;
-    bottom: 0.75rem;
-    right: 0.9rem;
-    transform: none;
+  .heroAddress {
+    font-size: clamp(14px, 4.6vw, 22px);
   }
 }
 
-@media (max-width: 520px) {
+@media (max-width: 560px) {
+  .heroTitle {
+    max-width: none;
+    font-size: 28px;
+    line-height: 1.1;
+  }
+
+  .heroLede {
+    font-size: 13.5px;
+  }
+
+  .pulseGrid,
   .factGrid,
-  .verifyFacts,
-  .metrics,
+  .metricGrid,
   .skelGrid {
     grid-template-columns: 1fr;
   }
 
-  .card {
-    grid-template-columns: auto minmax(0, 1fr);
-    row-gap: 0.35rem;
+  /* `nth-child(n)` matches every cell AND carries the same specificity as the
+     `3n` rule above, which a bare `.fact` would lose to. */
+  .fact:nth-child(n) {
+    border-right: 0;
   }
 
-  .cardLink {
-    grid-column: 2;
-  }
-
-  .row {
-    grid-template-columns: minmax(0, 1fr) auto;
-    row-gap: 0.3rem;
-  }
-
-  .rowDetail {
-    grid-column: 1 / -1;
-  }
-
-  .listLink {
+  .zapRow {
     grid-template-columns: 1fr;
   }
 
-  .listOwner,
-  .listTime {
-    text-align: left;
+  /* Back to auto placement. The explicit column-2 placements above would create
+     an implicit second track here and undo the single column. */
+  .zapLink,
+  .zapTime,
+  .zapMeta,
+  .zapRuns,
+  .zapTx {
+    grid-area: auto;
+  }
+
+  .zapTime,
+  .zapTx {
+    justify-self: start;
+  }
+
+  .chainCard {
+    grid-template-columns: auto minmax(0, 1fr);
+    row-gap: 6px;
+  }
+
+  .chainLink {
+    grid-column: 2;
+  }
+
+  .eventRow {
+    grid-template-columns: 28px minmax(0, 1fr);
+    row-gap: 6px;
+  }
+
+  .eventGlyph {
+    width: 28px;
+    height: 28px;
+  }
+
+  .eventGlyph svg {
+    width: 13px;
+    height: 13px;
+  }
+
+  .eventEnd {
+    grid-auto-flow: column;
+    grid-column: 2;
+    gap: 8px;
+    justify-items: start;
   }
 }
 
-/* Local copy — CSS Modules scope animation-name, so the globals.css keyframes
+/* Local copies — CSS Modules scope animation-name, so the globals.css keyframes
    of the same name are unreachable from this file. */
 @keyframes fadeUp {
   from {
@@ -884,5 +1169,15 @@
   to {
     opacity: 1;
     transform: none;
+  }
+}
+
+@keyframes zpulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
   }
 }

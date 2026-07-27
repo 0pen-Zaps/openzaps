@@ -6,6 +6,7 @@ import { formatUnits } from "viem";
 import { OPENZAP_CONTRACTS, explorerTransaction, explorerAddress } from "@/lib/robinhood";
 import type { ActivityEntry, ProtocolActivity } from "@/lib/activity";
 import { CountUp } from "@/components/CountUp";
+import { BlockGlyph } from "@/app/(site)/zap/BlockGlyph";
 import styles from "./feed.module.css";
 
 export type ActivityPayload = ProtocolActivity & { headBlock: string };
@@ -27,6 +28,16 @@ const TYPE_LABEL: Record<ActivityEntry["type"], string> = {
   automated: "AutoZap",
   recovered: "Recovered",
 };
+
+/** The mark each kind of log carries, so a row is readable before its text is. */
+const TYPE_GLYPH: Record<ActivityEntry["type"], string> = {
+  created: "lock",
+  executed: "bolt",
+  automated: "repeat",
+  recovered: "key",
+};
+
+const STAT_LABELS = ["Zaps created", "Zaps", "AutoZaps", "Recoveries", "Executed volume"] as const;
 
 export function ActivityFeed({ initial }: { initial: ActivityPayload | null }): React.JSX.Element {
   const [state, setState] = useState<FeedState>(
@@ -81,7 +92,7 @@ export function ActivityFeed({ initial }: { initial: ActivityPayload | null }): 
 
   return (
     <>
-      <section className={`container ${styles.metrics}`} aria-label="Live protocol totals">
+      <section className={styles.statGrid} aria-label="Live protocol totals">
         {state.status === "ready" ? (
           <>
             <Metric count label="Zaps created" value={String(state.data.stats.zapsCreated)} />
@@ -89,6 +100,7 @@ export function ActivityFeed({ initial }: { initial: ActivityPayload | null }): 
             <Metric count label="AutoZaps" value={String(state.data.stats.automatedRuns)} />
             <Metric count label="Recoveries" value={String(state.data.stats.recoveries)} />
             <Metric
+              wide
               label="Executed volume"
               value={
                 Object.entries(state.data.stats.executedVolume)
@@ -98,11 +110,16 @@ export function ActivityFeed({ initial }: { initial: ActivityPayload | null }): 
             />
           </>
         ) : (
-          ["Zaps created", "Zaps", "AutoZaps", "Recoveries", "Executed volume"].map((label, i) =>
+          STAT_LABELS.map((label, i) =>
             state.status === "loading" ? (
               // Shaped placeholders rather than an ellipsis: the strip keeps its
-              // height and reads as "arriving" instead of "empty".
-              <div className={styles.skelMetric} key={label}>
+              // height and reads as "arriving" instead of "empty". The composite
+              // volume placeholder spans the row like the value it stands in for,
+              // or the strip changes height when the payload lands.
+              <div
+                className={`${styles.skelStat} ${label === "Executed volume" ? styles.statWide : ""}`.trim()}
+                key={label}
+              >
                 <span
                   aria-label={`${label}: loading`}
                   className={`skeleton ${styles.skelValue}`}
@@ -112,18 +129,18 @@ export function ActivityFeed({ initial }: { initial: ActivityPayload | null }): 
                 <span aria-hidden className={`skeleton ${styles.skelLabel}`} style={{ animationDelay: `${-i * 0.18}s` }} />
               </div>
             ) : (
-              <Metric key={label} label={label} value="—" srValue="unavailable" />
+              <Metric key={label} label={label} value="—" srValue="unavailable" wide={label === "Executed volume"} />
             ),
           )
         )}
       </section>
 
-      <section className={`container ${styles.feedWrap}`} aria-label="Live zap transactions">
-        <div className={styles.feedHead}>
-          <div>
-            <span className="eyebrow">Live zap transactions</span>
-            <h2 ref={headingRef} tabIndex={-1}>Onchain activity feed.</h2>
-          </div>
+      <section className={styles.card} aria-label="Onchain activity">
+        <div className={styles.cardHead}>
+          <h2 className={styles.cardTitle} ref={headingRef} tabIndex={-1}>
+            Onchain activity
+          </h2>
+          <span className={styles.cardSub}>creations, Zaps, AutoZaps, and recoveries — newest first</span>
           <p className={styles.updated}>
             {refreshing && <span aria-hidden className={`spinner ${styles.updatedSpinner}`} />}
             {state.status === "ready" ? (
@@ -153,15 +170,14 @@ export function ActivityFeed({ initial }: { initial: ActivityPayload | null }): 
 
         {state.status === "loading" && (
           <>
-            <p className={styles.empty}>Reading creations, executions, and recoveries from chain logs…</p>
+            <p className={styles.empty}>Reading creations, Zaps, AutoZaps, and recoveries from chain logs…</p>
             {/* Shaped placeholders in the feed's real geometry, so the rows do not
                 jump when the first payload lands. Negative, index-derived delays
                 start each bar mid-cycle: the shimmer travels down the list
                 instead of every row pulsing in lockstep. */}
-            <div aria-hidden className={styles.feed}>
+            <div aria-hidden>
               {Array.from({ length: 5 }, (_, i) => (
                 <div className={styles.skelRow} key={i} style={{ "--row-delay": `${-i * 0.14}s` } as React.CSSProperties}>
-                  <i className="skeleton" />
                   <i className="skeleton" />
                   <i className="skeleton" />
                   <i className="skeleton" />
@@ -173,9 +189,9 @@ export function ActivityFeed({ initial }: { initial: ActivityPayload | null }): 
 
         {state.status === "unavailable" && (
           <div className={styles.unavailable} role="alert">
-            <p>Live activity is unavailable right now — the Robinhood RPC log query failed. Nothing is shown rather than showing stale or fabricated rows.</p>
+            <p>Live activity is unavailable right now — the Robinhood RPC log query failed. Nothing is shown instead of stale or fabricated rows.</p>
             <button
-              className="btn btnGhost"
+              className={styles.ghostBtn}
               onClick={() => {
                 setState({ status: "loading" });
                 headingRef.current?.focus();
@@ -192,28 +208,33 @@ export function ActivityFeed({ initial }: { initial: ActivityPayload | null }): 
           <p className={styles.empty}>No onchain activity yet. The first factory creation will appear here.</p>
         )}
 
-        {state.status === "ready" && state.data.activity.length > 0 && (
-          <div className={styles.feed}>
-            {state.data.activity.map((entry, i) => (
-              <a
-                className={styles.feedRow}
-                data-fresh={fresh.has(`${entry.txHash}:${entry.logIndex}`)}
-                href={explorerTransaction(entry.txHash)}
-                key={`${entry.txHash}:${entry.logIndex}`}
-                style={{ "--row-delay": `${Math.min(i, 10) * 45}ms` } as React.CSSProperties}
-                target="_blank"
-                rel="noreferrer"
-              >
-                <span className={styles.feedType} data-type={entry.type}>{TYPE_LABEL[entry.type]}</span>
-                <span className={styles.feedDetail}>
-                  {entry.type === "created"
-                    ? `by ${shortAddress(entry.actor)}`
-                    : entry.type === "automated"
-                      ? // The actor on an automated row is the EXECUTOR that submitted it, not the
-                        // recipient — naming it "→ 0x…" would read as the destination of the output.
-                        `${entry.amount ? formatAmount(entry.amount) : "?"} ${entry.assetSymbol ?? ""} · ${entry.detail ?? "automated"} · by ${shortAddress(entry.actor)}`
-                      : `${entry.amount ? formatAmount(entry.amount) : "?"} ${entry.assetSymbol ?? ""} → ${shortAddress(entry.actor)}`}
-                </span>
+        {state.status === "ready" &&
+          state.data.activity.length > 0 &&
+          state.data.activity.map((entry, i) => (
+            <a
+              className={styles.feedRow}
+              data-fresh={fresh.has(`${entry.txHash}:${entry.logIndex}`)}
+              href={explorerTransaction(entry.txHash)}
+              key={`${entry.txHash}:${entry.logIndex}`}
+              style={{ "--row-delay": `${Math.min(i, 10) * 45}ms` } as React.CSSProperties}
+              target="_blank"
+              rel="noreferrer"
+            >
+              <span className={styles.feedGlyph} data-type={entry.type}>
+                <BlockGlyph name={TYPE_GLYPH[entry.type]} />
+              </span>
+              <span className={styles.feedBody}>
+                <span className={styles.feedKind}>{TYPE_LABEL[entry.type]}</span>
+                <strong className={styles.feedTitle}>{rowTitle(entry)}</strong>
+                {entry.type === "automated" && (
+                  // The actor on an automated row is the EXECUTOR that submitted it, not the
+                  // recipient — naming it "→ 0x…" would read as the destination of the output.
+                  <span className={styles.feedDetail}>
+                    {entry.detail ?? "automated"} · submitted by {shortAddress(entry.actor)}
+                  </span>
+                )}
+              </span>
+              <span className={styles.feedEnd}>
                 <code className={styles.feedZap}>{shortAddress(entry.zap)}</code>
                 <span className={styles.feedTime}>
                   {/* Relative to Date.now(), so the server's value and the
@@ -225,16 +246,15 @@ export function ActivityFeed({ initial }: { initial: ActivityPayload | null }): 
                   {" "}
                   <span aria-label="opens transaction on Blockscout in a new tab">↗</span>
                 </span>
-              </a>
-            ))}
-          </div>
-        )}
+              </span>
+            </a>
+          ))}
 
-        <p className={styles.feedNote}>
-          Zap, AutoZap, and recovery rows are read only from capsules recorded in a factory&apos;s own
+        <p className={styles.cardFoot}>
+          Zap, AutoZap, and recovery rows are read only from Zaps recorded in a factory&apos;s own
           ZapCreated log — v1.1, v3, and v3.1 — so events emitted by non-canonical contracts never reach this
           feed. An AutoZap row is a Zap an executor submitted against a standing authorization its owner
-          signed. View any zap directly on{" "}
+          signed. Each row opens its own transaction; the v1.1 factory is on{" "}
           <a href={explorerAddress(OPENZAP_CONTRACTS.factory)} target="_blank" rel="noreferrer">
             Blockscout ↗
           </a>
@@ -245,20 +265,38 @@ export function ActivityFeed({ initial }: { initial: ActivityPayload | null }): 
   );
 }
 
+/**
+ * The one line that says what happened.
+ *
+ * `actor` means something different per kind — the owner on a creation, the
+ * recipient on a one-shot execution, the owner again on a recovery, and the
+ * EXECUTOR on an automated run. Only the first three can carry an arrow; the
+ * automated case names its executor in the detail line instead.
+ */
+function rowTitle(entry: ActivityEntry): string {
+  const amount = `${entry.amount ? formatAmount(entry.amount) : "?"} ${entry.assetSymbol ?? ""}`.trim();
+  if (entry.type === "created") return `Created by ${shortAddress(entry.actor)}`;
+  if (entry.type === "automated") return amount;
+  return `${amount} → ${shortAddress(entry.actor)}`;
+}
+
 function Metric({
   label,
   value,
   srValue,
   count = false,
+  wide = false,
 }: {
   label: string;
   value: string;
   srValue?: string;
   /** Roll the number up on first view. Off for composite/textual values. */
   count?: boolean;
+  /** Span the whole strip. For the composite volume string, not the counters. */
+  wide?: boolean;
 }): React.JSX.Element {
   return (
-    <div className={styles.metric}>
+    <div className={`${styles.statCard} ${wide ? styles.statWide : ""}`.trim()}>
       <strong aria-label={srValue ? `${label}: ${srValue}` : undefined}>
         {count ? <CountUp value={value} /> : value}
       </strong>

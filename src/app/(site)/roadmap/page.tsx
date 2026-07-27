@@ -28,7 +28,7 @@ const phases = [
   [
     "Beta",
     "Private submission and monitoring",
-    "Private submission, receipt monitoring, and alert delivery. None of that is built. Permissionless executor submission is: a recurring or triggered intent either pins one executor or leaves it open to anyone, signed intents publish to a shared relay executors poll, and the owner can always submit a Zap themselves.",
+    "Private submission, receipt monitoring, and alert delivery. None of that is built: the console lists the transactions you signed in it, and nothing watches a Zap for you or sends a notification. Permissionless executor submission is built: a recurring or triggered intent either pins one executor or leaves it open to anyone, signed intents publish to a shared relay executors poll, and the owner can always submit a run themselves.",
   ],
   [
     "Network",
@@ -46,61 +46,58 @@ const principles = [
 
 export default function RoadmapPage(): React.JSX.Element {
   return (
-    <main className={styles.page} id="main">
+    <main className={styles.reader} id="main" data-screen-label="Roadmap">
       <JsonLd
         data={{
           "@context": "https://schema.org",
           "@graph": [webPageJsonLd(STATIC_PAGE_SEO.roadmap), breadcrumbJsonLd("/roadmap", "Roadmap")],
         }}
       />
-      <section className={`container ${styles.hero}`}>
-        <div>
-          <span className="eyebrow">Roadmap</span>
-          <h1>What is built, what is next, and what is not decided.</h1>
-          <p>
-            This page carries no dates. The order below is not a commitment: anything past the current release can be
-            reordered or dropped. The constraint that does not move is that each release has to keep execution authority
-            explicit, inspectable, and recoverable.
-          </p>
-          <div className={styles.heroActions}>
-            <Link className="btn btnPrimary btnLg" href="/docs">
-              Read docs
-            </Link>
-            <Link className="btn btnGhost btnLg" href="/docs#security">
-              Security gates
-            </Link>
-          </div>
+
+      <h1 className={styles.title}>What is built, what is next, and what is not decided.</h1>
+      <p className={styles.lede}>
+        This page carries no dates. The order below is not a commitment: anything past the current release can be
+        reordered or dropped. The constraint that does not move is that each release has to keep execution authority
+        explicit, inspectable, and recoverable.
+      </p>
+      <div className={styles.actions}>
+        <Link className={styles.primaryBtn} href="/docs">
+          Read docs
+        </Link>
+        <Link className={styles.ghostBtn} href="/docs#security">
+          Security model
+        </Link>
+        <span className={styles.metaChip}>
+          <b>Current release</b>
+          Live v1.1 + v3.1
+        </span>
+      </div>
+
+      <section className={styles.section}>
+        <h2 className={styles.h2}>Release path</h2>
+        <div className={styles.steps}>
+          {phases.map(([phase, title, body], i) => (
+            <Reveal className={`${styles.step} ${styles.stepPhased}`} delay={i * 45} key={phase}>
+              {/* The neutral tag, not a live/done badge. Only the first phase
+                  has shipped, and the copy says so — a coloured chip on the
+                  other four would claim progress nothing has made. */}
+              <span className={styles.stepTag}>{phase}</span>
+              <div>
+                <h3 className={styles.stepTitle}>{title}</h3>
+                <p className={styles.stepBody}>{body}</p>
+              </div>
+            </Reveal>
+          ))}
         </div>
-        <aside className={styles.heroCard}>
-          <span>Current release</span>
-          <strong>Live v1.1 + v3.1</strong>
-        </aside>
       </section>
 
-      <section className={`container ${styles.content}`}>
-        <section className={styles.section}>
-          <h2>Release path</h2>
-          <div className={styles.timeline}>
-            {phases.map(([phase, title, body], i) => (
-              <Reveal className={styles.phase} delay={i * 45} key={phase}>
-                <span>{phase}</span>
-                <div>
-                  <h3>{title}</h3>
-                  <p>{body}</p>
-                </div>
-              </Reveal>
-            ))}
-          </div>
-        </section>
-
-        <section className={styles.section}>
-          <h2>Non-negotiables</h2>
-          <ul>
-            {principles.map((item) => (
-              <li key={item}>{item}</li>
-            ))}
-          </ul>
-        </section>
+      <section className={styles.section}>
+        <h2 className={styles.h2}>Non-negotiables</h2>
+        <ul className={styles.list}>
+          {principles.map((item) => (
+            <li key={item}>{item}</li>
+          ))}
+        </ul>
       </section>
     </main>
   );

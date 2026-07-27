@@ -1,136 +1,477 @@
-/* The lottery-pot surface. Reuses the site's ground and accent; the only new idea
-   here is a "prize" scale for the one number people come to look at. */
+/* The lottery pot as a two-column console: everything the chain actually says
+   on the left, the fixed rules of the split on the right.
 
-.page {
-  padding-top: 1.5rem;
-  padding-bottom: 5rem;
+   The rail is rendered by the server page rather than by PotLive, because THE
+   SPLIT and the no-owner-drain note are static copy — they must still be on
+   screen while the pot reads are loading, stale, or unavailable. */
+
+/* AppShell owns the content measure and the page padding. This is a marker so
+   the screen can be found in the DOM; it must not re-declare a width. */
+.screen {
+  display: block;
 }
 
-.hero {
-  padding-block: clamp(2rem, 6vw, 4rem) 1.5rem;
+.grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 340px;
+  gap: 36px;
+  align-items: start;
 }
 
-.hero h1 {
-  margin: 0.5rem 0 0.9rem;
-  font-size: clamp(2rem, 1.4rem + 3vw, 3.6rem);
-  line-height: 1.02;
-  letter-spacing: -0.03em;
+.col {
+  min-width: 0;
+}
+
+.rail {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+/* ---- header ---------------------------------------------------------- */
+
+/* Local, not the global `.eyebrow`: that one is mono, uppercased by CSS, and
+   carries a rule pseudo-element. Here the caps are in the string and there is
+   no rule. */
+.eyebrow {
+  display: block;
+  color: var(--ink-3);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.09em;
+}
+
+.title {
+  margin: 10px 0 0;
+  font-family: var(--font-serif), Georgia, serif;
+  font-size: 52px;
+  font-weight: 500;
+  letter-spacing: -0.025em;
+  line-height: 1.04;
   text-wrap: balance;
 }
 
 .lede {
-  max-width: 62ch;
-  color: var(--muted);
-  line-height: 1.6;
-  margin: 0;
+  max-width: 66ch;
+  margin: 14px 0 0;
+  color: var(--ink-2);
+  font-size: 15px;
+  line-height: 1.65;
   text-wrap: pretty;
 }
 
 .heroLinks {
-  margin-top: 1.1rem;
-  font-size: 0.85rem;
-  color: var(--muted);
+  margin: 16px 0 0;
+  color: var(--ink-3);
+  font-size: 12.5px;
 }
 
-/* ---- wallet bar ---- */
+.heroLinks a {
+  color: var(--link);
+  font-weight: 600;
+}
+
+/* ---- right rail ------------------------------------------------------ */
+
+/* Inverted on purpose: this is the one card on the screen that states a rule
+   of the protocol rather than a reading of it. On Voltage `--btn` is already
+   the yellow, which is why the figure is `--zap-on-btn` and never `--zap` —
+   the latter would be yellow on yellow. */
+.splitCard {
+  padding: 20px;
+  border-radius: var(--r-card);
+  background: var(--btn);
+  color: var(--btn-ink);
+}
+
+.splitLabel {
+  display: block;
+  color: var(--btn-ink-3);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.07em;
+}
+
+.splitRow {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.splitPct {
+  color: var(--zap-on-btn);
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-size: 34px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.splitOf {
+  color: var(--btn-ink-2);
+  font-size: 13px;
+}
+
+.splitBar {
+  display: flex;
+  gap: 4px;
+  margin: 16px 0 10px;
+}
+
+.splitBarMajor,
+.splitBarMinor {
+  height: 8px;
+  border-radius: var(--r-pill);
+}
+
+.splitBarMajor {
+  flex: 8;
+  background: var(--zap-on-btn);
+}
+
+.splitBarMinor {
+  flex: 2;
+  background: var(--btn-ink-3);
+}
+
+.splitLegend {
+  display: flex;
+  justify-content: space-between;
+  color: var(--btn-ink-2);
+  font-size: 12px;
+}
+
+.noteCard {
+  padding: 16px;
+  border: 1px solid var(--line-2);
+  border-radius: var(--r-card);
+  background: var(--sunk);
+}
+
+.noteTitle {
+  margin: 0 0 8px;
+  font-size: 13.5px;
+  font-weight: 600;
+}
+
+.noteBody {
+  margin: 0 0 12px;
+  color: var(--ink-2);
+  font-size: 12.5px;
+  line-height: 1.55;
+}
+
+.noteLink {
+  color: var(--link);
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+/* ---- card + rows grammar --------------------------------------------- */
+
+.card {
+  margin-top: 26px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-card);
+  background: var(--panel);
+  overflow: hidden;
+}
+
+.cardHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 13px 18px;
+  border-bottom: 1px solid var(--line-2);
+}
+
+.cardTitle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  color: var(--ink);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.cardTitle svg {
+  flex: none;
+  width: 14px;
+  height: 14px;
+  color: var(--ink-3);
+}
+
+.cardBody {
+  margin: 0;
+  padding: 14px 18px;
+  color: var(--ink-2);
+  font-size: 12.5px;
+  line-height: 1.55;
+}
+
+/* ---- wallet strip ---------------------------------------------------- */
+
 .walletBar {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
-  gap: 0.8rem;
-  padding-block: 0.9rem;
-  border-top: 1px solid var(--line-soft);
-  border-bottom: 1px solid var(--line-soft);
+  gap: 12px;
+  margin-top: 22px;
+  padding: 10px 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-ctl);
+  background: var(--panel-2);
 }
 
-.connectHint,
-.connected {
-  margin: 0;
+.walletState {
   display: flex;
   align-items: center;
-  gap: 0.45rem;
-  color: var(--muted);
-  font-size: 0.85rem;
+  gap: 8px;
+  margin: 0;
+  color: var(--ink-2);
+  font-size: 12.5px;
 }
 
-.connected code {
-  color: var(--fg);
-  font-family: var(--font-jetbrains-mono), ui-monospace, monospace;
+.walletState code {
+  color: var(--ink);
+  font-family: var(--font-mono), ui-monospace, monospace;
 }
 
-.barGlyph,
-.alertGlyph,
-.sectionGlyph,
+.walletGlyph {
+  flex: none;
+  width: 14px;
+  height: 14px;
+}
+
+.walletGlyphOk {
+  color: var(--ok);
+}
+
+.walletGlyphWarn {
+  color: var(--warn);
+}
+
+/* ---- buttons ---------------------------------------------------------
+   The global `btn` class is kept for its `[data-busy]` spinner and its
+   `[disabled]` rules; only its lift-and-sweep press is neutralised here, since
+   the redesign's buttons are flat. */
+
+.ghostBtn {
+  gap: 7px;
+  min-height: 30px;
+  height: 30px;
+  padding: 0 11px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-ctl);
+  background: var(--panel-2);
+  color: var(--ink);
+  font-size: 12.5px;
+  font-weight: 500;
+}
+
+.ghostBtn:hover {
+  border-color: var(--line-hover);
+  background: var(--panel);
+  transform: none;
+}
+
+.ghostBtn:active {
+  transform: none;
+}
+
+.ghostBtn::before {
+  display: none;
+}
+
+.convertBtn {
+  gap: 9px;
+  min-height: 40px;
+  height: 40px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: var(--r-ctl);
+  background: var(--btn);
+  color: var(--btn-ink);
+  font-size: 13px;
+  font-weight: 600;
+  box-shadow: var(--sh-btn);
+}
+
+.convertBtn:hover {
+  background: var(--btn-hover);
+  transform: none;
+}
+
+.convertBtn:active {
+  transform: none;
+}
+
+.convertBtn::before {
+  display: none;
+}
+
 .btnGlyph {
   flex: none;
-  width: 1rem;
-  height: 1rem;
+  width: 15px;
+  height: 15px;
+  color: var(--zap-on-btn);
 }
 
-.barGlyph {
-  color: var(--accent-bright);
+/* ---- messages --------------------------------------------------------- */
+
+.msgStack {
+  display: grid;
+  gap: 10px;
 }
 
-.btnGlyph {
-  margin-right: 0.4rem;
-  vertical-align: -0.18em;
+.msgStack:not(:empty) {
+  margin-top: 14px;
 }
 
-.sectionGlyph {
-  color: var(--accent-dim);
-  margin-right: 0.4rem;
-  vertical-align: -0.15em;
-}
-
-/* ---- messages ---- */
 .notice,
 .alert,
 .stale {
   display: flex;
   align-items: flex-start;
-  gap: 0.5rem;
-  margin-top: 1rem;
-  padding: 0.7rem 0.9rem;
-  font-size: 0.84rem;
-  line-height: 1.5;
+  gap: 10px;
+  margin: 0;
+  padding: 12px 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-card-sm);
+  font-size: 12.5px;
+  line-height: 1.55;
+}
+
+.notice > p,
+.alert > p,
+.stale > p {
+  margin: 0;
 }
 
 .notice {
-  border: 1px solid rgba(255, 252, 0, 0.28);
-  background: rgba(255, 252, 0, 0.06);
-  color: var(--fg);
+  background: var(--ok-wash);
+  color: var(--ink);
+}
+
+.notice .msgGlyph {
+  color: var(--ok);
 }
 
 .alert {
-  border: 1px solid rgba(255, 138, 138, 0.4);
-  background: rgba(255, 138, 138, 0.08);
-  color: #ff8a8a;
-}
-
-.alertGlyph {
-  color: #ff8a8a;
-  margin-top: 0.15rem;
+  border-color: var(--danger-line);
+  background: var(--danger-wash);
+  color: var(--danger-ink);
 }
 
 .stale {
-  border: 1px solid rgba(255, 194, 107, 0.34);
-  background: rgba(255, 194, 107, 0.07);
-  color: #ffc26b;
+  background: var(--warn-wash);
+  color: var(--ink-2);
 }
 
-.panel {
-  padding-block: 2.5rem;
+.stale .msgGlyph {
+  color: var(--warn);
 }
 
-.empty {
-  color: var(--muted);
+.msgGlyph {
+  flex: none;
+  width: 15px;
+  height: 15px;
+  margin-top: 1px;
 }
 
-/* ---- one pot ---- */
-.pot {
-  padding-block: 2.5rem 1rem;
-  border-bottom: 1px solid var(--line-soft);
+.alertBlock {
+  margin-top: 26px;
+}
+
+/* The unverified-history note sits inside a pot block rather than in the live
+   region, so it carries its own spacing. */
+.staleRow {
+  margin-top: 14px;
+}
+
+/* ---- loading skeleton -------------------------------------------------
+   Shapes, not numbers. A placeholder that looked like a figure would be a
+   claim about the chain before anything has been read. */
+
+.skel {
+  margin-top: 26px;
+}
+
+.skelBar {
+  display: block;
+  border-radius: var(--r-chip);
+  background: var(--track);
+  /* Defined in this module, not globals.css: Turbopack scopes `animation-name`
+     per CSS Module, so a global keyframe silently never fires from here. */
+  animation: potShimmer 1.4s var(--ease-standard) infinite;
+}
+
+.skelNum {
+  width: 60%;
+  height: 22px;
+}
+
+.skelCaption {
+  width: 80%;
+  height: 12px;
+  margin-top: 10px;
+}
+
+.skelHead {
+  width: 148px;
+  height: 14px;
+}
+
+.skelRow {
+  width: 55%;
+  height: 13px;
+}
+
+.skelNote {
+  margin: 14px 0 0;
+  color: var(--ink-3);
+  font-size: 12.5px;
+}
+
+@keyframes potShimmer {
+  0%,
+  100% {
+    opacity: 0.55;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+html[data-motion="calm"] .skelBar {
+  animation: none;
+  opacity: 0.7;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .skelBar {
+    animation: none;
+    opacity: 0.7;
+  }
+}
+
+/* ---- one pot ---------------------------------------------------------- */
+
+.potBlock {
+  margin-top: 26px;
+}
+
+/* There are two live pots and they must not read as one duplicated block. The
+   rule between them plus the `{label} POT · ROUND n` group label is what
+   separates them; a sibling selector rather than `:first-of-type`, because the
+   wallet strip above is also a <section>. */
+.potBlock + .potBlock {
+  margin-top: 34px;
+  padding-top: 26px;
+  border-top: 1px solid var(--line-2);
 }
 
 .potHead {
@@ -138,259 +479,449 @@
   flex-wrap: wrap;
   align-items: baseline;
   justify-content: space-between;
-  gap: 0.8rem;
+  gap: 12px;
 }
 
-.potHead h2 {
-  margin: 0.35rem 0 0;
-  font-size: clamp(1.35rem, 1rem + 1.8vw, 2.2rem);
-  line-height: 1.1;
+.potHeadMain {
+  min-width: 0;
+}
+
+.potLabel {
+  display: block;
+  color: var(--ink-3);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.09em;
+}
+
+.potTitle {
+  margin: 8px 0 0;
+  font-family: var(--font-serif), Georgia, serif;
+  font-size: 22px;
+  font-weight: 500;
   letter-spacing: -0.02em;
+  line-height: 1.2;
   text-wrap: balance;
 }
 
 .potAddr {
-  font-family: var(--font-jetbrains-mono), ui-monospace, monospace;
-  font-size: 0.78rem;
-  color: var(--muted);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 26px;
+  padding: 0 9px;
+  border: 1px solid var(--line-2);
+  border-radius: var(--r-pill);
+  background: var(--panel-2);
+  color: var(--ink-2);
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-size: 11px;
+  white-space: nowrap;
 }
 
-/* ---- stat strip ---- */
+.potAddr:hover {
+  border-color: var(--line-hover);
+  background: var(--panel);
+  color: var(--ink);
+}
+
+.potAddrGlyph {
+  flex: none;
+  width: 11px;
+  height: 11px;
+}
+
+/* ---- metric cards ------------------------------------------------------ */
+
+/* Two by two, where the design drew one row of three.
+   There are four real per-pot readings and none of them can be dropped or
+   aggregated without inventing a figure — but four across does not fit: a real
+   prize renders as 13 mono characters (~172px at 22px) into a 147px card at the
+   widest desktop measure, so a 1×4 row shreds every number onto four lines. */
 .stats {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr));
-  gap: 1px;
-  margin: 1.5rem 0 0;
-  background: var(--line-soft);
-  border: 1px solid var(--line-soft);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin: 20px 0 0;
 }
 
-.stats > div {
-  background: rgba(255, 255, 255, 0.018);
-  padding: 0.9rem 1rem;
+.statCard {
+  display: flex;
+  flex-direction: column;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-card-sm);
+  background: var(--panel);
 }
 
-.stats dt {
-  color: var(--muted);
-  font-size: 0.76rem;
+/* `order` rather than DOM order: the <dl> has to stay dt-then-dd to be a
+   description list at all, and the design puts the figure on top. */
+.statValue {
+  order: 1;
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  margin: 0;
 }
 
-.stats dd {
-  margin: 0.3rem 0 0;
-  font-size: 0.85rem;
-  color: var(--muted);
-}
-
-.stats strong {
-  display: block;
-  color: var(--fg);
-  font-family: var(--font-jetbrains-mono), ui-monospace, monospace;
-  font-size: clamp(1rem, 0.85rem + 0.6vw, 1.3rem);
+.statValue strong {
+  color: var(--ink);
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-size: 22px;
+  font-weight: 600;
   font-variant-numeric: tabular-nums;
   overflow-wrap: anywhere;
 }
 
-.sub {
-  display: block;
-  margin-top: 0.2rem;
-  font-size: 0.72rem;
-  color: var(--muted);
+.statUnit {
+  order: 1;
+  color: var(--ink-3);
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-size: 12px;
+  font-style: normal;
 }
 
-/* ---- conversion ---- */
-.convert {
-  margin-top: 1.8rem;
+.statLabel {
+  order: 2;
+  margin-top: 6px;
+  color: var(--ink-3);
+  font-size: 12px;
+  line-height: 1.35;
 }
 
-.convert h3,
-.history h3 {
-  margin: 0 0 0.7rem;
-  font-size: 0.95rem;
-  display: flex;
-  align-items: center;
+.statNote {
+  order: 3;
+  margin: 4px 0 0;
+  color: var(--ink-3);
+  font-size: 11px;
+  line-height: 1.4;
 }
+
+/* ---- fees awaiting conversion ------------------------------------------ */
 
 .pendingList {
   list-style: none;
   margin: 0;
   padding: 0;
+}
+
+.pendingRow {
   display: grid;
-  gap: 0.6rem;
-}
-
-.pendingList li {
-  display: flex;
-  flex-wrap: wrap;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 14px;
   align-items: center;
-  justify-content: space-between;
-  gap: 0.7rem;
-  padding: 0.75rem 0.9rem;
-  border: 1px solid rgba(255, 252, 0, 0.22);
-  background: rgba(255, 252, 0, 0.04);
+  padding: 11px 18px;
+  border-bottom: 1px solid var(--line-softer);
 }
 
-.pendingAmount {
-  font-family: var(--font-jetbrains-mono), ui-monospace, monospace;
-  font-variant-numeric: tabular-nums;
-  color: var(--fg);
-}
-
-.muted {
-  color: var(--muted);
-  font-size: 0.85rem;
-  margin: 0;
-}
-
-.convertNote {
-  margin: 0.8rem 0 0;
-  color: var(--muted);
-  font-size: 0.78rem;
-  line-height: 1.5;
-  max-width: 68ch;
-}
-
-.convertNote code {
-  font-family: var(--font-jetbrains-mono), ui-monospace, monospace;
-}
-
-/* ---- history tables ---- */
-.history {
-  margin-top: 1.8rem;
-}
-
-.scroller {
-  overflow-x: auto;
-  border: 1px solid var(--line-soft);
-}
-
-.history table {
-  border-collapse: collapse;
-  width: 100%;
-  min-width: 32rem;
-  font-size: 0.8rem;
-}
-
-.history th,
-.history td {
-  text-align: left;
-  padding: 0.55rem 0.8rem;
-  border-bottom: 1px solid var(--line-soft);
-  font-variant-numeric: tabular-nums;
-}
-
-.history th {
-  color: var(--muted);
-  font-weight: 500;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  font-size: 0.68rem;
-}
-
-.history tr:last-child td {
+.pendingRow:last-child {
   border-bottom: 0;
 }
 
-.gain {
-  color: var(--accent-bright);
-  font-family: var(--font-jetbrains-mono), ui-monospace, monospace;
-}
-
-.copy {
-  font-family: var(--font-jetbrains-mono), ui-monospace, monospace;
-}
-
-/* ---- rules ---- */
-.rules {
-  padding-block: 2.5rem;
-}
-
-.rules h2 {
-  margin: 0 0 1.2rem;
-  font-size: clamp(1.3rem, 1rem + 1.4vw, 1.9rem);
-  letter-spacing: -0.02em;
-}
-
-.ruleGrid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr));
-  gap: 1px;
-  background: var(--line-soft);
-  border: 1px solid var(--line-soft);
-}
-
-.ruleGrid article {
-  background: rgba(255, 255, 255, 0.018);
-  padding: 1.1rem 1.2rem;
-}
-
-.ruleGrid h3 {
-  margin: 0 0 0.4rem;
-  font-size: 0.9rem;
-}
-
-.ruleGrid p {
-  margin: 0;
-  color: var(--muted);
-  font-size: 0.84rem;
-  line-height: 1.55;
-}
-
-.foot {
-  margin-top: 1.5rem;
-  color: var(--muted);
-  font-size: 0.8rem;
-  line-height: 1.55;
-  max-width: 68ch;
-}
-
-@media (max-width: 620px) {
-  .walletBar,
-  .potHead {
-    flex-direction: column;
-    align-items: flex-start;
-  }
-
-  .pendingList li {
-    flex-direction: column;
-    align-items: stretch;
-  }
-
-  .pendingList li button {
-    width: 100%;
-  }
+.rowValue {
+  color: var(--ink);
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-size: 12.5px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
 }
 
 /* Assets the pot holds but can never convert or release. Warning-toned, never
    presented as a prize-in-waiting, and deliberately without an action. */
 .stranded {
-  margin-top: 1rem;
-  padding: 0.8rem 0.95rem;
-  border: 1px solid rgba(255, 138, 138, 0.34);
-  background: rgba(255, 138, 138, 0.06);
+  margin: 0;
+  padding: 14px 18px;
+  border-top: 1px solid var(--line-2);
+  background: var(--danger-wash);
+  color: var(--danger-ink);
 }
 
-.stranded > p {
-  margin: 0;
+.strandedHead {
   display: flex;
   align-items: center;
-  gap: 0.4rem;
-  color: #ff8a8a;
-  font-size: 0.84rem;
+  gap: 8px;
+  margin: 0;
+  font-size: 12.5px;
+  font-weight: 600;
 }
 
-.stranded ul {
-  margin: 0.5rem 0 0;
-  padding-left: 1.1rem;
-  color: var(--fg);
-  font-family: var(--font-jetbrains-mono), ui-monospace, monospace;
-  font-size: 0.82rem;
+.strandedList {
+  margin: 8px 0 0;
+  padding-left: 18px;
+  color: var(--ink);
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-size: 12.5px;
 }
 
 .strandedWhy {
-  margin-top: 0.6rem !important;
-  color: var(--muted) !important;
-  font-size: 0.78rem !important;
-  line-height: 1.5;
-  display: block !important;
   max-width: 68ch;
+  margin: 10px 0 0;
+  color: var(--ink-2);
+  font-size: 11.5px;
+  line-height: 1.5;
+}
+
+.convertNote {
+  max-width: 68ch;
+  margin: 0;
+  padding: 12px 18px;
+  border-top: 1px solid var(--line-2);
+  color: var(--ink-3);
+  font-size: 11.5px;
+  line-height: 1.55;
+}
+
+.convertNote code {
+  color: var(--ink-2);
+  font-family: var(--font-mono), ui-monospace, monospace;
+}
+
+/* ---- history tables ---------------------------------------------------- */
+
+.scroller {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.table {
+  width: 100%;
+  min-width: 520px;
+  border-collapse: collapse;
+  table-layout: fixed;
+}
+
+.table th {
+  padding: 9px 18px;
+  border-bottom: 1px solid var(--line-2);
+  color: var(--ink-3);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.09em;
+  text-align: left;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.table td {
+  padding: 12px 18px;
+  border-bottom: 1px solid var(--line-softer);
+  color: var(--ink-2);
+  font-size: 12.5px;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+
+.table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.table tbody tr:hover {
+  background: var(--panel-2);
+}
+
+.table a {
+  color: var(--link);
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-size: 12px;
+}
+
+/* Trailing columns are pinned so a long amount never leaves the tx link ragged. */
+.conversions th:nth-child(1) {
+  width: 74px;
+}
+
+.conversions th:nth-child(4) {
+  width: 120px;
+}
+
+.conversions th:nth-child(5) {
+  width: 136px;
+}
+
+.winners th:nth-child(1) {
+  width: 74px;
+}
+
+.winners th:nth-child(4) {
+  width: 136px;
+}
+
+/* `--ink`, deliberately not `--zap`: yellow text on Ivory and Paper is around
+   1.1:1. The emphasis here comes from weight and the mono face. */
+.gain {
+  color: var(--ink);
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-weight: 600;
+}
+
+.copy {
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-size: 12px;
+}
+
+/* ---- rules ------------------------------------------------------------- */
+
+.rules {
+  margin-top: 34px;
+  padding-top: 26px;
+  border-top: 1px solid var(--line-2);
+}
+
+.rulesTitle {
+  margin: 0 0 14px;
+  font-family: var(--font-serif), Georgia, serif;
+  font-size: 22px;
+  font-weight: 500;
+  letter-spacing: -0.02em;
+}
+
+.ruleGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.ruleCard {
+  padding: 16px 18px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-card-sm);
+  background: var(--panel);
+}
+
+.ruleCard h3 {
+  margin: 0 0 6px;
+  font-size: 13.5px;
+  font-weight: 600;
+}
+
+.ruleCard p {
+  margin: 0;
+  color: var(--ink-2);
+  font-size: 12.5px;
+  line-height: 1.55;
+}
+
+.ruleCard code {
+  font-family: var(--font-mono), ui-monospace, monospace;
+}
+
+.foot {
+  max-width: 68ch;
+  margin: 16px 0 0;
+  color: var(--ink-3);
+  font-size: 11.5px;
+  line-height: 1.6;
+}
+
+.foot a {
+  color: var(--link);
+  font-weight: 600;
+}
+
+/* ---- reflow ------------------------------------------------------------
+   The shell drops its 1040px minimum at 900px, so the console has to become a
+   single column in reading order: the chain readings first, the rail's static
+   rules after them. The numbers are why anyone opens /pot. */
+
+@media (max-width: 900px) {
+  .grid {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 26px;
+  }
+
+  .title {
+    font-size: 34px;
+    letter-spacing: -0.02em;
+    line-height: 1.08;
+  }
+
+  .lede {
+    max-width: none;
+    font-size: 14px;
+  }
+
+  .stats {
+    gap: 10px;
+  }
+
+  .statValue strong {
+    font-size: 20px;
+  }
+
+  .ruleGrid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .cardHead,
+  .cardBody,
+  .pendingRow,
+  .stranded,
+  .convertNote,
+  .table th,
+  .table td {
+    padding-inline: 14px;
+  }
+
+  .potTitle,
+  .rulesTitle {
+    font-size: 20px;
+  }
+}
+
+@media (max-width: 640px) {
+  .title {
+    font-size: 30px;
+  }
+
+  .splitPct {
+    font-size: 28px;
+  }
+
+  .stats {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .card {
+    margin-top: 20px;
+    border-radius: var(--r-card-sm);
+  }
+
+  .walletBar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .ghostBtn {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .potHead {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .potAddr {
+    min-height: 32px;
+  }
+
+  .pendingRow {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 10px;
+  }
+
+  .convertBtn {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .copy {
+    min-height: 32px;
+    padding: 4px 6px;
+  }
+
+  .table {
+    min-width: 480px;
+  }
 }

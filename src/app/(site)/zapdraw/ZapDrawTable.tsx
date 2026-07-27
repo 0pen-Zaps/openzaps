@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 
+import { Glyph } from "@/components/Glyph";
 import { useWalletSession } from "@/components/WalletProvider";
 import {
   createPublicClient,
@@ -148,7 +149,7 @@ const PHASE_COPY: Record<Phase, { label: string; hint: string }> = {
   },
   settle: {
     label: "Settle",
-    hint: "The windows are closed. Anyone can discharge the bus and collect the keeper reward; the next round opens the moment they do.",
+    hint: "The windows are closed. Anyone can discharge the bus and is credited the keeper reward for doing it; the next round opens the moment they do.",
   },
 };
 
@@ -328,6 +329,19 @@ export function ZapDrawTable(): React.JSX.Element {
     return h > 0 ? `${h}h ${m}m` : m > 0 ? `${m}m ${String(s).padStart(2, "0")}s` : `${s}s`;
   }
 
+  /**
+   * The seat card's connection light. Presentational only — every gate below
+   * still reads `account` / `isRobinhoodChain` directly, so a mislabelled dot
+   * could never let an action through.
+   */
+  const connection: { tone: "ok" | "warn" | "idle"; label: string } = account
+    ? isRobinhoodChain
+      ? { tone: "ok", label: "connected" }
+      : { tone: "warn", label: "wrong chain" }
+    : walletStatus === "checking"
+      ? { tone: "idle", label: "checking…" }
+      : { tone: "idle", label: "not connected" };
+
   // ------------------------------------------------------------------ //
   // Actions                                                             //
   // ------------------------------------------------------------------ //
@@ -401,7 +415,8 @@ export function ZapDrawTable(): React.JSX.Element {
         functionName: "approve",
         // Exactly one entry, not an unbounded allowance: this is a game, and a
         // standing infinite approval to it is a bigger authorisation than the
-        // action needs. The cost is one approval per round.
+        // action needs. The cost is one approval per round, and the hint under
+        // the button promises exactly this.
         args: [game, state.entryFee],
       }),
     );
@@ -524,70 +539,87 @@ export function ZapDrawTable(): React.JSX.Element {
   }
 
   return (
-    <section className={styles.table}>
-      {/* -------- status bar -------- */}
-      <header className={styles.bar}>
-        <div className={styles.barMain}>
-          <span className={styles.round}>{state ? `Round ${state.round}` : "Round —"}</span>
-          {phase ? (
-            <span className={styles.phase} data-phase={phase}>
-              {PHASE_COPY[phase].label}
-            </span>
-          ) : null}
-        </div>
-        <div className={styles.barClock}>
-          {state && phase === "commit" ? <span>Commits close in {countdown(state.commitEnd)}</span> : null}
-          {state && phase === "reveal" ? <span>Reveals close in {countdown(state.revealEnd)}</span> : null}
-          {state && phase === "settle" ? <span>Awaiting settlement</span> : null}
-        </div>
-      </header>
+    <>
+      {/* -------- round bar -------- */}
+      <div className={styles.roundBar}>
+        <strong className={styles.roundId}>{state ? `Round ${state.round}` : "Round —"}</strong>
+        {phase ? (
+          <span className={styles.phase} data-phase={phase}>
+            {PHASE_COPY[phase].label}
+          </span>
+        ) : null}
+        {state && phase === "commit" ? (
+          <span className={styles.roundClock}>
+            Commits close in <strong className={styles.roundClockValue}>{countdown(state.commitEnd)}</strong>
+          </span>
+        ) : null}
+        {state && phase === "reveal" ? (
+          <span className={styles.roundClock}>
+            Reveals close in <strong className={styles.roundClockValue}>{countdown(state.revealEnd)}</strong>
+          </span>
+        ) : null}
+        {state && phase === "settle" ? <span className={styles.roundClock}>Awaiting settlement</span> : null}
+        {phase ? <span className={styles.roundHint}>{PHASE_COPY[phase].hint}</span> : null}
+      </div>
 
       {rpcDown ? (
-        <p className={styles.warn} role="status">
-          Robinhood RPC is unreachable, so the numbers below are the last good read and may be stale. Nothing
-          here is showing you a zero it invented.
+        <p className={styles.banner} data-tone="warn" role="status">
+          Robinhood RPC is unreachable. The numbers below are the last good read and may be stale; where no
+          read has landed they stay blank. Nothing here is showing you a zero it invented.
         </p>
       ) : null}
 
       {wrongChain ? (
-        <p className={styles.warn} role="status">
+        <p className={styles.banner} data-tone="warn" role="status">
           Your wallet is on chain {walletChainId ?? "an unknown network"}. ZapDraw lives on Robinhood Chain (
           {ROBINHOOD_CHAIN_ID}); any action below will ask you to switch first.
         </p>
       ) : null}
 
-      {/* -------- the bus -------- */}
-      <div className={styles.grid}>
-        <div className={styles.panel}>
-          <h3 className={styles.panelTitle}>The bus</h3>
+      <div className={styles.panels}>
+        {/* -------- the bus -------- */}
+        <section className={styles.card} aria-busy={state === null}>
+          <div className={styles.cardHead}>
+            <h2 className={styles.cardTitle}>The bus</h2>
+            <span className={styles.cardSub}>what there is to be served from</span>
+          </div>
+
+          <div className={styles.busHero}>
+            <strong className={styles.busHeroValue} data-unknown={state === null}>
+              {!state ? "—" : emptyTable ? "Empty" : fmt(capacity)}
+            </strong>
+            {emptyTable ? null : <span className={styles.busHeroUnit}>0xZAPS capacity</span>}
+          </div>
+
           <dl className={styles.facts}>
-            <div>
-              <dt>Capacity</dt>
-              <dd className={styles.big}>
-                {!state ? "—" : emptyTable ? "Empty" : `${fmt(capacity)} 0xZAPS`}
+            <div className={styles.fact}>
+              <dt className={styles.factLabel}>Seats taken</dt>
+              <dd className={styles.factValue}>{state ? `${state.seats} / ${MAX_SEATS}` : "—"}</dd>
+            </div>
+            <div className={styles.fact}>
+              <dt className={styles.factLabel}>Draws revealed</dt>
+              {/* While commits are open the count is always 0 and says nothing on
+                  its own; what a reader actually wants is when it starts moving. */}
+              <dd className={styles.factValue}>
+                {!state
+                  ? "—"
+                  : phase === "commit"
+                    ? `${state.reveals} — reveals open in ${countdown(state.commitEnd)}`
+                    : String(state.reveals)}
               </dd>
             </div>
-            <div>
-              <dt>Seats taken</dt>
-              <dd>
-                {state ? `${state.seats} / ${MAX_SEATS}` : "—"}
-              </dd>
+            <div className={styles.fact}>
+              <dt className={styles.factLabel}>Entry</dt>
+              <dd className={styles.factValue}>{state ? `${fmt(state.entryFee)} 0xZAPS` : "—"}</dd>
             </div>
-            <div>
-              <dt>Draws revealed</dt>
-              <dd>{state ? state.reveals : "—"}</dd>
-            </div>
-            <div>
-              <dt>Entry</dt>
-              <dd>{state ? `${fmt(state.entryFee)} 0xZAPS` : "—"}</dd>
-            </div>
-            <div>
-              <dt>Carry pool</dt>
-              <dd>{state ? `${fmt(state.carryPool)} 0xZAPS` : "—"}</dd>
+            <div className={styles.fact}>
+              <dt className={styles.factLabel}>Carry pool</dt>
+              <dd className={styles.factValue}>{state ? `${fmt(state.carryPool)} 0xZAPS` : "—"}</dd>
             </div>
           </dl>
+
           {state && state.carryPool > 0n ? (
-            <p className={styles.note}>
+            <p className={styles.cardNote}>
               Of that pool, only{" "}
               <strong>{fmt(releasableCarry(state.seats, state.entryFee, state.rakeBps, state.carryPool))} 0xZAPS</strong>{" "}
               can enter this round — a round may draw on the pool up to the rake it pays, and no
@@ -596,7 +628,7 @@ export function ZapDrawTable(): React.JSX.Element {
             </p>
           ) : null}
           {emptyTable ? (
-            <p className={styles.note}>
+            <p className={styles.cardNote}>
               Nobody has sat down yet. Each seat puts <strong>{fmt(perSeat)} 0xZAPS</strong> on the bus —
               the {fmt(state.entryFee)} entry less the {((state.rakeBps + state.keeperBps) / 100).toFixed(2)}%
               that leaves as rake and keeper reward.
@@ -604,248 +636,372 @@ export function ZapDrawTable(): React.JSX.Element {
           ) : null}
 
           {state && state.reveals < MIN_REVEALS ? (
-            <p className={styles.note}>
+            <p className={styles.cardNote}>
               A round needs {MIN_REVEALS} revealed draws before the bus discharges at all. Below that the whole
               capacity returns to the carry pool.
             </p>
           ) : null}
-          <p className={styles.fine}>
+
+          <p className={styles.cardFine}>
             Contract{" "}
+            {/* The FULL checksummed address, never a truncation: this is the
+                string people paste into the explorer to check they are on the
+                thing the page claims. */}
             <a href={explorerAddress(game)} target="_blank" rel="noreferrer">
               {game}
-            </a>
+            </a>{" "}
+            · no admin, no pause, no upgrade path
           </p>
-        </div>
+        </section>
 
         {/* -------- your seat -------- */}
-        <div className={styles.panel}>
-          <h3 className={styles.panelTitle}>Your seat</h3>
+        <section className={styles.card}>
+          <div className={styles.cardHead}>
+            <h2 className={styles.cardTitle}>Your seat</h2>
+            <span className={styles.cardStatus} data-tone={connection.tone}>
+              <i className={styles.statusDot} />
+              {connection.label}
+            </span>
+          </div>
 
-          {!account ? (
+          {account ? (
             <>
-              <p className={styles.note}>
-                Connecting only reads your address. It does not move a token and does not commit you to a round.
-              </p>
-              <button
-                type="button"
-                className={styles.primary}
-                onClick={() => void connect()}
-                disabled={busy !== null || walletStatus === "checking" || !providerAvailable}
-                title={!providerAvailable && walletStatus !== "checking" ? "No injected EIP-1193 wallet was found." : undefined}
-              >
-                {busy === "connect"
-                  ? "Connecting…"
-                  : walletStatus === "checking"
-                    ? "Checking wallet…"
-                    : providerAvailable
-                      ? "Connect wallet"
-                      : "No wallet found"}
-              </button>
+              <div className={styles.seatRow}>
+                <span className={styles.seatLabel}>Wallet</span>
+                <code className={styles.seatCode}>
+                  {account.slice(0, 6)}…{account.slice(-4)}
+                </code>
+              </div>
+              <div className={styles.seatRow}>
+                <span className={styles.seatLabel}>0xZAPS balance</span>
+                {/* `—` until the tagged read lands. A zero here would be a claim
+                    about this wallet that no read has actually made. */}
+                <span className={styles.seatValue}>{view ? fmt(balance) : "—"}</span>
+              </div>
+              <div className={`${styles.seatRow} ${styles.seatRowLast}`}>
+                <span className={styles.seatLabel}>Claimable</span>
+                <span className={styles.seatValueGroup}>
+                  <strong className={credit > 0n ? styles.factValueOk : styles.seatValue}>
+                    {view ? fmt(credit) : "—"}
+                  </strong>
+                  {credit > 0n ? (
+                    <button
+                      type="button"
+                      className={styles.ghostButton}
+                      onClick={() => void claim()}
+                      disabled={busy !== null}
+                      data-busy={busy === "claim"}
+                    >
+                      {busy === "claim" ? <i className={styles.spinner} aria-hidden /> : null}
+                      {busy === "claim" ? "Claiming…" : "Claim"}
+                    </button>
+                  ) : null}
+                </span>
+              </div>
             </>
-          ) : (
-            <>
-              <dl className={styles.facts}>
-                <div>
-                  <dt>Wallet</dt>
-                  <dd className={styles.mono}>
-                    {account.slice(0, 6)}…{account.slice(-4)}
-                  </dd>
-                </div>
-                <div>
-                  <dt>0xZAPS balance</dt>
-                  <dd>{fmt(balance)}</dd>
-                </div>
-                <div>
-                  <dt>Claimable</dt>
-                  <dd className={credit > 0n ? styles.win : undefined}>{fmt(credit)}</dd>
-                </div>
-              </dl>
+          ) : null}
 
-              {credit > 0n ? (
-                <button type="button" className={styles.primary} onClick={() => void claim()} disabled={busy !== null}>
-                  {busy === "claim" ? "Claiming…" : `Claim ${fmt(credit)} 0xZAPS`}
-                </button>
-              ) : null}
-
-              {/* commit */}
-              {phase === "commit" && state ? (
-                mySeat?.committed ? (
-                  <p className={styles.note}>
-                    You hold a seat in round {String(state.round)}. Come back during the reveal window to open it —
-                    a seat never opened forfeits its entry.
-                  </p>
-                ) : (
-                  <div className={styles.form}>
-                    <label className={styles.label} htmlFor="draw">
-                      Your draw — how much of the capacity you claim
-                    </label>
-                    <div className={styles.drawRow}>
-                      <input
-                        id="draw"
-                        className={styles.input}
-                        type="range"
-                        min={1}
-                        max={BPS}
-                        step={25}
-                        value={drawValid ? drawBps : 2500}
-                        onChange={(e) => setDrawInput(e.target.value)}
-                      />
-                      <output className={styles.drawValue}>{drawValid ? (drawBps / 100).toFixed(2) : "—"}%</output>
-                    </div>
-                    <p className={styles.projection}>
-                      At today&apos;s capacity that draw asks for <strong>{fmt(wouldTake)} 0xZAPS</strong>.{" "}
-                      {queuePosition
-                        ? queuePosition.wouldSurvive
-                          ? "Against the draws revealed so far it would be served — but every reveal after this one changes that."
-                          : "Against the draws revealed so far the bus would already be dry before it reached you."
-                        : null}
+          <div className={styles.form}>
+            {!account ? (
+              <>
+                <p className={styles.formNote}>
+                  Connecting only reads your address. It does not move a token and does not commit you to a round.
+                </p>
+                <div className={styles.actions}>
+                  <button
+                    type="button"
+                    className={styles.primary}
+                    onClick={() => void connect()}
+                    disabled={busy !== null || walletStatus === "checking" || !providerAvailable}
+                    data-busy={busy === "connect"}
+                    title={!providerAvailable && walletStatus !== "checking" ? "No injected EIP-1193 wallet was found." : undefined}
+                  >
+                    {busy === "connect" ? <i className={styles.spinner} aria-hidden /> : null}
+                    {busy === "connect"
+                      ? "Connecting…"
+                      : walletStatus === "checking"
+                        ? "Checking wallet…"
+                        : providerAvailable
+                          ? "Connect wallet"
+                          : "No wallet found"}
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                {/* commit */}
+                {phase === "commit" && state ? (
+                  mySeat?.committed ? (
+                    <p className={styles.formNote}>
+                      You hold a seat in round {String(state.round)}. Come back during the reveal window to open it —
+                      a seat never opened forfeits its entry.
                     </p>
-                    {allowance < state.entryFee ? (
-                      <button type="button" className={styles.primary} onClick={() => void approve()} disabled={busy !== null}>
-                        {busy === "approve" ? "Approving…" : `Approve ${fmt(state.entryFee)} 0xZAPS`}
-                      </button>
-                    ) : (
+                  ) : (
+                    <>
+                      <label className={styles.formLabel} htmlFor="draw">
+                        Your draw — how much of the capacity you claim
+                      </label>
+                      <div className={styles.drawRow}>
+                        <input
+                          id="draw"
+                          className={styles.range}
+                          type="range"
+                          min={1}
+                          max={BPS}
+                          step={25}
+                          value={drawValid ? drawBps : 2500}
+                          onChange={(e) => setDrawInput(e.target.value)}
+                        />
+                        <output className={styles.drawValue}>{drawValid ? (drawBps / 100).toFixed(2) : "—"}%</output>
+                      </div>
+                      <p className={styles.projection}>
+                        At the capacity on the bus now, that draw asks for <strong>{fmt(wouldTake)} 0xZAPS</strong>.{" "}
+                        {queuePosition ? (
+                          <span className={queuePosition.wouldSurvive ? styles.verdictOk : styles.verdictBad}>
+                            {queuePosition.wouldSurvive
+                              ? "No draw is open yet, so there is nothing to rank you against — what the rest of the table opens decides whether the bus reaches you."
+                              : "The draws already open would leave the bus dry before it reached you."}
+                          </span>
+                        ) : null}
+                      </p>
+                      <div className={styles.actions}>
+                        {allowance < state.entryFee ? (
+                          <button
+                            type="button"
+                            className={styles.primary}
+                            onClick={() => void approve()}
+                            disabled={busy !== null}
+                            data-busy={busy === "approve"}
+                          >
+                            {busy === "approve" ? <i className={styles.spinner} aria-hidden /> : null}
+                            {busy === "approve" ? "Approving…" : `Approve ${fmt(state.entryFee)} 0xZAPS`}
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            className={styles.primary}
+                            onClick={() => void commit()}
+                            disabled={busy !== null || !drawValid || balance < state.entryFee}
+                            data-busy={busy === "commit"}
+                          >
+                            {busy === "commit" ? <i className={styles.spinner} aria-hidden /> : null}
+                            {busy === "commit" ? "Sealing…" : `Pay ${fmt(state.entryFee)} 0xZAPS and seal`}
+                          </button>
+                        )}
+                        <span className={styles.actionHint}>
+                          {allowance < state.entryFee
+                            ? "Approves exactly one entry — never an unbounded allowance."
+                            : "Spends the one entry you approved and leaves no standing allowance."}
+                        </span>
+                      </div>
+                      {balance < state.entryFee ? (
+                        <p className={styles.banner} data-tone="warn">
+                          Your 0xZAPS balance is below the entry for this round.
+                        </p>
+                      ) : null}
+                      <div className={styles.saltNote}>
+                        <Glyph name="lock" className={styles.saltIcon} />
+                        <p>
+                          Sealing stores a random salt in this browser and shows you an exportable copy. Clear
+                          this site&apos;s data before you reveal and the seat cannot be opened — an unopened seat
+                          forfeits its entry.
+                        </p>
+                      </div>
+                    </>
+                  )
+                ) : null}
+
+                {/* reveal */}
+                {phase === "reveal" && state ? (
+                  !mySeat?.committed ? (
+                    <p className={styles.formNote}>
+                      You have no seat in round {String(state.round)}. Wait for the next one.
+                    </p>
+                  ) : mySeat.revealed ? (
+                    <p className={styles.formNote}>
+                      Your draw of {seal ? (seal.draw / 100).toFixed(2) : "—"}% is open and in the queue. Nothing more to
+                      do until settlement.
+                    </p>
+                  ) : seal ? (
+                    <>
+                      <p className={styles.formNote}>
+                        Opening a sealed draw of <strong>{(seal.draw / 100).toFixed(2)}%</strong>.
+                      </p>
+                      <div className={styles.actions}>
+                        <button
+                          type="button"
+                          className={styles.primary}
+                          onClick={() => void reveal()}
+                          disabled={busy !== null}
+                          data-busy={busy === "reveal"}
+                        >
+                          {busy === "reveal" ? <i className={styles.spinner} aria-hidden /> : null}
+                          {busy === "reveal" ? "Opening…" : "Open my draw"}
+                        </button>
+                      </div>
+                    </>
+                  ) : (
+                    /* A forfeited entry, not a caution: this is the one branch
+                       where doing nothing costs money. */
+                    <p className={styles.banner} data-tone="danger">
+                      You hold a seat but this browser has no record of its salt, so it cannot be opened here. If you
+                      exported the seal, paste it back into this browser&apos;s storage; otherwise the entry is
+                      forfeit when the window closes. This is the failure mode a sealed bid cannot protect you from.
+                    </p>
+                  )
+                ) : null}
+
+                {/* settle */}
+                {phase === "settle" ? (
+                  <>
+                    <p className={styles.formNote}>
+                      The round is ready to discharge. Anyone can do it and the caller is credited the keeper reward.
+                    </p>
+                    <div className={styles.actions}>
                       <button
                         type="button"
                         className={styles.primary}
-                        onClick={() => void commit()}
-                        disabled={busy !== null || !drawValid || balance < state.entryFee}
+                        onClick={() => void settle()}
+                        disabled={busy !== null}
+                        data-busy={busy === "settle"}
                       >
-                        {busy === "commit" ? "Sealing…" : `Pay ${fmt(state.entryFee)} 0xZAPS and seal`}
+                        {busy === "settle" ? <i className={styles.spinner} aria-hidden /> : null}
+                        {busy === "settle" ? "Discharging…" : "Settle the round"}
                       </button>
-                    )}
-                    {balance < state.entryFee ? (
-                      <p className={styles.warn}>Your 0xZAPS balance is below the entry for this round.</p>
-                    ) : null}
-                  </div>
-                )
-              ) : null}
+                    </div>
+                  </>
+                ) : null}
+              </>
+            )}
 
-              {/* reveal */}
-              {phase === "reveal" && state ? (
-                !mySeat?.committed ? (
-                  <p className={styles.note}>You have no seat in round {String(state.round)}. Wait for the next one.</p>
-                ) : mySeat.revealed ? (
-                  <p className={styles.note}>
-                    Your draw of {seal ? (seal.draw / 100).toFixed(2) : "—"}% is open and in the queue. Nothing more to
-                    do until settlement.
-                  </p>
-                ) : seal ? (
-                  <div className={styles.form}>
-                    <p className={styles.note}>
-                      Opening a sealed draw of <strong>{(seal.draw / 100).toFixed(2)}%</strong>.
-                    </p>
-                    <button type="button" className={styles.primary} onClick={() => void reveal()} disabled={busy !== null}>
-                      {busy === "reveal" ? "Opening…" : "Open my draw"}
-                    </button>
-                  </div>
-                ) : (
-                  <p className={styles.warn}>
-                    You hold a seat but this browser has no record of its salt, so it cannot be opened here. If you
-                    exported the seal, paste it back into this browser&apos;s storage; otherwise the entry is
-                    forfeit when the window closes. This is the failure mode a sealed bid cannot protect you from.
-                  </p>
-                )
-              ) : null}
-
-              {/* settle */}
-              {phase === "settle" ? (
-                <div className={styles.form}>
-                  <p className={styles.note}>
-                    The round is ready to discharge. Anyone can do it and the caller is credited the keeper reward.
-                  </p>
-                  <button type="button" className={styles.primary} onClick={() => void settle()} disabled={busy !== null}>
-                    {busy === "settle" ? "Discharging…" : "Settle the round"}
-                  </button>
-                </div>
-              ) : null}
-            </>
-          )}
-        </div>
+            {/* Feedback sits beside the control that caused it, not at the foot
+                of the page where an in-flight write scrolls out of sight. */}
+            {notice ? (
+              <p className={styles.banner} data-tone="info" role="status">
+                {notice}
+                {lastTx ? (
+                  <>
+                    {" "}
+                    <a
+                      href={explorerTransaction(lastTx)}
+                      target="_blank"
+                      rel="noreferrer"
+                      className={styles.bannerLink}
+                    >
+                      View transaction
+                    </a>
+                  </>
+                ) : null}
+              </p>
+            ) : null}
+            {error ? (
+              <p className={styles.banner} data-tone="danger" role="alert">
+                {error}
+              </p>
+            ) : null}
+          </div>
+        </section>
       </div>
 
       {/* -------- the seal -------- */}
       {seal && !seal.revealedAt ? (
-        <div className={styles.seal}>
-          <h3 className={styles.panelTitle}>Keep this. It is the only way to open your draw.</h3>
-          <p className={styles.note}>
+        <section className={styles.sealCard}>
+          <div className={styles.cardHead}>
+            <h2 className={styles.cardTitle}>Keep this. It is the only way to open your draw.</h2>
+          </div>
+          <p className={styles.cardNote}>
             Your draw is sealed with a random salt held in this browser only. Clear this site&apos;s data before
             the reveal window and your seat becomes unopenable — and an unopened seat forfeits its entry by design.
             Copy the backup below if you might return in a different browser.
           </p>
           <pre className={styles.sealBlob}>{exportSeal(seal)}</pre>
           {!sealPersisted ? (
-            <p className={styles.warn}>
+            <p className={styles.banner} data-tone="danger">
               This browser refused to persist the seal (storage full or blocked). Copy the block above now — it is
               the only copy that exists.
             </p>
           ) : null}
-        </div>
+        </section>
       ) : null}
 
       {/* -------- the queue -------- */}
       {state && state.draws.length > 0 && projection ? (
-        <div className={styles.queue}>
-          <h3 className={styles.panelTitle}>The queue as it stands</h3>
-          <p className={styles.note}>
-            A projection over the draws revealed so far, not a result. Settlement runs on the draws present when
-            the reveal window closes, and every reveal between now and then moves this line.
-          </p>
-          <table className={styles.rows}>
-            <thead>
-              <tr>
-                <th scope="col">#</th>
-                <th scope="col">Player</th>
-                <th scope="col">Draw</th>
-                <th scope="col">Would take</th>
-                <th scope="col">Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              {projection.rows.map((row, i) => (
-                <tr key={`${row.player}-${i}`} data-me={account !== null && row.player.toLowerCase() === account.toLowerCase()}>
-                  <td>{i + 1}</td>
-                  <td className={styles.mono}>
-                    {row.player.slice(0, 6)}…{row.player.slice(-4)}
-                  </td>
-                  <td>{(row.draw / 100).toFixed(2)}%</td>
-                  <td>{fmt(row.wants)}</td>
-                  <td className={row.served ? styles.served : styles.cut}>
-                    {projection.stalled ? "held" : row.served ? "served" : "cut"}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          <p className={styles.fine}>
-            {projection.stalled
-              ? `Fewer than ${MIN_REVEALS} draws revealed — the whole capacity would carry.`
-              : `${fmt(projection.served)} 0xZAPS would be delivered, ${fmt(projection.carry)} would stay charged for the next round.`}
-          </p>
-        </div>
+        <>
+          <div className={styles.sectionHead}>
+            <h2 className={styles.sectionTitle}>The queue as it stands</h2>
+            <span className={styles.sectionSub}>
+              Sorted ascending and paid in full while the current lasts.
+            </span>
+          </div>
+          <section className={styles.queueCard}>
+            <p className={styles.queueIntro}>
+              A projection over the draws revealed so far, not a result. Settlement runs on the draws present when
+              the reveal window closes, and every reveal between now and then moves this line.
+            </p>
+            {/* The exact 5-column measure is only reachable with a grid, so the
+                table semantics are restored by hand rather than lost. */}
+            <div className={styles.queueScroll}>
+              <div role="table" aria-label="Revealed draws, sorted ascending">
+                <div className={`${styles.queueGrid} ${styles.queueHead}`} role="row">
+                  <span role="columnheader">#</span>
+                  <span role="columnheader">Player</span>
+                  <span role="columnheader" className={styles.qHeadNum}>
+                    Draw
+                  </span>
+                  <span role="columnheader" className={styles.qHeadNum}>
+                    Would take
+                  </span>
+                  <span role="columnheader" className={styles.qHeadNum}>
+                    Status
+                  </span>
+                </div>
+                {projection.rows.map((row, i) => {
+                  const status = projection.stalled ? "held" : row.served ? "served" : "cut";
+                  const mine = account !== null && row.player.toLowerCase() === account.toLowerCase();
+                  return (
+                    <div
+                      key={`${row.player}-${i}`}
+                      className={`${styles.queueGrid} ${styles.queueRow}`}
+                      role="row"
+                      data-me={mine}
+                      data-state={status}
+                    >
+                      <span className={styles.qIndex} role="cell">
+                        {i + 1}
+                      </span>
+                      <span className={styles.qPlayer} role="cell">
+                        <code className={styles.qCode}>
+                          {row.player.slice(0, 6)}…{row.player.slice(-4)}
+                        </code>
+                        {mine ? <span className={styles.qYou}>you</span> : null}
+                      </span>
+                      <span className={styles.qNum} role="cell">
+                        {(row.draw / 100).toFixed(2)}%
+                      </span>
+                      <span className={styles.qNum} role="cell" data-struck={status === "cut"}>
+                        {fmt(row.wants)}
+                      </span>
+                      <span className={styles.qStatus} role="cell" data-state={status}>
+                        {status}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+            <p className={styles.queueFoot}>
+              {projection.stalled ? (
+                `Fewer than ${MIN_REVEALS} draws revealed — the whole capacity would carry.`
+              ) : (
+                <>
+                  <strong>{fmt(projection.served)} 0xZAPS</strong> would be delivered,{" "}
+                  <strong>{fmt(projection.carry)}</strong> would stay charged for the next round.
+                </>
+              )}
+            </p>
+          </section>
+        </>
       ) : null}
-
-      {/* -------- messages -------- */}
-      {notice ? (
-        <p className={styles.notice} role="status">
-          {notice}
-          {lastTx ? (
-            <>
-              {" "}
-              <a href={explorerTransaction(lastTx)} target="_blank" rel="noreferrer">
-                View transaction
-              </a>
-            </>
-          ) : null}
-        </p>
-      ) : null}
-      {error ? (
-        <p className={styles.warn} role="alert">
-          {error}
-        </p>
-      ) : null}
-
-      {phase ? <p className={styles.fine}>{PHASE_COPY[phase].hint}</p> : null}
-    </section>
+    </>
   );
 }

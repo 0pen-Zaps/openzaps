@@ -14,7 +14,6 @@ import {
 import { STATIC_PAGE_SEO, breadcrumbJsonLd, pageMetadata, webPageJsonLd } from "@/lib/seo";
 import { fetchRangeVaultPulse, fetchZapVaultPulse, formatPulseAmount } from "@/lib/vault-server";
 import { fetchZapSummaries } from "@/lib/zap-server";
-import feed from "./feed.module.css";
 import styles from "./explore.module.css";
 
 export const metadata = pageMetadata({
@@ -39,7 +38,7 @@ const contractRows = [
   ["0xZAPS token", TOKEN_LAUNCH.contract],
 ] as const;
 
-// Both reads are server-rendered so the SEO-relevant numbers and the capsule
+// Both reads are server-rendered so the SEO-relevant numbers and the Zap
 // list are in the crawlable HTML; the activity client then polls for freshness.
 // 5 minutes of ISR keeps it current without a read per visitor. Literal only:
 // Next 16 rejects an expression here at build time.
@@ -58,7 +57,7 @@ export default async function ZapsFeedPage(): Promise<React.JSX.Element> {
   ]);
 
   return (
-    <main className={feed.page} id="main">
+    <main className={styles.screen} data-screen-label="Explore" id="main">
       <JsonLd
         data={{
           "@context": "https://schema.org",
@@ -69,52 +68,39 @@ export default async function ZapsFeedPage(): Promise<React.JSX.Element> {
         }}
       />
 
-      <section className={`container ${feed.hero}`}>
+      <section className={styles.hero}>
         <div>
-          <span className="eyebrow">Explore</span>
-          <h1>Explore every DeFi zap, straight from the chain.</h1>
-          <p>
-            Creations, executions, and recoveries are read directly from Robinhood Chain logs — and an execution row
-            is counted only when it comes from a zap the canonical factory deployed. Below the live feed sits every
-            capsule the factory created, and the verified contract set behind them. No indexer, no estimates.
+          <h1 className={styles.heroTitle}>Explore every DeFi Zap, straight from the chain.</h1>
+          <p className={styles.heroLede}>
+            Creations, Zaps, AutoZaps, and recoveries are read directly from Robinhood Chain logs. An execution
+            counts only when the Zap contract that emitted it was deployed by one of the canonical factories. No
+            indexer, no estimates.
           </p>
-          <div className={feed.heroActions}>
-            <Link className="btn btnPrimary btnLg" href="/zap">
-              Design a chain
-            </Link>
-            <a
-              className="btn btnGhost btnLg"
-              href={explorerAddress(OPENZAP_CONTRACTS.factory)}
-              target="_blank"
-              rel="noreferrer"
-            >
-              Factory on Blockscout ↗
-            </a>
-          </div>
         </div>
-        <aside className={feed.heroCard}>
-          <span>Pinned pool</span>
-          <strong>aeWETH ↔ 0xZAPS · v4 · 2% hook</strong>
-          <code>{ROBINHOOD_LIQUIDITY.poolId.slice(0, 18)}…{ROBINHOOD_LIQUIDITY.poolId.slice(-8)}</code>
+        <aside className={styles.heroCard}>
+          <span className={styles.heroCardLabel}>Pinned pool</span>
+          <strong className={styles.heroCardName}>aeWETH ↔ 0xZAPS · v4 · 2% hook</strong>
+          <code className={styles.heroCardId}>
+            {ROBINHOOD_LIQUIDITY.poolId.slice(0, 18)}…{ROBINHOOD_LIQUIDITY.poolId.slice(-8)}
+          </code>
         </aside>
       </section>
-
-      <TokenUtilityPanel className="container" id="token-utility" />
-
-      {/* Live totals + the polling activity feed. */}
-      <ActivityFeed initial={activity} />
 
       {/* Vault pulse: measured onchain state of the two vaults, server-read
           inside this page's ISR window. Each card fails closed to an explicit
           "unavailable" — a zero here would be a claim, and a false one. No
           yield, APR, or USD figures on purpose: the range vault earns pool
-          fees it does not project, and the ozUSDG vault earns nothing. */}
-      <section className={`container ${feed.metrics}`} aria-label="Vault pulse, read onchain">
-        <div className={feed.metric}>
+          fees it does not project, and the ozUSDG vault earns nothing.
+
+          An unavailable card is drawn identically to a successful one; the
+          `data-unavailable` attribute is the machine-readable version of that
+          state, so a smoke test can assert no card quietly rendered a zero. */}
+      <section className={styles.pulseGrid} aria-label="Vault pulse, read onchain">
+        <div className={styles.pulseCard} data-unavailable={rangeVault === null}>
           {rangeVault === null ? (
             <>
               <strong>unavailable</strong>
-              <span>ozRANGE position — RPC read failed</span>
+              <span>ozRANGE holdings — RPC read failed</span>
             </>
           ) : (
             <>
@@ -126,7 +112,7 @@ export default async function ZapsFeedPage(): Promise<React.JSX.Element> {
             </>
           )}
         </div>
-        <div className={feed.metric}>
+        <div className={styles.pulseCard} data-unavailable={rangeVault === null}>
           {rangeVault === null ? (
             <>
               <strong>unavailable</strong>
@@ -140,11 +126,11 @@ export default async function ZapsFeedPage(): Promise<React.JSX.Element> {
                   ? ` · ${Number((rangeVault.burnedShares * 1000n) / rangeVault.totalShares) / 10}% burned`
                   : ""}
               </strong>
-              <span>ozRANGE shares · burned share is the permanent seed</span>
+              <span>ozRANGE shares · the burned portion is the permanent seed</span>
             </>
           )}
         </div>
-        <div className={feed.metric}>
+        <div className={styles.pulseCard} data-unavailable={rangeVault === null}>
           {rangeVault === null ? (
             <>
               <strong>unavailable</strong>
@@ -157,7 +143,7 @@ export default async function ZapsFeedPage(): Promise<React.JSX.Element> {
             </>
           )}
         </div>
-        <div className={feed.metric}>
+        <div className={styles.pulseCard} data-unavailable={zapVault === null}>
           {zapVault === null ? (
             <>
               <strong>unavailable</strong>
@@ -172,105 +158,138 @@ export default async function ZapsFeedPage(): Promise<React.JSX.Element> {
         </div>
       </section>
 
-      {/* Every capsule the factory deployed, newest first. */}
-      <section className={`container ${styles.panel}`} aria-label="Deployed capsules">
-        <div className={styles.listHead}>
-          <span className="eyebrow">Deployed capsules</span>
-          {page === null ? (
-            <h2>Deployed by the factory, or not listed.</h2>
-          ) : page.rows.length === 0 ? (
-            <h2>No capsule has been deployed yet.</h2>
-          ) : (
-            <h2>
-              {page.truncated
-                ? `Showing the newest ${page.rows.length} of ${page.total} capsules.`
-                : `${page.total === 1 ? "1 capsule" : `${page.total} capsules`}, newest first.`}
-            </h2>
-          )}
-          <p>
-            An address reaches this list one way: the canonical factory&apos;s own ZapCreated log names it. What a
-            capsule does is stored in the capsule, not here — open a row to read the policy it committed to and every
-            execution it has logged.
-            {page?.truncated
-              ? " The rest are onchain and readable from the factory. This page does not list them."
-              : ""}
-          </p>
+      {/* Live totals + the polling activity feed. */}
+      <ActivityFeed initial={activity} />
+
+      {/* Every Zap the factory deployed, newest first. */}
+      <section className={styles.card} aria-label="Deployed Zaps">
+        <div className={styles.cardHead}>
+          <h2 className={styles.cardTitle}>Deployed Zaps</h2>
+          <span className={styles.cardSub}>
+            {page === null
+              ? "unavailable — the log query failed"
+              : page.rows.length === 0
+                ? "no Zap has been deployed yet"
+                : page.truncated
+                  ? `showing the newest ${page.rows.length} of ${page.total} Zaps`
+                  : `${page.total === 1 ? "1 Zap" : `${page.total} Zaps`}, newest first`}
+          </span>
+          <span className={styles.cardHeadEnd}>
+            <a
+              className={styles.headLink}
+              href={explorerAddress(OPENZAP_CONTRACTS.factory)}
+              target="_blank"
+              rel="noreferrer"
+            >
+              Factory ↗
+            </a>
+            {page !== null && (
+              <span className={styles.liveChip}>
+                <i className={styles.liveDot} />
+                re-read every 5 min
+              </span>
+            )}
+          </span>
         </div>
 
         {page === null ? (
           <div className={styles.unavailable} role="alert">
             <p>
               The Robinhood RPC log query failed, so this list is unavailable. An empty list would be a claim that the
-              factory has deployed nothing. Nothing is shown instead.
+              canonical factories have deployed nothing. Nothing is shown instead.
             </p>
             <a
-              className="btn btnGhost"
+              className={styles.ghostBtn}
               href={explorerAddress(OPENZAP_CONTRACTS.factory)}
               target="_blank"
               rel="noreferrer"
             >
-              <span>Read the factory directly ↗</span>
+              Read the v1.1 factory directly ↗
             </a>
           </div>
         ) : page.rows.length === 0 ? (
-          <p className={styles.empty}>No capsule has been deployed yet. The first factory creation will appear here.</p>
+          <p className={styles.empty}>No Zap has been deployed yet. The first factory creation will appear here.</p>
         ) : (
-          <ol className={styles.list}>
+          <ol className={styles.zapList}>
             {page.rows.map((zap, i) => (
-              <li className={styles.listItem} key={zap.address} style={{ "--row-delay": `${Math.min(i, 10) * 45}ms` } as React.CSSProperties}>
-                <Link className={styles.listLink} href={`/explore/${zap.address}`}>
-                  <code className={styles.listAddress}>{shortAddress(zap.address)}</code>
-                  <span className={styles.listOwner}>owner {shortAddress(zap.owner)}</span>
-                  <span className={styles.listPolicy}>{zap.lineage} · policy {shortHex(zap.policyHash)}</span>
-                  <span className={styles.listRuns} data-active={zap.executionCount > 0}>
-                    {zap.executionCount === 1 ? "1 Zap" : `${zap.executionCount} Zaps`}
-                  </span>
-                  <span className={styles.listTime} suppressHydrationWarning>
-                    {/* Rendered in the server's timezone (UTC on Vercel) and again in
-                        the visitor's, so the text legitimately differs across
-                        hydration and React must be told not to treat it as a mismatch. */}
-                    {zap.createdAt
-                      ? `created ${localDate(zap.createdAt)}`
-                      : `created in block ${Number(zap.createdBlock).toLocaleString("en-US")}`}
-                  </span>
+              <li
+                className={styles.zapRow}
+                key={zap.address}
+                style={{ "--row-delay": `${Math.min(i, 10) * 45}ms` } as React.CSSProperties}
+              >
+                <Link className={styles.zapLink} href={`/explore/${zap.address}`}>
+                  <code className={styles.zapAddress}>{shortAddress(zap.address)}</code>
                 </Link>
+                <span className={styles.zapMeta}>
+                  owner {shortAddress(zap.owner)} · {zap.lineage} · policy {shortHex(zap.policyHash)}
+                </span>
+                <span className={styles.zapRuns} data-active={zap.executionCount > 0}>
+                  {zap.executionCount === 1 ? "1 Zap" : `${zap.executionCount} Zaps`}
+                </span>
+                <span className={styles.zapTime} suppressHydrationWarning>
+                  {/* Rendered in the server's timezone (UTC on Vercel) and again in
+                      the visitor's, so the text legitimately differs across
+                      hydration and React must be told not to treat it as a mismatch. */}
+                  {zap.createdAt
+                    ? `created ${localDate(zap.createdAt)}`
+                    : `created in block ${Number(zap.createdBlock).toLocaleString("en-US")}`}
+                </span>
                 <a
-                  className={styles.listTx}
+                  className={styles.zapTx}
                   href={explorerTransaction(zap.createdTx)}
                   target="_blank"
                   rel="noreferrer"
                 >
-                  creation tx ↗
+                  tx <span aria-label="opens transaction on Blockscout in a new tab">↗</span>
                 </a>
               </li>
             ))}
           </ol>
         )}
+
+        <p className={styles.cardFoot}>
+          An address reaches this list one way: a canonical factory&apos;s own ZapCreated log names it — v1.1, v3, or
+          v3.1. What a Zap does is stored in the Zap, not here — open a row to read the policy it committed to and the
+          Executed and EmergencyExit logs it has emitted.
+          {page?.truncated
+            ? " The rest are onchain and readable from the factories. This page does not list them."
+            : ""}
+        </p>
       </section>
 
       {/* The verified contract set. */}
-      <section className={`container ${feed.section}`}>
-        <header className={feed.head}>
-          <span className="eyebrow">Verified contracts</span>
-          <h2>The v1.1 core contract set.</h2>
-          <p>
-            Six source-verified contracts on Robinhood Blockscout. The expansion adapters and the v3 / v3.1
-            automation factories are deployed alongside them — every address is listed in the deployments doc.
-          </p>
-        </header>
-        <div className={feed.contractGrid}>
+      <section className={styles.card} aria-label="Verified contracts">
+        <div className={styles.cardHead}>
+          <h2 className={styles.cardTitle}>Verified contracts</h2>
+          <span className={styles.cardSub}>source-verified on Robinhood Blockscout</span>
+        </div>
+        <div className={styles.contractGrid}>
           {contractRows.map(([label, address]) => (
-            <a className={feed.contractRow} href={explorerAddress(address)} key={label} target="_blank" rel="noreferrer">
-              <span>{label}</span>
-              <code>{address}</code>
+            <a
+              className={styles.contractCell}
+              href={explorerAddress(address)}
+              key={label}
+              target="_blank"
+              rel="noreferrer"
+            >
+              <span className={styles.contractLabel}>{label}</span>
+              <code className={styles.contractAddress}>{address}</code>
             </a>
           ))}
         </div>
-        <p className={feed.note}>
+        <p className={styles.cardFoot}>
+          Six source-verified contracts on Robinhood Blockscout. The expansion adapters and the v3 / v3.1 automation
+          factories are deployed alongside them; their addresses are not listed on this page.
+        </p>
+        <p className={styles.cardFoot}>
           Depositing funds can result in total loss. Onchain actions are irreversible.{" "}
           <Link href="/docs#security">Read the security model</Link>.
         </p>
       </section>
+
+      {/* Marketing copy rather than chain data, so it sits after everything the
+          page actually read. */}
+      <TokenUtilityPanel id="token-utility" />
     </main>
   );
 }

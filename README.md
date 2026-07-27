@@ -4,9 +4,9 @@
 
 # OpenZaps
 
-**A zap cannot do anything it was not signed to do.**
+**A Zap cannot do anything it was not signed to do.**
 
-Bounded policy capsules for agent-triggered DeFi. A capsule fixes the target, recipient, asset, calldata, and execution policy *before* it is signed. Sign once, and the chain keeps the terms: Zap now, on a cadence, or on a price move without widening what the Zap may do.
+Bounded Zaps for agent-triggered DeFi. A Zap — the immutable policy capsule the factory deploys — fixes the target, recipient, asset, calldata, and execution policy *before* it is signed. Sign once, and the chain keeps the terms: Zap now, on a cadence, or on a price move, without widening what the Zap may do.
 
 [![CI](https://github.com/0pen-Zaps/openzaps/actions/workflows/ci.yml/badge.svg)](https://github.com/0pen-Zaps/openzaps/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-fffc00.svg)](./LICENSE)
@@ -23,7 +23,7 @@ Bounded policy capsules for agent-triggered DeFi. A capsule fixes the target, re
 
 ## What this is
 
-An **OpenZap** is a contract that holds funds and executes exactly one policy its owner signed. The policy names the adapter, the spender, the recipient, the input token, and the exact amount, and freezes them behind a hash at creation. An agent — or a relayer, or the owner — can submit an execution, but it can only submit *the* execution: any substitution changes the hash and the capsule rejects it.
+An **OpenZap** is a contract that holds funds and executes exactly one policy its owner signed. The policy names the adapter, the spender, the recipient, the input token, and the exact amount, and freezes them behind a hash at creation. An agent — or a relayer, or the owner — can submit an execution, but it can only submit *the* execution: any substitution changes the hash and the Zap rejects it.
 
 - **Creation authority** stays with the user wallet or Safe.
 - **Execution authority** lives inside the immutable policy, or an EIP-712 typed intent.
@@ -35,15 +35,15 @@ The result is pre-committed, tightly bounded authority for a fixed action graph,
 
 | | |
 | --- | --- |
-| **Swaps and liquidity** | Five deployable blueprints: buy and sell 0xZAPS, a stitched USDG → 0xZAPS route through two pools in one signed step, and aeWETH/USDG liquidity in and out. |
-| **Recurring Zaps** | One signature authorizes a whole series. The capsule enforces the interval and Zap count onchain, so nothing can Zap early, twice, or past the end. |
-| **Price triggers** | Fires once when an allowlisted price source crosses the threshold you signed. The capsule re-reads the market itself on every attempt. |
-| **Per-Zap floors that cannot go stale** | A recurring series derives its minimum output from the price source's spot *for each Zap*, so a floor signed weeks ago still protects the Zap happening now. |
+| **Swaps and liquidity** | Deployable blueprints cover 0xZAPS in and out against aeWETH, the same both ways from USDG through two pools in one signed step, aeWETH ↔ USDG through the pinned stable pool, full-range aeWETH/USDG liquidity in and out from either side, and the ozUSDG ERC-4626 receipt. The rest of the catalog compiles and simulates but cannot be deployed today; the builder badges which is which. |
+| **Recurring Zaps** | One signature authorizes a whole series. The Zap enforces the interval and the total run count onchain, so nothing can run early, twice, or past the end. |
+| **Price triggers** | Fires once when an allowlisted price source crosses the threshold you signed. The Zap re-reads the market itself on every attempt. |
+| **Per-run floors that cannot go stale** | A recurring series derives its minimum output from the price source's spot *for each run*, so a floor signed weeks ago still protects the run happening now. |
 | **Execution policy composition** | Three live blocks bind execution gas, gas price, and executor access. Add the whole stack in one click, edit each bound, and undo the insertion as one canvas change. Gas controls reach one-shot and standing intents; owner-only executor access is enforced by v3/v3.1. |
-| **Anyone can submit** | Each automated Zap pays a 1% protocol fee from output: 80% to whoever submits it, 20% to the 0xZAPS lottery pot. Owners publish signed intents to a shared pool; executors poll it for work. The pool is untrusted, so the capsule re-verifies every field onchain. |
-| **One visible creation fee** | Every capsule created by the current app pays exactly 0.00001 ETH. A gateway calls the existing lineage factory and atomically converts the fee to 0xZAPS through the pinned route; a missed conversion floor reverts creation too. Legacy factories remain directly callable. |
+| **Anyone can submit** | Each automated run pays a 1% protocol fee from output: 80% to whoever submits it, 20% to the 0xZAPS lottery pot. Owners publish signed intents to a shared pool; executors poll it for work. The pool is untrusted, so the Zap re-verifies every field onchain. |
+| **One visible creation fee** | Every Zap created by the current app pays exactly 0.00001 ETH. A gateway calls the existing lineage factory and atomically converts the fee to 0xZAPS through the pinned route; a missed conversion floor reverts creation too. Legacy factories remain directly callable. |
 
-The builder at [`/zap`](https://www.0xzaps.com/zap) designs a Zap from typed route and policy blocks, tells you which bounds the selected contract can enforce, and hands a deployable design to Zap now or Automate with its resolved settings intact.
+The builder at [`/zap`](https://www.0xzaps.com/zap) designs a Zap from typed route and policy blocks, tells you which bounds the selected contract can enforce, and hands a deployable design to Zap now or Automate with its resolved settings intact. `/zap` is one route with four surfaces — Start, Compose, Zap now, Automate — reached from the app sidebar and carried in `?view=start|design|sign|automate`; `?src=build`, `?route=`, and `?d=` share links still mean what they always meant.
 
 ## Repository layout
 
@@ -51,11 +51,14 @@ This is a monorepo. The web app and the Solidity protocol live together.
 
 | Path | What |
 | --- | --- |
-| [`src/app/`](src/app) | The Next.js 16 site: landing page, live policy console (`/zap`), Explore feed (`/explore`), docs, token, and API routes. |
-| [`src/lib/`](src/lib) | Chain definitions, protocol addresses and ABIs, the block catalog behind the visual builder, and the deterministic policy simulator. |
+| [`src/app/`](src/app) | The Next.js 16 site, in two route groups. `(landing)` is `/` alone, with its own nav, footer, and token scope; `(site)` is every interior page — `/zap`, `/explore`, `/profile`, `/pot`, `/zapdraw`, `/docs`, `/token`, `/roadmap`, `/legal` — wrapped in the app shell. `src/app/api/` holds the route handlers; `globals.css` holds the five-theme token layer. |
+| [`src/components/`](src/components) | UI shared across routes: `AppShell` (sidebar, context bar, and the one `#zapscroll` container that owns the scroll), the theme provider and picker, the `Glyph` set, the wallet session provider, and the footer. |
+| [`src/lib/`](src/lib) | Chain definitions, protocol addresses and ABIs, the block catalog behind the visual builder, the deterministic policy simulator, the theme registry (`theme.ts`), and the `?view=` contract the sidebar and the consoles both read (`zap-view.ts`). |
 | [`contracts/`](contracts/README.md) | The Solidity protocol, bounded adapters, deploy/smoke scripts, and the Foundry unit / fuzz / invariant / fork suite. [`v1.1`](contracts/src) carries the single-shot routes; [`v3`](contracts/src/v3/README.md) adds recurring + price-triggered execution and the executor fee/lottery economy; `v3_1` adds per-run floors priced from live spot. The creation gateway preserves all three lineages while enforcing the current app's separate 0xZAPS-converted creation fee. See [`docs/deployments.md`](docs/deployments.md). |
 | [`executor/`](executor/README.md) | The reference **Zap Executor** daemon: watches time and chain, discovers work from the shared intent pool, and submits owed recurring/triggered runs for 80% of the 1% protocol fee (20% funds the 0xZAPS lottery pot). Watch-only unless a gas key is configured. |
 | [`docs/`](docs) | Architecture Decision Records, the testable invariant catalog, and product/security research the design derives from. |
+
+Two structural rules the app depends on. Every interior page renders **content only**: the shell in `src/components/AppShell.tsx` owns the viewport, the scroll container, and the content measure, so pages add no nav, no footer, and no page-level scroll. And every colour, shadow, and radius resolves from one of the five theme blocks in `src/app/globals.css`, selected by `data-oz-theme` on `<html>` and resolved before first paint by the guard in `src/lib/theme.ts` — `voltage` is the identity the app shipped with, preserved exactly. `/` is deliberately outside both: it keeps its own nav and footer, and pins its own copies of the tokens in `src/app/(landing)/landing.module.css`.
 
 ## Quickstart
 
@@ -99,7 +102,7 @@ Three secrets exist. None is read by the browser bundle, and none is ever commit
 
 ## The 0xZAPS token
 
-`0xZAPS` is the ERC-20 paired with aeWETH in the live pool. It confers no yield, equity, revenue claim, governance, or protocol access — core workflows are never token-gated. The lottery pot's 20% share of the protocol fee converts to 0xZAPS and accrues to zap owners as tickets; winner selection is governance-gated and the pot has no owner drain.
+`0xZAPS` is the ERC-20 paired with aeWETH in the live pool. It confers no yield, equity, revenue claim, governance, or protocol access — core workflows are never token-gated. The lottery pot's 20% share of the protocol fee converts to 0xZAPS and accrues to Zap owners as tickets; winner selection is governance-gated and the pot has no owner drain.
 
 - **Network:** Robinhood Chain mainnet (`4663`)
 - **Contract:** [`0xDd90bFa4adC7F4401E611AbaC692D939F9F4CB07`](https://robinhoodchain.blockscout.com/token/0xDd90bFa4adC7F4401E611AbaC692D939F9F4CB07)

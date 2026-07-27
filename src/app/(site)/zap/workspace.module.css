@@ -1,344 +1,449 @@
-.launcher {
-  position: relative;
-  z-index: 1;
-  padding: clamp(1.6rem, 4vw, 3.2rem) 0 5rem;
+/* Start — the intent launcher.
+
+   No width and no page padding: the shell's content wrapper owns the measure
+   (1040/1180) and the 26px gutter. Declaring either here would fight it and
+   would also survive the shell's mobile breakpoint, which is where the old
+   `.container` treatment turned into a sideways scroll. */
+
+.screen {
+  display: block;
 }
 
-.launchHero {
+/* ── Hero ──────────────────────────────────────────────────────────────── */
+
+.hero {
   display: grid;
-  grid-template-columns: minmax(0, 1.5fr) minmax(18rem, 0.62fr);
-  gap: clamp(1.2rem, 4vw, 3.5rem);
+  grid-template-columns: minmax(0, 1fr) 320px;
+  gap: 40px;
   align-items: end;
+  padding: 6px 0 30px;
 }
 
-.launchHero h1 {
-  max-width: 13ch;
-  margin-top: 0.72rem;
-  font-size: clamp(2.7rem, 7vw, 6rem);
-  font-weight: 560;
-  letter-spacing: -0.052em;
-  line-height: 0.94;
+.heroEyebrow {
+  display: block;
+  color: var(--ink-3);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.09em;
+}
+
+/* 22ch, not a <br>. A hard break puts the fold in the same place at every
+   size, which on a phone lands mid-clause; the measure moves it. */
+.heroTitle {
+  max-width: 22ch;
+  margin: 10px 0 0;
+  font-family: var(--font-serif), Newsreader, serif;
+  font-size: 52px;
+  font-weight: 500;
+  letter-spacing: -0.025em;
+  line-height: 1.04;
   text-wrap: balance;
 }
 
-.launchHero > div > p {
-  max-width: 42rem;
-  margin-top: 1.2rem;
-  color: var(--text);
-  font-size: clamp(1rem, 1.5vw, 1.15rem);
-  line-height: 1.65;
+.heroLede {
+  max-width: 60ch;
+  margin: 14px 0 0;
+  color: var(--ink-2);
+  font-size: 15px;
+  line-height: 1.6;
 }
 
-.profilePrompt {
-  position: relative;
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
-  gap: 0.85rem;
-  padding: 1.1rem;
+.controlRoom {
+  padding: 16px;
   border: 1px solid var(--line);
-  background:
-    linear-gradient(140deg, rgba(255, 252, 0, 0.09), transparent 58%),
-    var(--card);
-  box-shadow: var(--card-shadow);
+  border-radius: var(--r-card);
+  background: var(--panel);
+  box-shadow: var(--sh-1);
 }
 
-.profilePrompt::before {
-  position: absolute;
-  top: -1px;
-  left: -1px;
-  width: 4.5rem;
-  height: 2px;
-  content: "";
-  background: var(--accent);
+.controlRoomLabel {
+  display: block;
+  color: var(--ink-3);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
 }
 
-.promptGlyph {
-  width: 1.5rem;
-  color: var(--accent);
-}
-
-.profilePrompt div {
-  display: grid;
-  gap: 0.25rem;
-}
-
-.profilePrompt span {
-  color: var(--muted);
-  font-size: 0.72rem;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-}
-
-.profilePrompt strong {
-  font-size: 0.94rem;
-  font-weight: 520;
+.controlRoomLine {
+  display: block;
+  margin: 8px 0 10px;
+  font-size: 14.5px;
+  font-weight: 600;
   line-height: 1.45;
 }
 
-.profilePrompt a {
-  grid-column: 2;
-  width: max-content;
-  color: var(--accent-bright);
-  font-size: 0.82rem;
+.controlRoomLink {
+  color: var(--link);
+  font-size: 13px;
   font-weight: 600;
 }
 
-.intentSection {
-  margin-top: clamp(3.2rem, 8vw, 6.4rem);
+.controlRoomLink:hover {
+  text-decoration: underline;
+}
+
+/* ── Section head ──────────────────────────────────────────────────────── */
+
+.section {
+  margin-bottom: 34px;
 }
 
 .sectionHead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.sectionTitle {
+  margin: 0;
+  font-family: var(--font-serif), Newsreader, serif;
+  font-size: 20px;
+  font-weight: 500;
+}
+
+.sectionNote {
+  color: var(--ink-3);
+  font-size: 12.5px;
+}
+
+/* ── Reuse row ─────────────────────────────────────────────────────────── */
+
+.reuseGrid {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(18rem, 0.7fr);
-  gap: 0.55rem 2rem;
-  align-items: end;
-  margin-bottom: 1.35rem;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
 }
 
-.sectionHead > span {
+.reuseCard {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 15px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-card-sm);
+  background: var(--panel);
+}
+
+.reuseCopy {
+  min-width: 0;
+}
+
+/* The two truncations are what stop a 48-character design name from widening
+   its column and pushing the grid past the measure. */
+.reuseName {
+  display: block;
+  overflow: hidden;
+  font-size: 13.5px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.reuseMeta {
+  display: block;
+  overflow: hidden;
+  margin-top: 4px;
+  color: var(--ink-3);
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.reuseAction {
+  display: inline-flex;
+  align-items: center;
+  height: 32px;
+  padding: 0 12px;
+  border-radius: var(--r-ctl-sm);
+  /* --on-zap, never --ink: ink on the brand yellow is unreadable in Graphite
+     and Dusk, and cream-on-yellow under Ivory is worse. */
+  background: var(--zap);
+  color: var(--on-zap);
+  font-size: 12.5px;
+  font-weight: 600;
+  white-space: nowrap;
+  transition: background var(--dur-2) var(--ease-standard);
+}
+
+/* The prototype gives the yellow button no hover state. --zap-deep is the one
+   step that keeps --on-zap legible on it in all five themes. */
+.reuseAction:hover {
+  background: var(--zap-deep);
+}
+
+.reuseNotice {
   grid-column: 1 / -1;
+  margin: 0;
+  padding: 14px 15px;
+  border: 1px dashed var(--line);
+  border-radius: var(--r-card-sm);
+  color: var(--ink-3);
+  font-size: 12.5px;
+  line-height: 1.5;
 }
 
-.sectionHead h2 {
-  font-size: clamp(1.7rem, 4vw, 3rem);
-  font-weight: 550;
-  letter-spacing: -0.035em;
-  line-height: 1;
+/* Static on purpose. A shimmer would read as a live reading — the pulse in
+   this app means "this number is being polled" — and there is nothing here
+   for prefers-reduced-motion to have to suppress. */
+.skelBar {
+  display: block;
+  width: 58%;
+  height: 11px;
+  border-radius: var(--r-chip);
+  background: var(--track);
 }
 
-.sectionHead p {
-  color: var(--muted-2);
-  font-size: 0.9rem;
-  line-height: 1.55;
+.skelBar + .skelBar {
+  width: 76%;
+  height: 9px;
+  margin-top: 6px;
 }
+
+.skelBtn {
+  display: block;
+  width: 74px;
+  height: 32px;
+  border-radius: var(--r-ctl-sm);
+  background: var(--track);
+}
+
+/* ── Intent grid ───────────────────────────────────────────────────────── */
 
 .intentGrid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 1px;
-  border: 1px solid var(--line);
-  background: var(--line);
+  gap: 14px;
 }
 
 .intentCard {
-  --card-accent: var(--accent);
-  position: relative;
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);
-  gap: 0.8rem 1rem;
-  min-height: 17rem;
-  padding: clamp(1.1rem, 2.6vw, 1.6rem);
+  gap: 14px;
+  padding: 20px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-card);
+  background: var(--panel);
+  box-shadow: var(--sh-1);
   color: inherit;
-  background: var(--bg-2);
-  text-decoration: none;
-  overflow: hidden;
-  transition: background var(--dur-2) var(--ease-standard), transform var(--dur-2) var(--ease-standard);
+  text-align: left;
+  transition:
+    border-color var(--dur-2) var(--ease-standard),
+    box-shadow var(--dur-2) var(--ease-standard);
 }
 
-.intentCard[data-accent="recurring"] { --card-accent: #9effb8; }
-.intentCard[data-accent="trigger"] { --card-accent: #ffbd6d; }
-.intentCard[data-accent="compose"] { --card-accent: #9cbaff; }
-
-.intentCard::after {
-  position: absolute;
-  right: -5rem;
-  bottom: -8rem;
-  width: 18rem;
-  height: 18rem;
-  content: "";
-  border: 1px solid color-mix(in oklab, var(--card-accent) 18%, transparent);
-  border-radius: 50%;
-  box-shadow:
-    0 0 0 2.8rem color-mix(in oklab, var(--card-accent) 4%, transparent),
-    0 0 0 5.6rem color-mix(in oklab, var(--card-accent) 2%, transparent);
-  pointer-events: none;
-  transition: transform var(--dur-3) var(--ease-standard);
+/* Hover only. Focus is the global 2px --ink ring; a second, coloured outline
+   drawn here is how a card ends up with two focus indicators that disagree. */
+.intentCard:hover {
+  border-color: var(--line-hover);
+  box-shadow: var(--sh-2);
 }
 
-.intentCard:hover,
-.intentCard:focus-visible {
-  z-index: 1;
-  background: color-mix(in oklab, var(--card-accent) 7%, var(--bg-2));
-  outline: 1px solid color-mix(in oklab, var(--card-accent) 52%, transparent);
-  outline-offset: -1px;
-}
-
-.intentCard:hover::after,
-.intentCard:focus-visible::after {
-  transform: translate(-1rem, -1rem) scale(1.06);
-}
-
-.cardNumber {
-  color: var(--muted);
-  font-family: var(--font-jetbrains-mono), ui-monospace, monospace;
-  font-size: 0.7rem;
-}
-
-.cardGlyph {
+.intentTile {
   display: grid;
   place-items: center;
-  width: 2.4rem;
-  height: 2.4rem;
-  color: var(--card-accent);
-  border: 1px solid color-mix(in oklab, var(--card-accent) 38%, transparent);
-  background: color-mix(in oklab, var(--card-accent) 10%, transparent);
+  width: 40px;
+  height: 40px;
+  border-radius: var(--r-card-sm);
 }
 
-.cardGlyph svg {
-  width: 1.2rem;
+.intentTile svg {
+  width: 18px;
+  height: 18px;
 }
 
-.cardCopy {
-  grid-column: 1 / -1;
-  align-self: end;
-  max-width: 30rem;
+/* The four tiles are the only colour on this screen, and each one names a
+   contract family: brand for the one-shot, ok for the series, warn for the
+   conditional, info for the composer. */
+.intentCard[data-accent="instant"] .intentTile {
+  background: var(--zap-wash);
+  color: var(--ink);
 }
 
-.cardCopy > span {
-  color: var(--card-accent);
-  font-size: 0.72rem;
-  font-weight: 650;
-  letter-spacing: 0.09em;
-  text-transform: uppercase;
+.intentCard[data-accent="recurring"] .intentTile {
+  background: var(--ok-wash);
+  color: var(--ok);
 }
 
-.cardCopy h3 {
-  max-width: 18ch;
-  margin-top: 0.4rem;
-  font-size: clamp(1.25rem, 2.5vw, 2rem);
-  font-weight: 550;
-  letter-spacing: -0.03em;
-  line-height: 1.08;
+.intentCard[data-accent="trigger"] .intentTile {
+  background: var(--warn-wash);
+  color: var(--warn);
+}
+
+.intentCard[data-accent="compose"] .intentTile {
+  background: var(--info-wash);
+  color: var(--info);
+}
+
+.intentCopy {
+  min-width: 0;
+}
+
+.intentEyebrow {
+  display: block;
+  color: var(--ink-3);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.07em;
+}
+
+.intentTitle {
+  margin: 6px 0 0;
+  font-family: var(--font-serif), Newsreader, serif;
+  font-size: 22px;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  line-height: 1.15;
   text-wrap: balance;
 }
 
-.cardCopy p {
-  max-width: 36rem;
-  margin-top: 0.65rem;
-  color: var(--muted-2);
-  font-size: 0.86rem;
+.intentDetail {
+  max-width: 44ch;
+  margin: 8px 0 0;
+  color: var(--ink-2);
+  font-size: 13px;
   line-height: 1.55;
 }
 
-.cardFoot {
-  z-index: 1;
-  grid-column: 1 / -1;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  align-self: end;
-  padding-top: 0.85rem;
-  border-top: 1px solid var(--line-soft);
+.intentMeta {
+  display: inline-block;
+  margin-top: 12px;
+  color: var(--ink-3);
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-size: 11px;
 }
 
-.cardFoot code {
-  color: var(--muted);
-  font-size: 0.68rem;
+/* ==========================================================================
+   Responsive — the handoff was desktop-only, so these are new.
+
+   The shell drops its 1040px minimum below 900px; everything here is what
+   this screen does with that permission. Nothing below declares a fixed width
+   or a min-width, which is what keeps the page from scrolling sideways.
+   ========================================================================== */
+
+/* The reuse row gives first: three cards of one-line copy are the first thing
+   to become unreadable, and the intent cards are still ~520px wide here. */
+@media (max-width: 1100px) {
+  .reuseGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
-.cardFoot span {
-  color: var(--card-accent);
-  font-size: 1.1rem;
-}
-
-.truthStrip {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr) auto minmax(0, 1fr) auto minmax(0, 1fr);
-  align-items: center;
-  gap: 0.75rem;
-  margin-top: clamp(2.5rem, 6vw, 4.2rem);
-  padding: 1.1rem 0;
-  border-top: 1px solid var(--line);
-  border-bottom: 1px solid var(--line);
-}
-
-.truthStrip div {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
-  gap: 0.15rem 0.55rem;
-  align-items: baseline;
-}
-
-.truthStrip div > span {
-  grid-row: 1 / 3;
-  color: var(--accent);
-  font-family: var(--font-jetbrains-mono), ui-monospace, monospace;
-  font-size: 0.7rem;
-}
-
-.truthStrip strong {
-  font-size: 0.78rem;
-  font-weight: 600;
-}
-
-.truthStrip small {
-  color: var(--muted);
-  font-size: 0.66rem;
-}
-
-.truthStrip i {
-  width: 1.4rem;
-  height: 1px;
-  background: var(--line);
-}
-
-@media (max-width: 840px) {
-  .launchHero,
-  .sectionHead {
-    grid-template-columns: 1fr;
+@media (max-width: 900px) {
+  .hero {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 20px;
+    align-items: start;
+    padding: 2px 0 22px;
   }
 
-  .launchHero h1 {
-    max-width: 11ch;
+  .heroTitle {
+    max-width: none;
+    font-size: clamp(32px, 8.5vw, 52px);
+    line-height: 1.06;
+  }
+
+  .heroLede {
+    max-width: none;
+    font-size: 14.5px;
+  }
+
+  .section {
+    margin-bottom: 26px;
+  }
+
+  .sectionHead {
+    gap: 4px 10px;
+  }
+
+  .reuseGrid,
+  .intentGrid {
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .intentGrid {
-    grid-template-columns: 1fr;
+    gap: 12px;
   }
 
   .intentCard {
-    min-height: 15rem;
+    gap: 12px;
+    padding: 16px;
   }
 
-  .truthStrip {
-    grid-template-columns: 1fr 1fr;
+  .intentTitle {
+    font-size: 20px;
   }
 
-  .truthStrip i {
-    display: none;
+  .intentDetail {
+    max-width: none;
   }
 }
 
-@media (max-width: 520px) {
-  .launcher {
-    padding-top: 1.1rem;
+@media (max-width: 560px) {
+  .heroTitle {
+    font-size: clamp(30px, 9.5vw, 40px);
   }
 
-  .launchHero h1 {
-    font-size: clamp(2.55rem, 14vw, 4rem);
+  .controlRoom {
+    padding: 14px;
   }
 
-  .profilePrompt {
-    grid-template-columns: 1fr;
+  /* The action drops under the copy: 36px rather than the desktop 32px because
+     this is the only viewport where it is a thumb, but still shrink-wrapped —
+     three full-width yellow slabs down a phone screen read as three competing
+     primary actions instead of one row of saved work. */
+  .reuseCard {
+    grid-template-columns: minmax(0, 1fr);
+    align-items: start;
+    gap: 10px;
+    padding: 12px 13px;
   }
 
-  .profilePrompt a {
-    grid-column: 1;
+  .reuseAction {
+    justify-self: start;
+    height: 36px;
+    padding: 0 18px;
   }
 
+  /* One column has the room to wrap, and truncating someone's own design name
+     is worst on the screen where it is hardest to recover from. */
+  .reuseName,
+  .reuseMeta {
+    overflow: visible;
+    text-overflow: clip;
+    white-space: normal;
+  }
+
+  .skelBtn {
+    height: 36px;
+  }
+
+  /* The tile stops taking a column from a ~300px card and sits above the copy. */
   .intentCard {
-    min-height: 16.5rem;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 10px;
   }
 
-  .truthStrip {
-    grid-template-columns: 1fr;
-    gap: 1rem;
+  .intentTile {
+    width: 34px;
+    height: 34px;
+  }
+
+  .intentTile svg {
+    width: 16px;
+    height: 16px;
   }
 }
 
+/* The token layer ships a global reduced-motion block; these are the two
+   transitions this screen owns. */
 @media (prefers-reduced-motion: reduce) {
   .intentCard,
-  .intentCard::after {
+  .reuseAction {
     transition: none;
   }
 }

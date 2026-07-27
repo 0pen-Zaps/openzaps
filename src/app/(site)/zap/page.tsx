@@ -13,9 +13,10 @@ import { ZapLauncher } from "./ZapLauncher";
  */
 export default function UsePage(): React.JSX.Element {
   return (
-    <Suspense
-      fallback={<ZapLauncher />}
-    >
+    // `idScope` because both this fallback and UseSurface's own default view end
+    // up in the streamed markup; without it the two Start screens hand the same
+    // id to two headings. See the note on ZapLauncher.
+    <Suspense fallback={<ZapLauncher idScope="zap-prerender" />}>
       <UseSurface />
     </Suspense>
   );

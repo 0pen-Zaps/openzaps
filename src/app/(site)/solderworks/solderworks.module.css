@@ -1,10 +1,14 @@
+/* A design preview, not a redesigned screen: the structure is unchanged and
+   only the chrome and the colour layer moved. Chrome, because AppShell now owns
+   the nav, the scroll container and the content measure; colour, because every
+   literal here was tuned for a black ground and reads as a stain on cream. */
+
 .page {
-  padding-bottom: 6rem;
+  padding-bottom: 2rem;
 }
 
 /* Hero */
 .hero {
-  padding-top: calc(var(--nav-h, 5rem) + 3rem);
   padding-bottom: 2.5rem;
   display: flex;
   flex-direction: column;
@@ -12,17 +16,35 @@
   max-width: 60rem;
 }
 
+/* Not the global `.badge`: that one carries a blinking --ok pip, which reads as
+   a live status. This page's whole point is that nothing here is live. */
+.chip {
+  align-self: flex-start;
+  padding: 0.4rem 0.75rem;
+  border: 1px solid var(--line);
+  border-radius: var(--r-pill);
+  background: var(--panel-2);
+  color: var(--ink-3);
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-size: 0.74rem;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
 .title {
-  font-size: clamp(2.4rem, 6vw, 4rem);
-  line-height: 1.02;
-  letter-spacing: -0.02em;
   margin: 0;
+  font-family: var(--font-serif), Newsreader, serif;
+  font-size: clamp(2.4rem, 6vw, 4rem);
+  font-weight: 500;
+  line-height: 1.02;
+  letter-spacing: -0.025em;
 }
 
 .lead {
-  font-size: clamp(1.05rem, 2vw, 1.25rem);
-  color: var(--muted);
   max-width: 46rem;
+  color: var(--ink-prose);
+  font-size: clamp(1.05rem, 2vw, 1.25rem);
   line-height: 1.55;
 }
 
@@ -31,26 +53,26 @@
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
-  border: 1px solid var(--accent-dim);
-  border-left-width: 3px;
-  border-left-color: var(--accent-bright);
-  border-radius: 12px;
-  background: color-mix(in srgb, var(--accent-bright) 6%, transparent);
-  padding: 1.1rem 1.25rem;
   max-width: 46rem;
+  padding: 1.1rem 1.25rem;
+  border: 1px solid var(--zap-line);
+  border-left-width: 3px;
+  border-left-color: var(--zap-deep);
+  border-radius: var(--r-card-sm);
+  background: var(--zap-wash);
 }
 
 .notLive strong {
-  font-family: var(--font-jetbrains-mono), monospace;
+  color: var(--zap-wash-ink);
+  font-family: var(--font-mono), ui-monospace, monospace;
   font-size: 0.82rem;
   letter-spacing: 0.02em;
-  color: var(--accent-bright);
   text-transform: uppercase;
 }
 
 .notLive p {
   margin: 0;
-  color: var(--muted);
+  color: var(--zap-wash-ink);
   font-size: 0.95rem;
   line-height: 1.5;
 }
@@ -59,7 +81,6 @@
 .section {
   padding-block: 2.5rem;
   border-top: 1px solid var(--line);
-  max-width: 68rem;
 }
 
 .head {
@@ -68,26 +89,28 @@
 }
 
 .head h2 {
-  font-size: clamp(1.6rem, 3vw, 2.1rem);
-  letter-spacing: -0.015em;
   margin: 0.4rem 0 0.6rem;
+  font-family: var(--font-serif), Newsreader, serif;
+  font-size: clamp(1.6rem, 3vw, 2.1rem);
+  font-weight: 500;
+  letter-spacing: -0.02em;
 }
 
 .head p {
-  color: var(--muted);
-  line-height: 1.55;
   margin: 0;
+  color: var(--ink-2);
+  line-height: 1.55;
 }
 
 /* The one rule */
 .ruleCard {
-  border: 1px solid var(--line);
-  border-radius: 14px;
-  background: var(--card);
-  padding: 1.5rem 1.6rem;
   display: flex;
   flex-direction: column;
   gap: 0.6rem;
+  padding: 1.5rem 1.6rem;
+  border: 1px solid var(--line);
+  border-radius: var(--r-card);
+  background: var(--panel);
 }
 
 .ruleCard strong {
@@ -97,7 +120,7 @@
 
 .ruleCard p {
   margin: 0;
-  color: var(--muted);
+  color: var(--ink-2);
   line-height: 1.55;
 }
 
@@ -110,31 +133,32 @@
 
 .card {
   position: relative;
-  border: 1px solid var(--line);
-  border-radius: 14px;
-  background: var(--card);
-  padding: 1.4rem 1.4rem 1.5rem;
   display: flex;
   flex-direction: column;
   gap: 0.55rem;
+  padding: 1.4rem 1.4rem 1.5rem;
+  border: 1px solid var(--line);
+  border-radius: var(--r-card);
+  background: var(--panel);
 }
 
 .cardNum {
-  font-family: var(--font-jetbrains-mono), monospace;
+  color: var(--ink-3);
+  font-family: var(--font-mono), ui-monospace, monospace;
   font-size: 0.75rem;
-  color: var(--accent-bright);
   letter-spacing: 0.08em;
+  font-variant-numeric: tabular-nums;
 }
 
 .card h3 {
+  margin: 0;
   font-size: 1.1rem;
   letter-spacing: -0.01em;
-  margin: 0;
 }
 
 .card p {
   margin: 0;
-  color: var(--muted);
+  color: var(--ink-2);
   font-size: 0.94rem;
   line-height: 1.5;
 }
@@ -142,13 +166,13 @@
 .card .role {
   margin-top: auto;
   padding-top: 0.7rem;
-  border-top: 1px dashed var(--line);
+  border-top: 1px dashed var(--line-strong);
+  color: var(--ink-3);
   font-size: 0.85rem;
-  color: var(--muted-2);
 }
 
 .card .role b {
-  color: var(--text);
+  color: var(--ink);
   font-weight: 600;
 }
 
@@ -159,17 +183,11 @@
   gap: 1rem;
 }
 
-@media (max-width: 640px) {
-  .lineageGrid {
-    grid-template-columns: 1fr;
-  }
-}
-
 .lineageCol {
-  border: 1px solid var(--line);
-  border-radius: 14px;
-  background: var(--card);
   padding: 1.3rem 1.4rem;
+  border: 1px solid var(--line);
+  border-radius: var(--r-card);
+  background: var(--panel);
 }
 
 .lineageCol h3 {
@@ -178,25 +196,25 @@
 }
 
 .lineageCol ul {
-  margin: 0;
-  padding-left: 1.1rem;
   display: flex;
   flex-direction: column;
   gap: 0.55rem;
+  margin: 0;
+  padding-left: 1.1rem;
 }
 
 .lineageCol li {
-  color: var(--muted);
-  line-height: 1.45;
+  color: var(--ink-2);
   font-size: 0.93rem;
+  line-height: 1.45;
 }
 
 .kept {
-  border-left: 3px solid var(--accent-bright);
+  border-left: 3px solid var(--zap-deep);
 }
 
 .deleted {
-  border-left: 3px solid var(--muted-2);
+  border-left: 3px solid var(--ink-3);
 }
 
 /* Token flows */
@@ -207,66 +225,66 @@
 }
 
 .flow {
-  border: 1px solid var(--line);
-  border-radius: 12px;
-  background: var(--card);
   padding: 1.1rem 1.2rem;
+  border: 1px solid var(--line);
+  border-radius: var(--r-card-sm);
+  background: var(--panel);
 }
 
 .flow span {
   display: inline-block;
-  font-family: var(--font-jetbrains-mono), monospace;
-  font-size: 0.68rem;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: var(--accent-bright);
   margin-bottom: 0.5rem;
+  color: var(--ink-3);
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-size: 0.68rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
 }
 
 .flow strong {
   display: block;
-  font-size: 0.98rem;
   margin-bottom: 0.35rem;
+  font-size: 0.98rem;
 }
 
 .flow p {
   margin: 0;
-  color: var(--muted);
+  color: var(--ink-2);
   font-size: 0.88rem;
   line-height: 1.45;
 }
 
 /* Disclosure block — mirrors the /token not-financial-advice register */
 .disclosure {
-  border: 1px solid var(--line);
-  border-radius: 14px;
-  background: color-mix(in srgb, var(--muted-2) 6%, transparent);
-  padding: 1.4rem 1.5rem;
-  color: var(--muted);
-  line-height: 1.6;
-  font-size: 0.94rem;
   max-width: 52rem;
+  padding: 1.4rem 1.5rem;
+  border: 1px solid var(--line-2);
+  border-radius: var(--r-card);
+  background: var(--sunk);
+  color: var(--ink-2);
+  font-size: 0.94rem;
+  line-height: 1.6;
 }
 
 .disclosure strong {
-  color: var(--text);
+  color: var(--ink);
 }
 
 /* Gates list */
 .gateList {
   list-style: none;
-  margin: 0;
-  padding: 0;
   display: flex;
   flex-direction: column;
   gap: 0.7rem;
+  margin: 0;
+  padding: 0;
   counter-reset: gate;
 }
 
 .gateList li {
   position: relative;
   padding-left: 2.2rem;
-  color: var(--muted);
+  color: var(--ink-2);
   line-height: 1.5;
 }
 
@@ -276,22 +294,23 @@
   position: absolute;
   left: 0;
   top: 0;
-  width: 1.5rem;
-  height: 1.5rem;
   display: grid;
   place-items: center;
-  border-radius: 6px;
-  background: color-mix(in srgb, var(--accent-bright) 12%, transparent);
-  color: var(--accent-bright);
-  font-family: var(--font-jetbrains-mono), monospace;
+  width: 1.5rem;
+  height: 1.5rem;
+  border-radius: var(--r-chip);
+  background: var(--zap-wash);
+  color: var(--zap-wash-ink);
+  font-family: var(--font-mono), ui-monospace, monospace;
   font-size: 0.78rem;
+  font-variant-numeric: tabular-nums;
 }
 
 .footerNote {
-  margin-top: 2.5rem;
-  color: var(--muted-2);
-  font-size: 0.85rem;
   max-width: 52rem;
+  margin-top: 2.5rem;
+  color: var(--ink-3);
+  font-size: 0.85rem;
   line-height: 1.55;
 }
 
@@ -299,5 +318,11 @@
   display: flex;
   flex-wrap: wrap;
   gap: 0.75rem;
-  margin-top: 0.5rem;
+  margin-top: 1.25rem;
+}
+
+@media (max-width: 640px) {
+  .lineageGrid {
+    grid-template-columns: 1fr;
+  }
 }
