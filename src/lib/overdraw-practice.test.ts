@@ -172,6 +172,62 @@ describe("determinism", () => {
   });
 });
 
+describe("practice must be able to cut you", () => {
+  /** Share of non-stalled rounds where this draw was paid nothing. */
+  function cutRate(draw: number, seeds = 40): number {
+    let cut = 0;
+    let counted = 0;
+    for (let seed = 1; seed <= seeds; seed += 1) {
+      const done = playRound(seed, draw, true);
+      if (done.result?.stalled) continue;
+      counted += 1;
+      if ((done.result?.paid ?? 0n) === 0n) cut += 1;
+    }
+    return counted === 0 ? 0 : cut / counted;
+  }
+
+  it("cuts a greedy draw often", () => {
+    // Before this was fixed the rival draws were too small to ever exhaust the
+    // bus, so EVERY draw was served in every round and practice taught that
+    // being cut cannot happen. On the live table a draw the bus cannot reach is
+    // paid exactly zero and the entry is not returned.
+    expect(cutRate(9_000)).toBeGreaterThan(0.5);
+  });
+
+  it("serves a modest draw reliably — that is the real rule, not a bug", () => {
+    // "The modest are served first" is literally how _discharge works: draws
+    // are sorted ascending and paid in full while the current covers them. A
+    // small draw being safe is the truth practice should teach, so this asserts
+    // it rather than manufacturing a cut that the contract would not produce.
+    expect(cutRate(500)).toBe(0);
+  });
+
+  it("makes the cut risk rise monotonically with greed", () => {
+    const rates = [1_000, 4_000, 6_000, 8_000, 9_500].map((d) => cutRate(d));
+    for (let i = 1; i < rates.length; i += 1) {
+      expect(rates[i], `cut rate must not fall as the draw grows (step ${i})`).toBeGreaterThanOrEqual(rates[i - 1]);
+    }
+    // And the curve must actually span the range, not sit flat at either end.
+    expect(rates[0]).toBeLessThan(0.2);
+    expect(rates[rates.length - 1]).toBeGreaterThan(0.8);
+  });
+});
+
+describe("rival generation", () => {
+  it("does not deal an identical opponent every round", () => {
+    // xorshift32 fed a small integer emits a tiny first value, which pinned
+    // rival one to the same 8500 bps draw in every single round.
+    const firsts = new Set(Array.from({ length: 12 }, (_, i) => practiceStart(i + 1).rivals[0].draw));
+    expect(firsts.size).toBeGreaterThan(6);
+  });
+
+  it("spreads draws across the range rather than clustering", () => {
+    const draws = Array.from({ length: 20 }, (_, i) => practiceStart(i + 1).rivals.map((r) => r.draw)).flat();
+    expect(Math.min(...draws)).toBeLessThan(3_000);
+    expect(Math.max(...draws)).toBeGreaterThan(8_000);
+  });
+});
+
 describe("the stall hint", () => {
   it("warns before settling when too few draws will open", () => {
     let s = practiceStart(1);
