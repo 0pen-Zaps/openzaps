@@ -32,6 +32,7 @@ import {
   exportSeal,
   releasableCarry,
   findSealedDraw,
+  pendingSeals,
   markRevealed,
   overdrawAbi,
   overdrawAddress,
@@ -50,6 +51,10 @@ type Busy = null | "connect" | "approve" | "commit" | "reveal" | "settle" | "cla
 /** Everything the surface reads from chain in one pass, so partial state is impossible. */
 type TableState = {
   readonly round: bigint;
+  /** `block.timestamp` at the read — the clock the contract actually gates on. */
+  readonly chainNow: number;
+  /** Local epoch seconds at the same moment, so the two can be offset apart. */
+  readonly readAt: number;
   readonly commitEnd: number;
   readonly revealEnd: number;
   readonly seats: number;
@@ -95,14 +100,21 @@ async function readTable(game: Address): Promise<TableState> {
     publicClient.readContract({ ...base, functionName: "stake" }),
     publicClient.readContract({ ...base, functionName: "carryPool" }),
   ]);
-  const [header, players, drawValues] = await Promise.all([
+  const [header, players, drawValues, block] = await Promise.all([
     publicClient.readContract({ ...base, functionName: "rounds", args: [round] }),
     publicClient.readContract({ ...base, functionName: "revealedPlayers", args: [round] }),
     publicClient.readContract({ ...base, functionName: "revealedDraws", args: [round] }),
+    // The clock the CONTRACT uses. Every window boundary is compared against
+    // block.timestamp, not against the visitor's device — and a device running
+    // even a few minutes fast would flip this page to "settle" while reveals
+    // were still being accepted, hiding the only button that opens a draw.
+    publicClient.getBlock({ blockTag: "latest" }),
   ]);
 
   return {
     round,
+    chainNow: Number(block.timestamp),
+    readAt: Math.floor(Date.now() / 1000),
     commitEnd: Number(header[0]),
     revealEnd: Number(header[1]),
     seats: Number(header[2]),
@@ -159,6 +171,8 @@ type AccountView = {
   readonly round: bigint;
   readonly seat: SeatView;
   readonly seal: SealedDraw | null;
+  /** Epoch ms of the read. A stale answer is not an answer — see `seatKnown`. */
+  readonly readAt: number;
 };
 
 type SeatView = {
@@ -313,11 +327,17 @@ export function ZapDrawTable(): React.JSX.Element {
       readSeat(game, stakeToken, round, account).then(
         (view) => {
           if (cancelled) return;
-          setAccountView({
-            owner: account,
-            round,
-            seat: view,
-            seal: findSealedDraw(ROBINHOOD_CHAIN_ID, game, round, account),
+          setAccountView((prev) => {
+            const stored = findSealedDraw(ROBINHOOD_CHAIN_ID, game, round, account);
+            // Keep an in-memory seal the vault does not have. `saveSealedDraw`
+            // swallows a failed setItem (Safari private mode, quota), so a
+            // storage-blocked browser has the salt ONLY in this object — and
+            // clobbering it with the vault's null erases the export card and
+            // its "this is the only copy" warning seconds after the entry was
+            // paid for. Preferring `stored` keeps a later markRevealed visible.
+            const carried =
+              prev !== null && prev.owner === account && prev.round === round ? prev.seal : null;
+            return { owner: account, round, seat: view, seal: stored ?? carried, readAt: Date.now() };
           });
           setSeatUnread(false);
         },
@@ -368,24 +388,68 @@ export function ZapDrawTable(): React.JSX.Element {
   const mySeat = view ? { committed: view.seat.committed, revealed: view.seat.revealed } : null;
 
   /**
-   * Have we actually read this wallet's seat for this round?
+   * Have we read this wallet's seat for this round, RECENTLY?
    *
    * `mySeat === null` conflates two states that must never be shown the same
    * way — "you have no seat" and "we do not know yet". Only the first is safe
    * to act on.
+   *
+   * Freshness is part of the question. A read that landed once and has failed
+   * ever since is not knowledge: the surface would print "this page cannot tell
+   * you whether you hold a seat" at the top while the panel below printed "you
+   * have no seat, wait for the next one" from a minutes-old answer. The poll
+   * runs every 12s, so anything older than a few cycles is treated as unknown.
    */
-  const seatKnown = view !== null;
+  const SEAT_FRESH_MS = 45_000;
+  const seatKnown = view !== null && now * 1000 - view.readAt < SEAT_FRESH_MS;
 
   const rescan = useCallback((): void => {
     setTableTick((n) => n + 1);
     setSeatTick((n) => n + 1);
   }, []);
 
+  /**
+   * Sealed draws this browser holds and has never seen revealed.
+   *
+   * The last line of defence, and the only signal here that needs neither a
+   * connected wallet nor a working RPC. Every other "you have a seat" surface
+   * is gated on `account` — so MetaMask auto-locking after five idle minutes,
+   * an account switch, or simply loading the page before the wallet
+   * reconnects makes all of them vanish, and the page cheerfully shows
+   * "Connect wallet — this does not commit you to a round" for the whole six
+   * hours in which not revealing forfeits the entry. That is round 1's failure
+   * reached by a different road.
+   *
+   * A salt is in this vault because this browser sealed it. That fact does not
+   * stop being true when a wallet locks.
+   */
+  const pending = useMemo(() => {
+    if (!game) return [];
+    // `seatTick` so a confirmed reveal clears it; `now` so a fresh tab picks the
+    // vault up on its first render rather than only after an interaction.
+    void seatTick;
+    void now;
+    return pendingSeals(ROBINHOOD_CHAIN_ID, game);
+  }, [game, seatTick, now]);
+
+  /** A pending seal for the round on screen, or for an unknown round when the table is unread. */
+  const pendingHere = pending.filter((s) => round === undefined || s.round === round.toString());
+
   // ------------------------------------------------------------------ //
   // Derived                                                             //
   // ------------------------------------------------------------------ //
 
-  const phase = state ? phaseAt(now, state.commitEnd, state.revealEnd) : null;
+  /**
+   * Now, on the chain's clock.
+   *
+   * The last read's `block.timestamp` plus however long has elapsed locally
+   * since. Ticks smoothly between polls while staying anchored to the clock the
+   * contract gates on, so a device running fast or slow cannot move a window
+   * boundary — and cannot hide the reveal button from someone who still has
+   * hours to use it.
+   */
+  const chainNow = state ? state.chainNow + (now - state.readAt) : now;
+  const phase = state ? phaseAt(chainNow, state.commitEnd, state.revealEnd) : null;
   const capacity = state
     ? capacityOf(state.seats, state.entryFee, state.rakeBps, state.keeperBps, state.carryPool)
     : 0n;
@@ -428,7 +492,9 @@ export function ZapDrawTable(): React.JSX.Element {
   }
 
   function countdown(to: number): string {
-    const left = to - now;
+    // Chain time, matching `phase`. A countdown on the device clock could read
+    // "2h left" while the phase had already flipped, or the reverse.
+    const left = to - chainNow;
     if (left <= 0) return "closed";
     const h = Math.floor(left / 3600);
     const m = Math.floor((left % 3600) / 60);
@@ -544,6 +610,15 @@ export function ZapDrawTable(): React.JSX.Element {
     if (!game || !state || !drawValid) return;
     const from = account;
     if (!from) return;
+    // The pre-flight reads below take an RPC round trip, and `send()` only sets
+    // `busy` once it is reached — so without this the button stays live and a
+    // second click mints a SECOND salt. `saveSealedDraw` keys by round, so the
+    // second overwrites the first, and the user then signs the first prompt:
+    // the vault holds salt B for an onchain commitment of salt A, `reveal`
+    // reverts BadReveal forever, and the entry is forfeited with the page
+    // insisting it has the salt.
+    if (busy !== null) return;
+    setBusy("commit");
 
     const salt = randomSalt();
     let liveRound: bigint;
@@ -574,6 +649,7 @@ export function ZapDrawTable(): React.JSX.Element {
       });
     } catch (cause) {
       setError(readableError(cause));
+      setBusy(null);
       return;
     }
 
@@ -585,6 +661,7 @@ export function ZapDrawTable(): React.JSX.Element {
         `Round ${String(state.round)} closed while you were choosing; round ${String(liveRound)} is open now. The table has been refreshed — review the new capacity and seal again.`,
       );
       rescan();
+      setBusy(null);
       return;
     }
 
@@ -710,6 +787,24 @@ export function ZapDrawTable(): React.JSX.Element {
         {state && phase === "settle" ? <span className={styles.roundClock}>Awaiting settlement</span> : null}
         {phase ? <span className={styles.roundHint}>{PHASE_COPY[phase].hint}</span> : null}
       </div>
+
+      {/* The vault-driven warning. Deliberately ABOVE and independent of the
+          chain-read one below: it survives a locked wallet, an account switch,
+          a cold load and a dead RPC, because a salt is in this browser only
+          because this browser sealed it. It renders whenever the chain read
+          cannot confirm the seal is already open. */}
+      {pendingHere.length > 0 && !(mySeat?.revealed === true) ? (
+        <p className={styles.banner} data-tone="danger" role="status">
+          <strong>
+            This browser holds {pendingHere.length === 1 ? "a sealed draw" : `${pendingHere.length} sealed draws`} that
+            {pendingHere.length === 1 ? " has" : " have"} not been opened
+            {pendingHere[0] ? ` (round ${pendingHere[0].round})` : ""}.
+          </strong>{" "}
+          A seat that is never opened during its reveal window forfeits its entry — there is no refund and no late
+          reveal. {!account ? "Connect the wallet that sealed it to open it. " : ""}
+          Keep this browser and its site data until the draw is open.
+        </p>
+      ) : null}
 
       {/* An unopened seat is the only way to lose money here without doing
           anything, so it gets the loudest, highest thing on the page — during

@@ -372,6 +372,27 @@ export function markRevealed(entry: SealedDraw, at: number): void {
   saveSealedDraw({ ...entry, revealedAt: at });
 }
 
+/**
+ * Sealed draws this browser holds that were never marked revealed.
+ *
+ * The safety net for the one mistake that costs an entry. Every other
+ * "you have a seat" signal in the surface depends on a connected wallet AND a
+ * live RPC read — so a wallet that auto-locks mid-window, an account switch, or
+ * an RPC blip during the reveal phase all silently erase the warning at exactly
+ * the moment it matters. This depends on neither: the salt is in localStorage
+ * because *this browser* sealed it.
+ *
+ * It can be wrong in the harmless direction (a seal whose reveal confirmed while
+ * the tab was closed still looks pending) and cannot be wrong in the harmful one
+ * — a seal that exists here was, by construction, sealed here.
+ */
+export function pendingSeals(chainId: number, game: Address): SealedDraw[] {
+  return readSealedDraws()
+    .filter((seal) => seal.chainId === chainId && seal.game.toLowerCase() === game.toLowerCase())
+    .filter((seal) => seal.revealedAt === undefined)
+    .sort((a, b) => b.sealedAt - a.sealedAt);
+}
+
 function sameSeat(a: SealedDraw, b: SealedDraw): boolean {
   return (
     a.chainId === b.chainId &&

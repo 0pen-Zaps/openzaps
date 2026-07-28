@@ -86,20 +86,41 @@ const RIVAL_NAMES = ["Ada", "Bo", "Cyd", "Dev", "Eli", "Fen"] as const;
  * tested, and a player who retries the same seed should see the same table.
  */
 function rng(seed: number): () => number {
-  let s = seed >>> 0 || 1;
-  return () => {
+  // Mixed and warmed before first use. xorshift32 fed a small integer emits a
+  // tiny first value, which made rival one draw an identical 8500 bps in every
+  // single round — a fixed opponent dressed up as a random one.
+  let s = (seed >>> 0 || 1) * 2_654_435_761 >>> 0;
+  const step = (): number => {
     s ^= s << 13;
+    s >>>= 0;
     s ^= s >>> 17;
     s ^= s << 5;
     s >>>= 0;
     return s / 0x1_0000_0000;
   };
+  for (let i = 0; i < 8; i += 1) step();
+  return step;
 }
 
+/**
+ * Rival draws must be able to drain the bus. That is the whole game.
+ *
+ * The first version drew 500..6500 bps across three rivals, which sums to well
+ * under capacity almost every time — so a player rehearsing the default 25%
+ * draw was served in *every* round and learned that a quarter-draw always gets
+ * paid. On the live table a draw the bus cannot reach is paid exactly zero and
+ * the entry is not returned, which is the risk the whole game is built around.
+ *
+ * Drawing across the full range, with a bias toward large, makes the cut a
+ * regular outcome rather than an unreachable one.
+ */
 function buildRivals(seed: number, count: number): PracticeRival[] {
   const next = rng(seed);
   return Array.from({ length: count }, (_, i) => {
-    const draw = Math.max(1, Math.min(BPS, Math.round(next() * 6_000) + 500));
+    // Squared toward the top of the range: greedy draws are common, so the bus
+    // frequently runs dry partway down the queue.
+    const r = next();
+    const draw = Math.max(1, Math.min(BPS, Math.round(1_000 + (1 - r * r) * 7_500)));
     // One rival in six forgets to reveal. Frequent enough to be met early,
     // rare enough that a stalled round still feels like bad luck.
     const reveals = next() > 1 / 6;
