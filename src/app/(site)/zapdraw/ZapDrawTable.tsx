@@ -404,15 +404,20 @@ export function ZapDrawTable(): React.JSX.Element {
   const drawValid = Number.isInteger(drawBps) && drawBps >= 1 && drawBps <= BPS;
   const wouldTake = drawValid ? (capacity * BigInt(drawBps)) / BigInt(BPS) : 0n;
 
-  /** Where a draw of this size would land in the queue as the table stands now. */
+  /**
+   * Whether a draw this size would still be served, as the table stands.
+   *
+   * Only meaningful once other draws are open, which during the commit phase
+   * they never are — the copy below says so rather than implying the check
+   * cleared. (`ahead` used to be computed here and read nowhere.)
+   */
   const queuePosition = useMemo(() => {
     if (!projection || !drawValid) return null;
-    const ahead = projection.rows.filter((row) => row.draw <= drawBps).length;
     let spent = 0n;
     for (const row of projection.rows) {
       if (row.draw <= drawBps) spent += row.wants;
     }
-    return { ahead, wouldSurvive: spent + wouldTake <= capacity };
+    return { known: projection.rows.length > 0, wouldSurvive: spent + wouldTake <= capacity };
   }, [projection, drawValid, drawBps, wouldTake, capacity]);
 
   function fmt(value: bigint): string {
@@ -485,7 +490,16 @@ export function ZapDrawTable(): React.JSX.Element {
     }
   }
 
-  async function send(action: Busy, run: (wallet: ReturnType<typeof createWalletClient>, from: Address) => Promise<Hex>): Promise<void> {
+  /**
+   * @returns true only when the transaction confirmed successfully onchain.
+   *
+   * This used to return void while swallowing every error, so callers could not
+   * tell a confirmed write from a rejected one — and `reveal()` recorded the
+   * seal as opened either way. A local "revealed" flag over a seat that is
+   * still sealed hides the backup prompt and tells the player they are done,
+   * which is precisely how an entry gets forfeited.
+   */
+  async function send(action: Busy, run: (wallet: ReturnType<typeof createWalletClient>, from: Address) => Promise<Hex>): Promise<boolean> {
     setBusy(action);
     clearMessages();
     setLastTx(null);
@@ -499,8 +513,10 @@ export function ZapDrawTable(): React.JSX.Element {
       if (receipt.status !== "success") throw new Error("The transaction reverted onchain. Nothing changed.");
       setNotice("Confirmed onchain.");
       rescan();
+      return true;
     } catch (cause) {
       setError(readableError(cause));
+      return false;
     } finally {
       setBusy(null);
     }
@@ -605,7 +621,7 @@ export function ZapDrawTable(): React.JSX.Element {
 
   async function reveal(): Promise<void> {
     if (!game || !seal) return;
-    await send("reveal", (wallet, from) =>
+    const confirmed = await send("reveal", (wallet, from) =>
       wallet.writeContract({
         account: from,
         chain: robinhoodChain,
@@ -615,7 +631,11 @@ export function ZapDrawTable(): React.JSX.Element {
         args: [seal.draw, seal.salt],
       }),
     );
-    markRevealed(seal, Date.now());
+    // Only on a confirmed receipt. Marking a rejected or reverted reveal as
+    // done would hide the salt-backup card and leave a still-sealed seat
+    // looking finished — the seat would then forfeit with the UI insisting it
+    // had been opened.
+    if (confirmed) markRevealed(seal, Date.now());
   }
 
   async function settle(): Promise<void> {
@@ -977,10 +997,16 @@ export function ZapDrawTable(): React.JSX.Element {
                       <p className={styles.projection}>
                         At the capacity on the bus now, that draw asks for <strong>{fmt(wouldTake)} 0xZAPS</strong>.{" "}
                         {queuePosition ? (
-                          <span className={queuePosition.wouldSurvive ? styles.verdictOk : styles.verdictBad}>
-                            {queuePosition.wouldSurvive
+                          <span
+                            className={
+                              !queuePosition.known || queuePosition.wouldSurvive ? styles.verdictOk : styles.verdictBad
+                            }
+                          >
+                            {!queuePosition.known
                               ? "No draw is open yet, so there is nothing to rank you against — what the rest of the table opens decides whether the bus reaches you."
-                              : "The draws already open would leave the bus dry before it reached you."}
+                              : queuePosition.wouldSurvive
+                                ? "The draws open so far would still leave the bus enough to reach you."
+                                : "The draws already open would leave the bus dry before it reached you."}
                           </span>
                         ) : null}
                       </p>
