@@ -10,8 +10,11 @@
 .section {
   position: relative;
   /* Scroll distance the traverse is spread over. Tuned by eye, not derived —
-     the progress mapping below is height-independent, so this is safe to retune. */
-  height: 340vh;
+     the progress mapping below is height-independent, so this is safe to retune.
+     Raised from 340vh when the table act was added: eleven beats at the old
+     height read as a flick-through, and the commit/reveal half is the half a
+     reader has to actually absorb. */
+  height: 520vh;
 }
 
 /* The scrollport is no longer the window: the app shell scrolls `#zapscroll`,
@@ -80,26 +83,171 @@
   overflow: hidden;
 }
 
+/* ------------------------------------------------------ act one: the table
+
+   The seats share the viewport box with the rail rather than sitting above it.
+   A separate row would have to find height inside a pinned screen, and the
+   first thing to be pushed off the bottom edge is the CTA. */
+
+.table {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 1fr;
+  align-content: center;
+  gap: clamp(0.5rem, 1.6vw, 1.1rem);
+  opacity: calc(1 - var(--busIn, 0));
+  /* Drifts up as the bus takes over, so the two acts read as a cut rather than
+     a dissolve between two things occupying the same space. */
+  transform: translate3d(0, calc(var(--busIn, 0) * -1.4rem), 0);
+  will-change: opacity, transform;
+}
+
+.chip {
+  /* Per-seat progress, staggered off the stage-wide values so four reveals read
+     as four separate acts. Unitless, because every consumer is a number. */
+  --seal-local: clamp(0, calc(var(--sealed, 0) * 1.7 - var(--i) * 0.14), 1);
+  --open-local: clamp(0, calc(var(--opened, 0) * 2 - var(--i) * 0.26), 1);
+  position: relative;
+  display: grid;
+  justify-items: center;
+  align-content: center;
+  gap: 0.55rem;
+}
+
+.chipLabel {
+  display: grid;
+  place-items: center;
+  width: 1.55rem;
+  height: 1.55rem;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-chip);
+  background: var(--chip);
+  color: var(--ink-2);
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+/* The claim, drawn on the same "share of the round" scale the rail uses. An empty
+   track is a seat that has claimed nothing anyone can see. */
+.chipBar {
+  position: relative;
+  width: 100%;
+  height: 0.55rem;
+  border: 1px solid var(--line);
+  background: var(--track);
+  overflow: hidden;
+}
+
+.chipFill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: var(--w);
+  background: var(--zap);
+  transform-origin: left center;
+  transform: scaleX(var(--open-local));
+}
+
+/* Both readouts live in one cell so opening a draw never moves the row. */
+.chipRead {
+  display: grid;
+  min-height: 1.1em;
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-size: 12px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.chipSealed,
+.chipOpen {
+  grid-area: 1 / 1;
+}
+
+/* The two readouts share one grid cell, so their fades must not overlap: a
+   half-faded "?" sitting on top of a half-faded "30%" reads as neither. The `?`
+   is gone by the time the figure starts arriving. */
+.chipSealed {
+  color: var(--ink-3);
+  opacity: calc(var(--seal-local) * clamp(0, calc((0.4 - var(--open-local)) * 2.5), 1));
+}
+
+.chipOpen {
+  color: var(--ink);
+  opacity: clamp(0, calc((var(--open-local) - 0.45) * 1.85), 1);
+}
+
+/* The seat that never opens. Everything here is driven by `--forfeit` alone, so
+   it cannot be dimmed by the reveal stagger it does not take part in. */
+.chipSilent {
+  opacity: calc(1 - var(--forfeit, 0) * 0.5);
+}
+
+.chipSilent .chipLabel {
+  border-color: var(--danger-line);
+  background: var(--danger-tint);
+  color: var(--danger-ink);
+}
+
+.chipSilent .chipBar {
+  border-color: var(--danger-line);
+}
+
+.chipSilent .chipSealed {
+  color: var(--danger-ink);
+  /* Stays sealed forever: there is no open state for this seat to reach. */
+  opacity: var(--seal-local);
+}
+
+.chipForfeit {
+  position: absolute;
+  top: calc(100% + 0.3rem);
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  color: var(--danger);
+  opacity: var(--forfeit, 0);
+}
+
+/* ------------------------------------------------------- act two: the bus */
+
+.bus {
+  position: absolute;
+  inset: 0;
+  opacity: var(--busIn, 0);
+}
+
 /* Parallax back layer: a field that drifts at a fraction of the rail's rate, so
    the rail reads as travelling through space rather than sliding on a flat plane. */
+/* `--cam` is a unitless percentage OF THE RAIL. This layer is 200% wide, so its
+   drift is scaled by 1.5/2 to keep the rate it had when both were in vw. */
 .field {
   position: absolute;
   inset: -20% -50%;
   background-image: linear-gradient(90deg, var(--line-soft) 1px, transparent 1px);
   background-size: 4rem 100%;
   opacity: 0.5;
-  transform: translate3d(calc(var(--cam) * 0.35), 0, 0);
+  transform: translate3d(calc(var(--cam, 0) * 0.2625%), 0, 0);
   will-change: transform;
 }
 
 /* The rail carries every quantity, so it is the one layer whose geometry is
-   data. It travels at rate 1.0 and is only ever scaled on X. */
+   data. It travels at rate 1.0 and is only ever scaled on X.
+
+   The offset MUST stay a percentage: a percentage translate resolves against
+   this element's own width, which is what makes the head line land on the
+   camera's reach at any viewport width. A vw length silently desynchronised the
+   two the moment the app shell put a sidebar next to the stage. */
 .rail {
   position: absolute;
   top: 50%;
   left: 0;
   width: 150%;
-  transform: translate3d(var(--cam), -50%, 0) scaleX(var(--squeeze, 1));
+  transform: translate3d(calc(var(--cam, 0) * 1%), -50%, 0) scaleX(var(--squeeze, 1));
   transform-origin: left center;
   will-change: transform;
 }
@@ -189,6 +337,11 @@
   transform: translateY(var(--dock, 0));
 }
 
+/* Only once the block has DETACHED and become the carry. While the refused claim
+   is still in the lane its hatch paints over this label — they share the same
+   lane by design, and the ghost is drawn after it — so "carry 1,365" was
+   illegible for the whole bracket beat. The bracket underneath already names the
+   figure at that point; this tag is for the docked block, which nothing overlaps. */
 .remTag {
   font-family: var(--font-mono), ui-monospace, monospace;
   font-size: 10.5px;
@@ -196,6 +349,7 @@
   letter-spacing: 0.06em;
   color: var(--zap-wash-ink);
   white-space: nowrap;
+  opacity: var(--remTag, 0);
   transform: scaleX(calc(1 / var(--squeeze, 1)));
 }
 
@@ -209,10 +363,14 @@
   background: var(--zap-wash-ink);
 }
 
+/* Sits to the LEFT of the stop. The stop is the last thing on the rail, so once
+   the closing pull-back brings it to the viewport's right edge a label placed
+   after it is off screen — which is the one frame the label matters in. */
 .endStopTag {
   position: absolute;
   top: -1.3rem;
-  left: 0.3rem;
+  right: 0.3rem;
+  text-align: right;
   font-family: var(--font-mono), ui-monospace, monospace;
   font-size: 10px;
   letter-spacing: 0.1em;
@@ -266,11 +424,13 @@
 }
 
 /* The fixed head: where payment has reached. Screen-space, never on the rail. */
+/* The fallback is the pinned position the camera solves for, so a frame that has
+   not been painted yet still puts the line where the travel will keep it. */
 .headLine {
   position: absolute;
   top: 8%;
   bottom: 8%;
-  left: var(--headX);
+  left: var(--headX, 33%);
   width: 1px;
   background: var(--zap-wash-ink);
   opacity: 0.7;
