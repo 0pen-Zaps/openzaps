@@ -13,7 +13,7 @@
 // the route, and the real check lives in the contract.
 import type { Address, Hex } from "viem";
 
-export type RelayIntentKind = "recurring" | "recurring-relative" | "trigger";
+export type RelayIntentKind = "recurring" | "recurring-relative" | "recurring-stack" | "trigger";
 export type RelayStatus = "open" | "consumed";
 
 /** Exactly the intent-file shape the executor already consumes, plus the kind + signature. */
@@ -77,6 +77,17 @@ const KIND_FIELDS: Record<RelayIntentKind, [string, Rule][]> = {
     ["priceSource", "addr"],
     ["maxSlippageBps", "dec"],
   ],
+  // Mirrors RecurringStackIntent: the relative fields plus the two stack fields, in signed order.
+  "recurring-stack": [
+    ...COMMON,
+    ["seriesId", "dec"],
+    ["interval", "dec"],
+    ["maxRuns", "dec"],
+    ["priceSource", "addr"],
+    ["maxSlippageBps", "dec"],
+    ["stackPriceSource", "addr"],
+    ["stackBps", "dec"],
+  ],
   trigger: [
     ...COMMON,
     ["nonce", "dec"],
@@ -108,8 +119,13 @@ export function parseRelaySubmission(body: unknown): RelaySubmission {
   if (typeof body !== "object" || body === null) throw new Error("body must be a JSON object");
   const raw = body as Record<string, unknown>;
   const kind = raw.kind;
-  if (kind !== "recurring" && kind !== "recurring-relative" && kind !== "trigger") {
-    throw new Error('kind must be "recurring", "recurring-relative", or "trigger"');
+  if (
+    kind !== "recurring" &&
+    kind !== "recurring-relative" &&
+    kind !== "recurring-stack" &&
+    kind !== "trigger"
+  ) {
+    throw new Error('kind must be "recurring", "recurring-relative", "recurring-stack", or "trigger"');
   }
   if (typeof raw.signature !== "string" || !HEX_SIG.test(raw.signature)) throw new Error("signature: malformed");
   if (typeof raw.intent !== "object" || raw.intent === null) throw new Error("intent: missing");

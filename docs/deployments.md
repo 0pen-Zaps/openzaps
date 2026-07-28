@@ -180,6 +180,50 @@ Addresses are wired into `src/lib/robinhood.ts` (`OPENZAP_V3_1_CONTRACTS`).
 for the `recurring-relative` kind. Aggregate at that block: 28 creations, 37 executions of which 25
 are automated, 1 recovery, `319,932,354.4393` 0xZAPS of executed volume.
 
+### The v3.2 stacking stack — built, NOT deployed
+
+UNAUDITED CANDIDATE. Source is in [`contracts/src/v3_2`](../contracts/src/v3_2); no addresses exist
+yet, on any chain. Adds `executeRecurringStack`: everything `executeRecurringRelative` does, plus an
+owner-signed `stackBps` slice of every run's **post-fee** output converted into 0xZAPS and staked to
+the lottery pot as the **owner's** tickets. Every run of a stacking series is a real market buy of
+the protocol token — the first execution type where buying 0xZAPS is the user's own authorized
+choice rather than the protocol's fee slice. Superset of v3.1; domain version `"3.2"`.
+
+Verified strict-superset property: `diff` of the v3.1 and v3.2 implementations removes **no logic**
+from v3.1 — only two import paths, the `DOMAIN_VERSION` literal, and the widened constructor.
+
+What it adds over v3.1, all enforced on-chain:
+
+- **Two spot-derived floors.** `priceSource`/`maxSlippageBps` floor the recipient's leg as in v3.1;
+  `stackPriceSource` floors the 0xZAPS conversion leg. Without the second, a manipulated pool turns a
+  real slice of the owner's output into dust tickets.
+- **The recipient floor is scaled by `stackBps`,** so a run can never clear its floor while handing
+  the recipient less than that floor.
+- **`SlippageBelowFee`.** The floor is gross-derived but net-enforced, so any band ≤ `EXEC_FEE_BPS`
+  bricks every run forever. v3.1 accepted such a band (a live series signed at exactly 100 bps could
+  never execute); v3.2 refuses to mint that authorization at all.
+- **`ZAPS` and `ZAPS_ADAPTER` are read from the pot** by the factory, not passed in, so a clone can
+  never stake a different token than the pot pays out or convert through a different adapter than
+  the pot's own `buyZaps`.
+- **No pot changes required.** `ZapLotteryPot.notifyContribution` already credits both tickets and
+  `roundPrize` when the contributed asset is 0xZAPS, which is exactly what a stack contribution is.
+
+Deployment prerequisites, in order:
+
+1. A **new** `ZapLotteryPot` — `setFactory` is one-shot, so v3.2 cannot share the v3 or v3.1 pot.
+2. `OpenZapFactoryV3_2(adapters, tokens, priceSources, pot)`, then `pot.setFactory(factory)`.
+3. Allowlist an oriented price source for the main leg, and one pricing `outAsset → 0xZAPS` for the
+   conversion leg (only needed for zaps whose output is not already 0xZAPS).
+4. Fill `OPENZAP_V3_2_CONTRACTS` in `src/lib/robinhood.ts` (or the `NEXT_PUBLIC_OPENZAP_V3_2_*` env
+   vars). Until then `openZapV3_2Configured()` is `false` and the Automate surface must keep the
+   stacking option hidden — offering a creation path into an undeployed lineage would fail open.
+5. Apply `supabase/migrations/20260726000000_allow_recurring_stack_kind.sql`, or every publish of a
+   stacking intent returns an opaque `Relay storage failed (400)` from the `kind` CHECK constraint.
+
+The app-side mirror (EIP-712 types, settlement math, drafting guards, relay/activity plumbing) and
+both test suites are already in place: `contracts/test/OpenZapV3_2.stack.t.sol` (14 tests) and the
+`executions`/`automate` vitest suites.
+
 ### Universal app-creation fee gateway — live (2026-07-25)
 
 UNAUDITED CANDIDATE. Deployed from

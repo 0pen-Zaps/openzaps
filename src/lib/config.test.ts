@@ -10,6 +10,8 @@ import {
   OPENZAP_CONTRACTS,
   OPENZAP_V3_CONTRACTS,
   OPENZAP_V3_1_CONTRACTS,
+  OPENZAP_V3_2_CONTRACTS,
+  openZapV3_2Configured,
   ROBINHOOD_ASSETS,
   ROBINHOOD_CHAIN_ID,
   ROBINHOOD_LIQUIDITY,
@@ -44,6 +46,17 @@ describe("site config stays consistent with onchain constants", () => {
         expect(addr, `${label}.${key} must be configured (non-zero)`).not.toBe(zeroAddress);
         expect(getAddress(addr), `${label}.${key} must be a valid EIP-55 checksum`).toBe(addr);
       }
+    }
+  });
+
+  // v3.2 (stacking) is intentionally NOT in the loop above: it is unbuilt on-chain, so its addresses
+  // are all zero by design. This test pins the fail-closed posture — and inverts into a deployment
+  // checklist. When v3.2 ships, this test starts failing, which is the signal to move it into the
+  // checksummed loop above and gate the Automate stacking option on `openZapV3_2Configured()`.
+  it("v3.2 stays gated off until a verified deployment is configured", () => {
+    expect(openZapV3_2Configured()).toBe(false);
+    for (const [key, addr] of Object.entries(OPENZAP_V3_2_CONTRACTS)) {
+      expect(addr, `v3.2.${key} must stay zero until deployed`).toBe(zeroAddress);
     }
   });
 

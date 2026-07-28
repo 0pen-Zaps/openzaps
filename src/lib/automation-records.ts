@@ -58,7 +58,7 @@ export function parseAutomationIntent(raw: string): ParsedAutomationIntent | nul
     const submission = parseRelaySubmission(JSON.parse(raw) as unknown);
     const intent = submission.intent;
     const kind = submission.kind;
-    const recurring = kind === "recurring" || kind === "recurring-relative";
+    const recurring = kind === "recurring" || kind === "recurring-relative" || kind === "recurring-stack";
     const authorizationId = BigInt(relayIntentNonce(submission));
     const maxRuns = recurring ? boundedNumber(intent.maxRuns, 1, 0xffff_ffff) : null;
     const thresholdBps = kind === "trigger" ? boundedNumber(intent.thresholdBps, 1, 10_000) : null;
