@@ -37,6 +37,7 @@ export type ZapFactKey =
   | "stepCount"
   | "optimization"
   | "executionCount"
+  | "automatedRunCount"
   | "recoveryCount"
   | "firstExecutionAt"
   | "lastExecutionAt"
@@ -79,6 +80,7 @@ export const ZAP_FACT_KEYS: readonly ZapFactKey[] = [
   "stepCount",
   "optimization",
   "executionCount",
+  "automatedRunCount",
   "recoveryCount",
   "firstExecutionAt",
   "lastExecutionAt",
@@ -129,6 +131,10 @@ export function zapFacts(payload: ZapDetailPayload): ZapFact[] {
   add("optimization", "optimization", policy.optimization ? "yes" : "no");
 
   add("executionCount", "confirmed runs", stats.executionCount);
+  // Without this the two are indistinguishable to a model, and "20 confirmed
+  // runs" on a capsule the owner submitted none of is a materially different
+  // fact from 20 runs the owner signed one at a time.
+  add("automatedRunCount", "of those, executor-submitted", stats.automatedRunCount);
   add("recoveryCount", "recoveries", stats.recoveryCount);
   add("firstExecutionAt", "first run", stats.firstExecutionAt ? new Date(stats.firstExecutionAt * 1000).toISOString() : null);
   add("lastExecutionAt", "last run", stats.lastExecutionAt ? new Date(stats.lastExecutionAt * 1000).toISOString() : null);

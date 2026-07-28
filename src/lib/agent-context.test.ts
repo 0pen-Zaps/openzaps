@@ -41,6 +41,7 @@ function payload(overrides: Partial<ZapDetailPayload> = {}): ZapDetailPayload {
     },
     stats: {
       executionCount: 2,
+      automatedRunCount: 0,
       recoveryCount: 0,
       amountOutByAsset: { "0xZAPS": "1716346053537753342021997" },
       feeByAsset: {},
@@ -69,8 +70,11 @@ describe("zapFacts", () => {
   it("never emits the raw executions array", () => {
     const withRuns = payload({
       executions: Array.from({ length: 40 }, (_, i) => ({
+        kind: "recurring" as const,
         nonce: String(i),
         recipient: OWNER,
+        executor: ADAPTER,
+        run: i + 1,
         outAsset: ADAPTER,
         assetSymbol: "0xZAPS",
         amountOut: "1",

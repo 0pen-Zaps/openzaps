@@ -33,10 +33,13 @@ import {
   type ZapPolicyRead,
   type ZapStepRead,
 } from "@/lib/zap";
+import type { AutomatedRunLogInput } from "@/lib/activity";
 
 const ZAP = "0x7f0BE9e9dD17c57df38F46b7fEFc4EdB7f1243AB" as const;
 const OWNER = "0x5a52D4B820Ae7F02880d270562950918ACb14aA2" as const;
 const SPOOFER = "0x9999999999999999999999999999999999999999" as const;
+/** Not the owner: an automated run is submitted by someone else, by definition. */
+const EXECUTOR = "0x1111111111111111111111111111111111111111" as const;
 const AMOUNT_IN = 100n * 10n ** 18n;
 const HEX32 = (n: number): `0x${string}` => `0x${n.toString(16).padStart(64, "0")}` as `0x${string}`;
 const NOW = "2026-07-22T00:00:00.000Z";
@@ -89,6 +92,29 @@ function executed(overrides: Partial<ZapExecutedLogInput> = {}): ZapExecutedLogI
   };
 }
 
+/**
+ * One automated run. The defaults are a recurring run, because that is the case
+ * the detail reader was blind to: `executeRecurring` emits THIS instead of
+ * `Executed`, never both.
+ */
+function automatedRun(overrides: Partial<AutomatedRunLogInput> = {}): AutomatedRunLogInput {
+  return {
+    emitter: ZAP,
+    kind: "recurring",
+    executor: EXECUTOR,
+    outAsset: ROBINHOOD_ASSETS.zaps,
+    amountOut: 99n * 10n ** 16n,
+    executorFee: 8n * 10n ** 15n,
+    potFee: 2n * 10n ** 15n,
+    seriesId: 42n,
+    run: 1,
+    txHash: HEX32(0x20),
+    blockNumber: 500n,
+    logIndex: 2,
+    ...overrides,
+  };
+}
+
 function exited(overrides: Partial<ZapExitLogInput> = {}): ZapExitLogInput {
   return {
     emitter: ZAP,
@@ -111,6 +137,7 @@ function detailInput(overrides: Partial<ZapDetailInput> = {}): ZapDetailInput {
     runtime: RUNTIME,
     balances: { weth: 0n, zaps: 0n, native: 0n },
     executed: [],
+    automated: [],
     exits: [],
     timestamps: new Map(),
     headBlock: 1_000n,
@@ -206,6 +233,119 @@ describe("aggregateZapDetail stats", () => {
     expect(payload.executions[0].timestamp).toBeNull();
     expect(payload.stats.firstExecutionAt).toBeNull();
     expect(payload.provenance.createdAt).toBeNull();
+  });
+});
+
+/**
+ * A v3/v3.1 capsule whose entire history is automation. `executeRecurring`,
+ * `executeRecurringRelative` and `executeTrigger` emit their own events and
+ * NEVER an `Executed`, so a reader built around `Executed` alone reported a
+ * capsule twenty runs deep as having never run: zero executions, empty totals,
+ * null timestamps, and a lifecycle frozen at "created" — on a public page and
+ * in the payload the MCP server hands to agents.
+ */
+describe("aggregateZapDetail automated runs", () => {
+  it("counts a capsule whose only history is automated runs", () => {
+    const payload = aggregateZapDetail(
+      detailInput({
+        automated: [
+          automatedRun({ run: 1, blockNumber: 500n, txHash: HEX32(0x20) }),
+          automatedRun({ run: 2, blockNumber: 600n, txHash: HEX32(0x21) }),
+        ],
+      }),
+    );
+
+    expect(payload.stats.executionCount).toBe(2);
+    expect(payload.stats.automatedRunCount).toBe(2);
+    expect(payload.executions).toHaveLength(2);
+    // The bug in one assertion: this was "created" for a working capsule.
+    expect(payload.lifecycle).toBe("executed");
+  });
+
+  it("sums automated output and protocol fee into the per-asset totals", () => {
+    const payload = aggregateZapDetail(
+      detailInput({ automated: [automatedRun(), automatedRun({ txHash: HEX32(0x21), blockNumber: 600n })] }),
+    );
+
+    expect(payload.stats.amountOutByAsset["0xZAPS"]).toBe((2n * 99n * 10n ** 16n).toString());
+    // executorFee + potFee — the 1% protocol fee, not a relayer fee.
+    expect(payload.stats.feeByAsset["0xZAPS"]).toBe((2n * 10n ** 16n).toString());
+    const gross = BigInt(payload.stats.amountOutByAsset["0xZAPS"]) + BigInt(payload.stats.feeByAsset["0xZAPS"]);
+    expect(gross).toBe(2n * 10n ** 18n);
+  });
+
+  it("carries the kind, executor, series and run index of each row", () => {
+    const payload = aggregateZapDetail(
+      detailInput({
+        automated: [
+          automatedRun({ kind: "recurring-relative", run: 3, seriesId: 42n }),
+          automatedRun({ kind: "trigger", run: null, seriesId: 77n, blockNumber: 600n, txHash: HEX32(0x21) }),
+        ],
+      }),
+    );
+
+    const [trigger, relative] = payload.executions;
+    expect(trigger).toMatchObject({ kind: "trigger", run: null, nonce: "77", executor: EXECUTOR });
+    expect(relative).toMatchObject({ kind: "recurring-relative", run: 3, nonce: "42", executor: EXECUTOR });
+    // No Executed log carries a recipient for these, and none is invented: the
+    // contract sets `recipient` once at initialize with no setter and every
+    // automated path pays exactly it, so the policy read names who was paid.
+    expect(trigger.recipient).toBe(OWNER);
+    expect(payload.executions.every((entry) => entry.executor !== null)).toBe(true);
+  });
+
+  it("interleaves automated and one-shot runs into one newest-first history", () => {
+    const payload = aggregateZapDetail(
+      detailInput({
+        executed: [executed({ blockNumber: 550n, txHash: HEX32(0x30) })],
+        automated: [
+          automatedRun({ blockNumber: 500n, txHash: HEX32(0x20) }),
+          automatedRun({ blockNumber: 600n, txHash: HEX32(0x21) }),
+        ],
+        timestamps: new Map([
+          [500n, 1_700_000_000],
+          [550n, 1_700_000_500],
+          [600n, 1_700_001_000],
+        ]),
+      }),
+    );
+
+    expect(payload.executions.map((entry) => entry.txHash)).toEqual([HEX32(0x21), HEX32(0x30), HEX32(0x20)]);
+    expect(payload.executions.map((entry) => entry.kind)).toEqual(["recurring", "one-shot", "recurring"]);
+    expect(payload.stats.executionCount).toBe(3);
+    expect(payload.stats.automatedRunCount).toBe(2);
+    // First/last span the whole history, not just the one-shot slice of it.
+    expect(payload.stats.firstExecutionAt).toBe(1_700_000_000);
+    expect(payload.stats.lastExecutionAt).toBe(1_700_001_000);
+  });
+
+  it("drops an automated run emitted by another contract", () => {
+    // Any contract can emit an identically-shaped ExecutedRecurring; only this
+    // capsule's own logs may become its count, its volume, or its lifecycle.
+    const payload = aggregateZapDetail(
+      detailInput({
+        automated: [automatedRun({ emitter: SPOOFER, amountOut: 10n ** 24n, txHash: HEX32(0x22) })],
+      }),
+    );
+
+    expect(payload.stats.executionCount).toBe(0);
+    expect(payload.stats.automatedRunCount).toBe(0);
+    expect(payload.stats.amountOutByAsset).toEqual({});
+    expect(payload.lifecycle).toBe("created");
+  });
+
+  it("counts an automated run whose emitter arrives lowercase from the RPC", () => {
+    const payload = aggregateZapDetail(
+      detailInput({ automated: [automatedRun({ emitter: ZAP.toLowerCase() as `0x${string}` })] }),
+    );
+    expect(payload.stats.executionCount).toBe(1);
+  });
+
+  it("reads recovered when an emergency exit follows the last automated run", () => {
+    const payload = aggregateZapDetail(
+      detailInput({ automated: [automatedRun({ blockNumber: 500n })], exits: [exited({ blockNumber: 700n })] }),
+    );
+    expect(payload.lifecycle).toBe("recovered");
   });
 });
 

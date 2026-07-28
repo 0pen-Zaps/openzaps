@@ -6,8 +6,9 @@ import { formatUnits, type Address } from "viem";
 
 import { CopyButton } from "@/components/CopyButton";
 import { SHAPE_COLOR, SHAPE_LABEL, type FlowShape } from "@/lib/blocks";
+import { describeAutomatedRun } from "@/lib/activity";
 import { explorerAddress, explorerTransaction } from "@/lib/robinhood";
-import type { ZapDetailPayload, ZapPolicyView } from "@/lib/zap";
+import type { ZapDetailPayload, ZapExecution, ZapPolicyView } from "@/lib/zap";
 import { BlockGlyph } from "@/app/(site)/zap/BlockGlyph";
 import { ProtocolStack } from "@/components/ProtocolLogo";
 import { protocolsForRouteKind, type ProtocolInfo } from "@/lib/protocols";
@@ -124,7 +125,12 @@ export function ZapLive({
   const { policy, provenance, stats, balances, executions, recoveries } = data;
   const verified = policy.canonicalClone && policy.hashMatches;
   const chain = policyChain(policy);
-  const feeTotals = Object.entries(stats.feeByAsset).filter(([, raw]) => raw !== "0");
+  // A one-shot's fee is the RELAYER fee, bounded by maxRelayerFeeCap; an
+  // automated run's is the protocol fee, which that cap does not govern at all.
+  // They are summed separately because the card explains each in its own terms —
+  // printing one number would make this page contradict the cap it prints above.
+  const relayerFeeTotals = feeTotalsFor(executions, (kind) => kind === "one-shot");
+  const protocolFeeTotals = feeTotalsFor(executions, (kind) => kind !== "one-shot");
   const recoveredTotals = totalsByAsset(recoveries);
 
   return (
@@ -308,6 +314,7 @@ export function ZapLive({
 
         <div className={styles.metricGrid}>
           <Metric label="Executions" value={String(stats.executionCount)} />
+          <Metric label="Of those, automated" value={String(stats.automatedRunCount)} />
           <Metric label="Emergency exits" value={String(stats.recoveryCount)} />
           <ExecutionTime count={stats.executionCount} label="First execution" timestamp={stats.firstExecutionAt} />
           <ExecutionTime count={stats.executionCount} label="Last execution" timestamp={stats.lastExecutionAt} />
@@ -317,7 +324,7 @@ export function ZapLive({
           <div className={styles.totalsCard}>
             <h3>Produced by executions</h3>
             {Object.keys(stats.amountOutByAsset).length === 0 ? (
-              <p className={styles.empty}>None yet — this Zap has never emitted an Executed log.</p>
+              <p className={styles.empty}>None yet — this Zap has never emitted an execution log.</p>
             ) : (
               <ul className={styles.totalsList}>
                 {Object.entries(stats.amountOutByAsset).map(([symbol, net]) => {
@@ -338,19 +345,32 @@ export function ZapLive({
           </div>
 
           <div className={styles.totalsCard}>
-            <h3>Relayer fee taken</h3>
-            {feeTotals.length === 0 ? (
+            <h3>Fee withheld from output</h3>
+            {relayerFeeTotals.length === 0 && protocolFeeTotals.length === 0 ? (
               <p className={styles.empty}>
                 {policy.maxRelayerFeeCap === "0"
                   ? "Zero, and not because none happened to be taken. This policy commits maxRelayerFeeCap = 0, so no execution of it can pay a relayer fee. The bound comes from the policy hash, not from a measurement."
-                  : "No fee appears in any Executed log for this Zap."}
+                  : "No fee appears in any execution log for this Zap."}
               </p>
             ) : (
               <ul className={styles.totalsList}>
-                {feeTotals.map(([symbol, raw]) => (
-                  <li key={symbol}>
+                {relayerFeeTotals.map(([symbol, raw]) => (
+                  <li key={`relayer-${symbol}`}>
                     <Amount raw={raw} symbol={symbol} />
-                    <span className={styles.totalsNote}>summed from the fee field of each Executed log</span>
+                    <span className={styles.totalsNote}>
+                      relayer fee, summed from the fee field of each Executed log
+                    </span>
+                  </li>
+                ))}
+                {protocolFeeTotals.map(([symbol, raw]) => (
+                  <li key={`protocol-${symbol}`}>
+                    <Amount raw={raw} symbol={symbol} />
+                    {/* Not a relayer fee, and maxRelayerFeeCap does not bound it:
+                        the automated paths withhold a protocol fee and split it
+                        between the executor that submitted the run and the pot. */}
+                    <span className={styles.totalsNote}>
+                      protocol fee on automated runs — executor share plus lottery pot
+                    </span>
                   </li>
                 ))}
               </ul>
@@ -394,9 +414,11 @@ export function ZapLive({
         </div>
 
         <p className={styles.cardFoot}>
-          Counts and totals come only from this contract&apos;s own Executed and EmergencyExit logs. No USD value,
-          token price, PnL, APY, or success rate appears on this page. A reverted execution emits no log at all, so
-          a success rate computed from these logs would be unfalsifiable, and none is shown.
+          Counts and totals come only from this contract&apos;s own execution logs — Executed for an owner-signed
+          run, ExecutedRecurring, ExecutedRecurringRelative and ExecutedTrigger for an automated one — plus its
+          EmergencyExit logs. No USD value, token price, PnL, APY, or success rate appears on this page. A reverted
+          execution emits no log at all, so a success rate computed from these logs would be unfalsifiable, and
+          none is shown.
         </p>
       </section>
 
@@ -421,26 +443,38 @@ export function ZapLive({
               target="_blank"
               rel="noreferrer"
             >
-              <span className={styles.eventGlyph} data-type="executed">
-                <BlockGlyph name="bolt" />
+              <span
+                className={styles.eventGlyph}
+                data-type={execution.kind === "one-shot" ? "executed" : "automated"}
+              >
+                <BlockGlyph name={execution.kind === "one-shot" ? "bolt" : "repeat"} />
               </span>
               <span className={styles.eventBody}>
-                <span className={styles.eventKind}>Executed</span>
+                <span className={styles.eventKind}>{execution.kind === "one-shot" ? "Executed" : "AutoZap"}</span>
                 <strong className={styles.eventTitle}>
                   <Amount raw={execution.amountOut} symbol={execution.assetSymbol} inline /> to{" "}
                   {shortAddress(execution.recipient)}
                   {execution.fee !== "0" && (
                     <>
-                      {" · fee "}
+                      {execution.kind === "one-shot" ? " · fee " : " · protocol fee "}
                       <Amount raw={execution.fee} symbol={execution.assetSymbol} inline />
                     </>
                   )}
                 </strong>
-                {/* A 78-digit nonce would swallow the row, and half of one is
-                    not a nonce, so the full value stays in the title. */}
-                <span className={styles.eventDetail} title={`nonce ${execution.nonce}`}>
-                  nonce {shortDigits(execution.nonce)}
-                </span>
+                {/* A 78-digit nonce or series id would swallow the row, and half
+                    of one is not an id, so the full value stays in the title.
+                    An automated row also names its EXECUTOR: the point of these
+                    runs is that the owner did not submit them. */}
+                {execution.kind === "one-shot" ? (
+                  <span className={styles.eventDetail} title={`nonce ${execution.nonce}`}>
+                    nonce {shortDigits(execution.nonce)}
+                  </span>
+                ) : (
+                  <span className={styles.eventDetail} title={`series ${execution.nonce}`}>
+                    {describeAutomatedRun(execution.kind, execution.run)}
+                    {execution.executor && <> · submitted by {shortAddress(execution.executor)}</>}
+                  </span>
+                )}
               </span>
               <span className={styles.eventEnd}>
                 <span className={styles.eventTx}>
@@ -815,6 +849,16 @@ function formatAmount(raw: string, symbol: string): { text: string; exact: strin
 
 function group(digits: string): string {
   return digits.replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+}
+
+/** Per-asset fee totals for the executions whose kind passes `matches`. */
+function feeTotalsFor(
+  executions: readonly ZapExecution[],
+  matches: (kind: ZapExecution["kind"]) => boolean,
+): [string, string][] {
+  return totalsByAsset(
+    executions.filter((entry) => matches(entry.kind)).map((entry) => ({ assetSymbol: entry.assetSymbol, amount: entry.fee })),
+  ).filter(([, raw]) => raw !== "0");
 }
 
 function totalsByAsset(rows: readonly { assetSymbol: string; amount: string }[]): [string, string][] {
