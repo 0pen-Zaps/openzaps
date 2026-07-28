@@ -104,7 +104,7 @@ const publicClient = createPublicClient({ chain: robinhoodChain, transport: http
 // cheap gas; 0.0005 ETH covers both txs comfortably while staying negligible against a real deposit.
 const WRAP_GAS_RESERVE = 500_000_000_000_000n; // 0.0005 ETH
 
-type BusyAction = "connect" | "create" | "fund" | "sign" | "cancel" | "recover" | "refresh" | "send" | "publish" | null;
+type BusyAction = "connect" | "create" | "fund" | "sign" | "cancel" | "recover" | "refresh" | "publish" | null;
 type ExecutorMode = ExecutorAccess | "custom";
 type StepState = "done" | "current" | "pending";
 
@@ -124,15 +124,6 @@ const CHAIN_ENFORCES: readonly string[] = [
   "The recipient stays your wallet, forever",
   "You can revoke the nonce and withdraw at any time",
 ];
-
-/** The reference daemon's localhost intake (executor/intake.mjs). Probed only after signing. */
-const EXECUTOR_INTAKE_URL = "http://127.0.0.1:8477";
-const INTAKE_TOKEN_STORAGE_KEY = "openzap:executor:intake-token";
-
-interface ExecutorHealth {
-  executing: boolean;
-  chainId: number;
-}
 
 interface SeriesStatus {
   kind: "recurring";
@@ -267,8 +258,6 @@ export default function AutomateConsole(): React.JSX.Element {
   const [walletBalance, setWalletBalance] = useState<{ token: Address; balance: bigint } | null>(null);
   /** Connected wallet's native ETH balance — lets the app wrap ETH→aeWETH to fund an aeWETH zap. */
   const [ethBalance, setEthBalance] = useState<bigint | null>(null);
-  const [executorHealth, setExecutorHealth] = useState<ExecutorHealth | null>(null);
-  const [intakeToken, setIntakeToken] = useState("");
   const loadEpochRef = useRef(0);
 
   useEffect(() => {
@@ -875,101 +864,6 @@ export default function AutomateConsole(): React.JSX.Element {
     threshold,
     validDays,
   ]);
-
-  // ---- local executor intake (reference daemon on this machine) ----
-
-  // Probe once signed, then KEEP probing every few seconds until a daemon answers — the realistic
-  // flow is "sign, then start the daemon", so a one-shot probe on the `signed` edge would never
-  // notice a daemon that comes up later. Stops polling once detected. A failed probe is the NORMAL
-  // case (no local daemon) and renders as nothing.
-  useEffect(() => {
-    if (!signed || executorHealth) return;
-    let live = true;
-    const probe = async () => {
-      const abort = new AbortController();
-      const timer = setTimeout(() => abort.abort(), 1_500);
-      try {
-        const res = await fetch(`${EXECUTOR_INTAKE_URL}/health`, { signal: abort.signal });
-        const body = res.ok ? ((await res.json()) as { ok?: boolean; executing?: boolean; chainId?: number }) : null;
-        if (live && body?.ok) setExecutorHealth({ executing: body.executing === true, chainId: Number(body.chainId) });
-      } catch {
-        // No daemon reachable (the common case, and on Safari/Firefox where https→http localhost is
-        // blocked) — leave it null and try again on the next tick.
-      } finally {
-        clearTimeout(timer);
-      }
-    };
-    void probe();
-    const interval = setInterval(() => void probe(), 5_000);
-    return () => {
-      live = false;
-      clearInterval(interval);
-    };
-  }, [signed, executorHealth]);
-
-  useEffect(() => {
-    try {
-      // sessionStorage, not localStorage: the intake token is a local-machine capability, and
-      // scoping it to the tab session keeps an XSS on the public origin from exfiltrating a durable
-      // one. The small cost is re-pasting it in a new session.
-      const saved = window.sessionStorage.getItem(INTAKE_TOKEN_STORAGE_KEY);
-      if (saved) Promise.resolve().then(() => setIntakeToken(saved));
-    } catch {
-      // Storage unavailable — the field just starts empty.
-    }
-  }, []);
-
-  const updateIntakeToken = useCallback((value: string) => {
-    setIntakeToken(value);
-    try {
-      window.sessionStorage.setItem(INTAKE_TOKEN_STORAGE_KEY, value);
-    } catch {
-      // Storage unavailable — the value lives only in component state.
-    }
-  }, []);
-
-  const sendToExecutor = useCallback(async () => {
-    setBusy("send");
-    setError("");
-    try {
-      if (!record?.intentFile) throw new Error("Sign the intent first.");
-      if (!intakeToken.trim()) throw new Error("Paste the intake token (run `node executor/index.mjs status` to see it).");
-      if (executorHealth && executorHealth.chainId !== ROBINHOOD_CHAIN_ID) {
-        throw new Error(`Local executor is on chain ${executorHealth.chainId}, not ${ROBINHOOD_CHAIN_ID}. It would reject this intent.`);
-      }
-      // Bounded like the probe: a wedged daemon must not pin `busy` and freeze every other button.
-      const abort = new AbortController();
-      const timer = setTimeout(() => abort.abort(), 5_000);
-      let res: Response;
-      try {
-        res = await fetch(`${EXECUTOR_INTAKE_URL}/intents`, {
-          method: "POST",
-          headers: { "content-type": "application/json", authorization: `Bearer ${intakeToken.trim()}` },
-          body: record.intentFile,
-          signal: abort.signal,
-        });
-      } finally {
-        clearTimeout(timer);
-      }
-      if (res.status === 401) throw new Error("The executor rejected the token — copy it from `node executor/index.mjs status`.");
-      if (!res.ok) {
-        const body = (await res.json().catch(() => null)) as { error?: string } | null;
-        throw new Error(body?.error ?? `Executor refused the intent (HTTP ${res.status}).`);
-      }
-      const body = (await res.json()) as { stored: string };
-      persist(records.map((r) => (r.address === record.address ? { ...r, deliveredTo: "local-executor" } : r)));
-      setNotice(`Intent delivered to your local executor (${body.stored}) — it takes over from here.`);
-      trackEvent("automate_send_executor");
-    } catch (cause) {
-      if (cause instanceof DOMException && cause.name === "AbortError") {
-        setError("The local executor did not respond in time. Is the daemon healthy?");
-      } else {
-        setError(readableError(cause));
-      }
-    } finally {
-      setBusy(null);
-    }
-  }, [executorHealth, intakeToken, persist, record, records]);
 
   /** Manual retry of the auto-publish (e.g. the relay was down at signing time). */
   const publishToRelay = useCallback(async () => {
@@ -1896,50 +1790,29 @@ export default function AutomateConsole(): React.JSX.Element {
             </p>
           </section>
 
-          {signed && executorHealth ? (
-            <section className={styles.card} aria-label="Local executor">
+          {/* This page never handles the local daemon's intake token. That token is a chmod-600
+              capability on the user's own machine; this is a public HTTPS origin, so holding it here
+              — even in sessionStorage — put it inside the blast radius of any XSS on the page. The
+              local MCP server reads it in its own process instead, which is why the delivery button
+              that used to live here is now a pointer. */}
+          {signed ? (
+            <section className={styles.card} aria-label="Running your own executor">
               <div className={styles.localExecHead}>
-                <h2 className={styles.execTitle}>Local executor detected</h2>
-                {!executorHealth.executing ? (
-                  <span className={styles.localExecChip}>watch-only</span>
-                ) : null}
+                <h2 className={styles.execTitle}>Running your own executor?</h2>
               </div>
               <div className={styles.localExecBody}>
-                <label className={styles.localExecField}>
-                  <span className={styles.fieldLabel}>Intake token</span>
-                  <input
-                    className={styles.input}
-                    type="password"
-                    placeholder="intake token — from `node executor/index.mjs status`"
-                    value={intakeToken}
-                    onChange={(event) => updateIntakeToken(event.target.value)}
-                    autoComplete="off"
-                  />
-                </label>
-                <button
-                  data-busy={busy === "send"}
-                  className={styles.btnPrimary}
-                  disabled={busy !== null || !intakeToken.trim()}
-                  onClick={() => void sendToExecutor()}
-                  type="button"
-                >
-                  {busy === "send" ? "Delivering…" : record?.deliveredTo === "local-executor" ? "Send again" : "Send to executor"}
-                </button>
-                {record?.deliveredTo === "local-executor" ? (
-                  <span className={styles.okStatus}>
-                    <BlockGlyph name="check" className={styles.okGlyph} />
-                    delivered to your local executor
+                <p className={styles.localExecNote}>
+                  Hand this signed intent to the daemon on your machine through the local MCP server:
+                  its <code>deliver_intent_local</code> tool reads the intake token off disk in its own
+                  process, so the token never reaches a browser. Setup is in{" "}
+                  <Link href="/zap?view=connect">Connect</Link>, and the full tool list is in{" "}
+                  <code>mcp/README.md</code>. Delivery moves an intent you already signed — it grants
+                  no authority the signature did not already give.
+                  <span className={styles.localExecAlt}>
+                    No MCP server? <strong>Download file</strong> above writes the same JSON; drop it in{" "}
+                    <code>~/.openzaps/executor/intents/</code> and the daemon picks it up.
                   </span>
-                ) : null}
-                {/* The chip alone says "watch-only" and nothing about what that costs you.
-                    A daemon with no key simulates every run and broadcasts none, so an
-                    intent delivered to it never executes. */}
-                {!executorHealth.executing ? (
-                  <span className={styles.stepCaption}>
-                    Watch-only: no executor key is configured, so this daemon simulates runs and never broadcasts
-                    one. It will hold the intent, not execute it.
-                  </span>
-                ) : null}
+                </p>
               </div>
             </section>
           ) : null}

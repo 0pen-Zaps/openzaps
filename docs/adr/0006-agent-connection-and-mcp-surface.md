@@ -52,13 +52,16 @@ Four consequences follow, and each is implemented as stated:
    *being* `executor/index.mjs` with its own gas key: a separate process the user starts
    deliberately.
 
-3. **The intake token gains a path that never crosses an origin boundary.** The local MCP server
-   reads it off its chmod-600 file in-process, so it is never returned in a tool result and never
-   enters a model's context. **This is added alongside the browser flow, not in place of it:**
-   `AutomateConsole.tsx` still has the user paste that local capability into a public HTTPS origin,
-   where it lives in `sessionStorage` and is exposed to any XSS on the page — the code's own comment
-   concedes this. Removing that flow is follow-up work, tracked separately; until then the weaker
-   path remains reachable and this ADR does not claim otherwise.
+3. **The intake token never crosses an origin boundary.** The local MCP server reads it off its
+   chmod-600 file in-process, so it is never returned in a tool result and never enters a model's
+   context. This began as a path *alongside* the browser flow; it is now the only one.
+   `AutomateConsole.tsx` used to have the user paste that local capability into a public HTTPS
+   origin, where it lived in `sessionStorage` within reach of any XSS on the page — the code's own
+   comment conceded this. That flow, its `POST` with an `Authorization: Bearer` header, and the
+   `127.0.0.1:8477` health probe that revealed it are all gone; the console now points at
+   `deliver_intent_local` instead. The browser's remaining delivery options carry no capability:
+   publish to the relay, or download the signed JSON and drop it in
+   `~/.openzaps/executor/intents/`.
 
 4. **Revocation has three levels, and the UI names all three.** *Soft*: stop the agent or rotate its
    key; a pinned series stalls, which is the safe failure and costs no transaction. *Hard*:
