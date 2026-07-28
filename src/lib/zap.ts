@@ -1,6 +1,6 @@
 import { getAddress, isAddressEqual, zeroAddress, type Address, type Hex } from "viem";
 
-import { assetSymbolFor } from "@/lib/activity";
+import { assetSymbolFor, type AutomatedRunKind, type AutomatedRunLogInput } from "@/lib/activity";
 import {
   MAX_ROUTER_AMOUNT,
   assetsForDirection,
@@ -116,13 +116,36 @@ export type ZapPolicyView = {
   deviations: string[];
 };
 
+/**
+ * Which authorization produced one run. `one-shot` is the owner-signed
+ * `Executed` path; the other three are the v3/v3.1 automated events, submitted
+ * by an executor against a standing authorization the owner signed once.
+ */
+export type ZapExecutionKind = "one-shot" | AutomatedRunKind;
+
 export type ZapExecution = {
+  kind: ZapExecutionKind;
+  /** seriesId for a recurring run, nonce for a one-shot or a trigger. */
   nonce: string;
   recipient: Address;
+  /**
+   * The executor that submitted an automated run; null on a one-shot. The whole
+   * point of an automated run is that the owner did not submit it.
+   */
+  executor: Address | null;
+  /** 1-based index within a recurring series; null elsewhere. */
+  run: number | null;
   outAsset: Address;
   assetSymbol: string;
-  /** Net of the relayer fee. Gross output is amountOut + fee. */
+  /** Net of the fee. Gross output is amountOut + fee. */
   amountOut: string;
+  /**
+   * Withheld from gross output: the relayer fee on a one-shot, the protocol fee
+   * (executor share + pot share) on an automated run. Two different fees with
+   * the same arithmetic role, which is why `kind` travels beside this number —
+   * printing an automated run's protocol fee as a relayer fee would contradict
+   * the `maxRelayerFeeCap` the policy commits to.
+   */
   fee: string;
   txHash: Hex;
   blockNumber: string;
@@ -149,7 +172,14 @@ export type ZapRecovery = {
  * invalidations honestly means reading that event, not inferring it.
  */
 export type ZapStats = {
+  /**
+   * Every confirmed run, one-shot and automated together. Counting only the
+   * one-shot `Executed` log is what made a capsule with twenty recurring runs
+   * report zero; `automatedRunCount` is how a caller recovers the split.
+   */
   executionCount: number;
+  /** How many of `executionCount` were submitted by an executor. */
+  automatedRunCount: number;
   recoveryCount: number;
   /** Symbol -> summed raw wei as a decimal string. */
   amountOutByAsset: Record<string, string>;
@@ -267,6 +297,8 @@ export interface ZapDetailInput {
   runtime: Hex | null;
   balances: { weth: bigint; zaps: bigint; native: bigint };
   executed: readonly ZapExecutedLogInput[];
+  /** ExecutedRecurring / ExecutedRecurringRelative / ExecutedTrigger logs. */
+  automated: readonly AutomatedRunLogInput[];
   exits: readonly ZapExitLogInput[];
   timestamps: ReadonlyMap<bigint, number>;
   headBlock: bigint;
@@ -352,10 +384,15 @@ export function deriveLifecycle(
 }
 
 /**
- * Fold one zap's proven creation log, its own Executed/EmergencyExit logs and
- * its onchain reads into the detail payload. The created log is the identity
+ * Fold one zap's proven creation log, its own execution and EmergencyExit logs
+ * and its onchain reads into the detail payload. The created log is the identity
  * gate — it must name this address — and every event is re-filtered by emitter
  * so a lookalike event from another contract can never be attributed here.
+ *
+ * "Execution" here means every confirmed run: the owner-signed one-shot AND the
+ * three automated events. They are one list because they are one history — a
+ * recurring capsule emits nothing else, so a list built from `Executed` alone
+ * reports it as never having run.
  */
 export function aggregateZapDetail(input: ZapDetailInput): ZapDetailPayload {
   const address = getAddress(input.address);
@@ -363,23 +400,52 @@ export function aggregateZapDetail(input: ZapDetailInput): ZapDetailPayload {
     throw new Error("ZapCreated log does not belong to this zap.");
   }
 
-  const executedLogs = input.executed
-    .filter((log) => isAddressEqual(log.emitter, address))
-    .sort(newestFirst);
+  // Neither execution array is sorted here: they are interleaved into one list
+  // below, and that merged sort is the only ordering that means anything.
+  const executedLogs = input.executed.filter((log) => isAddressEqual(log.emitter, address));
+  // The same emitter gate the one-shot logs pass: any contract can emit an
+  // identically-shaped ExecutedRecurring, and a spoofed one must never become a
+  // run in this capsule's count, totals, or lifecycle.
+  const automatedLogs = input.automated.filter((log) => isAddressEqual(log.emitter, address));
   const exitLogs = input.exits.filter((log) => isAddressEqual(log.emitter, address)).sort(newestFirst);
 
-  const executions: ZapExecution[] = executedLogs.map((log) => ({
-    nonce: log.nonce.toString(),
-    recipient: getAddress(log.recipient),
-    outAsset: getAddress(log.outAsset),
-    assetSymbol: assetSymbolForDisplay(log.outAsset),
-    amountOut: log.amountOut.toString(),
-    fee: log.fee.toString(),
-    txHash: log.txHash,
-    blockNumber: log.blockNumber.toString(),
-    logIndex: log.logIndex,
-    timestamp: input.timestamps.get(log.blockNumber) ?? null,
-  }));
+  const executions: ZapExecution[] = [
+    ...executedLogs.map((log): ZapExecution => ({
+      kind: "one-shot",
+      nonce: log.nonce.toString(),
+      recipient: getAddress(log.recipient),
+      executor: null,
+      run: null,
+      outAsset: getAddress(log.outAsset),
+      assetSymbol: assetSymbolForDisplay(log.outAsset),
+      amountOut: log.amountOut.toString(),
+      fee: log.fee.toString(),
+      txHash: log.txHash,
+      blockNumber: log.blockNumber.toString(),
+      logIndex: log.logIndex,
+      timestamp: input.timestamps.get(log.blockNumber) ?? null,
+    })),
+    ...automatedLogs.map((log): ZapExecution => ({
+      kind: log.kind,
+      nonce: log.seriesId.toString(),
+      // The automated events carry no recipient, and this is not a guess to
+      // cover that: `recipient` is set once in `initialize` with no setter, and
+      // every automated path transfers the net output to exactly that address
+      // (`_settleWithExecutorFee`). The policy read in this same snapshot is
+      // therefore who this run paid.
+      recipient: getAddress(input.policy.recipient),
+      executor: getAddress(log.executor),
+      run: log.run,
+      outAsset: getAddress(log.outAsset),
+      assetSymbol: assetSymbolForDisplay(log.outAsset),
+      amountOut: log.amountOut.toString(),
+      fee: (log.executorFee + log.potFee).toString(),
+      txHash: log.txHash,
+      blockNumber: log.blockNumber.toString(),
+      logIndex: log.logIndex,
+      timestamp: input.timestamps.get(log.blockNumber) ?? null,
+    })),
+  ].sort(newestRowFirst);
 
   const recoveries: ZapRecovery[] = exitLogs.map((log) => ({
     owner: getAddress(log.owner),
@@ -392,13 +458,18 @@ export function aggregateZapDetail(input: ZapDetailInput): ZapDetailPayload {
     timestamp: input.timestamps.get(log.blockNumber) ?? null,
   }));
 
+  // Both kinds settle the same way — gross out of the adapter, minus a fee, net
+  // to the recipient — so they sum into one pair of totals and `net + fee` stays
+  // the gross for every asset regardless of which path produced it.
   const amountOutByAsset: Record<string, bigint> = {};
   const feeByAsset: Record<string, bigint> = {};
-  for (const log of executedLogs) {
-    const symbol = assetSymbolForDisplay(log.outAsset);
-    amountOutByAsset[symbol] = (amountOutByAsset[symbol] ?? 0n) + log.amountOut;
-    feeByAsset[symbol] = (feeByAsset[symbol] ?? 0n) + log.fee;
-  }
+  const addTotals = (outAsset: Address, amountOut: bigint, fee: bigint): void => {
+    const symbol = assetSymbolForDisplay(outAsset);
+    amountOutByAsset[symbol] = (amountOutByAsset[symbol] ?? 0n) + amountOut;
+    feeByAsset[symbol] = (feeByAsset[symbol] ?? 0n) + fee;
+  };
+  for (const log of executedLogs) addTotals(log.outAsset, log.amountOut, log.fee);
+  for (const log of automatedLogs) addTotals(log.outAsset, log.amountOut, log.executorFee + log.potFee);
 
   const balances: ZapBalances = {
     weth: input.balances.weth.toString(),
@@ -408,6 +479,7 @@ export function aggregateZapDetail(input: ZapDetailInput): ZapDetailPayload {
 
   const stats: ZapStats = {
     executionCount: executions.length,
+    automatedRunCount: automatedLogs.length,
     recoveryCount: recoveries.length,
     amountOutByAsset: toDecimalStrings(amountOutByAsset),
     feeByAsset: toDecimalStrings(feeByAsset),
@@ -657,6 +729,22 @@ function newestFirst(
 ): number {
   if (a.blockNumber === b.blockNumber) return b.logIndex - a.logIndex;
   return a.blockNumber < b.blockNumber ? 1 : -1;
+}
+
+/**
+ * The same order for rows that have already been rendered, whose block number
+ * is a decimal string. Interleaving one-shot and automated runs is what makes
+ * `executions[0]` the newest run of EITHER kind — and therefore what makes
+ * `lastExecutionAt` and the lifecycle read the real end of the history.
+ */
+function newestRowFirst(
+  a: { blockNumber: string; logIndex: number },
+  b: { blockNumber: string; logIndex: number },
+): number {
+  const blockA = BigInt(a.blockNumber);
+  const blockB = BigInt(b.blockNumber);
+  if (blockA === blockB) return b.logIndex - a.logIndex;
+  return blockA < blockB ? 1 : -1;
 }
 
 function toDecimalStrings(totals: Record<string, bigint>): Record<string, string> {

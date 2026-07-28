@@ -147,6 +147,76 @@ export interface AutomatedRunLogInput {
   logIndex: number;
 }
 
+/**
+ * Every event an automated run can emit, paired with the kind it means.
+ *
+ * This list is the single source of truth for "what does automated history look
+ * like on chain", and every reader that reports run history queries ALL of it.
+ * A reader that queries a subset does not under-count by a little: an automated
+ * capsule emits none of the other events, so a partial list reports a capsule
+ * that has run twenty times as created-and-then-silent forever. That is exactly
+ * how the capsule detail reader was wrong.
+ */
+export const AUTOMATED_RUN_EVENTS = [
+  { event: executedRecurringEvent, kind: "recurring" },
+  { event: executedRecurringRelativeEvent, kind: "recurring-relative" },
+  { event: executedTriggerEvent, kind: "trigger" },
+] as const satisfies readonly { event: unknown; kind: AutomatedRunKind }[];
+
+/**
+ * One automated-run log as viem returns it, before normalization. The three
+ * events do not share a field list — a trigger carries `nonce` where a recurring
+ * series carries `seriesId` and a `run` index — so every arg is optional here
+ * and `decodeAutomatedRuns` is what reconciles them into one shape.
+ */
+export interface AutomatedRunLog {
+  address: Address;
+  args?: {
+    seriesId?: bigint;
+    nonce?: bigint;
+    run?: number;
+    executor?: Address;
+    outAsset?: Address;
+    amountOut?: bigint;
+    executorFee?: bigint;
+    potFee?: bigint;
+  };
+  transactionHash: Hex;
+  blockNumber: bigint;
+  logIndex: number;
+}
+
+/**
+ * Normalize one event's logs into the shared automated-run shape.
+ *
+ * A log missing any of the three fields that carry meaning — who submitted it,
+ * what came out, and how much — is dropped rather than defaulted: a run whose
+ * output cannot be read is not a run worth printing a number for.
+ */
+export function decodeAutomatedRuns(
+  logs: readonly AutomatedRunLog[],
+  kind: AutomatedRunKind,
+): AutomatedRunLogInput[] {
+  return logs.flatMap((log) => {
+    const args = log.args;
+    if (!args?.executor || !args.outAsset || args.amountOut === undefined) return [];
+    return [{
+      emitter: log.address,
+      kind,
+      executor: args.executor,
+      outAsset: args.outAsset,
+      amountOut: args.amountOut,
+      executorFee: args.executorFee ?? 0n,
+      potFee: args.potFee ?? 0n,
+      seriesId: args.seriesId ?? args.nonce ?? 0n,
+      run: args.run === undefined ? null : Number(args.run),
+      txHash: log.transactionHash,
+      blockNumber: log.blockNumber,
+      logIndex: log.logIndex,
+    }];
+  });
+}
+
 export interface ActivityEntry {
   type: "created" | "executed" | "automated" | "recovered";
   txHash: Hex;

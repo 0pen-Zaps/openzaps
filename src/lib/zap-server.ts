@@ -3,6 +3,8 @@ import { createPublicClient, getAddress, http, type Address } from "viem";
 import {
   ACTIVITY_FEED_LIMIT,
   ACTIVITY_FROM_BLOCK,
+  AUTOMATED_RUN_EVENTS,
+  decodeAutomatedRuns,
   emergencyExitEvent,
   executedEvent,
   zapCreatedEvent,
@@ -223,9 +225,13 @@ async function requireCreation(address: Address): Promise<ZapCreatedLogInput> {
  * Read one zap's full onchain story. Provenance is the gate, and it runs first
  * and alone: without a ZapCreated log emitted by the canonical factory for this
  * exact address, nothing else is read and nothing is reported. Only once that
- * passes does the ~20-call snapshot run, every event query scoped to the proven
+ * passes does the ~25-call snapshot run, every event query scoped to the proven
  * address and every read pinned to a single freshly read head block, so the
  * page is one consistent snapshot rather than a stitched one.
+ *
+ * "Every event query" means all five: ZapCreated, Executed, EmergencyExit, and
+ * the three automated-run events. A capsule's history is whichever of those it
+ * emitted, and reading a subset does not shrink the history — it misreports it.
  * Throws on RPC failure — callers decide how to fail closed.
  */
 export async function fetchZapDetail(zapAddress: Address): Promise<ZapDetailPayload> {
@@ -257,13 +263,36 @@ export async function fetchZapDetail(zapAddress: Address): Promise<ZapDetailPayl
     ),
   );
 
-  const [wethBalance, zapsBalance, nativeBalance, executedLogs, exitLogs] = await Promise.all([
+  const [wethBalance, zapsBalance, nativeBalance, executedLogs, exitLogs, automatedChunks] = await Promise.all([
     client.readContract({ address: ROBINHOOD_ASSETS.weth, abi: erc20Abi, functionName: "balanceOf", args: [address], blockNumber: head }),
     client.readContract({ address: ROBINHOOD_ASSETS.zaps, abi: erc20Abi, functionName: "balanceOf", args: [address], blockNumber: head }),
     client.getBalance({ address, blockNumber: head }),
     client.getLogs({ address, event: executedEvent, fromBlock: ACTIVITY_FROM_BLOCK, toBlock: head, strict: true }),
     client.getLogs({ address, event: emergencyExitEvent, fromBlock: ACTIVITY_FROM_BLOCK, toBlock: head, strict: true }),
+    // `Executed` is only the one-shot path. A recurring or triggered run emits
+    // one of the three automation events instead and NEVER an `Executed`, so
+    // reading only the pair above reported a capsule twenty runs deep as
+    // created-and-then-silent — zero executions, no volume, no timestamps, and
+    // a lifecycle stuck at "created". Same pinned head, same address scope.
+    Promise.all(
+      AUTOMATED_RUN_EVENTS.map(async ({ event, kind }) =>
+        decodeAutomatedRuns(
+          // Each element of the tuple carries a different event ABI, so within
+          // the map the parameter is their union and viem cannot resolve its
+          // log type; the decoder validates every field it reads either way.
+          (await client.getLogs({
+            address,
+            event: event as never,
+            fromBlock: ACTIVITY_FROM_BLOCK,
+            toBlock: head,
+            strict: true,
+          })) as never,
+          kind,
+        ),
+      ),
+    ),
   ]);
+  const automated = automatedChunks.flat();
 
   const executed = executedLogs.flatMap((log): ZapExecutedLogInput[] =>
     log.args?.nonce !== undefined &&
@@ -300,8 +329,10 @@ export async function fetchZapDetail(zapAddress: Address): Promise<ZapDetailPayl
   );
 
   // The creation block always gets a timestamp — it anchors the provenance
-  // card — and the rest of the budget goes to the newest event blocks.
-  const eventBlocks = newestBlocks([...executed, ...exits], TIMESTAMP_BUDGET);
+  // card — and the rest of the budget goes to the newest event blocks. Automated
+  // runs compete for that budget on equal terms: leaving them out would time
+  // every row of an automation-only capsule as "block N" with no date.
+  const eventBlocks = newestBlocks([...executed, ...automated, ...exits], TIMESTAMP_BUDGET);
   const timestamps = await fetchTimestamps([created.blockNumber, ...eventBlocks]);
 
   return aggregateZapDetail({
@@ -312,6 +343,7 @@ export async function fetchZapDetail(zapAddress: Address): Promise<ZapDetailPayl
     runtime: runtime ?? null,
     balances: { weth: wethBalance, zaps: zapsBalance, native: nativeBalance },
     executed,
+    automated,
     exits,
     timestamps,
     headBlock: head,

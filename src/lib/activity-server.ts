@@ -1,14 +1,13 @@
-import { createPublicClient, http, type Address, type Hex } from "viem";
+import { createPublicClient, http, type Address } from "viem";
 
 import {
   ACTIVITY_FEED_LIMIT,
   ACTIVITY_FROM_BLOCK,
+  AUTOMATED_RUN_EVENTS,
   aggregateActivity,
+  decodeAutomatedRuns,
   emergencyExitEvent,
   executedEvent,
-  executedRecurringEvent,
-  executedRecurringRelativeEvent,
-  executedTriggerEvent,
   zapCreatedEvent,
   type AutomatedRunLogInput,
   type CreatedLogInput,
@@ -138,51 +137,14 @@ export async function fetchProtocolActivity(): Promise<ProtocolActivityPayload> 
 
   // Automated runs: recurring, relative-floor recurring, and one-shot triggers.
   // Each is scoped to the same canonical zap set as Executed/EmergencyExit, and
-  // a chain with no v3 capsules simply returns three empty arrays.
-  const [recurringChunks, relativeChunks, triggerChunks] = await Promise.all([
-    automationLogs(executedRecurringEvent),
-    automationLogs(executedRecurringRelativeEvent),
-    automationLogs(executedTriggerEvent),
-  ]);
-
-  type AutomationArgs = {
-    seriesId?: bigint;
-    nonce?: bigint;
-    run?: number;
-    executor?: Address;
-    outAsset?: Address;
-    amountOut?: bigint;
-    executorFee?: bigint;
-    potFee?: bigint;
-  };
-  const decodeAutomated = (
-    logs: readonly { address: Address; args?: AutomationArgs; transactionHash: Hex; blockNumber: bigint; logIndex: number }[],
-    kind: AutomatedRunLogInput["kind"],
-  ): AutomatedRunLogInput[] =>
-    logs.flatMap((log) => {
-      const a = log.args;
-      if (!a?.executor || !a.outAsset || a.amountOut === undefined) return [];
-      return [{
-        emitter: log.address,
-        kind,
-        executor: a.executor,
-        outAsset: a.outAsset,
-        amountOut: a.amountOut,
-        executorFee: a.executorFee ?? 0n,
-        potFee: a.potFee ?? 0n,
-        seriesId: a.seriesId ?? a.nonce ?? 0n,
-        run: a.run === undefined ? null : Number(a.run),
-        txHash: log.transactionHash,
-        blockNumber: log.blockNumber,
-        logIndex: log.logIndex,
-      }];
-    });
-
-  const automated: AutomatedRunLogInput[] = [
-    ...decodeAutomated(recurringChunks.flat() as never, "recurring"),
-    ...decodeAutomated(relativeChunks.flat() as never, "recurring-relative"),
-    ...decodeAutomated(triggerChunks.flat() as never, "trigger"),
-  ];
+  // a chain with no v3 capsules simply returns empty arrays.
+  const automated: AutomatedRunLogInput[] = (
+    await Promise.all(
+      AUTOMATED_RUN_EVENTS.map(async ({ event, kind }) =>
+        decodeAutomatedRuns((await automationLogs(event)).flat() as never, kind),
+      ),
+    )
+  ).flat();
 
   // Spend the timestamp budget on the newest blocks — the rows the feed will
   // actually display — and treat every timestamp as optional: one failed
