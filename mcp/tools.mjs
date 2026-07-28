@@ -486,9 +486,9 @@ export const TOOLS = [
         throw new Error(`intent is for chain ${validated.intent.chainId}, this executor is on ${ctx.cfg.chainId}`);
       }
 
-      // Read in this process, off a chmod-600 file. This is strictly better than
-      // the browser flow it replaces, where the user pastes a local capability
-      // into a public https origin and it lives in sessionStorage.
+      // Read in this process, off a chmod-600 file. This replaced a browser flow
+      // that had the user paste a local capability into a public https origin,
+      // where it lived in sessionStorage; that flow is gone (ADR-0006 §3).
       let token;
       try {
         token = readFileSync(ctx.cfg.intakeTokenFile, "utf8").trim();
