@@ -54,6 +54,16 @@ type TableState = {
   readonly revealEnd: number;
   readonly seats: number;
   readonly reveals: number;
+  /**
+   * Whether the open round has already been discharged.
+   *
+   * Read because `phase` is derived from the browser clock against a cached
+   * header: after a settle lands, a page holding the previous read still
+   * computes `phase === "settle"` and offers the Settle button, which then
+   * reverts `RevealWindowOpen`. "The transaction reverted onchain" right after
+   * successfully settling is what makes the next round look broken.
+   */
+  readonly settled: boolean;
   readonly carryPool: bigint;
   readonly entryFee: bigint;
   readonly rakeBps: number;
@@ -97,12 +107,49 @@ async function readTable(game: Address): Promise<TableState> {
     revealEnd: Number(header[1]),
     seats: Number(header[2]),
     reveals: Number(header[3]),
+    settled: Boolean(header[4]),
     carryPool,
     entryFee,
     rakeBps: Number(rakeBps),
     keeperBps: Number(keeperBps),
     stake,
     draws: players.map((player, i) => ({ player, draw: Number(drawValues[i] ?? 0) })),
+  };
+}
+
+/**
+ * What happened in the round before this one.
+ *
+ * Without this the previous round simply disappears the moment `currentRound`
+ * advances: a player whose entry was forfeited sees no result, no receipt, and
+ * no explanation for why the carry pool grew. The live game's round 1 ended
+ * 2 seats / 0 reveals, and nothing on the page ever said so.
+ */
+type PriorRound = {
+  readonly round: bigint;
+  readonly seats: number;
+  readonly reveals: number;
+  readonly settled: boolean;
+  /** Whether this wallet held a seat, and whether it opened it. */
+  readonly mine: { committed: boolean; revealed: boolean } | null;
+};
+
+async function readPriorRound(game: Address, round: bigint, account: Address | null): Promise<PriorRound | null> {
+  if (round <= 1n) return null;
+  const prior = round - 1n;
+  const base = { address: game, abi: overdrawAbi } as const;
+  const header = await publicClient.readContract({ ...base, functionName: "rounds", args: [prior] });
+  let mine: PriorRound["mine"] = null;
+  if (account) {
+    const seat = await publicClient.readContract({ ...base, functionName: "seatOf", args: [prior, account] });
+    mine = { committed: seat[0] !== EMPTY_COMMITMENT, revealed: Number(seat[2]) !== 0 };
+  }
+  return {
+    round: prior,
+    seats: Number(header[2]),
+    reveals: Number(header[3]),
+    settled: Boolean(header[4]),
+    mine,
   };
 }
 
@@ -172,6 +219,9 @@ export function ZapDrawTable(): React.JSX.Element {
 
   const [state, setState] = useState<TableState | null>(null);
   const [rpcDown, setRpcDown] = useState(false);
+  /** A seat read failed and has not since succeeded. Distinct from `rpcDown`. */
+  const [seatUnread, setSeatUnread] = useState(false);
+  const [prior, setPrior] = useState<PriorRound | null>(null);
   const [now, setNow] = useState(() => Math.floor(Date.now() / 1000));
 
   const [drawInput, setDrawInput] = useState("2500");
@@ -242,27 +292,70 @@ export function ZapDrawTable(): React.JSX.Element {
   const round = state?.round;
   const stakeToken = state?.stake;
 
+  /**
+   * The seat read POLLS, exactly like the table read.
+   *
+   * It used to fire once per (round, account) and never again. That looks
+   * harmless until the one call fails: `accountView` stays null, which the
+   * reveal panel below renders as the sentence "You have no seat in round N,
+   * wait for the next one" — advice to do nothing, shown during the six hours
+   * in which doing nothing forfeits the entry fee. Round 1 of the live game
+   * ended 2 seats / 0 reveals.
+   *
+   * So: retry on a cadence, and keep the failure distinguishable from a real
+   * empty seat (`seatKnown` below). A read we could not take must never render
+   * as a seat that is not there.
+   */
   useEffect(() => {
     if (!game || !account || round === undefined || stakeToken === undefined) return;
     let cancelled = false;
-    readSeat(game, stakeToken, round, account).then(
-      (view) => {
-        if (cancelled) return;
-        setAccountView({
-          owner: account,
-          round,
-          seat: view,
-          seal: findSealedDraw(ROBINHOOD_CHAIN_ID, game, round, account),
-        });
+    const load = (): void => {
+      readSeat(game, stakeToken, round, account).then(
+        (view) => {
+          if (cancelled) return;
+          setAccountView({
+            owner: account,
+            round,
+            seat: view,
+            seal: findSealedDraw(ROBINHOOD_CHAIN_ID, game, round, account),
+          });
+          setSeatUnread(false);
+        },
+        () => {
+          // Deliberately NOT setRpcDown: the table poll clears that flag every
+          // 12s, so a seat-only failure would flash a warning and then hide
+          // itself while the seat stayed unknown. This flag is only cleared by
+          // a seat read that actually succeeds.
+          if (!cancelled) setSeatUnread(true);
+        },
+      );
+    };
+    load();
+    const timer = window.setInterval(load, 12_000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [game, account, round, stakeToken, seatTick]);
+
+  // The previous round's outcome. Read alongside the seat so it refreshes when
+  // the round turns over, and failure-tolerant: no receipt is better than a
+  // wrong one, and the live table above is unaffected either way.
+  useEffect(() => {
+    if (!game || round === undefined) return;
+    let cancelled = false;
+    readPriorRound(game, round, account).then(
+      (result) => {
+        if (!cancelled) setPrior(result);
       },
       () => {
-        if (!cancelled) setRpcDown(true);
+        if (!cancelled) setPrior(null);
       },
     );
     return () => {
       cancelled = true;
     };
-  }, [game, account, round, stakeToken, seatTick]);
+  }, [game, round, account, seatTick]);
 
   // A read is only ever shown to the wallet and round it was taken for.
   const view = accountView !== null && accountView.owner === account && accountView.round === round
@@ -273,6 +366,15 @@ export function ZapDrawTable(): React.JSX.Element {
   const allowance = view?.seat.allowance ?? 0n;
   const balance = view?.seat.balance ?? 0n;
   const mySeat = view ? { committed: view.seat.committed, revealed: view.seat.revealed } : null;
+
+  /**
+   * Have we actually read this wallet's seat for this round?
+   *
+   * `mySeat === null` conflates two states that must never be shown the same
+   * way — "you have no seat" and "we do not know yet". Only the first is safe
+   * to act on.
+   */
+  const seatKnown = view !== null;
 
   const rescan = useCallback((): void => {
     setTableTick((n) => n + 1);
@@ -428,25 +530,52 @@ export function ZapDrawTable(): React.JSX.Element {
     if (!from) return;
 
     const salt = randomSalt();
+    let liveRound: bigint;
     let commitment: Hex;
     try {
+      /**
+       * Re-read the round id, immediately, and seal against THAT.
+       *
+       * `state.round` is up to 12s stale, and `commit(bytes32)` takes no round
+       * id — so the contract cannot reject a blob sealed for the wrong round.
+       * If anyone settles in that window, the entry lands in round N+1 carrying
+       * a commitment bound to N: `reveal` reverts BadReveal forever, the seat
+       * forfeits, and the salt vault (keyed by round) reports "no record" for a
+       * salt it is actually holding. Nothing downstream can detect or undo it.
+       */
+      liveRound = await publicClient.readContract({
+        address: game,
+        abi: overdrawAbi,
+        functionName: "currentRound",
+      });
       // Computed onchain-identically but read through our own RPC, so the draw
       // never reaches a third party before it is sealed.
       commitment = await publicClient.readContract({
         address: game,
         abi: overdrawAbi,
         functionName: "commitmentFor",
-        args: [state.round, from, drawBps, salt],
+        args: [liveRound, from, drawBps, salt],
       });
     } catch (cause) {
       setError(readableError(cause));
       return;
     }
 
+    if (liveRound !== state.round) {
+      // The round turned over while this page was showing the old one. Refuse
+      // rather than seal — the numbers on screen (capacity, queue, the draws
+      // ranked against yours) all describe a round that is now closed.
+      setError(
+        `Round ${String(state.round)} closed while you were choosing; round ${String(liveRound)} is open now. The table has been refreshed — review the new capacity and seal again.`,
+      );
+      rescan();
+      return;
+    }
+
     const record: SealedDraw = {
       chainId: ROBINHOOD_CHAIN_ID,
       game,
-      round: state.round.toString(),
+      round: liveRound.toString(),
       player: from,
       draw: drawBps,
       salt,
@@ -562,10 +691,40 @@ export function ZapDrawTable(): React.JSX.Element {
         {phase ? <span className={styles.roundHint}>{PHASE_COPY[phase].hint}</span> : null}
       </div>
 
+      {/* An unopened seat is the only way to lose money here without doing
+          anything, so it gets the loudest, highest thing on the page — during
+          the commit window too, when the reveal is still hours away and easiest
+          to forget. Round 1 of the live game ended 2 seats / 0 reveals. */}
+      {state && mySeat?.committed && !mySeat.revealed && phase !== "settle" ? (
+        <p className={styles.banner} data-tone="danger" role="status">
+          {phase === "reveal" ? (
+            <>
+              <strong>Open your draw now.</strong> You hold a seat in round {String(state.round)} and the reveal
+              window closes in <strong>{countdown(state.revealEnd)}</strong>. A seat that is never opened forfeits
+              its entry of {fmt(state.entryFee)} 0xZAPS — no refund, no exception.
+            </>
+          ) : (
+            <>
+              <strong>You hold a seat in round {String(state.round)}.</strong> Come back to open it between{" "}
+              {new Date(state.commitEnd * 1000).toLocaleString()} and{" "}
+              {new Date(state.revealEnd * 1000).toLocaleString()}. A seat that is never opened forfeits its entry
+              of {fmt(state.entryFee)} 0xZAPS.
+            </>
+          )}
+        </p>
+      ) : null}
+
       {rpcDown ? (
         <p className={styles.banner} data-tone="warn" role="status">
           Robinhood RPC is unreachable. The numbers below are the last good read and may be stale; where no
           read has landed they stay blank. Nothing here is showing you a zero it invented.
+        </p>
+      ) : null}
+
+      {seatUnread ? (
+        <p className={styles.banner} data-tone="warn" role="status">
+          Could not read your seat for this round — retrying every few seconds. Until it clears, this page cannot
+          tell you whether you hold one, so do not assume you are out.
         </p>
       ) : null}
 
@@ -619,13 +778,51 @@ export function ZapDrawTable(): React.JSX.Element {
           </dl>
 
           {state && state.carryPool > 0n ? (
-            <p className={styles.cardNote}>
-              Of that pool, only{" "}
-              <strong>{fmt(releasableCarry(state.seats, state.entryFee, state.rakeBps, state.carryPool))} 0xZAPS</strong>{" "}
-              can enter this round — a round may draw on the pool up to the rake it pays, and no
-              further. Without that cap, anyone who took every seat would recover their entries and
-              pocket the pool on top.
-            </p>
+            <>
+              <p className={styles.cardNote}>
+                Of that pool, only{" "}
+                <strong>{fmt(releasableCarry(state.seats, state.entryFee, state.rakeBps, state.carryPool))} 0xZAPS</strong>{" "}
+                can enter this round — a round may draw on the pool up to the rake it pays, and no
+                further. Without that cap, anyone who took every seat would recover their entries and
+                pocket the pool on top.
+              </p>
+              {state.seats < MIN_REVEALS + 2 ? (
+                /* Say the uncomfortable part. At this seat count the pool grows
+                   far faster than the cap lets it drain, so presenting a large
+                   carry number without this reads as money that is coming
+                   back. It is not — not at this table size. */
+                <p className={styles.cardNote} data-tone="warn">
+                  At {state.seats} {state.seats === 1 ? "seat" : "seats"} the cap releases far less per round than an
+                  under-subscribed round adds, so this pool grows rather than pays out. It takes a fuller table to
+                  draw it down.
+                </p>
+              ) : null}
+            </>
+          ) : null}
+
+          {prior && prior.settled ? (
+            <div className={styles.cardNote} data-tone={prior.mine?.committed && !prior.mine.revealed ? "danger" : undefined}>
+              <strong>Round {String(prior.round)}:</strong>{" "}
+              {prior.reveals < MIN_REVEALS ? (
+                <>
+                  {prior.seats} {prior.seats === 1 ? "seat" : "seats"} took part but only {prior.reveals}{" "}
+                  {prior.reveals === 1 ? "draw was" : "draws were"} opened — under the {MIN_REVEALS} a round needs to
+                  discharge, so the bus paid nobody and the whole capacity went to the carry pool.
+                </>
+              ) : (
+                <>
+                  {prior.seats} {prior.seats === 1 ? "seat" : "seats"}, {prior.reveals} opened. Settled.
+                </>
+              )}
+              {prior.mine?.committed ? (
+                prior.mine.revealed ? (
+                  <> You opened your draw. Anything you won is in your credit balance, ready to claim.</>
+                ) : (
+                  <> <strong>You held a seat and never opened it, so your entry was forfeited to the pool.</strong> A
+                  sealed draw only counts once it is revealed during the reveal window.</>
+                )
+              ) : null}
+            </div>
           ) : null}
           {emptyTable ? (
             <p className={styles.cardNote}>
@@ -731,7 +928,16 @@ export function ZapDrawTable(): React.JSX.Element {
               <>
                 {/* commit */}
                 {phase === "commit" && state ? (
-                  mySeat?.committed ? (
+                  !seatKnown ? (
+                    /* Offering the commit form here would invite a second entry
+                       for a round that may already hold one — the contract
+                       reverts SeatTaken, but only after a wallet prompt. */
+                    <p className={styles.formNote} data-state="checking">
+                      {seatUnread
+                        ? "Could not read your seat — retrying. Hold off on entering until this clears, so you do not pay twice for one round."
+                        : `Checking whether you already hold a seat in round ${String(state.round)}…`}
+                    </p>
+                  ) : mySeat?.committed ? (
                     <p className={styles.formNote}>
                       You hold a seat in round {String(state.round)}. Come back during the reveal window to open it —
                       a seat never opened forfeits its entry.
@@ -813,7 +1019,16 @@ export function ZapDrawTable(): React.JSX.Element {
 
                 {/* reveal */}
                 {phase === "reveal" && state ? (
-                  !mySeat?.committed ? (
+                  !seatKnown ? (
+                    /* Not "you have no seat" — we do not know yet. Saying the
+                       former during the reveal window is advice to do nothing,
+                       and doing nothing here forfeits the entry. */
+                    <p className={styles.formNote} data-state="checking">
+                      {seatUnread
+                        ? "Could not read your seat — retrying every few seconds. Do not close this page: if you hold a seat in this round, it must be opened before the window closes or its entry is forfeited."
+                        : `Checking whether you hold a seat in round ${String(state.round)}…`}
+                    </p>
+                  ) : !mySeat?.committed ? (
                     <p className={styles.formNote}>
                       You have no seat in round {String(state.round)}. Wait for the next one.
                     </p>
@@ -852,24 +1067,36 @@ export function ZapDrawTable(): React.JSX.Element {
                 ) : null}
 
                 {/* settle */}
-                {phase === "settle" ? (
-                  <>
-                    <p className={styles.formNote}>
-                      The round is ready to discharge. Anyone can do it and the caller is credited the keeper reward.
+                {phase === "settle" && state ? (
+                  state.settled ? (
+                    /* Already discharged. `phase` is derived from the browser
+                       clock against a cached header, so without this the button
+                       stays offered after a successful settle and the next
+                       click reverts RevealWindowOpen — which reads as the new
+                       round being broken. */
+                    <p className={styles.formNote} role="status">
+                      Round {String(state.round)} is already settled. The next round is opening — this table refreshes
+                      on its own within a few seconds.
                     </p>
-                    <div className={styles.actions}>
-                      <button
-                        type="button"
-                        className={styles.primary}
-                        onClick={() => void settle()}
-                        disabled={busy !== null}
-                        data-busy={busy === "settle"}
-                      >
-                        {busy === "settle" ? <i className={styles.spinner} aria-hidden /> : null}
-                        {busy === "settle" ? "Discharging…" : "Settle the round"}
-                      </button>
-                    </div>
-                  </>
+                  ) : (
+                    <>
+                      <p className={styles.formNote}>
+                        The round is ready to discharge. Anyone can do it and the caller is credited the keeper reward.
+                      </p>
+                      <div className={styles.actions}>
+                        <button
+                          type="button"
+                          className={styles.primary}
+                          onClick={() => void settle()}
+                          disabled={busy !== null}
+                          data-busy={busy === "settle"}
+                        >
+                          {busy === "settle" ? <i className={styles.spinner} aria-hidden /> : null}
+                          {busy === "settle" ? "Discharging…" : "Settle the round"}
+                        </button>
+                      </div>
+                    </>
+                  )
                 ) : null}
               </>
             )}

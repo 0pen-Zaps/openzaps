@@ -1,0 +1,253 @@
+/*
+ * Practice table — a ZapDraw round with virtual money.
+ *
+ * Visually quieter than the live table on purpose: it must never be mistaken
+ * for the real one. No accent fills, a dashed boundary, and every tone reserved
+ * for teaching the outcome rather than decorating it.
+ *
+ * Tokens only, and any @keyframes must be declared here — Turbopack scopes
+ * animation-name per module, so a globals.css keyframe is silently dropped.
+ * This module animates nothing, so it declares none.
+ */
+
+.root {
+  margin-top: 28px;
+  padding: 20px;
+  border: 1px dashed var(--line);
+  border-radius: var(--r-card);
+  background: var(--sunk);
+}
+
+.head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: flex-start;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+
+.eyebrow {
+  display: block;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.14em;
+  color: var(--ink-3);
+  margin-bottom: 6px;
+}
+
+.title {
+  margin: 0;
+  font-size: 19px;
+  letter-spacing: -0.01em;
+  color: var(--ink);
+}
+
+.lede {
+  margin: 0 0 16px;
+  max-width: 66ch;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--ink-2);
+}
+
+.reset {
+  min-height: 30px;
+  padding: 0 10px;
+  border-radius: var(--r-ctl-sm);
+  border: 1px solid var(--line-btn);
+  background: transparent;
+  color: var(--ink-2);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.reset:hover {
+  border-color: var(--line-hover);
+  color: var(--ink);
+}
+
+.stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 22px;
+  margin: 0 0 16px;
+  padding: 12px 0;
+  border-top: 1px solid var(--line-softer);
+  border-bottom: 1px solid var(--line-softer);
+}
+
+.stat {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.stat dt {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+
+.stat dd {
+  margin: 0;
+  font-size: 15px;
+  color: var(--ink);
+}
+
+.step {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.label {
+  font-size: 12px;
+  color: var(--ink-2);
+}
+
+.drawRow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.range {
+  flex: 1;
+  min-width: 0;
+  accent-color: var(--zap);
+}
+
+.drawValue {
+  min-width: 68px;
+  text-align: right;
+  font-family: var(--font-mono);
+  font-size: 14px;
+  color: var(--ink);
+}
+
+.note {
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: var(--r-ctl-sm);
+  border: 1px solid var(--line-softer);
+  background: var(--panel);
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--ink-2);
+}
+
+/* The three outcomes a player must be able to tell apart at a glance. */
+.note[data-tone="ok"] {
+  color: var(--ink);
+  background: var(--ok-wash);
+  border-color: var(--ok);
+}
+
+.note[data-tone="warn"] {
+  color: var(--ink);
+  background: var(--warn-wash);
+  border-color: var(--warn);
+}
+
+.note[data-tone="danger"] {
+  color: var(--danger-ink);
+  background: var(--danger-wash);
+  border-color: var(--danger-line);
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.primary,
+.secondary {
+  min-height: 38px;
+  padding: 0 16px;
+  border-radius: var(--r-ctl);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+  align-self: flex-start;
+}
+
+.primary {
+  border: 1px solid var(--line-btn);
+  background: var(--btn);
+  color: var(--btn-ink);
+}
+
+.primary:hover:not([disabled]) {
+  background: var(--btn-hover);
+}
+
+.primary[disabled] {
+  cursor: not-allowed;
+  color: var(--btn-ink-3);
+}
+
+.secondary {
+  border: 1px solid var(--line-btn);
+  background: transparent;
+  color: var(--ink-2);
+}
+
+.secondary:hover {
+  border-color: var(--line-hover);
+  color: var(--ink);
+}
+
+/* Wide content scrolls inside its own box; the page never scrolls sideways. */
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12.5px;
+  display: block;
+  overflow-x: auto;
+}
+
+.caption {
+  text-align: left;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  padding-bottom: 6px;
+}
+
+.table th {
+  text-align: left;
+  font-weight: 500;
+  color: var(--ink-3);
+  padding: 6px 10px 6px 0;
+  border-bottom: 1px solid var(--line-soft);
+  white-space: nowrap;
+}
+
+.table td {
+  padding: 7px 10px 7px 0;
+  border-bottom: 1px solid var(--line-softer);
+  color: var(--ink-2);
+  white-space: nowrap;
+}
+
+.table tr[data-you] td {
+  color: var(--ink);
+  font-weight: 500;
+}
+
+.table td[data-served] {
+  color: var(--ok);
+}
+
+@media (max-width: 640px) {
+  .stats {
+    gap: 10px 16px;
+  }
+}
