@@ -369,6 +369,45 @@ Automate handoff:
           </p>
         </section>
 
+        <section className={styles.section} id="agents">
+          <h2 className={styles.h2}>Connecting an agent</h2>
+          <p className={styles.prose}>
+            An agent is connected to a Zap when you sign a standing intent naming that agent&rsquo;s address in the
+            intent&rsquo;s <code>executor</code> field. The capsule reverts <code>ExecutorMismatch</code> for anyone
+            else. There is no credential to issue, store, or steal &mdash; the connection is one field of your own
+            signature, and nothing off-chain is trusted to enforce it.
+          </p>
+          <p className={styles.prose}>
+            That bounds the blast radius exactly. A fully compromised agent can submit a run the capsule already owes,
+            or refuse to submit one. It cannot change the recipient, amount, cadence, or output floor; cannot run early,
+            twice, or past the end; and cannot create, fund, or drain a capsule. Leaving the executor unset
+            (<code>0x0</code>) keeps the authorization open to any submitter, which maximises liveness; pinning one
+            address trades that for exclusivity, and a pinned agent going offline stalls the series until you submit it
+            yourself or sign new terms.
+          </p>
+          <p className={styles.prose}>
+            Any MCP client can read your capsules through the server in <code>mcp/</code> &mdash; it exposes policy
+            reads, run simulations, and delivery of already-signed intents, and holds no key of its own. Point your
+            client at it, ask the agent for its address, then pin that address in{" "}
+            <Link href="/zap?view=connect">Connect</Link>.
+          </p>
+          <div className={styles.code}>
+            <pre>{`{
+  "mcpServers": {
+    "openzaps": {
+      "command": "node",
+      "args": ["/path/to/openzaps/mcp/index.mjs"]
+    }
+  }
+}`}</pre>
+          </div>
+          <p className={styles.prose}>
+            Pinning is public: the executor address is inside the signed intent and in the chain&rsquo;s logs, so anyone
+            can see which agent runs your Zap. To revoke, stop the agent (the series stalls, costing no transaction),
+            invalidate the authorization id onchain, or sign fresh terms under a new series id.
+          </p>
+        </section>
+
         <section className={styles.section} id="lifecycle">
           <h2 className={styles.h2}>Execution lifecycle</h2>
           <div className={styles.steps}>

@@ -1,0 +1,423 @@
+/*
+ * Transcript — the shared conversational surface.
+ *
+ * Every colour, radius and shadow below resolves from the five theme blocks in
+ * globals.css. No token is invented here: a new token would have to be added to
+ * all five blocks AND pinned in landing.module.css if a shared primitive ever
+ * read it, and that pin is the trap AGENTS.md warns about.
+ *
+ * The @keyframes live in THIS file on purpose. Turbopack scopes animation-name
+ * per module exactly as it scopes class names, so a rule referencing a keyframe
+ * declared in globals.css is dropped silently — no error, no fallback.
+ * src/app/css-animations.test.ts enforces that they stay here.
+ */
+
+@keyframes transcriptIn {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes transcriptThink {
+  0%,
+  100% {
+    opacity: 0.35;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+.root {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+}
+
+/* ---- log ---------------------------------------------------------------- */
+
+.log {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  min-width: 0;
+}
+
+.row {
+  display: grid;
+  grid-template-columns: 68px minmax(0, 1fr);
+  gap: 12px;
+  align-items: start;
+  animation: transcriptIn var(--dur-2) var(--ease-standard) both;
+}
+
+.who {
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  padding-top: 3px;
+  text-align: right;
+}
+
+/* The four voices are visually distinct because confusing a proposal for a
+   guarantee is the one misreading this UI must not permit. */
+.row[data-role="agent"] .who {
+  color: var(--zap-deep);
+}
+.row[data-role="capsule"] .who {
+  color: var(--ink-2);
+}
+.row[data-role="chain"] .who {
+  color: var(--info);
+}
+.row[data-role="you"] .who {
+  color: var(--ink-3);
+}
+
+.body {
+  min-width: 0;
+  border-radius: var(--r-card-sm);
+  border: 1px solid var(--line-softer);
+  background: var(--panel);
+  padding: 12px 14px;
+}
+
+.row[data-role="you"] .body {
+  background: var(--chip);
+  border-color: var(--line-soft);
+}
+
+.row[data-role="capsule"] .body,
+.row[data-role="chain"] .body {
+  background: var(--panel-2);
+}
+
+.row[data-tone="error"] .body {
+  border-color: var(--danger-line);
+  background: var(--danger-wash);
+}
+
+.row[data-tone="verbatim"] .body {
+  border-left: 2px solid var(--zap-line);
+}
+
+.text {
+  margin: 0;
+  color: var(--ink-prose);
+  font-size: 14px;
+  line-height: 1.55;
+}
+
+.evidence {
+  display: inline-block;
+  margin-top: 8px;
+  font-size: 11px;
+  color: var(--link);
+  text-decoration: none;
+  border-bottom: 1px solid var(--line-soft);
+}
+
+.evidence:hover {
+  border-bottom-color: var(--line-hover);
+}
+
+/* ---- facts -------------------------------------------------------------- */
+
+.facts {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+}
+
+.factRow {
+  display: grid;
+  grid-template-columns: 96px minmax(0, 1fr);
+  gap: 10px;
+  align-items: baseline;
+}
+
+.factKey {
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  margin: 0;
+}
+
+.factValue {
+  margin: 0;
+  font-size: 13px;
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+
+
+/* ---- checks ------------------------------------------------------------- */
+
+.checks {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.checks li {
+  display: grid;
+  grid-template-columns: 10px minmax(0, auto) minmax(0, 1fr);
+  gap: 8px;
+  align-items: baseline;
+  font-size: 12px;
+  color: var(--ink-2);
+}
+
+.checkMark {
+  width: 6px;
+  height: 6px;
+  border-radius: var(--r-pill);
+  background: var(--ink-3);
+  transform: translateY(-1px);
+}
+
+.checks li[data-status="pass"] .checkMark {
+  background: var(--ok);
+}
+.checks li[data-status="warn"] .checkMark {
+  background: var(--warn);
+}
+.checks li[data-status="block"] .checkMark {
+  background: var(--danger);
+}
+
+.checkLabel {
+  color: var(--ink);
+}
+
+.checkDetail {
+  color: var(--ink-3);
+  overflow-wrap: anywhere;
+}
+
+/* ---- refusals ----------------------------------------------------------- */
+
+.refusal {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.refuses {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+  padding-left: 16px;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--ink-2);
+}
+
+/* ---- plan card ---------------------------------------------------------- */
+
+.plan {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.planRow {
+  display: grid;
+  grid-template-columns: 96px minmax(0, 1fr);
+  gap: 10px;
+  align-items: start;
+}
+
+.steps {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+  padding-left: 18px;
+  font-size: 13px;
+  color: var(--ink);
+}
+
+.bounds {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 18px;
+  margin: 0;
+}
+
+.bounds > div {
+  display: flex;
+  gap: 6px;
+  align-items: baseline;
+}
+
+.bounds dt {
+  font-size: 10.5px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+
+.bounds dd {
+  margin: 0;
+  font-size: 12px;
+  color: var(--ink);
+}
+
+/* Refusals get their own boundary, not another row: they are the half of a
+   plan people skip, and the rule is there to make skipping harder. */
+.planRefuses {
+  display: grid;
+  grid-template-columns: 96px minmax(0, 1fr);
+  gap: 10px;
+  align-items: start;
+  padding-top: 12px;
+  border-top: 1px solid var(--line-softer);
+}
+
+.plan[data-status="warn"] .planRefuses {
+  border-top-color: var(--warn);
+}
+
+.handoff {
+  align-self: flex-start;
+}
+
+/* ---- status ------------------------------------------------------------- */
+
+.status {
+  margin: 0;
+  min-height: 16px;
+  font-size: 12px;
+  color: var(--ink-3);
+}
+
+.status[data-status="thinking"],
+.status[data-status="compiling"] {
+  color: var(--ink-2);
+  animation: transcriptThink var(--dur-5) var(--ease-standard) infinite;
+}
+
+.status[data-status="error"] {
+  color: var(--danger-ink);
+}
+
+.status[data-status="idle"] {
+  /* Reserve the line so appearing text does not shift the composer. */
+  visibility: hidden;
+}
+
+/* ---- composer ----------------------------------------------------------- */
+
+.composer {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 34px;
+  padding: 0 12px;
+  border-radius: var(--r-chip);
+  border: 1px solid var(--line-btn);
+  background: var(--chip);
+  color: var(--ink);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+  text-align: left;
+  transition:
+    border-color var(--dur-1) var(--ease-standard),
+    background var(--dur-1) var(--ease-standard);
+}
+
+.chip:hover:not([disabled]) {
+  border-color: var(--line-hover);
+  background: var(--hover);
+}
+
+.chip[disabled] {
+  cursor: not-allowed;
+  color: var(--ink-3);
+}
+
+.chipCaret {
+  color: var(--zap-deep);
+}
+
+.form {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.input {
+  flex: 1;
+  min-width: 0;
+  min-height: 40px;
+  padding: 0 12px;
+  border-radius: var(--r-ctl);
+  border: 1px solid var(--line-btn);
+  background: var(--sunk);
+  color: var(--ink);
+  font: inherit;
+  font-size: 14px;
+}
+
+.input::placeholder {
+  color: var(--ink-3);
+}
+
+.input:focus-visible {
+  outline: 2px solid var(--zap);
+  outline-offset: 1px;
+  border-color: var(--line-hover);
+}
+
+.input[disabled] {
+  color: var(--ink-3);
+  cursor: not-allowed;
+}
+
+@media (max-width: 640px) {
+  .row {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 4px;
+  }
+
+  .who {
+    text-align: left;
+  }
+
+  .factRow,
+  .planRow,
+  .planRefuses {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 4px;
+  }
+}

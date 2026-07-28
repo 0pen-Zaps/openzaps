@@ -38,9 +38,10 @@ const appJsonLd = {
         "EIP-712 wallet signatures",
         "Immutable target, asset, recipient, and calldata constraints",
         "Onchain receipts, nonce invalidation, and emergency recovery",
+        "Agent connection by pinned executor, readable over MCP",
       ],
-      // The four surfaces the page actually mounts, in sidebar order.
-      description: `Four surfaces on one page: Start picks the outcome, Compose builds the route and its execution policy from typed blocks, Zap now creates and runs a bounded v1.1 Zap contract, and Automate signs recurring or price-triggered ones on ${CHAIN.name}. Signed intents bind execution gas and gas price; v3/v3.1 can keep executor access open or restrict it to the owner.`,
+      // The five surfaces the page actually mounts, in sidebar order.
+      description: `Five surfaces on one page: Start picks the outcome, Compose builds the route and its execution policy from typed blocks, Zap now creates and runs a bounded v1.1 Zap contract, Automate signs recurring or price-triggered ones on ${CHAIN.name}, and Connect pins the agent allowed to submit them. Signed intents bind execution gas and gas price; v3/v3.1 can keep executor access open or restrict it to the owner.`,
     },
     breadcrumbJsonLd("/zap", "Zap"),
   ],

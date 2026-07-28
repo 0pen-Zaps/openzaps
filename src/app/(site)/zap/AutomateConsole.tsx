@@ -188,6 +188,18 @@ export default function AutomateConsole(): React.JSX.Element {
     () => readAutomationHandoff(new URLSearchParams(searchParams.toString())),
     [searchParams],
   );
+  /**
+   * The agent a `?agent=` link proposes to pin.
+   *
+   * Deliberately NOT part of `readAutomationHandoff`: that function validates the
+   * signed policy's fields, and a proposed executor is neither signed nor part of
+   * the policy. It only prefills the "Pinned" input below, which the user still
+   * sees and still has to sign over.
+   */
+  const proposedAgent = useMemo(() => {
+    const raw = searchParams.get("agent");
+    return raw && isAddress(raw) ? getAddress(raw) : null;
+  }, [searchParams]);
   const {
     account,
     chainId: walletChainId,
@@ -216,10 +228,13 @@ export default function AutomateConsole(): React.JSX.Element {
   const [maxFeePerGasGwei, setMaxFeePerGasGwei] = useState(
     handoff?.executionPolicy.maxFeePerGasGwei ?? MAX_EXECUTION_FEE_GWEI,
   );
+  // A proposed agent means the user came from Connect having chosen "pin one
+  // agent", so open on that option with the address filled in — but as a
+  // prefill, never a commitment: it is visible, editable, and still signed over.
   const [executorMode, setExecutorMode] = useState<ExecutorMode>(
-    handoff?.executionPolicy.executorAccess ?? "anyone",
+    proposedAgent ? "custom" : (handoff?.executionPolicy.executorAccess ?? "anyone"),
   );
-  const [customExecutor, setCustomExecutor] = useState("");
+  const [customExecutor, setCustomExecutor] = useState(proposedAgent ?? "");
 
   /** Switch execution type AND reset slippage to that mode's default (recurring needs a wider band).
    *  No-op when the mode is unchanged, so re-clicking the active tab never clobbers a manual slider. */

@@ -10,6 +10,7 @@ import { explorerAddress } from "@/lib/robinhood";
 import { absoluteUrl, breadcrumbJsonLd, pageMetadata, webPageJsonLd } from "@/lib/seo";
 import { fetchZapDetail } from "@/lib/zap-server";
 import { isZapNotFound, type ZapDetailPayload } from "@/lib/zap";
+import { AskZap } from "./AskZap";
 import { ZapLive } from "./ZapLive";
 import styles from "../explore.module.css";
 
@@ -258,6 +259,10 @@ export default async function ZapDetailPage({ params }: Params): Promise<React.J
       </div>
 
       <ZapLive address={zap} initial={loaded.status === "ok" ? loaded.payload : null} />
+      {/* Below the pinned-snapshot cards, and reading from its own endpoint —
+          keeping it out of ZapLive is what stops its answers from looking like
+          part of that one-block read. */}
+      <AskZap address={zap} />
     </main>
   );
 }

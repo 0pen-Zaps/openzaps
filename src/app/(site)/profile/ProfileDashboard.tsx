@@ -15,8 +15,11 @@ import {
 } from "viem";
 
 import { useWalletSession } from "@/components/WalletProvider";
+import { Transcript } from "@/components/Transcript";
 import { BlockGlyph } from "../zap/BlockGlyph";
 import { PortfolioPanel, type PortfolioPanelStatus } from "./PortfolioPanel";
+import { agentAliasStorageKey, parseAgentAliases, type AgentAliases } from "@/lib/agent-connection";
+import { narrateAgents, type NarrativeAuthorization } from "@/lib/agent-narrative";
 import { intentFileName } from "@/lib/automate";
 import {
   automationIntentKey,
@@ -74,6 +77,12 @@ type LocalRecordSnapshot = {
   records: AutomationRecord[];
 };
 
+/** Display-only agent labels. Owner-scoped, and never authority. */
+type AliasSnapshot = {
+  owner: Address;
+  aliases: AgentAliases;
+};
+
 interface DashboardAutomation {
   key: string;
   zap: Address;
@@ -128,6 +137,7 @@ export function ProfileDashboard(): React.JSX.Element {
   // new wallet before its async refresh completes; an unscoped array would
   // briefly expose the previous wallet's signed intents in the new profile.
   const [localRecordSnapshot, setLocalRecordSnapshot] = useState<LocalRecordSnapshot | null>(null);
+  const [aliasSnapshot, setAliasSnapshot] = useState<AliasSnapshot | null>(null);
   const [chainStates, setChainStates] = useState<Record<string, AutomationChainState | null>>({});
   const [chainStateReadAt, setChainStateReadAt] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
@@ -152,6 +162,7 @@ export function ProfileDashboard(): React.JSX.Element {
     setError("");
     const local = readAutomationRecords(requestedAccount);
     setLocalRecordSnapshot({ owner: requestedAccount, records: local });
+    setAliasSnapshot({ owner: requestedAccount, aliases: readAgentAliases(requestedAccount) });
     const [profileResult, relayResult] = await Promise.allSettled([
       fetch(`/api/profile/${requestedAccount}`, { cache: "no-store" }).then(async (response) => {
         if (!response.ok) {
@@ -258,6 +269,33 @@ export function ProfileDashboard(): React.JSX.Element {
       };
     });
   }, [automations, chainStateReadAt, chainStates, profile]);
+
+  const aliases = useMemo(
+    () => (account && aliasSnapshot && isAddressEqual(account, aliasSnapshot.owner) ? aliasSnapshot.aliases : {}),
+    [account, aliasSnapshot],
+  );
+
+  /**
+   * The agents view is derived entirely from what this dashboard already
+   * fetched — no extra request, and no state the chain could contradict. Who
+   * may submit IS the executor field of each signed intent.
+   */
+  const agentMessages = useMemo(() => {
+    if (!account) return [];
+    const narrativeAuthorizations: NarrativeAuthorization[] = automationViews.map((view) => ({
+      key: view.key,
+      zap: view.zap,
+      intent: view.parsed,
+      state: view.state,
+    }));
+    return narrateAgents({
+      owner: account,
+      authorizations: narrativeAuthorizations,
+      activity: profile?.activity ?? [],
+      aliases,
+      explorerTx: explorerTransaction,
+    });
+  }, [account, automationViews, aliases, profile?.activity]);
 
   const connectWallet = useCallback(async (): Promise<void> => {
     setBusy("connect");
@@ -609,6 +647,22 @@ export function ProfileDashboard(): React.JSX.Element {
         )}
       </section>
 
+      <section aria-labelledby="agents-heading">
+        <div className={styles.sectionHead}>
+          <h2 className={styles.sectionTitle} id="agents-heading">Agents</h2>
+          <span className={styles.sectionLede}>Who may submit your runs, and what they actually did.</span>
+        </div>
+        <p className={styles.sectionNote}>
+          An agent connection is one field: the executor named in your signed intent. The capsule reverts for anyone
+          else. Nothing here is stored — it is read back out of the signatures above.
+        </p>
+        <Transcript
+          label="Agent activity"
+          messages={agentMessages}
+          className={styles.agentTranscript}
+        />
+      </section>
+
       {profile && profile.zaps.length > 0 ? (
         <section aria-labelledby="capsules-heading">
           <div className={styles.sectionHead}>
@@ -694,6 +748,15 @@ export function ProfileDashboard(): React.JSX.Element {
       </div>
     </main>
   );
+}
+
+function readAgentAliases(owner: Address): AgentAliases {
+  try {
+    return parseAgentAliases(window.localStorage.getItem(agentAliasStorageKey(owner)));
+  } catch {
+    // Labels are decoration. Losing them must never cost the agents view.
+    return {};
+  }
 }
 
 function mergeAutomations(

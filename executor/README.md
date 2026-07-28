@@ -6,6 +6,12 @@ execution the moment the contract will accept one. It holds **no user funds and 
 only its own gas wallet — because every run it submits is re-verified on-chain against the owner's
 EIP-712 signature, the frozen policy, the cadence, and the price condition.
 
+> **Connecting an AI agent?** The daemon is the half that *submits*. The half that *reads and
+> reasons* is [`../mcp/`](../mcp/README.md) — an MCP server exposing this repo's capsule reads,
+> simulations, and intent delivery to any MCP client, holding no key of its own. Pin this daemon's
+> address as the `executor` in a signed intent and only it may submit that series; see
+> [ADR-0006](../docs/adr/0006-agent-connection-and-mcp-surface.md).
+
 ## Economics
 
 Each recurring/triggered run pays a protocol fee of **1% of the run's measured output**, carved at
