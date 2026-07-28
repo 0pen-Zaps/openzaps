@@ -14,6 +14,7 @@ Later records preserve equally consequential production decisions without rewrit
 | [0003](0003-submission-privacy-vs-censorship.md) | Submission — Privacy vs Censorship Resistance | Accepted | Private-by-default vs permissionless fallback contradiction |
 | [0004](0004-protective-vs-optimization-zaps.md) | Protective vs Optimization Zaps & Trigger Model | Accepted | Single-submitter liveness SPOF; L2 finality |
 | [0005](0005-universal-creation-fee-gateway.md) | Universal app-creation fee gateway | Accepted | Visible fee conversion without replacing live capsule lineages |
+| [0006](0006-agent-connection-and-mcp-surface.md) | An agent connection is an executor pin, not a credential | Accepted | How an AI agent is given a Zap without being given authority |
 
 Testable invariants derived from these decisions live in
 [`../invariant-spec.md`](../invariant-spec.md).

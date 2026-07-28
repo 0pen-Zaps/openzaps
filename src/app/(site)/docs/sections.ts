@@ -16,6 +16,7 @@ export const DOC_SECTIONS = [
   { id: "api", label: "Simulation API" },
   { id: "templates", label: "Templates" },
   { id: "automation", label: "Automation (v3)" },
+  { id: "agents", label: "Connecting an agent" },
   { id: "lifecycle", label: "Execution lifecycle" },
   { id: "sdk", label: "SDK surface" },
   { id: "security", label: "Security model" },

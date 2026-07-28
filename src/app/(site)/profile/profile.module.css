@@ -1231,3 +1231,13 @@
     animation-iteration-count: infinite !important;
   }
 }
+
+/* The agents transcript sits inside a section that already has its own head and
+   note, so it only needs a surface to sit on — no card chrome of its own. */
+.agentTranscript {
+  margin-top: 16px;
+  padding: 16px;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--r-card);
+  background: var(--sunk);
+}

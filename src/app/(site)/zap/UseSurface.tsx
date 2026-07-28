@@ -4,6 +4,7 @@ import { useSearchParams } from "next/navigation";
 
 import Console from "./Console";
 import AutomateConsole from "./AutomateConsole";
+import ConnectConsole from "./ConnectConsole";
 import { ZapBuilder } from "./ZapBuilder";
 import { DesignHero } from "./DesignHero";
 import { ZapLauncher } from "./ZapLauncher";
@@ -26,7 +27,7 @@ import buildStyles from "./build.module.css";
  *
  * The URL remains the single source of truth for the visible view — but the
  * control that changes it moved out. The four-tab strip that used to sit above
- * this is now four destinations in the app shell's sidebar, which is the whole
+ * this is now five destinations in the app shell's sidebar, which is the whole
  * point of the redesign: the steps of a zap are places you can go, not tabs you
  * have to notice. `resolveZapView` lives in @/lib/zap-view so the sidebar
  * highlight and the mounted panel cannot disagree about which one is showing.
@@ -55,5 +56,8 @@ export function UseSurface(): React.JSX.Element {
 
   if (view === "sign") return <Console />;
   if (view === "automate") return <AutomateConsole key={searchParams.toString()} />;
+  // `?agent=` is read here and passed down, so ConnectConsole needs no search-param
+  // hook of its own — and therefore no second Suspense boundary.
+  if (view === "connect") return <ConnectConsole proposedAgent={searchParams.get("agent")} />;
   return <ZapLauncher />;
 }

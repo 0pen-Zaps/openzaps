@@ -1,9 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import {
   createPublicClient,
-  getAddress,
   http,
-  isAddress,
   isAddressEqual,
   recoverTypedDataAddress,
   type Address,
@@ -13,7 +11,6 @@ import {
   parseRelaySubmission,
   relayIntentNonce,
   type RelayIntentKind,
-  type RelayRecord,
   type RelaySubmission,
 } from "@/lib/relay";
 import {
@@ -23,6 +20,15 @@ import {
   openZapV3Domain,
   openZapV3_1Domain,
 } from "@/lib/executions";
+import {
+  RelayQueryError,
+  listRelayIntents,
+  relayConfigured,
+  relayHeaders,
+  relayUrl,
+  RELAY_TABLE,
+  type RelayListQuery,
+} from "@/lib/relay-server";
 import { ROBINHOOD_CHAIN_ID, ROBINHOOD_RPC_URL, openZapV3Abi, robinhoodChain } from "@/lib/robinhood";
 
 // The relay endpoint. POST publishes a signed standing intent to the shared pool; GET lists open
@@ -35,25 +41,11 @@ export const dynamic = "force-dynamic";
 
 const publicClient = createPublicClient({ chain: robinhoodChain, transport: http(ROBINHOOD_RPC_URL) });
 
-const SUPABASE_URL = process.env.SUPABASE_URL;
-const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
-const TABLE = "zap_intents";
+const TABLE = RELAY_TABLE;
 const MAX_BODY_BYTES = 16_384; // a signed intent is ~1.5KB; 16KB is generous headroom
 
-function relayConfigured(): boolean {
-  return Boolean(SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY);
-}
-function sb(path: string): string {
-  return `${SUPABASE_URL}/rest/v1/${path}`;
-}
-function sbHeaders(extra: Record<string, string> = {}): Record<string, string> {
-  return {
-    apikey: SUPABASE_SERVICE_ROLE_KEY as string,
-    authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
-    "content-type": "application/json",
-    ...extra,
-  };
-}
+const sb = relayUrl;
+const sbHeaders = relayHeaders;
 
 // Best-effort in-memory rate limit. On serverless this is per warm instance, not global — a first
 // line of defense against burst abuse of the unauthenticated endpoint, not a hard guarantee. A
@@ -213,47 +205,48 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   return NextResponse.json({ id: rows[0]?.id ?? relayIntentNonce(sub), stored: true }, { status: 201 });
 }
 
+/**
+ * One page size for every query, unchanged from before the executor filter existed.
+ *
+ * Splitting this by "is the query filtered" looks reasonable and is wrong here: the busiest caller
+ * is `executor/relay-source.mjs`, which fetches `?status=open` with no address filter at all. That
+ * is the reference executor's ONLY discovery path, so treating it as a scrape and handing it a
+ * short page would silently hide open intents past the cap — a long-deadline series would just
+ * stop being submitted, with no error anywhere. Abuse is handled by the rate limiter below, which
+ * is the control that actually fits the problem.
+ *
+ * Above 500 open intents this needs real pagination, and `fetchRelayIntents` needs to page with it.
+ */
+const GET_LIMIT = 500;
+
 export async function GET(request: NextRequest): Promise<NextResponse> {
   if (!relayConfigured()) {
     return NextResponse.json({ error: "The intent relay is not configured on this deployment.", intents: [] }, { status: 503 });
   }
-  const status = request.nextUrl.searchParams.get("status");
-  const filter = status === "open" || status === "consumed" ? `&status=eq.${status}` : "";
-  const ownerParam = request.nextUrl.searchParams.get("owner");
-  if (ownerParam !== null && !isAddress(ownerParam)) {
-    return NextResponse.json({ error: "owner must be a valid address.", intents: [] }, { status: 400 });
+  // GET was the only unauthenticated path with no limiter at all, and it is the
+  // one an agent polls hardest — every executor and every MCP client discovers
+  // work through it. Same best-effort bucket as POST/PATCH.
+  if (rateLimited(request)) {
+    return NextResponse.json({ error: "Too many requests.", intents: [] }, { status: 429 });
   }
-  const ownerFilter = ownerParam === null ? "" : `&owner=eq.${getAddress(ownerParam)}`;
-  const res = await fetch(sb(`${TABLE}?select=*&order=created_at.desc&limit=500${filter}${ownerFilter}`), {
-    headers: sbHeaders(),
-    cache: "no-store",
-  });
-  if (!res.ok) {
-    return NextResponse.json({ error: `Relay list failed (${res.status}).`, intents: [] }, { status: 502 });
+
+  const params = request.nextUrl.searchParams;
+  const query: RelayListQuery = {
+    status: params.get("status") as RelayListQuery["status"],
+    owner: params.get("owner"),
+    zap: params.get("zap"),
+    executor: params.get("executor"),
+    limit: GET_LIMIT,
+  };
+
+  try {
+    return NextResponse.json({ intents: await listRelayIntents(query) });
+  } catch (error) {
+    if (error instanceof RelayQueryError) {
+      return NextResponse.json({ error: error.message, intents: [] }, { status: 400 });
+    }
+    return NextResponse.json({ error: "Relay list failed.", intents: [] }, { status: 502 });
   }
-  const rows = (await res.json()) as Array<{
-    id: string;
-    zap: string;
-    owner: string;
-    chain_id: number;
-    kind: RelayIntentKind;
-    intent: Record<string, string | boolean>;
-    signature: Hex;
-    status: "open" | "consumed";
-    created_at: string;
-  }>;
-  const intents: RelayRecord[] = rows.map((r) => ({
-    id: r.id,
-    zap: r.zap,
-    owner: r.owner,
-    chainId: r.chain_id,
-    kind: r.kind,
-    intent: r.intent,
-    signature: r.signature,
-    status: r.status,
-    createdAt: r.created_at,
-  }));
-  return NextResponse.json({ intents });
 }
 
 // Garbage-collect an intent whose nonce is ALREADY used on-chain. Permissionless and safe: the

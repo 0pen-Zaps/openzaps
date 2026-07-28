@@ -1,0 +1,144 @@
+/*
+ * Connect — the agent pairing surface.
+ *
+ * Geometry borrowed from the landing page's agent panel: intent on the left, bounded consequences
+ * on the right. That asymmetry is the argument the screen is making, so it is the layout.
+ *
+ * Tokens only, no new custom properties, and any @keyframes must be declared here — Turbopack
+ * scopes animation-name per module, so a name declared in globals.css is silently dropped.
+ * (This module currently animates nothing; the Transcript owns its own motion.)
+ */
+
+.screen {
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+  padding: 28px 0 64px;
+  min-width: 0;
+}
+
+.hero {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 24px;
+  justify-content: space-between;
+  align-items: flex-end;
+}
+
+.heroEyebrow {
+  display: block;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  color: var(--zap-deep);
+  margin-bottom: 10px;
+}
+
+.heroTitle {
+  margin: 0 0 10px;
+  font-size: clamp(26px, 3.4vw, 40px);
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+  color: var(--ink);
+  max-width: 18ch;
+}
+
+.heroLede {
+  margin: 0;
+  max-width: 60ch;
+  font-size: 15px;
+  line-height: 1.6;
+  color: var(--ink-prose);
+}
+
+.split {
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr);
+  gap: 24px;
+  align-items: start;
+}
+
+.dialogue,
+.side {
+  min-width: 0;
+}
+
+.dialogue {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 20px;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--r-card);
+  background: var(--panel);
+  box-shadow: var(--sh-1);
+}
+
+.side {
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+  padding: 20px;
+  border: 1px solid var(--line-softer);
+  border-radius: var(--r-card);
+  background: var(--sunk);
+}
+
+.paneTitle {
+  margin: 0 0 10px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+
+.cannot {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  margin: 0 0 12px;
+  padding-left: 16px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--ink);
+}
+
+.sideNote {
+  margin: 0 0 10px;
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: var(--ink-2);
+}
+
+.sideNote:last-child {
+  margin-bottom: 0;
+}
+
+/* Wide content scrolls inside its own box; the page body must never scroll sideways. */
+.snippet {
+  margin: 0 0 10px;
+  padding: 12px;
+  border: 1px solid var(--line-softer);
+  border-radius: var(--r-ctl-sm);
+  background: var(--bg);
+  color: var(--ink-2);
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  line-height: 1.6;
+  overflow-x: auto;
+}
+
+.copy {
+  margin-bottom: 10px;
+}
+
+.handoff {
+  align-self: flex-start;
+}
+
+@media (max-width: 980px) {
+  .split {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

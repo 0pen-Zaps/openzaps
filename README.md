@@ -90,13 +90,14 @@ forge test               # fork tests need a Robinhood Chain RPC in your env
 
 Everything the **browser** needs is public `NEXT_PUBLIC_*` configuration — chain id, contract addresses, the public RPC URL, the site URL — and the live Robinhood Chain addresses ship as hardcoded defaults in [`src/lib/robinhood.ts`](src/lib/robinhood.ts) and [`src/lib/chains.ts`](src/lib/chains.ts). Set any of them in `.env.local` to point a preview somewhere else; a malformed override fails closed by dropping that route rather than widening what the app offers.
 
-Three secrets exist. None is read by the browser bundle, and none is ever committed — `.env*` and keystores are gitignored, and CI fails any change that introduces one.
+Four secrets exist. None is read by the browser bundle, and none is ever committed — `.env*` and keystores are gitignored, and CI fails any change that introduces one.
 
 | Secret | Used by | Notes |
 | --- | --- | --- |
 | `DEPLOYER_PRIVATE_KEY` | Foundry deploy scripts | Read from your shell, or use a `--ledger` hardware wallet. |
 | `SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY` | The intent relay route, server-side only | Without them `/api/intents` degrades to 503 rather than storing anything. |
 | `OPENZAPS_EXECUTOR_PRIVATE_KEY` *or* `OPENZAPS_EXECUTOR_KEYFILE` | The reference executor daemon | Optional. With neither set the daemon is watch-only and never broadcasts. |
+| `ANTHROPIC_API_KEY` | `/api/agent/*`, server-side only | Optional. Without it those routes return 503, the connect surface hides its free-text composer rather than offering one that fails, and `/explore/[address]` answers questions from the capsule's own facts. `OPENZAPS_AGENT_MODEL` overrides the model id. |
 
 **Never paste a private key into a tracked file.**
 

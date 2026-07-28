@@ -1,5 +1,5 @@
 /**
- * Which of the four `/zap` surfaces a URL is asking for.
+ * Which of the five `/zap` surfaces a URL is asking for.
  *
  * This lived inside UseSurface until the app shell needed the same answer to
  * light the right sidebar item. Two copies of this function is the kind of
@@ -12,19 +12,24 @@
  * Add cases; do not change what the existing ones mean.
  */
 
-export type ZapView = "start" | "design" | "sign" | "automate";
+export type ZapView = "start" | "design" | "sign" | "automate" | "connect";
 
-export const ZAP_VIEWS: readonly ZapView[] = ["start", "design", "sign", "automate"];
+export const ZAP_VIEWS: readonly ZapView[] = ["start", "design", "sign", "automate", "connect"];
 
 export const DEFAULT_ZAP_VIEW: ZapView = "start";
 
 /** What the URL says the visible view should be, or null when it is silent. */
 export function impliedZapView(params: URLSearchParams): ZapView | null {
+  // Every explicit `?view=` is answered HERE, above the inference rules below.
+  // Order is load-bearing: `?view=connect&src=build` is exactly what the connect
+  // handoff produces, and if that fell through to the `src=build` rule it would
+  // silently open the sign console instead — no error, just the wrong screen.
   const view = params.get("view");
   if (view === "start") return "start";
   if (view === "sign") return "sign";
   if (view === "design") return "design";
   if (view === "automate") return "automate";
+  if (view === "connect") return "connect";
   // A deploy handoff or a deep link to a specific route opens the console; a
   // `?d=` share link opens the canvas it encodes.
   if (params.get("src") === "build" || params.get("route")) return "sign";
