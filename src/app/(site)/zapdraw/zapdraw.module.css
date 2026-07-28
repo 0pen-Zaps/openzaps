@@ -367,6 +367,25 @@
   border-top-color: var(--line-softer);
 }
 
+/* A round note that is bad news reads as bad news. `warn` for "this pool is not
+   coming back at this table size"; `danger` for "your entry was forfeited" —
+   the one outcome a player must not scroll past. */
+.cardNote[data-tone="warn"] {
+  color: var(--ink);
+  background: var(--warn-wash);
+  border-top-color: var(--warn);
+}
+
+.cardNote[data-tone="danger"] {
+  color: var(--danger-ink);
+  background: var(--danger-wash);
+  border-top-color: var(--danger-line);
+}
+
+.cardNote[data-tone="danger"] strong {
+  color: var(--danger-ink);
+}
+
 .cardNote strong {
   font-family: var(--font-mono), ui-monospace, monospace;
   font-weight: 600;

@@ -4,6 +4,7 @@ import { JsonLd } from "@/components/JsonLd";
 import { Reveal } from "@/components/Reveal";
 import { TOKEN, TOKEN_LAUNCH } from "@/lib/config";
 import { STATIC_PAGE_SEO, breadcrumbJsonLd, pageMetadata, webPageJsonLd } from "@/lib/seo";
+import { PracticeTable } from "./PracticeTable";
 import { ZapDrawTable } from "./ZapDrawTable";
 import styles from "./zapdraw.module.css";
 
@@ -114,6 +115,10 @@ export default function ZapDrawPage(): React.JSX.Element {
       </header>
 
       <ZapDrawTable />
+
+      {/* Immediately under the live table, and above the written rules: the
+          rules explain a missed reveal, the practice table lets you feel one. */}
+      <PracticeTable />
 
       <Reveal as="section">
         <div className={styles.sectionHead}>
