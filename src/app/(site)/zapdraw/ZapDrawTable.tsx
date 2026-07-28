@@ -832,10 +832,24 @@ export function ZapDrawTable(): React.JSX.Element {
             </p>
           ) : null}
 
-          {state && state.reveals < MIN_REVEALS ? (
+          {state && state.seats < MIN_REVEALS ? (
+            /* The rule stated as a fact about THIS round, while it can still be
+               acted on. "A round needs 2 reveals" is a rule; "this round has
+               one seat and cannot pay anyone" is a reason to go find a second
+               player before commits close. */
+            <p className={styles.cardNote} data-tone="warn">
+              This round has {state.seats} {state.seats === 1 ? "seat" : "seats"}. A round needs {MIN_REVEALS}{" "}
+              <em>revealed</em> draws before the bus discharges at all, so as it stands it will pay nobody and every
+              entry — including yours, if you hold one — returns to the carry pool.{" "}
+              {phase === "commit"
+                ? `It needs at least ${MIN_REVEALS - state.seats} more ${MIN_REVEALS - state.seats === 1 ? "player" : "players"} before commits close.`
+                : "Commits are closed, so this outcome is now fixed."}
+            </p>
+          ) : state && state.reveals < MIN_REVEALS ? (
             <p className={styles.cardNote}>
               A round needs {MIN_REVEALS} revealed draws before the bus discharges at all. Below that the whole
-              capacity returns to the carry pool.
+              capacity returns to the carry pool — {state.seats} {state.seats === 1 ? "seat has" : "seats have"} been
+              taken and {state.reveals} {state.reveals === 1 ? "draw is" : "draws are"} open so far.
             </p>
           ) : null}
 
