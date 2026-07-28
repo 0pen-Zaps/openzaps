@@ -38,8 +38,10 @@ export default function HowPage(): React.JSX.Element {
       <section className={styles.rule}>
         <Glyph name="alert" className={styles.ruleIcon} />
         <p className={styles.ruleLine}>
-          The bus pays a draw <strong>in full, or not at all.</strong> A draw it cannot cover
-          completely is paid nothing — and the money it could not be paid from stays on the bus.
+          Two rules do all the work. A sealed draw you never open is{" "}
+          <strong>forfeited</strong> — the entry is gone and it funds everyone else. And the bus pays
+          a draw it does open <strong>in full, or not at all:</strong> one it cannot cover completely
+          is paid nothing, and the money it could not be paid from stays on the bus.
         </p>
       </section>
 
@@ -51,6 +53,11 @@ export default function HowPage(): React.JSX.Element {
           Draw a small slice and you are almost certainly paid it. Draw a big one and you are paid a lot —
           but only if enough of the table left room for you. Everyone chooses in secret, at the same time, and
           nothing but the other players decides how it lands.
+        </p>
+        <p className={styles.footBody}>
+          The one outcome that is nobody else&rsquo;s doing is the seat above that never opened. Sealing costs
+          the entry; opening is what turns it into a claim. Come back inside the reveal window and the worst
+          the table can do to you is pay you nothing. Miss it, and you paid for the round anyway.
         </p>
         <p className={styles.footBody}>
           The numbers above are not illustrations. They are computed by the same code that previews a live

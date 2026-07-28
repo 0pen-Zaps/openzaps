@@ -27,20 +27,29 @@ type Scene = {
 const CAP = tokens(DEMO.capacity);
 const SERVED_PCT = DEMO.rows.filter((r) => r.served).reduce((sum, r) => sum + r.widthPct, 0);
 const CUT = DEMO.rows.find((r) => !r.served);
+const SERVED_COUNT = DEMO.rows.filter((r) => r.served).length;
 
-/** Beat indices, named so the render conditions read as English. */
+/**
+ * Beat indices, named so the render conditions read as English.
+ *
+ * The order is the round's, not the diagram's: the forfeit is shown BEFORE the
+ * bus, because the entry that seat gave up is inside the capacity the bus
+ * carries. Assembling the bus first would present that money as arriving from
+ * nowhere.
+ */
 const SIT = 0;
 // 1 is the "everyone pays" beat; nothing on the stage keys off it, so it has no
 // constant of its own.
-const BUS = 2;
-const SEAL = 3;
-const OPEN = 4;
-const SORT = 5;
-const DRAIN = 6;
-const OUT = 7;
+const SEAL = 2;
+const OPEN = 3;
+const FORFEIT = 4;
+const BUS = 5;
+const SORT = 6;
+const DRAIN = 7;
+const OUT = 8;
 
 const SCENES: readonly Scene[] = [
-  { caption: "Four players sit down.", sub: "Nobody knows what anybody else will do." },
+  { caption: `${DEMO.seats} players sit down.`, sub: "Nobody knows what anybody else will do." },
   {
     caption: "Everyone pays the same.",
     sub: (
@@ -49,20 +58,30 @@ const SCENES: readonly Scene[] = [
       </>
     ),
   },
+  { caption: "Each seals a secret draw.", sub: "A slice of the pot. Hidden until they open it." },
   {
-    caption: "That pot is the bus.",
+    caption: `${DEMO.opened} open theirs.`,
     sub: (
       <>
-        Minus fees, it carries <strong>{CAP}</strong>. That is all there is.
+        {DEMO.byReveal.map((r) => `${r.draw / 100}%`).join(" · ")} — together, more pot than exists.
       </>
     ),
   },
-  { caption: "Each seals a secret draw.", sub: "A slice of the bus. Hidden until they open it." },
   {
-    caption: "Open them.",
+    caption: "One never opens.",
     sub: (
       <>
-        {DEMO.byReveal.map((r) => `${r.draw / 100}%`).join(" · ")} — together, more bus than exists.
+        Seat <strong>{DEMO.forfeited.label}</strong> paid <strong>{tokens(DEMO.forfeited.entry)}</strong> and let
+        the deadline pass, so it is paid <strong>nothing</strong> — and its entry stays in what the others
+        share.
+      </>
+    ),
+  },
+  {
+    caption: "What is left is the bus.",
+    sub: (
+      <>
+        Minus fees, it carries <strong>{CAP}</strong>. That is all there is.
       </>
     ),
   },
@@ -71,7 +90,7 @@ const SCENES: readonly Scene[] = [
     caption: "The bus drains.",
     sub: (
       <>
-        Three are paid in full: <strong>{tokens(DEMO.served)}</strong> gone.
+        {SERVED_COUNT} are paid in full: <strong>{tokens(DEMO.served)}</strong> gone.
       </>
     ),
   },
@@ -177,8 +196,11 @@ export function RoundFilm(): React.JSX.Element {
           </div>
         </div>
 
-        {/* -------------------------------------------------------- seats */}
-        <div className={styles.seats}>
+        {/* -------------------------------------------------------- seats
+            Sized from the scenario rather than a literal: the row count used to
+            be baked into the CSS, so adding the fifth seat would have cropped it
+            out of a box built for four. */}
+        <div className={styles.seats} style={{ ["--rows" as string]: DEMO.seats }}>
           {DEMO.rows.map((row) => {
             const opened = step >= OPEN;
             const sorted = step >= SORT;
@@ -212,6 +234,32 @@ export function RoundFilm(): React.JSX.Element {
               </div>
             );
           })}
+
+          {/* The seat that never opened. It has no waterfall row, so it is drawn
+              from `DEMO.forfeited` and pinned last: it never enters the sort,
+              because settlement never sees it. */}
+          <div
+            className={styles.seat}
+            style={{ ["--rank" as string]: DEMO.opened }}
+            data-state={step >= FORFEIT ? "forfeit" : undefined}
+          >
+            <span className={styles.badge}>{DEMO.forfeited.label}</span>
+
+            <span className={styles.drawBar} />
+
+            <span className={styles.readout}>
+              {/* The `?` is dropped once the seat is struck out. It carries no
+                  information at that point — the row is already tinted and
+                  labelled — and on a 375px row it was pushing "forfeited 800",
+                  the most important label in the scenario, off the right edge. */}
+              <span className={`${styles.pct} ${styles.sealed}`}>
+                {step < SEAL ? "—" : step >= FORFEIT ? "" : "?"}
+              </span>
+              <span className={styles.amount}>
+                {step >= FORFEIT ? `forfeited ${tokens(DEMO.forfeited.entry)}` : ""}
+              </span>
+            </span>
+          </div>
         </div>
 
         {/* ------------------------------------------------------ outcome */}
@@ -224,7 +272,13 @@ export function RoundFilm(): React.JSX.Element {
           </div>
           <div className={styles.cell}>
             <span className={styles.cellK}>Cut</span>
-            <span className={styles.cellV}>1 of {DEMO.seats}</span>
+            <span className={styles.cellV}>
+              1 of {DEMO.opened} opened
+            </span>
+          </div>
+          <div className={styles.cell}>
+            <span className={styles.cellK}>Never opened</span>
+            <span className={styles.cellV}>{tokens(DEMO.forfeited.entry)}</span>
           </div>
           <div className={styles.cell}>
             <span className={styles.cellK}>Charges next round</span>

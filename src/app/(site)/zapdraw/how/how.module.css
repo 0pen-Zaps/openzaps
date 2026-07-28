@@ -291,7 +291,10 @@
 .seats {
   position: relative;
   --rowH: 3.5rem;
-  height: calc(4 * var(--rowH));
+  /* `--rows` is published by the component from the scenario's seat count. The
+     fallback is only for a stylesheet loaded without it; a literal here would
+     silently crop a seat the day the scenario grows one. */
+  height: calc(var(--rows, 4) * var(--rowH));
 }
 
 @media (max-width: 40rem) {
@@ -329,6 +332,25 @@
 .seat[data-state="served"] {
   border-color: var(--zap-line);
   background: var(--zap-tint);
+}
+
+/* Never opened. Carries the same loss tone as "cut" because it is the same
+   outcome for the player — with a heavier border, since it is the one of the two
+   that was entirely avoidable. */
+.seat[data-state="forfeit"] {
+  border-color: var(--danger);
+  background: var(--danger-tint);
+}
+
+.seat[data-state="forfeit"] .badge {
+  border-color: var(--danger);
+  color: var(--danger-ink);
+}
+
+.seat[data-state="forfeit"] .amount {
+  color: var(--danger);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
 }
 
 .badge {
@@ -375,6 +397,14 @@
   background: var(--zap);
 }
 
+/* A refused claim keeps its LENGTH — that is what it asked for, and the whole
+   point is that it asked for more than was there — but loses the paid colour.
+   Left in `--zap-deep` it sat next to three paid claims in almost the same
+   yellow, which is the "it got some of it" reading. */
+.seat[data-state="cut"] .drawFill {
+  background: var(--danger-line);
+}
+
 .readout {
   display: flex;
   align-items: baseline;
@@ -413,8 +443,17 @@
 }
 
 @media (max-width: 34rem) {
+  /* Dropped on narrow rows: the percentage beside it already carries the shape of
+     the claim, and the bus bar above carries the money. */
   .amount {
     display: none;
+  }
+
+  /* EXCEPT on the seat that never opened. That row has no revealed percentage
+     either, so hiding its amount leaves a badge, an empty bar, and nothing at all
+     saying what happened to the entry — on the one row where that is the point. */
+  .seat[data-state="forfeit"] .amount {
+    display: block;
   }
 }
 

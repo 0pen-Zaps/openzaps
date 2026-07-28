@@ -172,9 +172,13 @@ post-broadcast (factory↔pot, source allowlisted, currency0=aeWETH/currency1=0x
 | Price-source registry (v3.1) | [`0x76CB210F25D016078E10DbfCb19AFfBbB4892e33`](https://robinhoodchain.blockscout.com/address/0x76CB210F25D016078E10DbfCb19AFfBbB4892e33) |
 | V4PoolPriceSourceOriented | [`0xB4f66bFa00D2496513a5fD43ff47912A3fe0Bb5F`](https://robinhoodchain.blockscout.com/address/0xB4f66bFa00D2496513a5fD43ff47912A3fe0Bb5F) |
 
-Addresses are wired into `src/lib/robinhood.ts` (`OPENZAP_V3_1_CONTRACTS`). The end-to-end
-create/sign/execute path for relative-floor recurring zaps (app + executor + relay support) is the
-follow-up; the contract set itself is live and verified.
+Addresses are wired into `src/lib/robinhood.ts` (`OPENZAP_V3_1_CONTRACTS`).
+
+**The end-to-end path is no longer a follow-up.** Verified from live chain logs on 2026-07-28 via
+`/explore` (head block 21,408,572): relative-floor recurring series are executing in production —
+`run 19` and `run 20`, both rendered `recurring · spot floor`, which `describeAutomatedRun` emits only
+for the `recurring-relative` kind. Aggregate at that block: 28 creations, 37 executions of which 25
+are automated, 1 recovery, `319,932,354.4393` 0xZAPS of executed volume.
 
 ### Universal app-creation fee gateway — live (2026-07-25)
 
