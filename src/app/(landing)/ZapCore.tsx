@@ -35,7 +35,7 @@ const NODES: CoreNode[] = [
   { label: "Aave", angle: -45, radius: 296, deployed: false },
   { label: "Compound", angle: 12, radius: 296, deployed: false },
   { label: "Aerodrome", angle: 64, radius: 296, deployed: false },
-  { label: "Canonical bridge", angle: 132, radius: 296, deployed: false },
+  { label: "Across", angle: 132, radius: 296, deployed: false },
   { label: "Wrapped native", angle: 198, radius: 296, deployed: false },
 ];
 

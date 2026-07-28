@@ -224,10 +224,18 @@ export function reduceChainToLivePolicy(
     );
   }
   for (const entry of sources) {
-    // Both sources are the same onchain fact — an exact ERC-20 pull from the
-    // owner wallet. `lp-position` pulls the ozRANGE share token, which IS an
-    // ERC-20; the lp shape only decides which blocks can seat below it.
-    if (entry.block.id === "wallet-balance" || entry.block.id === "lp-position") {
+    // All three sources reduce to the same onchain fact: an exact ERC-20 amount
+    // sitting in the capsule when the run starts. `lp-position` pulls the
+    // ozRANGE share token, which IS an ERC-20; the lp shape only decides which
+    // blocks can seat below it.
+    //
+    // `bridge` differs only in HOW the tokens arrive — Across delivers them to
+    // the capsule's deterministic address instead of the owner transferring
+    // them — and an Across V3 fill is exact-output, so the arriving quantity is
+    // known when the policy is signed, exactly like a wallet pull. The bridge
+    // leg itself is not bound by the policy and must never be described as if
+    // it were; what the capsule binds begins at arrival.
+    if (entry.block.id === "wallet-balance" || entry.block.id === "lp-position" || entry.block.id === "bridge") {
       source ??= entry;
       continue;
     }
@@ -246,8 +254,11 @@ export function reduceChainToLivePolicy(
       parseRouterAmount(raw);
       amountIn = raw;
     } catch (error) {
+      // Named from the block that actually failed. There are three source
+      // blocks now, so a hardcoded "Wallet balance" would point a user at a
+      // card that is not on their canvas.
       reasons.push(
-        `Wallet balance amount ${raw ? `"${raw}"` : "is empty and"} cannot be deployed: ${error instanceof Error ? error.message : String(error)}`,
+        `${source.block.name} amount ${raw ? `"${raw}"` : "is empty and"} cannot be deployed: ${error instanceof Error ? error.message : String(error)}`,
       );
     }
   }

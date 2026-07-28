@@ -19,15 +19,19 @@ describe("protocolsForAction", () => {
     }
   });
 
-  it("badges nothing that is not an action, except lp-position", () => {
+  it("badges nothing that is not an action, except the two sources that start inside a protocol", () => {
     // Guards constrain, sinks settle, and plain sources draw from the wallet —
-    // none of them touch a protocol. `lp-position` is the one source that
-    // starts inside one: its ozRANGE shares are OpenZaps vault shares.
+    // none of them touch a protocol. Two sources do. `lp-position`'s ozRANGE
+    // shares are OpenZaps vault shares, and `bridge` is funded by Across, whose
+    // badge is the honest disclosure that a third party moved the money before
+    // the policy ever bound anything.
+    const startsInsideAProtocol = new Set(["lp-position", "bridge"]);
     for (const block of BLOCKS.filter((entry) => entry.kind !== "action")) {
-      if (block.id === "lp-position") continue;
+      if (startsInsideAProtocol.has(block.id)) continue;
       expect(ids(block.id), block.id).toEqual([]);
     }
     expect(ids("lp-position")).toEqual(["openzaps-vault"]);
+    expect(ids("bridge")).toEqual(["across"]);
   });
 
   it("follows the swap venue param", () => {
@@ -62,7 +66,7 @@ describe("protocolsForAction", () => {
     expect(ids("borrow")).toEqual(["aave"]);
     expect(ids("draw-debt")).toEqual(["aave"]);
     expect(ids("unwrap")).toEqual(["wrapped-native"]);
-    expect(ids("bridge")).toEqual(["canonical-bridge"]);
+    expect(ids("bridge")).toEqual(["across"]);
     expect(ids("stake")).toEqual(["uniswap-v4"]);
     expect(ids("accrue")).toEqual(["uniswap-v4"]);
     expect(ids("harvest")).toEqual(["uniswap-v4"]);
