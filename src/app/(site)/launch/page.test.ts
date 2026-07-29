@@ -1,13 +1,23 @@
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
-import { ZapPadReleaseStatus } from "./page";
+vi.mock("@/components/JsonLd", () => ({ JsonLd: () => null }));
+vi.mock("@/components/zappad/launch-studio", () => ({
+  LaunchStudio: () => null,
+}));
+vi.mock("@/components/zappad/page-hero", () => ({ PageHero: () => null }));
+vi.mock("@/components/zappad/protocol-snapshot", () => ({
+  ProtocolSnapshot: () => null,
+}));
+
+import ZapPadStudioPage from "./page";
 
 describe("ZapPad release status", () => {
-  it("renders the source-ready, not-deployed boundary required by the release runbook", () => {
-    const html = renderToStaticMarkup(createElement(ZapPadReleaseStatus));
+  it("keeps the source-ready, not-deployed boundary on the rendered route", () => {
+    const html = renderToStaticMarkup(createElement(ZapPadStudioPage));
 
+    expect(html).toContain('data-zappad-release-status="source-ready"');
     expect(html).toContain("Source-ready, not deployed.");
     expect(html).toContain("No ZapPad launcher address is approved");
     expect(html).toContain("Reads and launches stay disabled");

@@ -27,6 +27,25 @@ import { WalletButton } from "./wallet-button";
 
 const PAGE_SIZE = 24;
 
+export function hasLoadedPortfolioScope(
+  loadedScope: string,
+  launcherAddress: string | null | undefined,
+  accountAddress: string | null | undefined,
+): boolean {
+  if (!launcherAddress || !accountAddress) return false;
+  return (
+    loadedScope ===
+    `${launcherAddress.toLowerCase()}|${accountAddress.toLowerCase()}`
+  );
+}
+
+export function portfolioErrorForScope(
+  error: { scope: string; message: string } | null,
+  scope: string,
+): string {
+  return error?.scope === scope ? error.message : "";
+}
+
 function mergePositions(
   current: PortfolioPosition[],
   incoming: PortfolioPosition[],
@@ -67,7 +86,10 @@ export function PortfolioDashboard() {
   const [snapshotBlock, setSnapshotBlock] = useState<bigint | null>(null);
   const [loadedScope, setLoadedScope] = useState("");
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
+  const [scopedError, setScopedError] = useState<{
+    scope: string;
+    message: string;
+  } | null>(null);
   const [tokenLookup, setTokenLookup] = useState("");
   const [tokenLookupError, setTokenLookupError] = useState("");
   const requestGate = useRef(new RequestScopeGate());
@@ -83,7 +105,7 @@ export function PortfolioDashboard() {
     if (!client || !launcherAddress || !address) return;
     const request = requestGate.current.begin(scopeKey);
     setLoading(true);
-    setError("");
+    setScopedError(null);
     try {
       const directory = await readLaunchPage(
         client,
@@ -112,7 +134,7 @@ export function PortfolioDashboard() {
       setLoadedScope(scopeKey);
     } catch (reason) {
       if (requestGate.current.isCurrent(request)) {
-        setError(readableError(reason));
+        setScopedError({ scope: scopeKey, message: readableError(reason) });
       }
     } finally {
       if (requestGate.current.isCurrent(request)) {
@@ -183,7 +205,14 @@ export function PortfolioDashboard() {
     );
   }
 
-  const scopeLoaded = loadedScope === scopeKey;
+  const scopeLoaded = hasLoadedPortfolioScope(
+    loadedScope,
+    launcherAddress,
+    address,
+  );
+  const error = portfolioErrorForScope(scopedError, scopeKey);
+  const portfolioChecking = loading || !scopeLoaded;
+  const initialScanFailed = Boolean(error) && !scopeLoaded;
   const visiblePositions = scopeLoaded ? positions : [];
   const visibleCreated = scopeLoaded ? created : [];
   const visibleCount = scopeLoaded ? count : 0n;
@@ -197,23 +226,40 @@ export function PortfolioDashboard() {
   );
 
   return (
-    <section className="portfolio-shell" aria-busy={loading}>
+    <section
+      className="portfolio-shell"
+      aria-busy={portfolioChecking && !error}
+    >
       <div className="portfolio-summary">
         <div>
           <span>Fee-share positions</span>
-          <strong>{loading ? "…" : visiblePositions.length}</strong>
+          <strong>
+            {initialScanFailed
+              ? "—"
+              : portfolioChecking
+                ? "…"
+                : visiblePositions.length}
+          </strong>
         </div>
         <div>
           <span>Claimable assets</span>
-          <strong>{loading ? "…" : totalClaims}</strong>
+          <strong>
+            {initialScanFailed ? "—" : portfolioChecking ? "…" : totalClaims}
+          </strong>
         </div>
         <div>
           <span>Created launches</span>
-          <strong>{loading ? "…" : visibleCreated.length}</strong>
+          <strong>
+            {initialScanFailed
+              ? "—"
+              : portfolioChecking
+                ? "…"
+                : visibleCreated.length}
+          </strong>
         </div>
         <button
           className="button button-secondary"
-          disabled={loading}
+          disabled={portfolioChecking && !error}
           onClick={() => void load(0, true)}
           type="button"
         >
@@ -253,7 +299,9 @@ export function PortfolioDashboard() {
           <span>
             {scopeLoaded
               ? `${visibleNextOffset.toLocaleString()} of ${visibleCount.toString()} launches scanned at block ${visibleSnapshotBlock?.toLocaleString() ?? "—"}, newest first.`
-              : "Scanning the newest launches…"}
+              : error
+                ? "Launch scan incomplete; no portfolio totals are confirmed."
+                : "Scanning the newest launches…"}
           </span>
           {tokenLookupError && (
             <span className="vault-transfer-error" role="alert">
@@ -261,12 +309,7 @@ export function PortfolioDashboard() {
             </span>
           )}
         </div>
-        {loading && !scopeLoaded ? (
-          <div className="position-list">
-            <div className="position-row skeleton-block" />
-            <div className="position-row skeleton-block" />
-          </div>
-        ) : error && !scopeLoaded ? (
+        {error && !scopeLoaded ? (
           <div className="empty-panel compact">
             <span>Portfolio scan incomplete</span>
             <h2>No launch was omitted or marked as scanned.</h2>
@@ -274,6 +317,11 @@ export function PortfolioDashboard() {
               Retry the pinned onchain read before relying on holdings or
               retained claims.
             </p>
+          </div>
+        ) : portfolioChecking && !scopeLoaded ? (
+          <div className="position-list">
+            <div className="position-row skeleton-block" />
+            <div className="position-row skeleton-block" />
           </div>
         ) : visiblePositions.length > 0 ? (
           <div className="position-list">
@@ -367,6 +415,10 @@ export function PortfolioDashboard() {
         {error && !scopeLoaded ? (
           <p className="muted-copy">
             Creator history is unavailable until the launch scan succeeds.
+          </p>
+        ) : portfolioChecking && !scopeLoaded ? (
+          <p className="muted-copy" role="status">
+            Scanning creator history…
           </p>
         ) : visibleCreated.length > 0 ? (
           <div className="created-list">

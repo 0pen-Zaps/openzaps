@@ -20,14 +20,24 @@ export async function generateMetadata({ params }: TokenPageProps): Promise<Meta
   const token = parseTokenAddress((await params).address);
   const shortToken = `${token.slice(0, 8)}…${token.slice(-6)}`;
 
-  return pageMetadata({
-    title: `ZapPad Token ${shortToken}`,
-    description:
-      "Verify this ZapPad token launch, opening Uniswap pool, immutable launch parameters, fee-share vault, and connected-wallet claims.",
-    path: `/launch/token/${token.toLowerCase()}`,
-    keywords: ["ZapPad token console", "fee-share vault", "verified token launch"],
-    ogImage: "/og/app.png",
-  });
+  return {
+    ...pageMetadata({
+      title: `Check ZapPad Address ${shortToken}`,
+      description:
+        "Check whether this Robinhood Chain address is a canonical ZapPad token launch before relying on its market, launch parameters, fee-share vault, or wallet claims.",
+      path: `/launch/token/${token.toLowerCase()}`,
+      keywords: [
+        "ZapPad address check",
+        "fee-share vault verification",
+        "token launch verification",
+      ],
+      ogImage: "/og/app.png",
+    }),
+    // The client verifies canonical launcher membership after runtime config
+    // loads. Until that same proof is enforced server-side, arbitrary valid
+    // addresses must not become indexable "ZapPad Token" pages.
+    robots: { index: false, follow: true },
+  };
 }
 
 export default async function ZapPadTokenPage({

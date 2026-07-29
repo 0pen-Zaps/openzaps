@@ -13,7 +13,11 @@ import styles from "./zappad.module.css";
 
 export function ZapPadReleaseStatus(): React.JSX.Element {
   return (
-    <div className="notice notice-warning" role="status">
+    <div
+      className="notice notice-warning"
+      data-zappad-release-status="source-ready"
+      role="status"
+    >
       <strong>Source-ready, not deployed.</strong>{" "}
       No ZapPad launcher address is approved on Robinhood Chain. Reads and
       launches stay disabled until the external security, legal,

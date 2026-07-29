@@ -1,3 +1,9 @@
+import {
+  BoundedJsonBodyError,
+  BoundedTextBodyError,
+  readBoundedJsonBody,
+  readBoundedTextBody,
+} from "@/lib/request-body";
 import { getRpcUrl } from "@/lib/zappad/server-config";
 
 export const runtime = "nodejs";
@@ -318,21 +324,16 @@ export async function POST(request: Request) {
     return rpcError(null, -32_600, "Content-Type must be application/json.", 415);
   }
 
-  const declaredSize = Number(request.headers.get("content-length") ?? "0");
-  if (declaredSize > MAX_REQUEST_BYTES) {
-    return rpcError(null, -32_600, "Request is too large.", 413);
-  }
-
-  const raw = await request.text();
-  if (new TextEncoder().encode(raw).byteLength > MAX_REQUEST_BYTES) {
-    return rpcError(null, -32_600, "Request is too large.", 413);
-  }
-
   let payload: unknown;
   try {
-    payload = JSON.parse(raw);
-  } catch {
-    return rpcError(null, -32_700, "Invalid JSON.");
+    payload = await readBoundedJsonBody(request, MAX_REQUEST_BYTES);
+  } catch (reason) {
+    if (reason instanceof BoundedJsonBodyError) {
+      return reason.status === 413
+        ? rpcError(null, -32_600, "Request is too large.", 413)
+        : rpcError(null, -32_700, "Invalid JSON.");
+    }
+    return rpcError(null, -32_600, "Request body could not be read.");
   }
 
   if (!isValidRequest(payload)) {
@@ -367,9 +368,19 @@ export async function POST(request: Request) {
       cache: "no-store",
       signal: controller.signal,
     });
-    const text = await upstream.text();
-    if (new TextEncoder().encode(text).byteLength > MAX_RESPONSE_BYTES) {
-      return rpcError(payload.id, -32_603, "RPC response exceeded the size limit.", 502);
+    let text: string;
+    try {
+      text = await readBoundedTextBody(upstream, MAX_RESPONSE_BYTES);
+    } catch (reason) {
+      if (reason instanceof BoundedTextBodyError) {
+        return rpcError(
+          payload.id,
+          -32_603,
+          "RPC response exceeded the size limit.",
+          502,
+        );
+      }
+      throw reason;
     }
 
     let upstreamPayload: unknown;

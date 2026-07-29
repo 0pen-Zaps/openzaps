@@ -21,6 +21,13 @@ import { useRuntimeConfig } from "./runtime-config-provider";
 const PAGE_SIZE = 24;
 const EMPTY_LAUNCHES: LaunchRecord[] = [];
 
+export function hasLoadedLauncherScope(
+  loadedScope: string,
+  launcherScope: string,
+): boolean {
+  return launcherScope.length > 0 && loadedScope === launcherScope;
+}
+
 function mergeLaunches(current: LaunchRecord[], incoming: LaunchRecord[]) {
   const launches = new Map(
     current.map((launch) => [launch.token.toLowerCase(), launch]),
@@ -96,7 +103,8 @@ export function ExploreDirectory() {
     return () => window.clearTimeout(timeout);
   }, [load]);
 
-  const scopeLoaded = loadedScope === launcherScope;
+  const scopeLoaded = hasLoadedLauncherScope(loadedScope, launcherScope);
+  const directoryChecking = loading || !scopeLoaded;
   const visibleLaunches = scopeLoaded ? launches : EMPTY_LAUNCHES;
   const visibleCount = scopeLoaded ? count : 0n;
   const visibleNextOffset = scopeLoaded ? nextOffset : 0;
@@ -120,7 +128,34 @@ export function ExploreDirectory() {
     });
   }, [config?.pairedAssets, filter, query, visibleLaunches]);
 
-  if (!configLoading && !launcherAddress) {
+  if (configLoading) {
+    return (
+      <section
+        aria-busy="true"
+        aria-label="Checking launch directory"
+        className="directory-shell"
+      >
+        <div className="directory-meta" role="status">
+          <span>
+            <strong>Checking</strong> launch runtime
+          </span>
+          <span>Waiting for verified launcher configuration</span>
+        </div>
+        <div
+          aria-label="Loading onchain launches"
+          className="card-grid"
+          role="status"
+        >
+          <span className="sr-only">Loading onchain launches…</span>
+          {Array.from({ length: 6 }).map((_, index) => (
+            <div className="launch-card skeleton-card" key={index} />
+          ))}
+        </div>
+      </section>
+    );
+  }
+
+  if (!launcherAddress) {
     return (
       <div className="empty-panel" role="status">
         <span>Launch directory offline</span>
@@ -134,7 +169,10 @@ export function ExploreDirectory() {
   }
 
   return (
-    <section className="directory-shell" aria-busy={loading}>
+    <section
+      className="directory-shell"
+      aria-busy={directoryChecking && !error}
+    >
       <div className="directory-toolbar">
         <label className="search-field">
           <span aria-hidden="true">⌕</span>
@@ -168,17 +206,28 @@ export function ExploreDirectory() {
       </div>
 
       <div className="directory-meta">
-        <span>
-          <strong>{visibleCount.toString()}</strong> onchain launch
-          {visibleCount === 1n ? "" : "es"}
-        </span>
-        <span>
-          {visibleNextOffset.toLocaleString()} scanned · newest first · direct
-          contract reads
-          {visibleSnapshotBlock === null
-            ? ""
-            : ` · block ${visibleSnapshotBlock.toLocaleString()}`}
-        </span>
+        {scopeLoaded ? (
+          <>
+            <span>
+              <strong>{visibleCount.toString()}</strong> onchain launch
+              {visibleCount === 1n ? "" : "es"}
+            </span>
+            <span>
+              {visibleNextOffset.toLocaleString()} scanned · newest first ·
+              direct contract reads
+              {visibleSnapshotBlock === null
+                ? ""
+                : ` · block ${visibleSnapshotBlock.toLocaleString()}`}
+            </span>
+          </>
+        ) : (
+          <>
+            <span>
+              <strong>Checking</strong> onchain directory
+            </span>
+            <span>Waiting for the first pinned launcher read</span>
+          </>
+        )}
       </div>
 
       {error && (
@@ -186,7 +235,13 @@ export function ExploreDirectory() {
           {error}
         </div>
       )}
-      {loading && visibleLaunches.length === 0 ? (
+      {error && !scopeLoaded ? (
+        <div className="empty-panel">
+          <span>Directory scan incomplete</span>
+          <h2>No launch was omitted or marked as scanned.</h2>
+          <p>Retry the pinned onchain read before relying on this directory.</p>
+        </div>
+      ) : directoryChecking && visibleLaunches.length === 0 ? (
         <div
           aria-label="Loading onchain launches"
           className="card-grid"
@@ -196,12 +251,6 @@ export function ExploreDirectory() {
           {Array.from({ length: 6 }).map((_, index) => (
             <div className="launch-card skeleton-card" key={index} />
           ))}
-        </div>
-      ) : error && !scopeLoaded ? (
-        <div className="empty-panel">
-          <span>Directory scan incomplete</span>
-          <h2>No launch was omitted or marked as scanned.</h2>
-          <p>Retry the pinned onchain read before relying on this directory.</p>
         </div>
       ) : visible.length > 0 ? (
         <div className="card-grid">
