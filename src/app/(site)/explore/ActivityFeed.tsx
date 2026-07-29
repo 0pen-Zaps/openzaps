@@ -27,6 +27,7 @@ const TYPE_LABEL: Record<ActivityEntry["type"], string> = {
   executed: "Zapped",
   automated: "AutoZap",
   recovered: "Recovered",
+  halted: "Policy halted",
 };
 
 /** The mark each kind of log carries, so a row is readable before its text is. */
@@ -35,9 +36,10 @@ const TYPE_GLYPH: Record<ActivityEntry["type"], string> = {
   executed: "bolt",
   automated: "repeat",
   recovered: "key",
+  halted: "shield",
 };
 
-const STAT_LABELS = ["Zaps created", "Zaps", "AutoZaps", "Recoveries", "Executed volume"] as const;
+const STAT_LABELS = ["Zaps created", "Zaps", "AutoZaps", "Recoveries", "Policies halted", "Executed volume"] as const;
 
 export function ActivityFeed({ initial }: { initial: ActivityPayload | null }): React.JSX.Element {
   const [state, setState] = useState<FeedState>(
@@ -99,6 +101,7 @@ export function ActivityFeed({ initial }: { initial: ActivityPayload | null }): 
             <Metric count label="Zaps" value={String(state.data.stats.executions)} />
             <Metric count label="AutoZaps" value={String(state.data.stats.automatedRuns)} />
             <Metric count label="Recoveries" value={String(state.data.stats.recoveries)} />
+            <Metric count label="Policies halted" value={String(state.data.stats.policiesHalted)} />
             <Metric
               wide
               label="Executed volume"
@@ -140,7 +143,7 @@ export function ActivityFeed({ initial }: { initial: ActivityPayload | null }): 
           <h2 className={styles.cardTitle} ref={headingRef} tabIndex={-1}>
             Onchain activity
           </h2>
-          <span className={styles.cardSub}>creations, Zaps, AutoZaps, and recoveries — newest first</span>
+          <span className={styles.cardSub}>creations, Zaps, AutoZaps, permanent stops, and recoveries — newest first</span>
           <p className={styles.updated}>
             {refreshing && <span aria-hidden className={`spinner ${styles.updatedSpinner}`} />}
             {state.status === "ready" ? (
@@ -170,7 +173,7 @@ export function ActivityFeed({ initial }: { initial: ActivityPayload | null }): 
 
         {state.status === "loading" && (
           <>
-            <p className={styles.empty}>Reading creations, Zaps, AutoZaps, and recoveries from chain logs…</p>
+            <p className={styles.empty}>Reading creations, Zaps, AutoZaps, policy stops, and recoveries from chain logs…</p>
             {/* Shaped placeholders in the feed's real geometry, so the rows do not
                 jump when the first payload lands. Negative, index-derived delays
                 start each bar mid-cycle: the shimmer travels down the list
@@ -233,6 +236,11 @@ export function ActivityFeed({ initial }: { initial: ActivityPayload | null }): 
                     {entry.detail ?? "automated"} · submitted by {shortAddress(entry.actor)}
                   </span>
                 )}
+                {entry.type === "halted" && (
+                  <span className={styles.feedDetail}>
+                    Permanent stop by {shortAddress(entry.actor)} · execution cannot be reactivated
+                  </span>
+                )}
               </span>
               <span className={styles.feedEnd}>
                 <code className={styles.feedZap}>{shortAddress(entry.zap)}</code>
@@ -251,10 +259,10 @@ export function ActivityFeed({ initial }: { initial: ActivityPayload | null }): 
           ))}
 
         <p className={styles.cardFoot}>
-          Zap, AutoZap, and recovery rows are read only from Zaps recorded in a factory&apos;s own
-          ZapCreated log — v1.1, v3, and v3.1 — so events emitted by non-canonical contracts never reach this
-          feed. An AutoZap row is a Zap an executor submitted against a standing authorization its owner
-          signed. Each row opens its own transaction; the v1.1 factory is on{" "}
+          Zap, AutoZap, recovery, and policy-halt rows are read only from Zaps recorded in a factory&apos;s own
+          ZapCreated log. Policy halts are accepted only from configured v1.2 and v3.2 emitters; v1.1, v3, and
+          v3.1 remain unsupported. An AutoZap row is a Zap an executor submitted against
+          a standing authorization its owner signed. Each row opens its own transaction; the v1.1 factory is on{" "}
           <a href={explorerAddress(OPENZAP_CONTRACTS.factory)} target="_blank" rel="noreferrer">
             Blockscout ↗
           </a>
@@ -277,6 +285,7 @@ function rowTitle(entry: ActivityEntry): string {
   const amount = `${entry.amount ? formatAmount(entry.amount) : "?"} ${entry.assetSymbol ?? ""}`.trim();
   if (entry.type === "created") return `Created by ${shortAddress(entry.actor)}`;
   if (entry.type === "automated") return amount;
+  if (entry.type === "halted") return "Execution permanently stopped";
   return `${amount} → ${shortAddress(entry.actor)}`;
 }
 

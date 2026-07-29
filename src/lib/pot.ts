@@ -9,10 +9,11 @@ import { ROBINHOOD_ASSETS } from "@/lib/robinhood";
  * Everything here is deliberately conservative about what may be CLAIMED, because
  * the pot's own design defers two things the UI would otherwise be tempted to show:
  *
- *  1. Tickets are credited as the raw fee `amount`, summed ACROSS ASSETS with no
- *     normalization (ZapLotteryPot.notifyContribution). One aeWETH and one USDG
- *     credit wildly different counts, so a ticket share is NOT a probability and
- *     must never be rendered as odds.
+ *  1. Tickets are credited as the raw contribution `amount`, summed ACROSS ASSETS
+ *     with no normalization (ZapLotteryPot.notifyContribution). A contribution can
+ *     be the protocol-pot fee slice or, on v3.2, the owner-signed stack slice. One
+ *     aeWETH and one USDG credit wildly different counts, so a ticket share is NOT
+ *     a probability and must never be rendered as odds.
  *  2. `awardRound` is governance-gated with no schedule — there is no timer, no
  *     auto-close, and therefore no countdown to render.
  *
@@ -33,7 +34,7 @@ export const potAbi = [
     stateMutability: "view",
   },
   {
-    // Permissionless: anyone may push an accrued fee asset into the 0xZAPS prize.
+    // Permissionless: anyone may push an accrued contribution asset into the prize.
     type: "function",
     name: "buyZaps",
     inputs: [
@@ -80,7 +81,7 @@ export const roundAwardedEvent = {
   ],
 } as const;
 
-/** A fee asset sitting in the pot that is not yet prize — the open half of the loop. */
+/** A contribution asset sitting in the pot that is not yet prize — the open half of the loop. */
 export interface PendingFeeAsset {
   asset: Address;
   symbol: string;
@@ -118,7 +119,7 @@ export interface PotSnapshot {
   totalTickets: string;
   /** Tickets for the connected wallet, when one is known. */
   yourTickets: string | null;
-  /** Non-0xZAPS fee assets awaiting a permissionless buyZaps. */
+  /** Non-0xZAPS contribution assets awaiting a permissionless buyZaps. */
   pending: PendingFeeAsset[];
   /**
    * Event history is a separate authority slice from the live contract reads.
@@ -145,10 +146,10 @@ export function lifetimeAwarded(awards: readonly PotAward[]): bigint {
 
 /**
  * A wallet's SHARE of the round's tickets, as a fraction, or null when it cannot be
- * stated honestly. This is explicitly NOT odds: tickets are raw fee amounts summed
- * across assets of different decimals and prices, so the share describes contribution
- * weight under the current (deferred) draw design and nothing more. Callers must label
- * it as such.
+ * stated honestly. This is explicitly NOT odds: tickets are raw contribution amounts
+ * summed across assets of different decimals and prices, so the share describes
+ * contribution weight under the current (deferred) draw design and nothing more.
+ * Callers must label it as such.
  */
 export function ticketShare(yourTickets: string | null, totalTickets: string): number | null {
   if (yourTickets === null) return null;
@@ -160,7 +161,7 @@ export function ticketShare(yourTickets: string | null, totalTickets: string): n
   return Number((mine * 1_000_000n) / total) / 1_000_000;
 }
 
-/** True when the pot holds fee assets that nobody has converted into prize yet. */
+/** True when the pot holds contribution assets that nobody has converted into prize yet. */
 export function hasPendingConversion(pending: readonly PendingFeeAsset[]): boolean {
   return pending.some((entry) => BigInt(entry.balance) > 0n);
 }
@@ -196,7 +197,7 @@ export function toPendingAsset(asset: Address, balance: bigint): PendingFeeAsset
 }
 
 /**
- * Fee assets the pot can actually turn into prize.
+ * Contribution assets the pot can actually turn into prize.
  *
  * `buyZaps` routes through the pot's IMMUTABLE `BUY_ADAPTER`, which on both live pots
  * is the aeWETH/0xZAPS swap adapter (0x04f62dA4…). That adapter reverts
@@ -206,7 +207,7 @@ export function toPendingAsset(asset: Address, balance: bigint): PendingFeeAsset
 export const CONVERTIBLE_FEE_ASSETS: readonly Address[] = [ROBINHOOD_ASSETS.weth];
 
 /**
- * Fee assets a pot can RECEIVE but can never convert or release.
+ * Contribution assets a pot can RECEIVE but can never convert or release.
  *
  * A capsule settling in USDG (the token allowlist permits it) pays its 20% here, and
  * then: `buyZaps` reverts because the pinned adapter does not take USDG, `awardRound`

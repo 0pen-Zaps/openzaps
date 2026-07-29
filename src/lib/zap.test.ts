@@ -107,6 +107,8 @@ function automatedRun(overrides: Partial<AutomatedRunLogInput> = {}): AutomatedR
     amountOut: 99n * 10n ** 16n,
     executorFee: 8n * 10n ** 15n,
     potFee: 2n * 10n ** 15n,
+    stackIn: null,
+    zapsOut: null,
     seriesId: 42n,
     run: 1,
     txHash: HEX32(0x20),
@@ -140,6 +142,8 @@ function detailInput(overrides: Partial<ZapDetailInput> = {}): ZapDetailInput {
     executed: [],
     automated: [],
     exits: [],
+    policyHalted: null,
+    halted: [],
     timestamps: new Map(),
     headBlock: 1_000n,
     readAt: NOW,
@@ -238,8 +242,8 @@ describe("aggregateZapDetail stats", () => {
 });
 
 /**
- * A v3/v3.1 capsule whose entire history is automation. `executeRecurring`,
- * `executeRecurringRelative` and `executeTrigger` emit their own events and
+ * An automated capsule whose entire history is automation. Each standing path
+ * emits its own event and
  * NEVER an `Executed`, so a reader built around `Executed` alone reported a
  * capsule twenty runs deep as having never run: zero executions, empty totals,
  * null timestamps, and a lifecycle frozen at "created" — on a public page and
@@ -273,6 +277,54 @@ describe("aggregateZapDetail automated runs", () => {
     expect(payload.stats.feeByAsset["0xZAPS"]).toBe((2n * 10n ** 16n).toString());
     const gross = BigInt(payload.stats.amountOutByAsset["0xZAPS"]) + BigInt(payload.stats.feeByAsset["0xZAPS"]);
     expect(gross).toBe(2n * 10n ** 18n);
+  });
+
+  it("preserves the v3.2 stack leg so gross output and credited 0xZAPS remain truthful", () => {
+    const payload = aggregateZapDetail(
+      detailInput({
+        automated: [
+          automatedRun({
+            kind: "recurring-stack",
+            outAsset: ROBINHOOD_ASSETS.weth,
+            amountOut: 89n,
+            executorFee: 8n,
+            potFee: 2n,
+            stackIn: 1n,
+            zapsOut: 7n,
+          }),
+        ],
+      }),
+    );
+
+    expect(payload.stats.amountOutByAsset.aeWETH).toBe("89");
+    expect(payload.stats.feeByAsset.aeWETH).toBe("10");
+    expect(payload.stats.stackedInputByAsset.aeWETH).toBe("1");
+    expect(payload.stats.stackedZaps).toBe("7");
+    expect(
+      BigInt(payload.stats.amountOutByAsset.aeWETH)
+      + BigInt(payload.stats.feeByAsset.aeWETH)
+      + BigInt(payload.stats.stackedInputByAsset.aeWETH),
+    ).toBe(100n);
+    expect(payload.executions[0]).toMatchObject({
+      kind: "recurring-stack",
+      stackIn: "1",
+      stackedZaps: "7",
+    });
+  });
+
+  it("drops a malformed stack event that omits its diversion economics", () => {
+    const payload = aggregateZapDetail(
+      detailInput({
+        automated: [
+          automatedRun({
+            kind: "recurring-stack",
+            stackIn: null,
+            zapsOut: null,
+          }),
+        ],
+      }),
+    );
+    expect(payload.stats.executionCount).toBe(0);
   });
 
   it("carries the kind, executor, series and run index of each row", () => {
@@ -553,6 +605,14 @@ describe("policy view", () => {
 
   it("keeps the snapshot metadata the page renders", () => {
     const payload = aggregateZapDetail(detailInput());
+    expect(payload.lineage).toBe("v1.1");
+    expect(payload.policyHalt).toEqual({
+      status: "unsupported",
+      policyHalted: null,
+      haltedAt: null,
+      haltedBlock: null,
+      haltedTx: null,
+    });
     expect(payload.headBlock).toBe("1000");
     expect(payload.readAt).toBe(NOW);
     expect(payload.factory).toEqual({ version: "1.1.0", implementation: OPENZAP_CONTRACTS.implementation });

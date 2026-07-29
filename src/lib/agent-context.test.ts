@@ -11,6 +11,7 @@ const CALLDATA = `0x${"ab".repeat(120)}` as const;
 
 function payload(overrides: Partial<ZapDetailPayload> = {}): ZapDetailPayload {
   return {
+    lineage: "v3.1",
     provenance: {
       address: ZAP,
       owner: OWNER,
@@ -39,12 +40,21 @@ function payload(overrides: Partial<ZapDetailPayload> = {}): ZapDetailPayload {
       matchesLiveRoute: true,
       deviations: [],
     },
+    policyHalt: {
+      status: "unsupported",
+      policyHalted: null,
+      haltedAt: null,
+      haltedBlock: null,
+      haltedTx: null,
+    },
     stats: {
       executionCount: 2,
       automatedRunCount: 0,
       recoveryCount: 0,
       amountOutByAsset: { "0xZAPS": "1716346053537753342021997" },
       feeByAsset: {},
+      stackedInputByAsset: {},
+      stackedZaps: "0",
       firstExecutionAt: 1_785_100_000,
       lastExecutionAt: 1_785_189_674,
     },
@@ -79,6 +89,8 @@ describe("zapFacts", () => {
         assetSymbol: "0xZAPS",
         amountOut: "1",
         fee: "0",
+        stackIn: null,
+        stackedZaps: null,
         txHash: `0x${"55".repeat(32)}`,
         blockNumber: "1",
         logIndex: i,
@@ -98,10 +110,46 @@ describe("zapFacts", () => {
     }
   });
 
+  it("exposes recurring-stack totals without exposing raw execution rows", () => {
+    const facts = zapFacts(
+      payload({
+        stats: {
+          ...payload().stats,
+          stackedInputByAsset: { aeWETH: "1000000000000000" },
+          stackedZaps: "7000000000000000000",
+        },
+      } as Partial<ZapDetailPayload>),
+    );
+
+    expect(facts.find((fact) => fact.key === "stackedInputByAsset")?.value).toBe(
+      "1000000000000000 aeWETH",
+    );
+    expect(facts.find((fact) => fact.key === "stackedZaps")?.value).toBe("7000000000000000000");
+  });
+
   it("surfaces the adapter address but not the step data", () => {
     const facts = zapFacts(payload());
     expect(facts.find((fact) => fact.key === "adapter")?.value).toBe(ADAPTER);
     expect(facts.some((fact) => fact.value === CALLDATA)).toBe(false);
+  });
+
+  it("states policy-halt capability without inventing a selector result", () => {
+    const unsupported = zapFacts(payload());
+    expect(unsupported.find((fact) => fact.key === "policyHaltStatus")?.value).toBe("unsupported");
+    expect(unsupported.some((fact) => fact.key === "policyHalted")).toBe(false);
+
+    const halted = zapFacts(payload({
+      lineage: "v3.2",
+      policyHalt: {
+        status: "halted",
+        policyHalted: true,
+        haltedAt: 1_785_200_000,
+        haltedBlock: "21070000",
+        haltedTx: `0x${"66".repeat(32)}`,
+      },
+    }));
+    expect(halted.find((fact) => fact.key === "policyHalted")?.value).toBe("yes");
+    expect(halted.find((fact) => fact.key === "haltedTx")?.value).toBe(`0x${"66".repeat(32)}`);
   });
 
   it("reports deviations plainly, including when there are none", () => {

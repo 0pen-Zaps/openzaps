@@ -48,6 +48,8 @@ const ZAP_ACTIVITY_LIMIT = 200;
 const MODEL_VALUE_MAX_DEPTH = 12;
 const MODEL_VALUE_MAX_NODES = 5_000;
 const MODEL_STRING_MAX_CHARS = 32_768;
+const POLICY_HALT_STATUSES = new Set(["unsupported", "active", "halted", "unavailable"]);
+const TX_HASH = /^0x[0-9a-fA-F]{64}$/;
 
 // ---------------------------------------------------------------------------
 // Shared helpers
@@ -284,6 +286,39 @@ function nullableNonnegativeInteger(value, label) {
   return value === null ? null : nonnegativeInteger(value, label);
 }
 
+function projectPolicyHalt(raw, lineage, label) {
+  const halt = objectValue(raw, label);
+  if (!POLICY_HALT_STATUSES.has(halt.status)) throw new Error(`${label}.status is malformed`);
+  if (halt.policyHalted !== null && typeof halt.policyHalted !== "boolean") {
+    throw new Error(`${label}.policyHalted is malformed`);
+  }
+  if (
+    (halt.status === "unsupported" && (!["v1.1", "v3", "v3.1"].includes(lineage) || halt.policyHalted !== null))
+    || (halt.status === "active" && (!["v1.2", "v3.2"].includes(lineage) || halt.policyHalted !== false))
+    || (halt.status === "halted" && (!["v1.2", "v3.2"].includes(lineage) || halt.policyHalted !== true))
+    || (halt.status === "unavailable" && (!["v1.2", "v3.2"].includes(lineage) || halt.policyHalted !== null))
+  ) {
+    throw new Error(`${label} contradicts the canonical lineage`);
+  }
+  const haltedAt = nullableNonnegativeInteger(halt.haltedAt, `${label}.haltedAt`);
+  const haltedTx = halt.haltedTx === null
+    ? null
+    : stringValue(halt.haltedTx, `${label}.haltedTx`, 66, TX_HASH);
+  if (halt.status === "halted" && (haltedAt === null || haltedTx === null)) {
+    throw new Error(`${label} is missing canonical halt-event provenance`);
+  }
+  if (
+    (halt.status === "unsupported" || halt.status === "active")
+    && (haltedAt !== null || haltedTx !== null)
+  ) {
+    throw new Error(`${label} carries halt-event provenance without a halted state`);
+  }
+  if (halt.status === "unavailable" && (haltedAt === null) !== (haltedTx === null)) {
+    throw new Error(`${label} carries incomplete halt-event provenance`);
+  }
+  return { status: halt.status, policyHalted: halt.policyHalted, haltedAt, haltedTx };
+}
+
 function projectIntentSummary(record, index) {
   const row = objectValue(record, `intent list row ${index}`);
   const intent = objectValue(row.intent, `intent list row ${index}.intent`);
@@ -340,6 +375,7 @@ function projectProfile(profileRaw, requestedOwner) {
       oneShotExecutions: nonnegativeInteger(stats.oneShotExecutions, "profile.stats.oneShotExecutions"),
       automatedRuns: nonnegativeInteger(stats.automatedRuns, "profile.stats.automatedRuns"),
       recoveries: nonnegativeInteger(stats.recoveries, "profile.stats.recoveries"),
+      policiesHalted: nonnegativeInteger(stats.policiesHalted, "profile.stats.policiesHalted"),
       authorizationsRevoked: nonnegativeInteger(
         stats.authorizationsRevoked,
         "profile.stats.authorizationsRevoked",
@@ -348,12 +384,26 @@ function projectProfile(profileRaw, requestedOwner) {
     },
     zaps: profile.zaps.map((zapRaw, index) => {
       const zap = objectValue(zapRaw, `profile.zaps[${index}]`);
-      if (!["v1.1", "v3", "v3.1", "v3.2"].includes(zap.lineage)) {
+      if (!["v1.1", "v1.2", "v3", "v3.1", "v3.2"].includes(zap.lineage)) {
         throw new Error(`profile.zaps[${index}].lineage is malformed`);
       }
+      const policyHalt = projectPolicyHalt(
+        {
+          status: zap.policyHaltStatus,
+          policyHalted: zap.policyHalted,
+          haltedAt: zap.haltedAt,
+          haltedTx: zap.haltedTx,
+        },
+        zap.lineage,
+        `profile.zaps[${index}].policyHalt`,
+      );
       return {
         address: addressValue(zap.address, `profile.zaps[${index}].address`),
         lineage: zap.lineage,
+        policyHaltStatus: policyHalt.status,
+        policyHalted: policyHalt.policyHalted,
+        haltedAt: policyHalt.haltedAt,
+        haltedTx: policyHalt.haltedTx,
         executionCount: nonnegativeInteger(zap.executionCount, `profile.zaps[${index}].executionCount`),
         automatedRunCount: nonnegativeInteger(
           zap.automatedRunCount,
@@ -498,6 +548,9 @@ function boundedModelValue(value, label, state = { nodes: 0 }, depth = 0) {
 
 function projectZapDetail(detailRaw) {
   const detail = objectValue(detailRaw, "zap response");
+  if (!["v1.1", "v1.2", "v3", "v3.1", "v3.2"].includes(detail.lineage)) {
+    throw new Error("zap response lineage is malformed");
+  }
   if (!["created", "funded", "executed", "recovered"].includes(detail.lifecycle)) {
     throw new Error("zap response lifecycle is malformed");
   }
@@ -508,8 +561,10 @@ function projectZapDetail(detailRaw) {
     throw new Error(`zap response must contain at most ${ZAP_ACTIVITY_LIMIT} recoveries`);
   }
   return {
+    lineage: detail.lineage,
     provenance: boundedModelValue(objectValue(detail.provenance, "zap.provenance"), "zap.provenance"),
     policy: boundedModelValue(objectValue(detail.policy, "zap.policy"), "zap.policy"),
+    policyHalt: projectPolicyHalt(detail.policyHalt, detail.lineage, "zap.policyHalt"),
     stats: boundedModelValue(objectValue(detail.stats, "zap.stats"), "zap.stats"),
     balances: boundedModelValue(objectValue(detail.balances, "zap.balances"), "zap.balances"),
     executions: boundedModelValue(detail.executions, "zap.executions"),
@@ -919,7 +974,10 @@ export const TOOLS = [
           type: "object",
           required: ["kind", "intent", "signature"],
           properties: {
-            kind: { type: "string", enum: ["recurring", "recurring-relative", "trigger"] },
+            kind: {
+              type: "string",
+              enum: ["recurring", "recurring-relative", "recurring-stack", "trigger"],
+            },
             intent: { type: "object" },
             signature: { type: "string", pattern: "^0x[0-9a-fA-F]{130,}$" },
           },
@@ -969,7 +1027,10 @@ export const TOOLS = [
           type: "object",
           required: ["kind", "intent", "signature"],
           properties: {
-            kind: { type: "string", enum: ["recurring", "recurring-relative", "trigger"] },
+            kind: {
+              type: "string",
+              enum: ["recurring", "recurring-relative", "recurring-stack", "trigger"],
+            },
             intent: { type: "object" },
             signature: { type: "string", pattern: "^0x[0-9a-fA-F]{130,}$" },
           },

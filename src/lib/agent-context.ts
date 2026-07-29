@@ -19,9 +19,14 @@ export type ZapFactKey =
   | "owner"
   | "recipient"
   | "lifecycle"
+  | "lineage"
   | "createdAt"
   | "createdTx"
   | "policyHash"
+  | "policyHaltStatus"
+  | "policyHalted"
+  | "haltedAt"
+  | "haltedTx"
   | "hashMatches"
   | "canonicalClone"
   | "matchesLiveRoute"
@@ -43,6 +48,8 @@ export type ZapFactKey =
   | "lastExecutionAt"
   | "amountOutByAsset"
   | "feeByAsset"
+  | "stackedInputByAsset"
+  | "stackedZaps"
   | "balanceWeth"
   | "balanceZaps"
   | "balanceNative"
@@ -62,9 +69,14 @@ export const ZAP_FACT_KEYS: readonly ZapFactKey[] = [
   "owner",
   "recipient",
   "lifecycle",
+  "lineage",
   "createdAt",
   "createdTx",
   "policyHash",
+  "policyHaltStatus",
+  "policyHalted",
+  "haltedAt",
+  "haltedTx",
   "hashMatches",
   "canonicalClone",
   "matchesLiveRoute",
@@ -86,6 +98,8 @@ export const ZAP_FACT_KEYS: readonly ZapFactKey[] = [
   "lastExecutionAt",
   "amountOutByAsset",
   "feeByAsset",
+  "stackedInputByAsset",
+  "stackedZaps",
   "balanceWeth",
   "balanceZaps",
   "balanceNative",
@@ -106,10 +120,27 @@ export function zapFacts(payload: ZapDetailPayload): ZapFact[] {
   add("owner", "owner", provenance.owner);
   add("recipient", "pays out to", policy.recipient);
   add("lifecycle", "lifecycle", payload.lifecycle);
+  add("lineage", "canonical lineage", payload.lineage);
   add("createdAt", "created", provenance.createdAt ? new Date(provenance.createdAt * 1000).toISOString() : null);
   add("createdTx", "creation tx", provenance.createdTx);
 
   add("policyHash", "policy hash", policy.policyHash);
+  add("policyHaltStatus", "one-way policy stop", payload.policyHalt.status);
+  add(
+    "policyHalted",
+    "execution permanently halted",
+    payload.policyHalt.policyHalted === null
+      ? null
+      : payload.policyHalt.policyHalted ? "yes" : "no",
+  );
+  add(
+    "haltedAt",
+    "policy halted",
+    payload.policyHalt.haltedAt
+      ? new Date(payload.policyHalt.haltedAt * 1000).toISOString()
+      : null,
+  );
+  add("haltedTx", "policy halt tx", payload.policyHalt.haltedTx);
   add("hashMatches", "hash verifies", policy.hashMatches ? "yes" : "NO");
   add("canonicalClone", "canonical clone", policy.canonicalClone ? "yes" : "NO");
   add("matchesLiveRoute", "matches a live route", policy.matchesLiveRoute ? "yes" : "no");
@@ -140,6 +171,8 @@ export function zapFacts(payload: ZapDetailPayload): ZapFact[] {
   add("lastExecutionAt", "last run", stats.lastExecutionAt ? new Date(stats.lastExecutionAt * 1000).toISOString() : null);
   add("amountOutByAsset", "total out", formatByAsset(stats.amountOutByAsset));
   add("feeByAsset", "total fees", formatByAsset(stats.feeByAsset));
+  add("stackedInputByAsset", "total input stacked", formatByAsset(stats.stackedInputByAsset));
+  add("stackedZaps", "total 0xZAPS stacked", BigInt(stats.stackedZaps) > 0n ? stats.stackedZaps : null);
 
   add("balanceWeth", "aeWETH balance (wei)", balances.weth);
   add("balanceZaps", "0xZAPS balance (wei)", balances.zaps);

@@ -226,12 +226,15 @@ export function buildUnsignedPermit2OwnerPull(input) {
 
   const nowSeconds = asUint(input.nowSeconds, "nowSeconds", MAX_UINT64);
   const deadline = asPositiveUint(input.deadline, "deadline");
-  if (deadline < nowSeconds) throw new Error("Permit2 deadline has already passed.");
+  if (deadline <= nowSeconds) throw new Error("Permit2 deadline must be in the future.");
   if (deadline > BigInt(intent.message.deadline)) {
     throw new Error("Permit2 deadline cannot exceed the OpenZap intent deadline.");
   }
   if (deadline > nowSeconds + PERMIT2_MAX_DEADLINE_WINDOW_SECONDS) {
     throw new Error("Permit2 deadline must be no more than one hour from now.");
+  }
+  if (deadline < BigInt(intent.message.validAfter)) {
+    throw new Error("Permit2 deadline cannot precede the OpenZap intent validity window.");
   }
 
   const intentDigest = hashTypedData(intent);

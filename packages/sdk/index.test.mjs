@@ -154,6 +154,28 @@ test("Permit2 owner-pull builder rejects scope and deadline drift", () => {
       }),
     /no more than one hour/,
   );
+  assert.throws(
+    () =>
+      buildUnsignedPermit2OwnerPull({
+        policy,
+        intent,
+        nonce: 1n,
+        deadline: 1_000n,
+        nowSeconds: 1_000n,
+      }),
+    /must be in the future/,
+  );
+  assert.throws(
+    () =>
+      buildUnsignedPermit2OwnerPull({
+        policy,
+        intent,
+        nonce: 1n,
+        deadline: 999n,
+        nowSeconds: 500n,
+      }),
+    /cannot precede the OpenZap intent validity window/,
+  );
 });
 
 test("Permit2 owner-pull builder rejects noncanonical signing envelopes", () => {

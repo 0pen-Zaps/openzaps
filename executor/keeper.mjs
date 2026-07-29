@@ -82,33 +82,52 @@ export async function convertPotFees({
   publicClient,
   walletClient,
   cfg,
+  pot = null,
   onBroadcast = async () => {},
   canBroadcast = async () => ({ allowed: true }),
   withBroadcastLane = async (operation) => operation(),
   verifyPotAdapter = verifyPotAdapterManifest,
 }) {
-  if (!cfg.lotteryPot || !cfg.poolPriceSource || !cfg.feeAsset) {
-    return { outcome: "disabled", detail: "pot/price-source/fee-asset not configured" };
+  // `pot` is additive. Callers that still pass only the legacy top-level fields retain the exact
+  // v3.1 behavior, while the daemon can provide one explicit target at a time.
+  const target = {
+    id: String(pot?.id ?? cfg.potId ?? "v3.1"),
+    lotteryPot: pot?.lotteryPot ?? cfg.lotteryPot,
+    poolPriceSource: pot?.poolPriceSource ?? cfg.poolPriceSource,
+    feeAsset: pot?.feeAsset ?? cfg.feeAsset,
+    convertMinWei: pot?.convertMinWei ?? cfg.convertMinWei,
+    convertSlippageBps: pot?.convertSlippageBps ?? cfg.convertSlippageBps,
+  };
+  const identity = {
+    potId: target.id,
+    potAddress: target.lotteryPot ?? null,
+    feeAsset: target.feeAsset ?? null,
+    priceSource: target.poolPriceSource ?? null,
+  };
+  const identified = (record) => ({ ...identity, ...record });
+  if (!target.lotteryPot || !target.poolPriceSource || !target.feeAsset) {
+    return identified({ outcome: "disabled", detail: "pot/price-source/fee-asset not configured" });
   }
+  const potCfg = { ...cfg, ...target };
   let adapterProof;
   try {
     const atBlock = await publicClient.getBlockNumber();
-    adapterProof = await verifyPotAdapter(publicClient, cfg, atBlock);
+    adapterProof = await verifyPotAdapter(publicClient, potCfg, atBlock);
   } catch (error) {
-    return {
+    return identified({
       outcome: "blocked",
       detail:
         `pot adapter provenance failed: `
         + `${error?.shortMessage ?? error?.message ?? String(error)}`,
-    };
+    });
   }
   if (!adapterProof?.verified && walletClient) {
-    return {
+    return identified({
       outcome: "blocked",
       detail:
         `pot adapter provenance failed closed: `
         + `${adapterProof?.detail ?? "release manifest verification is unavailable"}`,
-    };
+    });
   }
   const manifestWarning = !adapterProof?.verified
     ? `; watch-only adapter manifest gap: ${adapterProof?.detail ?? "unverified"}`
@@ -117,43 +136,58 @@ export async function convertPotFees({
   let priceX96;
   try {
     [feeBalance, priceX96] = await Promise.all([
-      publicClient.readContract({ address: cfg.feeAsset, abi: erc20Abi, functionName: "balanceOf", args: [cfg.lotteryPot] }),
-      publicClient.readContract({ address: cfg.poolPriceSource, abi: priceSourceAbi, functionName: "priceX96" }),
+      publicClient.readContract({
+        address: target.feeAsset,
+        abi: erc20Abi,
+        functionName: "balanceOf",
+        args: [target.lotteryPot],
+      }),
+      publicClient.readContract({
+        address: target.poolPriceSource,
+        abi: priceSourceAbi,
+        functionName: "priceX96",
+      }),
     ]);
   } catch (err) {
-    return { outcome: "read-failed", detail: err.shortMessage ?? err.message };
+    return identified({ outcome: "read-failed", detail: err.shortMessage ?? err.message });
   }
 
   const plan = planPotConversion({
     feeBalance,
     priceX96,
-    minConvertWei: cfg.convertMinWei,
-    slippageBps: cfg.convertSlippageBps,
+    minConvertWei: target.convertMinWei,
+    slippageBps: target.convertSlippageBps,
   });
-  if (!plan.convert) return { outcome: "idle", detail: plan.reason };
+  if (!plan.convert) return identified({ outcome: "idle", detail: plan.reason });
 
   let request;
   try {
     ({ request } = await publicClient.simulateContract({
-      address: cfg.lotteryPot,
+      address: target.lotteryPot,
       abi: lotteryPotAbi,
       functionName: "buyZaps",
-      args: [cfg.feeAsset, plan.amountIn, plan.minZapsOut],
+      args: [target.feeAsset, plan.amountIn, plan.minZapsOut],
       account: walletClient?.account ?? "0x000000000000000000000000000000000000dEaD",
       gas: POT_CONVERSION_GAS_LIMIT,
     }));
   } catch (err) {
-    return { outcome: "simulation-reverted", detail: err.shortMessage ?? err.message, amountIn: plan.amountIn };
+    return identified({
+      outcome: "simulation-reverted",
+      detail: err.shortMessage ?? err.message,
+      amountIn: plan.amountIn,
+      minZapsOut: plan.minZapsOut,
+    });
   }
 
   if (!walletClient) {
-    return {
+    return identified({
       outcome: "watch-only",
       detail:
         `would convert ${plan.amountIn} fee-asset → ≥${plan.minZapsOut} 0xZAPS`
         + manifestWarning,
       amountIn: plan.amountIn,
-    };
+      minZapsOut: plan.minZapsOut,
+    });
   }
 
   const feeCap = cfg.maxFeePerGasWei;
@@ -223,7 +257,12 @@ export async function convertPotFees({
                 await onBroadcast({
                   hash: preparedHash,
                   operation: "pot-conversion",
+                  potId: target.id,
+                  potAddress: target.lotteryPot,
+                  feeAsset: target.feeAsset,
+                  priceSource: target.poolPriceSource,
                   amountIn: plan.amountIn,
+                  minZapsOut: plan.minZapsOut,
                   phase: "prepared",
                   serializedTransaction,
                 });
@@ -237,7 +276,12 @@ export async function convertPotFees({
           await onBroadcast({
             hash,
             operation: "pot-conversion",
+            potId: target.id,
+            potAddress: target.lotteryPot,
+            feeAsset: target.feeAsset,
+            priceSource: target.poolPriceSource,
             amountIn: plan.amountIn,
+            minZapsOut: plan.minZapsOut,
             phase: "submitted",
             privateSubmission: preparedOutbox
               ? privateSubmission.getOutcome(hash)
@@ -259,25 +303,28 @@ export async function convertPotFees({
       }
     });
   } catch (error) {
-    return {
+    return identified({
       outcome: "broadcast-admission-unknown",
       detail: `signer-lane safety gate failed closed: ${error?.shortMessage ?? error?.message ?? String(error)}`,
       amountIn: plan.amountIn,
-    };
+      minZapsOut: plan.minZapsOut,
+    });
   }
   if (laneResult?.deferred) {
-    return {
+    return identified({
       outcome: laneResult.deferred.outcome,
       detail: laneResult.deferred.detail,
       amountIn: plan.amountIn,
-    };
+      minZapsOut: plan.minZapsOut,
+    });
   }
   if (!laneResult?.hash) {
-    return {
+    return identified({
       outcome: "broadcast-admission-unknown",
       detail: "signer-lane safety gate returned no broadcast result",
       amountIn: plan.amountIn,
-    };
+      minZapsOut: plan.minZapsOut,
+    });
   }
   const { hash, outboxWarning = "" } = laneResult;
   const privateRelayOutcome =
@@ -287,7 +334,7 @@ export async function convertPotFees({
 
   try {
     const receipt = await publicClient.waitForTransactionReceipt({ hash, timeout: 120_000 });
-    return {
+    return identified({
       outcome: "confirmation-observed",
       detail:
         `buyZaps ${hash} receipt observed as ${receipt.status}; awaiting canonical settlement`
@@ -305,9 +352,9 @@ export async function convertPotFees({
             },
           }
         : {}),
-    };
+    });
   } catch (err) {
-    return {
+    return identified({
       outcome: "confirmation-pending",
       detail:
         `buyZaps ${hash} broadcast; finality wait pending: ${err.shortMessage ?? err.message}`
@@ -324,7 +371,7 @@ export async function convertPotFees({
             },
           }
         : {}),
-    };
+    });
   }
 }
 

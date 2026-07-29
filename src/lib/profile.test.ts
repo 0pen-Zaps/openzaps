@@ -1,8 +1,14 @@
 import { describe, expect, it } from "vitest";
 
-import type { AutomatedRunLogInput, ExecutedLogInput, ExitLogInput } from "@/lib/activity";
+import type {
+  AutomatedRunLogInput,
+  ExecutedLogInput,
+  ExitLogInput,
+  PolicyHaltedLogInput,
+} from "@/lib/activity";
 import {
   aggregateWalletProfile,
+  isStandingIntentLineage,
   lineageForFactory,
   type NonceInvalidatedLogInput,
   type SeriesFinishedLogInput,
@@ -12,6 +18,7 @@ import {
   OPENZAP_CONTRACTS,
   OPENZAP_V3_CONTRACTS,
   OPENZAP_V3_1_CONTRACTS,
+  OPENZAP_V3_2_CONTRACTS,
   ROBINHOOD_ASSETS,
 } from "@/lib/robinhood";
 
@@ -59,6 +66,8 @@ function automation(overrides: Partial<AutomatedRunLogInput> = {}): AutomatedRun
     amountOut: 7n,
     executorFee: 1n,
     potFee: 1n,
+    stackIn: null,
+    zapsOut: null,
     seriesId: 42n,
     run: 1,
     txHash: tx(3),
@@ -104,6 +113,18 @@ function finished(overrides: Partial<SeriesFinishedLogInput> = {}): SeriesFinish
   };
 }
 
+function halted(overrides: Partial<PolicyHaltedLogInput> = {}): PolicyHaltedLogInput {
+  return {
+    emitter: ZAP,
+    owner: OWNER,
+    policyHash: POLICY,
+    txHash: tx(7),
+    blockNumber: 650n,
+    logIndex: 6,
+    ...overrides,
+  };
+}
+
 function aggregate(overrides: Partial<Parameters<typeof aggregateWalletProfile>[0]> = {}) {
   return aggregateWalletProfile({
     owner: OWNER,
@@ -113,7 +134,12 @@ function aggregate(overrides: Partial<Parameters<typeof aggregateWalletProfile>[
     exits: [recovery()],
     invalidated: [revoked()],
     finished: [finished()],
-    zapReads: [{ zap: ZAP, trackedAssets: [ROBINHOOD_ASSETS.weth, ROBINHOOD_ASSETS.zaps] }],
+    halted: [],
+    zapReads: [{
+      zap: ZAP,
+      trackedAssets: [ROBINHOOD_ASSETS.weth, ROBINHOOD_ASSETS.zaps],
+      policyHalted: null,
+    }],
     timestamps: new Map([[600n, 1_700_000_600]]),
     fromBlock: 90n,
     headBlock: 700n,
@@ -160,7 +186,9 @@ describe("aggregateWalletProfile", () => {
   });
 
   it("keeps management reads fail-closed without hiding proven history", () => {
-    const profile = aggregate({ zapReads: [{ zap: ZAP, trackedAssets: null }] });
+    const profile = aggregate({
+      zapReads: [{ zap: ZAP, trackedAssets: null, policyHalted: null }],
+    });
     expect(profile.sourceStatus).toBe("degraded");
     expect(profile.zaps[0].managementReadsStatus).toBe("unavailable");
     expect(profile.zaps[0].trackedAssets).toBeNull();
@@ -173,6 +201,13 @@ describe("aggregateWalletProfile", () => {
     expect(row?.detail).toBe("authorization revoked onchain");
     expect(row?.amount).toBeNull();
   });
+
+  it("rejects a PolicyHalted-shaped log from unsupported v3.1", () => {
+    const profile = aggregate({ halted: [halted()] });
+    expect(profile.stats.policiesHalted).toBe(0);
+    expect(profile.zaps[0].policyHaltStatus).toBe("unsupported");
+    expect(profile.activity.some((row) => row.kind === "halted")).toBe(false);
+  });
 });
 
 describe("lineageForFactory", () => {
@@ -180,5 +215,15 @@ describe("lineageForFactory", () => {
     expect(lineageForFactory(OPENZAP_CONTRACTS.factory)).toBe("v1.1");
     expect(lineageForFactory(OPENZAP_V3_CONTRACTS.factory)).toBe("v3");
     expect(lineageForFactory(OPENZAP_V3_1_CONTRACTS.factory)).toBe("v3.1");
+    expect(lineageForFactory(OPENZAP_V3_2_CONTRACTS.factory)).toBe("unknown");
+    expect(lineageForFactory(OTHER)).toBe("unknown");
+  });
+
+  it("admits only exact standing-intent lineages to agent connection", () => {
+    expect(isStandingIntentLineage("v3")).toBe(true);
+    expect(isStandingIntentLineage("v3.1")).toBe(true);
+    expect(isStandingIntentLineage("v3.2")).toBe(true);
+    expect(isStandingIntentLineage("v1.1")).toBe(false);
+    expect(isStandingIntentLineage("unknown")).toBe(false);
   });
 });

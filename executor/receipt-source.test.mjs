@@ -3,7 +3,8 @@ import assert from "node:assert/strict";
 import { mkdtempSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { keccak256 } from "viem";
+import { encodeFunctionData, keccak256 } from "viem";
+import { lotteryPotAbi } from "./abi.mjs";
 
 import {
   HOSTED_DELIVERY_MAX_ATTEMPTS,
@@ -13,6 +14,7 @@ import {
   intentHasPendingReceipt,
   persistReceiptDocument,
   queueExecutionReceipt,
+  queueTransactionReceipt,
   recordExecutionSubmissionEvent,
   recordOperationSubmissionEvent,
   receiptOutboxHasCapacity,
@@ -327,6 +329,169 @@ test("earnings advance only from canonically settled successful receipts", () =>
   assert.deepEqual(state.earnings, { runs: 5, conversions: 3 });
 });
 
+test("settled conversion accounting remains isolated by pot address and fee asset", () => {
+  const pot31 = "0x0000000000000000000000000000000000000031";
+  const pot32 = "0x0000000000000000000000000000000000000032";
+  const assetA = "0x00000000000000000000000000000000000000a1";
+  const assetB = "0x00000000000000000000000000000000000000b1";
+  const state = { earnings: { runs: 4, conversions: 2 } };
+  accountSettledReceipts(state, [
+    {
+      kind: "pot-conversion",
+      outcome: "finalized",
+      potId: "v3.1",
+      potAddress: pot31,
+      feeAsset: assetA,
+      amountInWei: "10",
+      minZapsOutWei: "9",
+    },
+    {
+      kind: "pot-conversion",
+      outcome: "finalized",
+      potId: "v3.2",
+      potAddress: pot32,
+      feeAsset: assetB,
+      amountInWei: "20",
+      minZapsOutWei: "18",
+    },
+    {
+      kind: "pot-conversion",
+      outcome: "finalized",
+      potId: "v3.1",
+      potAddress: pot31,
+      feeAsset: assetA,
+      amountInWei: "5",
+      minZapsOutWei: "4",
+    },
+  ]);
+
+  assert.equal(state.earnings.conversions, 5);
+  assert.deepEqual(state.earnings.pots[pot31.toLowerCase()], {
+    id: "v3.1",
+    address: pot31,
+    conversions: 2,
+    assets: {
+      [assetA.toLowerCase()]: {
+        address: assetA,
+        conversions: 2,
+        amountInWei: "15",
+        minimumZapsOutWei: "13",
+      },
+    },
+  });
+  assert.deepEqual(state.earnings.pots[pot32.toLowerCase()], {
+    id: "v3.2",
+    address: pot32,
+    conversions: 1,
+    assets: {
+      [assetB.toLowerCase()]: {
+        address: assetB,
+        conversions: 1,
+        amountInWei: "20",
+        minimumZapsOutWei: "18",
+      },
+    },
+  });
+});
+
+test("a finalized pot receipt preserves immutable pot, asset, source, and amount identity", async () => {
+  const receiptsDir = mkdtempSync(join(tmpdir(), "openzaps-pot-receipt-"));
+  const entry = {
+    relayIntentId: null,
+    zap: "0x0000000000000000000000000000000000000032",
+    kind: "pot-conversion",
+    nonce: HASH,
+    potId: "v3.2",
+    feeAsset: "0x00000000000000000000000000000000000000a1",
+    priceSource: "0x00000000000000000000000000000000000000b1",
+    amountInWei: "100",
+    minZapsOutWei: "97",
+  };
+  const state = {};
+  queueTransactionReceipt(state, entry, HASH);
+  const potChain = {
+    ...chain(),
+    getTransaction: async () => ({
+      from: "0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC",
+      to: entry.zap,
+      input: encodeFunctionData({
+        abi: lotteryPotAbi,
+        functionName: "buyZaps",
+        args: [entry.feeAsset, 100n, 97n],
+      }),
+    }),
+  };
+
+  const result = await settleReceiptOutbox({
+    publicClient: potChain,
+    state,
+    cfg: { confirmations: 3, receiptsDir, relayUrl: "", chainId: 4663 },
+  });
+
+  assert.equal(result.settled.length, 1);
+  assert.deepEqual(
+    {
+      potId: result.settled[0].potId,
+      potAddress: result.settled[0].potAddress,
+      feeAsset: result.settled[0].feeAsset,
+      priceSource: result.settled[0].priceSource,
+      amountInWei: result.settled[0].amountInWei,
+      minZapsOutWei: result.settled[0].minZapsOutWei,
+    },
+    {
+      potId: entry.potId,
+      potAddress: entry.zap,
+      feeAsset: entry.feeAsset,
+      priceSource: entry.priceSource,
+      amountInWei: entry.amountInWei,
+      minZapsOutWei: entry.minZapsOutWei,
+    },
+  );
+  const persisted = JSON.parse(readFileSync(result.settled[0].path, "utf8"));
+  assert.equal(persisted.potId, "v3.2");
+  assert.equal(persisted.amountInWei, "100");
+});
+
+test("a successful hash with conflicting pot calldata stays queued and cannot enter accounting", async () => {
+  const receiptsDir = mkdtempSync(join(tmpdir(), "openzaps-pot-receipt-mismatch-"));
+  const entry = {
+    relayIntentId: null,
+    zap: "0x0000000000000000000000000000000000000032",
+    kind: "pot-conversion",
+    nonce: HASH,
+    potId: "v3.2",
+    feeAsset: "0x00000000000000000000000000000000000000a1",
+    priceSource: "0x00000000000000000000000000000000000000b1",
+    amountInWei: "100",
+    minZapsOutWei: "97",
+  };
+  const state = {};
+  queueTransactionReceipt(state, entry, HASH);
+  const mismatched = {
+    ...chain(),
+    getTransaction: async () => ({
+      from: "0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC",
+      to: entry.zap,
+      input: encodeFunctionData({
+        abi: lotteryPotAbi,
+        functionName: "buyZaps",
+        args: [entry.feeAsset, 99n, 97n],
+      }),
+    }),
+  };
+
+  const result = await settleReceiptOutbox({
+    publicClient: mismatched,
+    state,
+    cfg: { confirmations: 3, receiptsDir, relayUrl: "", chainId: 4663 },
+  });
+
+  assert.equal(result.settled.length, 0);
+  assert.equal(result.pending.length, 1);
+  assert.match(state.receiptOutbox[HASH].lastError, /calldata conflicts/);
+  assert.deepEqual(readdirSync(receiptsDir), []);
+});
+
 test("receipt publication is idempotent but refuses an existing conflicting identity", () => {
   const receiptsDir = mkdtempSync(join(tmpdir(), "openzaps-receipts-conflict-"));
   const document = {
@@ -538,6 +703,11 @@ test("execution and maintenance callbacks preserve prepare then submit phases en
     zap: "0x0000000000000000000000000000000000000001",
     kind: "pot-conversion",
     nonce: operationHash,
+    potId: "v3.2",
+    feeAsset: "0x0000000000000000000000000000000000000002",
+    priceSource: "0x0000000000000000000000000000000000000003",
+    amountInWei: "100",
+    minZapsOutWei: "97",
   };
   await recordOperationSubmissionEvent(controller, state, operation, {
     hash: operationHash,
@@ -545,6 +715,8 @@ test("execution and maintenance callbacks preserve prepare then submit phases en
     serializedTransaction: operationRaw,
   });
   assert.equal(state.receiptOutbox[operationHash].submissionState, "prepared");
+  assert.equal(state.receiptOutbox[operationHash].potId, "v3.2");
+  assert.equal(state.receiptOutbox[operationHash].amountInWei, "100");
   await recordOperationSubmissionEvent(controller, state, operation, {
     hash: operationHash,
     phase: "submitted",

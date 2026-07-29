@@ -7,9 +7,8 @@ import {
   type PotSnapshot,
 } from "@/lib/pot";
 import {
-  OPENZAP_V3_CONTRACTS,
-  OPENZAP_V3_1_CONTRACTS,
   ROBINHOOD_RPC_URL,
+  configuredExecutionPots,
   erc20Abi,
   robinhoodChain,
 } from "@/lib/robinhood";
@@ -34,12 +33,6 @@ const client = createPublicClient({
   chain: robinhoodChain,
   transport: http(ROBINHOOD_RPC_URL, { retryCount: 2, timeout: 15_000 }),
 });
-
-/** Both live pots. v3 and v3.1 each got their own because `setFactory` is one-shot. */
-const POTS: readonly { address: Address; label: string }[] = [
-  { address: OPENZAP_V3_1_CONTRACTS.lotteryPot, label: "v3.1" },
-  { address: OPENZAP_V3_CONTRACTS.lotteryPot, label: "v3" },
-];
 
 /** Live state only. Every read is pinned to the same captured head block. */
 async function readPotCore(
@@ -112,11 +105,12 @@ async function readPotCore(
  * until a durable RPC-backed index exists.
  */
 export async function fetchPots(viewer: Address | null = null): Promise<PotPayload> {
+  const configuredPots = [...configuredExecutionPots()].reverse();
   const head = await client.getBlockNumber({ cacheTime: 0 });
   const headBefore = await client.getBlock({ blockNumber: head });
   if (!headBefore.hash) throw new Error("RPC head block is missing its canonical hash.");
 
-  const cores = await Promise.all(POTS.map((pot) => readPotCore(pot, viewer, head)));
+  const cores = await Promise.all(configuredPots.map((pot) => readPotCore(pot, viewer, head)));
   const headAfter = await client.getBlock({ blockNumber: head });
   if (headAfter.hash !== headBefore.hash) {
     throw new Error("RPC head block changed during the pot state reads.");

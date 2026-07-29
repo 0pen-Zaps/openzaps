@@ -7,12 +7,15 @@ import {
   type AutomatedRunLogInput,
   type ExecutedLogInput,
   type ExitLogInput,
+  type PolicyHaltedLogInput,
 } from "@/lib/activity";
 import {
-  OPENZAP_CONTRACTS,
-  OPENZAP_V3_CONTRACTS,
-  OPENZAP_V3_1_CONTRACTS,
-} from "@/lib/robinhood";
+  isHaltCapableLineage,
+  matchesPolicyHaltCreation,
+  policyHaltStatus,
+  type PolicyHaltStatus,
+} from "@/lib/policy-halt";
+import { configuredCapsuleLineages } from "@/lib/robinhood";
 
 export const nonceInvalidatedEvent = {
   type: "event",
@@ -29,12 +32,19 @@ export const seriesFinishedEvent = {
   ],
 } as const;
 
-export type ZapLineage = "v1.1" | "v3" | "v3.1";
+export type ZapLineage = "v1.1" | "v1.2" | "v3" | "v3.1" | "v3.2" | "unknown";
+
+export function isStandingIntentLineage(
+  lineage: ZapLineage,
+): lineage is "v3" | "v3.1" | "v3.2" {
+  return lineage === "v3" || lineage === "v3.1" || lineage === "v3.2";
+}
 export type WalletActivityKind =
   | "created"
   | "executed"
   | "automated"
   | "recovered"
+  | "halted"
   | "revoked"
   | "series-finished";
 
@@ -68,6 +78,8 @@ export interface SeriesFinishedLogInput {
 export interface WalletZapRead {
   zap: Address;
   trackedAssets: readonly Address[] | null;
+  /** null for unsupported lineages and for a failed authoritative read. */
+  policyHalted: boolean | null;
 }
 
 export interface WalletActivityEntry {
@@ -100,6 +112,10 @@ export interface WalletZapSummary {
   createdTx: Hex;
   trackedAssets: Address[] | null;
   managementReadsStatus: "live" | "unavailable";
+  policyHaltStatus: PolicyHaltStatus;
+  policyHalted: boolean | null;
+  haltedAt: number | null;
+  haltedTx: Hex | null;
   executionCount: number;
   automatedRunCount: number;
   recoveryCount: number;
@@ -114,6 +130,7 @@ export interface WalletProfileStats {
   automatedRuns: number;
   recoveries: number;
   authorizationsRevoked: number;
+  policiesHalted: number;
   executedVolume: Record<string, string>;
 }
 
@@ -139,6 +156,7 @@ export interface AggregateWalletProfileInput {
   exits: readonly ExitLogInput[];
   invalidated: readonly NonceInvalidatedLogInput[];
   finished: readonly SeriesFinishedLogInput[];
+  halted: readonly PolicyHaltedLogInput[];
   zapReads: readonly WalletZapRead[];
   timestamps: ReadonlyMap<bigint, number>;
   fromBlock: bigint;
@@ -165,6 +183,13 @@ export function aggregateWalletProfile(input: AggregateWalletProfileInput): Wall
   const exits = input.exits.filter((log) => belongs(log.emitter));
   const invalidated = input.invalidated.filter((log) => belongs(log.emitter));
   const finished = input.finished.filter((log) => belongs(log.emitter));
+  const halted = input.halted.filter((log) => {
+    const creation = creationByZap.get(getAddress(log.emitter));
+    if (!creation) return false;
+    const creationLineage = lineageForFactory(creation.factory);
+    return isHaltCapableLineage(creationLineage)
+      && matchesPolicyHaltCreation(log, creation);
+  });
 
   const executedVolume = new Map<string, bigint>();
   for (const log of [...executed, ...automated]) {
@@ -238,6 +263,22 @@ export function aggregateWalletProfile(input: AggregateWalletProfileInput): Wall
       run: null,
       automationKind: null,
     })),
+    ...halted.map((log): SortableEntry => entry({
+      kind: "halted",
+      zap: log.emitter,
+      lineage: lineage(log.emitter),
+      txHash: log.txHash,
+      blockNumber: log.blockNumber,
+      logIndex: log.logIndex,
+      timestamp: input.timestamps.get(log.blockNumber) ?? null,
+      actor: log.owner,
+      amount: null,
+      assetSymbol: null,
+      detail: "execution policy permanently halted",
+      authorizationId: null,
+      run: null,
+      automationKind: null,
+    })),
     ...invalidated.map((log): SortableEntry => entry({
       kind: "revoked",
       zap: log.emitter,
@@ -274,23 +315,40 @@ export function aggregateWalletProfile(input: AggregateWalletProfileInput): Wall
     .sort(newestFirst)
     .map(stripSortFields);
 
-  const zapReadMap = new Map(input.zapReads.map((read) => [getAddress(read.zap), read.trackedAssets]));
+  const zapReadMap = new Map(input.zapReads.map((read) => [getAddress(read.zap), read]));
   const zaps = created
     .map((log): WalletZapSummary => {
       const address = getAddress(log.zap);
       const rows = activity.filter((row) => isAddressEqual(row.zap, address));
-      const tracked = zapReadMap.get(address);
+      const read = zapReadMap.get(address);
+      const tracked = read?.trackedAssets;
+      const zapLineage = lineage(address);
+      let haltStatus = policyHaltStatus(zapLineage, read?.policyHalted ?? null);
+      let projectedHalted = read?.policyHalted ?? null;
+      const haltRows = rows.filter((row) => row.kind === "halted");
+      if (
+        (haltStatus === "active" && haltRows.length !== 0)
+        || (haltStatus === "halted" && haltRows.length !== 1)
+      ) {
+        haltStatus = "unavailable";
+        projectedHalted = null;
+      }
       return {
         address,
         owner,
         factory: getAddress(log.factory),
-        lineage: lineage(address),
+        lineage: zapLineage,
         policyHash: log.policyHash,
         createdAt: input.timestamps.get(log.blockNumber) ?? null,
         createdBlock: log.blockNumber.toString(),
         createdTx: log.txHash,
         trackedAssets: tracked ? tracked.map(getAddress) : null,
-        managementReadsStatus: tracked ? "live" : "unavailable",
+        managementReadsStatus:
+          tracked && haltStatus !== "unavailable" ? "live" : "unavailable",
+        policyHaltStatus: haltStatus,
+        policyHalted: projectedHalted,
+        haltedAt: haltRows[0]?.timestamp ?? null,
+        haltedTx: haltRows[0]?.txHash ?? null,
         executionCount: rows.filter((row) => row.kind === "executed").length,
         automatedRunCount: rows.filter((row) => row.kind === "automated").length,
         recoveryCount: rows.filter((row) => row.kind === "recovered").length,
@@ -318,6 +376,7 @@ export function aggregateWalletProfile(input: AggregateWalletProfileInput): Wall
       automatedRuns: automated.length,
       recoveries: exits.length,
       authorizationsRevoked: invalidated.length,
+      policiesHalted: halted.length,
       executedVolume: Object.fromEntries([...executedVolume].map(([symbol, amount]) => [symbol, amount.toString()])),
     },
     zaps,
@@ -326,10 +385,10 @@ export function aggregateWalletProfile(input: AggregateWalletProfileInput): Wall
 }
 
 export function lineageForFactory(factory: Address | undefined): ZapLineage {
-  if (factory && isAddressEqual(factory, OPENZAP_V3_1_CONTRACTS.factory)) return "v3.1";
-  if (factory && isAddressEqual(factory, OPENZAP_V3_CONTRACTS.factory)) return "v3";
-  if (factory && isAddressEqual(factory, OPENZAP_CONTRACTS.factory)) return "v1.1";
-  return "v1.1";
+  if (!factory) return "unknown";
+  return configuredCapsuleLineages().find((lineage) =>
+    isAddressEqual(factory, lineage.factory)
+  )?.id ?? "unknown";
 }
 
 type SortableEntry = WalletActivityEntry & { sortBlock: bigint; sortIndex: number };

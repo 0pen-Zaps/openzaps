@@ -11,7 +11,10 @@ import {
   OPENZAP_V3_CONTRACTS,
   OPENZAP_V3_1_CONTRACTS,
   OPENZAP_V3_2_CONTRACTS,
+  assertDistinctLineageRoles,
+  configuredCapsuleLineages,
   openZapV3_2Configured,
+  optionalContractSetState,
   ROBINHOOD_ASSETS,
   ROBINHOOD_CHAIN_ID,
   ROBINHOOD_LIQUIDITY,
@@ -55,9 +58,54 @@ describe("site config stays consistent with onchain constants", () => {
   // checksummed loop above and gate the Automate stacking option on `openZapV3_2Configured()`.
   it("v3.2 stays gated off until a verified deployment is configured", () => {
     expect(openZapV3_2Configured()).toBe(false);
+    expect(optionalContractSetState(OPENZAP_V3_2_CONTRACTS)).toBe("absent");
     for (const [key, addr] of Object.entries(OPENZAP_V3_2_CONTRACTS)) {
       expect(addr, `v3.2.${key} must stay zero until deployed`).toBe(zeroAddress);
     }
+  });
+
+  it("optional contract sets distinguish absent, partial, and fully configured states", () => {
+    expect(optionalContractSetState({ factory: zeroAddress, implementation: zeroAddress })).toBe("absent");
+    expect(
+      optionalContractSetState({
+        factory: OPENZAP_CONTRACTS.factory,
+        implementation: zeroAddress,
+      }),
+    ).toBe("partial");
+    expect(
+      optionalContractSetState({
+        factory: OPENZAP_CONTRACTS.factory,
+        implementation: OPENZAP_CONTRACTS.implementation,
+      }),
+    ).toBe("configured");
+  });
+
+  it("builds one complete, unambiguous registry for authoritative lineage scans", () => {
+    expect(configuredCapsuleLineages().map((lineage) => lineage.id)).toEqual([
+      "v1.1",
+      "v3",
+      "v3.1",
+    ]);
+  });
+
+  it("rejects duplicate identity-bearing roles instead of silently deduping them", () => {
+    const factory = getAddress("0x1111111111111111111111111111111111111111");
+    expect(() =>
+      assertDistinctLineageRoles([
+        {
+          id: "v1.1",
+          factory,
+          implementation: getAddress("0x2222222222222222222222222222222222222222"),
+          lotteryPot: null,
+        },
+        {
+          id: "v3",
+          factory: getAddress("0x3333333333333333333333333333333333333333"),
+          implementation: factory,
+          lotteryPot: getAddress("0x4444444444444444444444444444444444444444"),
+        },
+      ]),
+    ).toThrow(/duplicates/);
   });
 
   it("the internal buy link opens the deployed aeWETH to 0xZAPS route", () => {

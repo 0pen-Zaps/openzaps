@@ -36,13 +36,13 @@ export default async function PotPage(): Promise<React.JSX.Element> {
       <div className={styles.grid}>
         <div className={styles.col}>
           <span className={styles.eyebrow}>PROTOCOL FEE · 0xZAPS</span>
-          <h1 className={styles.title}>The fee buys the token.</h1>
+          <h1 className={styles.title}>The contribution buys the token.</h1>
           <p className={styles.lede}>
             Every automated Zap pays 1% of its output. Eighty percent goes to the executor that
             submitted it; the other twenty accrues here, becomes 0xZAPS once anyone converts it, and
-            credits tickets in the current round to the owner of the Zap that paid it. None of that
-            is a projection — it is the pot&apos;s own balance, its own ticket counters, and the
-            addresses below.
+            credits tickets in the current round to the owner of the Zap that paid it. A v3.2 recurring-stack
+            run adds its separately signed stack slice to the same loop. None of that is a projection — it is
+            each configured pot&apos;s own balance, ticket counters, and address below.
           </p>
           <p className={styles.heroLinks}>
             <Link href="/zap?view=automate">Create an automated Zap</Link> ·{" "}

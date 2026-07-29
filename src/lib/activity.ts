@@ -1,6 +1,11 @@
 import { getAddress, isAddressEqual, type Address, type Hex } from "viem";
 
-import { ROBINHOOD_ASSETS, ROBINHOOD_TOKENS } from "@/lib/robinhood";
+import { matchesPolicyHaltCreation } from "@/lib/policy-halt";
+import {
+  ROBINHOOD_ASSETS,
+  ROBINHOOD_TOKENS,
+  configuredCapsuleLineageForFactory,
+} from "@/lib/robinhood";
 
 /** First ZapCreated is at block 15,971,673; scan from a safe floor below it. */
 export const ACTIVITY_FROM_BLOCK = 15_900_000n;
@@ -41,8 +46,18 @@ export const emergencyExitEvent = {
   ],
 } as const;
 
+/** Exact one-way stop event emitted only by canonical v1.2 and v3.2 clones. */
+export const policyHaltedEvent = {
+  type: "event",
+  name: "PolicyHalted",
+  inputs: [
+    { name: "owner", type: "address", indexed: true },
+    { name: "policyHash", type: "bytes32", indexed: true },
+  ],
+} as const;
+
 // ---------------------------------------------------------------------------
-// Automated runs (v3 / v3.1). A recurring or triggered run does NOT emit the
+// Automated runs (v3 / v3.1 / v3.2). A recurring or triggered run does NOT emit the
 // one-shot `Executed` event — it emits one of these — so a feed that only reads
 // `Executed` shows an automated capsule as created-and-then-silent forever.
 // ---------------------------------------------------------------------------
@@ -78,6 +93,25 @@ export const executedRecurringRelativeEvent = {
   ],
 } as const;
 
+export const executedRecurringStackEvent = {
+  type: "event",
+  name: "ExecutedRecurringStack",
+  inputs: [
+    { name: "seriesId", type: "uint256", indexed: true },
+    { name: "run", type: "uint32", indexed: false },
+    { name: "executor", type: "address", indexed: true },
+    { name: "priceSource", type: "address", indexed: true },
+    { name: "priceX96", type: "uint256", indexed: false },
+    { name: "outAsset", type: "address", indexed: false },
+    { name: "amountOut", type: "uint256", indexed: false },
+    { name: "executorFee", type: "uint256", indexed: false },
+    { name: "potFee", type: "uint256", indexed: false },
+    { name: "floor", type: "uint256", indexed: false },
+    { name: "stackIn", type: "uint256", indexed: false },
+    { name: "zapsOut", type: "uint256", indexed: false },
+  ],
+} as const;
+
 export const executedTriggerEvent = {
   type: "event",
   name: "ExecutedTrigger",
@@ -96,6 +130,8 @@ export const executedTriggerEvent = {
 export interface CreatedLogInput {
   zap: Address;
   owner: Address;
+  factory: Address;
+  policyHash: Hex;
   txHash: Hex;
   blockNumber: bigint;
   logIndex: number;
@@ -121,11 +157,20 @@ export interface ExitLogInput {
   logIndex: number;
 }
 
+export interface PolicyHaltedLogInput {
+  emitter: Address;
+  owner: Address;
+  policyHash: Hex;
+  txHash: Hex;
+  blockNumber: bigint;
+  logIndex: number;
+}
+
 /** Which standing authorization produced an automated run. */
 export type AutomatedRunKind = "recurring" | "recurring-relative" | "recurring-stack" | "trigger";
 
 /**
- * One automated run, normalized across the three v3/v3.1 events. `actor` is the
+ * One automated run, normalized across every standing-authorization event. `actor` is the
  * EXECUTOR that submitted it — the whole point of an automated run is that it
  * was not the owner — and `amountOut` is the net the recipient received, so it
  * is directly comparable to a one-shot `Executed`.
@@ -138,6 +183,10 @@ export interface AutomatedRunLogInput {
   amountOut: bigint;
   executorFee: bigint;
   potFee: bigint;
+  /** Post-fee output diverted from the recipient by a v3.2 stack run. */
+  stackIn: bigint | null;
+  /** 0xZAPS credited to the owner by that stack run. */
+  zapsOut: bigint | null;
   /** seriesId for a recurring run, nonce for a trigger. */
   seriesId: bigint;
   /** 1-based run index within the series; null for a one-shot trigger. */
@@ -160,11 +209,12 @@ export interface AutomatedRunLogInput {
 export const AUTOMATED_RUN_EVENTS = [
   { event: executedRecurringEvent, kind: "recurring" },
   { event: executedRecurringRelativeEvent, kind: "recurring-relative" },
+  { event: executedRecurringStackEvent, kind: "recurring-stack" },
   { event: executedTriggerEvent, kind: "trigger" },
 ] as const satisfies readonly { event: unknown; kind: AutomatedRunKind }[];
 
 /**
- * One automated-run log as viem returns it, before normalization. The three
+ * One automated-run log as viem returns it, before normalization. The events
  * events do not share a field list — a trigger carries `nonce` where a recurring
  * series carries `seriesId` and a `run` index — so every arg is optional here
  * and `decodeAutomatedRuns` is what reconciles them into one shape.
@@ -180,6 +230,8 @@ export interface AutomatedRunLog {
     amountOut?: bigint;
     executorFee?: bigint;
     potFee?: bigint;
+    stackIn?: bigint;
+    zapsOut?: bigint;
   };
   transactionHash: Hex;
   blockNumber: bigint;
@@ -200,6 +252,7 @@ export function decodeAutomatedRuns(
   return logs.flatMap((log) => {
     const args = log.args;
     if (!args?.executor || !args.outAsset || args.amountOut === undefined) return [];
+    if (kind === "recurring-stack" && (args.stackIn === undefined || args.zapsOut === undefined)) return [];
     return [{
       emitter: log.address,
       kind,
@@ -208,6 +261,8 @@ export function decodeAutomatedRuns(
       amountOut: args.amountOut,
       executorFee: args.executorFee ?? 0n,
       potFee: args.potFee ?? 0n,
+      stackIn: kind === "recurring-stack" ? args.stackIn ?? null : null,
+      zapsOut: kind === "recurring-stack" ? args.zapsOut ?? null : null,
       seriesId: args.seriesId ?? args.nonce ?? 0n,
       run: args.run === undefined ? null : Number(args.run),
       txHash: log.transactionHash,
@@ -218,7 +273,7 @@ export function decodeAutomatedRuns(
 }
 
 export interface ActivityEntry {
-  type: "created" | "executed" | "automated" | "recovered";
+  type: "created" | "executed" | "automated" | "recovered" | "halted";
   txHash: Hex;
   blockNumber: string;
   logIndex: number;
@@ -237,6 +292,8 @@ export interface ProtocolActivityStats {
   /** Runs submitted by an executor against a standing authorization. */
   automatedRuns: number;
   recoveries: number;
+  /** One-way policy stops proven by a canonical v1.2/v3.2 emitter. */
+  policiesHalted: number;
   /** Settled output volume per asset symbol, in wei strings — one-shot and automated. */
   executedVolume: Record<string, string>;
   /** Total protocol fee paid out of automated output, per asset symbol. */
@@ -296,14 +353,25 @@ export function aggregateActivity(
   automated: readonly AutomatedRunLogInput[],
   timestamps: ReadonlyMap<bigint, number>,
   updatedAt: string,
+  halted: readonly PolicyHaltedLogInput[] = [],
 ): ProtocolActivity {
-  const canonicalZaps = new Set(created.map((log) => getAddress(log.zap)));
+  const creationByZap = new Map(created.map((log) => [getAddress(log.zap), log]));
+  const canonicalZaps = new Set(creationByZap.keys());
   const verifiedExecuted = executed.filter((log) => canonicalZaps.has(getAddress(log.emitter)));
   const verifiedExits = exits.filter((log) => canonicalZaps.has(getAddress(log.emitter)));
   // Automated runs pass the same emitter check: any contract can emit an
   // identically-shaped ExecutedRecurring, so only a capsule one of the factories
   // actually created may contribute a row, a count, or volume.
   const verifiedAutomated = automated.filter((log) => canonicalZaps.has(getAddress(log.emitter)));
+  const verifiedHalted = halted.filter((log) => {
+    const creation = creationByZap.get(getAddress(log.emitter));
+    if (!creation) return false;
+    const lineage = configuredCapsuleLineageForFactory(creation.factory)?.id;
+    return (
+      (lineage === "v1.2" || lineage === "v3.2")
+      && matchesPolicyHaltCreation(log, creation)
+    );
+  });
 
   const executedVolume: Record<string, bigint> = {};
   for (const log of verifiedExecuted) {
@@ -374,6 +442,20 @@ export function aggregateActivity(
       sortBlock: log.blockNumber,
       sortIndex: log.logIndex,
     })),
+    ...verifiedHalted.map((log): ActivityEntry & { sortBlock: bigint; sortIndex: number } => ({
+      type: "halted",
+      txHash: log.txHash,
+      blockNumber: log.blockNumber.toString(),
+      logIndex: log.logIndex,
+      timestamp: timestamps.get(log.blockNumber) ?? null,
+      zap: getAddress(log.emitter),
+      actor: getAddress(log.owner),
+      amount: null,
+      assetSymbol: null,
+      detail: "execution policy permanently halted",
+      sortBlock: log.blockNumber,
+      sortIndex: log.logIndex,
+    })),
   ]
     .sort((a, b) => (a.sortBlock === b.sortBlock ? b.sortIndex - a.sortIndex : a.sortBlock < b.sortBlock ? 1 : -1))
     .map((entry) => ({
@@ -397,6 +479,7 @@ export function aggregateActivity(
       executions: verifiedExecuted.length,
       automatedRuns: verifiedAutomated.length,
       recoveries: verifiedExits.length,
+      policiesHalted: verifiedHalted.length,
       executedVolume: Object.fromEntries(
         Object.entries(executedVolume).map(([symbol, total]) => [symbol, total.toString()]),
       ),

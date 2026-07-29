@@ -10,6 +10,7 @@ import {
   getAddress,
   http,
   isAddressEqual,
+  keccak256,
   zeroAddress,
   zeroHash,
   type Address,
@@ -76,6 +77,7 @@ import {
   OPENZAP_CREATION_FEE,
   OPENZAP_CREATION_FEE_CONTRACTS,
   OPENZAP_CONTRACTS,
+  OPENZAP_V1_2_CONTRACTS,
   ROBINHOOD_ASSETS,
   ROBINHOOD_CHAIN_ID,
   ROBINHOOD_EXPLORER_URL,
@@ -90,9 +92,27 @@ import {
   openZapCreationGatewayAbi,
   openZapFactoryAbi,
   openZapProtocolConfigured,
+  openZapV1_2Abi,
+  openZapV1_2Configured,
+  openZapV1_2CreationGatewayAbi,
+  openZapV1_2FactoryAbi,
+  optionalContractSetState,
+  permit2NonceBitmapAbi,
   robinhoodChain,
   wethAbi,
+  zapCreationFeePotAbi,
 } from "@/lib/robinhood";
+import {
+  PERMIT2_SIGNATURE_TRANSFER,
+  buildPermit2OwnerPull,
+  buildOpenZapOneShotTypedData,
+  isPermit2NonceConsumed,
+} from "@/lib/permit2-owner-pull";
+import {
+  exactPermit2ApprovalPlan,
+  oneShotFundingMode,
+  type OneShotLineage,
+} from "@/lib/owner-pull-execution";
 import { protocolsForRouteKind } from "@/lib/protocols";
 import type { TransactionLifecycleState } from "@/lib/transaction-lifecycle";
 import { inspectOwnedLiveZap } from "@/lib/zap";
@@ -134,6 +154,8 @@ type BusyAction =
   | "fund"
   | "execute"
   | "recover"
+  | "halt"
+  | "revoke-permit2"
   | "load"
   | null;
 
@@ -153,7 +175,13 @@ type ZapHistoryEntry = {
   assetDecimals: number;
 };
 type ZapHistoryState = "loading" | "unavailable" | ZapHistoryEntry[];
-type LiveZapRecord = SavedZapRecord & { policyToken?: string };
+type LiveZapRecord = SavedZapRecord & {
+  policyToken?: string;
+  /** Display/persistence hint only; every action re-derives this from chain. */
+  lineage?: OneShotLineage;
+  /** Last chain-verified halt state; every action re-reads it. */
+  policyHalted?: boolean;
+};
 type CreatedZapResult = LiveZapRecord & { createTx: Hex };
 
 const publicClient = createPublicClient({
@@ -168,6 +196,8 @@ const CREATION_WORKSPACE_KEY = "openzaps:creation-workspace:v1";
 export default function AppPage(): React.JSX.Element {
   const configured = openZapProtocolConfigured();
   const feeConfigured = openZapCreationFeeConfigured();
+  const v1_2Configured = openZapV1_2Configured();
+  const v1_2ConfigState = optionalContractSetState(OPENZAP_V1_2_CONTRACTS);
   const {
     account,
     chainId: walletChainId,
@@ -176,6 +206,7 @@ export default function AppPage(): React.JSX.Element {
     switchToRobinhood,
   } = useWalletSession();
   const [protocolHealth, setProtocolHealth] = useState<HealthState>("checking");
+  const [v1_2Health, setV1_2Health] = useState<HealthState>("checking");
   const [routeId, setRouteId] = useState<string>(DEFAULT_ROUTE_ID);
   // The routes the console may OFFER for a NEW zap: deployed swaps always, and a
   // vault route only once its vault is seeded (totalSupply > 0). Seeded via an
@@ -223,6 +254,7 @@ export default function AppPage(): React.JSX.Element {
   const [zapOutBalance, setZapOutBalance] = useState(0n);
   const [zapNativeBalance, setZapNativeBalance] = useState(0n);
   const [zapHasRecoverableBalance, setZapHasRecoverableBalance] = useState(false);
+  const [permit2Allowance, setPermit2Allowance] = useState<bigint | null>(null);
   const [nativeBalance, setNativeBalance] = useState(0n);
   const [busy, setBusy] = useState<BusyAction>(null);
   /** True for the whole "Fund & run" chain, including the gap between its two legs where `busy`
@@ -230,6 +262,7 @@ export default function AppPage(): React.JSX.Element {
   const [chainedRun, setChainedRun] = useState(false);
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
+  const [haltConfirmation, setHaltConfirmation] = useState("");
   const [transactions, setTransactions] = useState<TransactionRecord[]>([]);
   const [transactionLifecycle, setTransactionLifecycle] = useState<TransactionLifecycleState | null>(null);
   const [zapHistory, setZapHistory] = useState<ZapHistoryState>([]);
@@ -259,6 +292,7 @@ export default function AppPage(): React.JSX.Element {
   }, []);
 
   const selectZap = useCallback((record: LiveZapRecord): void => {
+    setPermit2Allowance(null);
     setZap(record);
     setPolicyToken(record.policyToken ?? null);
     setRouteId(record.routeId);
@@ -268,6 +302,7 @@ export default function AppPage(): React.JSX.Element {
     setAmount(formatUnits(BigInt(record.amountIn), record_route?.tokenIn.decimals ?? 18));
     resetQuoteState();
     setExecutedZap(null);
+    setHaltConfirmation("");
   }, [resetQuoteState]);
 
 
@@ -381,7 +416,7 @@ export default function AppPage(): React.JSX.Element {
     route === null || outputRoute === null
       ? "—"
       : policyStepCount > 1
-        ? `${routePairLabel} · ordered v1.1 policy`
+        ? `${routePairLabel} · ordered one-shot policy`
       : route.quote.source === "v4"
         ? `${routePairLabel} · Uniswap v4`
         : route.quote.source === "v4-route"
@@ -395,12 +430,41 @@ export default function AppPage(): React.JSX.Element {
   const zapInputBalance = zapInBalance;
   const hasRecoverableBalance = zapHasRecoverableBalance || zapNativeBalance > 0n;
   const funded = zap !== null && requiredAmount > 0n && zapInputBalance >= requiredAmount;
+  const partiallyFunded =
+    zap !== null
+    && requiredAmount > 0n
+    && zapInputBalance > 0n
+    && zapInputBalance < requiredAmount;
   const executionComplete = zap !== null && executedZap === zap.address;
+  const selectedLineage: OneShotLineage = zap?.lineage ?? "v1.1";
+  const policyHalted = zap?.policyHalted === true;
+  const ownerPullAvailable =
+    zap !== null
+    && selectedLineage === "v1.2"
+    && !policyHalted
+    && requiredAmount > 0n
+    && zapInputBalance === 0n;
+  const fundingReady = funded || ownerPullAvailable;
   const minOut = quote === null ? null : (quote * BigInt(10_000 - slippageBps)) / 10_000n;
   const protocolReady = configured && protocolHealth === "ready";
+  const creationLineage: OneShotLineage = v1_2Configured ? "v1.2" : "v1.1";
+  const creationGatewayConfigured =
+    creationLineage === "v1.2" ? v1_2Configured : feeConfigured;
+  const creationFactory =
+    creationLineage === "v1.2"
+      ? OPENZAP_V1_2_CONTRACTS.factory
+      : OPENZAP_CONTRACTS.factory;
+  const creationProtocolReady =
+    protocolReady
+    && v1_2ConfigState !== "partial"
+    && (!v1_2Configured || v1_2Health === "ready");
   // App-level holder utilities: unlocked by connected-wallet 0xZAPS balance.
   // Route-INDEPENDENT — reads 0xZAPS even on a USDG/vault route. Never token-gated.
   const holderTier: HolderTier = account ? holderTierFor(walletZapsBalance) : "none";
+  const permit2AllowanceOutstanding =
+    selectedLineage === "v1.2"
+    && permit2Allowance !== null
+    && permit2Allowance > 0n;
 
   const clearMessages = useCallback((): void => {
     setNotice("");
@@ -413,12 +477,25 @@ export default function AppPage(): React.JSX.Element {
   }, []);
 
   const refreshBalances = useCallback(async (): Promise<void> => {
-    if (!account || !route || !outputRoute) return;
+    if (!account || !route || !outputRoute) {
+      setPermit2Allowance(null);
+      return;
+    }
     const tokenIn = route.tokenIn.address;
     const tokenOut = outputRoute.tokenOut.address;
     const recoveryAssets = resolvedPolicy?.trackedAssets ?? route.trackedAssets;
     try {
-      const [walletIn, walletOut, walletZaps, native, zapIn, zapOut, zapNative, trackedBalances] = await Promise.all([
+      const [
+        walletIn,
+        walletOut,
+        walletZaps,
+        native,
+        zapIn,
+        zapOut,
+        zapNative,
+        trackedBalances,
+        currentPermit2Allowance,
+      ] = await Promise.all([
         publicClient.readContract({ address: tokenIn, abi: erc20Abi, functionName: "balanceOf", args: [account] }),
         publicClient.readContract({ address: tokenOut, abi: erc20Abi, functionName: "balanceOf", args: [account] }),
         // Always the 0xZAPS balance, regardless of route — it drives the holder tier.
@@ -440,6 +517,14 @@ export default function AppPage(): React.JSX.Element {
               ),
             )
           : Promise.resolve([]),
+        zap && selectedLineage === "v1.2"
+          ? publicClient.readContract({
+              address: tokenIn,
+              abi: erc20Abi,
+              functionName: "allowance",
+              args: [account, PERMIT2_SIGNATURE_TRANSFER],
+            })
+          : Promise.resolve(null),
       ]);
       setWalletInBalance(walletIn);
       setWalletOutBalance(walletOut);
@@ -449,10 +534,11 @@ export default function AppPage(): React.JSX.Element {
       setZapOutBalance(zapOut);
       setZapNativeBalance(zapNative);
       setZapHasRecoverableBalance(trackedBalances.some((balance) => balance > 0n));
+      setPermit2Allowance(currentPermit2Allowance);
     } catch (cause) {
       setError(readableError(cause));
     }
-  }, [account, outputRoute, resolvedPolicy, route, zap]);
+  }, [account, outputRoute, resolvedPolicy, route, selectedLineage, zap]);
 
   // The offered set: deployed swaps plus any vault route whose vault is seeded.
   // Read once on mount; an unseeded vault route stays out of the selector and
@@ -492,11 +578,14 @@ export default function AppPage(): React.JSX.Element {
         return;
       }
       try {
+        const blockNumber = await publicClient.getBlockNumber({ cacheTime: 0 });
         const [
           response,
           implementation,
           version,
+          implementationHash,
           factoryCode,
+          implementationCode,
           adapterCode,
           registryCode,
           allowlistCode,
@@ -506,40 +595,92 @@ export default function AppPage(): React.JSX.Element {
           gatewayFee,
           gatewayFactory,
           gatewayPot,
+          gatewayWeth,
+          gatewayZaps,
+          gatewayAdapter,
+          potGateway,
+          potZaps,
         ] = await Promise.all([
           fetch("/api/health", { cache: "no-store" }),
           publicClient.readContract({
             address: OPENZAP_CONTRACTS.factory,
             abi: openZapFactoryAbi,
             functionName: "implementation",
+            blockNumber,
           }),
-          publicClient.readContract({ address: OPENZAP_CONTRACTS.factory, abi: openZapFactoryAbi, functionName: "VERSION" }),
-          publicClient.getBytecode({ address: OPENZAP_CONTRACTS.factory }),
-          publicClient.getBytecode({ address: OPENZAP_CONTRACTS.adapter }),
-          publicClient.getBytecode({ address: OPENZAP_CONTRACTS.adapterRegistry }),
-          publicClient.getBytecode({ address: OPENZAP_CONTRACTS.tokenAllowlist }),
-          publicClient.getBytecode({ address: OPENZAP_CREATION_FEE_CONTRACTS.gateway }),
-          publicClient.getBytecode({ address: OPENZAP_CREATION_FEE_CONTRACTS.pot }),
+          publicClient.readContract({
+            address: OPENZAP_CONTRACTS.factory,
+            abi: openZapFactoryAbi,
+            functionName: "VERSION",
+            blockNumber,
+          }),
+          publicClient.readContract({
+            address: OPENZAP_CONTRACTS.factory,
+            abi: openZapFactoryAbi,
+            functionName: "implCodeHash",
+            blockNumber,
+          }),
+          publicClient.getBytecode({ address: OPENZAP_CONTRACTS.factory, blockNumber }),
+          publicClient.getBytecode({ address: OPENZAP_CONTRACTS.implementation, blockNumber }),
+          publicClient.getBytecode({ address: OPENZAP_CONTRACTS.adapter, blockNumber }),
+          publicClient.getBytecode({ address: OPENZAP_CONTRACTS.adapterRegistry, blockNumber }),
+          publicClient.getBytecode({ address: OPENZAP_CONTRACTS.tokenAllowlist, blockNumber }),
+          publicClient.getBytecode({ address: OPENZAP_CREATION_FEE_CONTRACTS.gateway, blockNumber }),
+          publicClient.getBytecode({ address: OPENZAP_CREATION_FEE_CONTRACTS.pot, blockNumber }),
           publicClient.readContract({
             address: OPENZAP_CREATION_FEE_CONTRACTS.gateway,
             abi: openZapCreationGatewayAbi,
             functionName: "VERSION",
+            blockNumber,
           }),
           publicClient.readContract({
             address: OPENZAP_CREATION_FEE_CONTRACTS.gateway,
             abi: openZapCreationGatewayAbi,
             functionName: "CREATION_FEE",
+            blockNumber,
           }),
           publicClient.readContract({
             address: OPENZAP_CREATION_FEE_CONTRACTS.gateway,
             abi: openZapCreationGatewayAbi,
             functionName: "lineageFactory",
             args: [0],
+            blockNumber,
           }),
           publicClient.readContract({
             address: OPENZAP_CREATION_FEE_CONTRACTS.gateway,
             abi: openZapCreationGatewayAbi,
             functionName: "CREATION_POT",
+            blockNumber,
+          }),
+          publicClient.readContract({
+            address: OPENZAP_CREATION_FEE_CONTRACTS.gateway,
+            abi: openZapCreationGatewayAbi,
+            functionName: "AEWETH",
+            blockNumber,
+          }),
+          publicClient.readContract({
+            address: OPENZAP_CREATION_FEE_CONTRACTS.gateway,
+            abi: openZapCreationGatewayAbi,
+            functionName: "ZAPS",
+            blockNumber,
+          }),
+          publicClient.readContract({
+            address: OPENZAP_CREATION_FEE_CONTRACTS.gateway,
+            abi: openZapCreationGatewayAbi,
+            functionName: "CREATION_ADAPTER",
+            blockNumber,
+          }),
+          publicClient.readContract({
+            address: OPENZAP_CREATION_FEE_CONTRACTS.pot,
+            abi: zapCreationFeePotAbi,
+            functionName: "gateway",
+            blockNumber,
+          }),
+          publicClient.readContract({
+            address: OPENZAP_CREATION_FEE_CONTRACTS.pot,
+            abi: zapCreationFeePotAbi,
+            functionName: "ZAPS",
+            blockNumber,
           }),
         ]);
         const body = (await response.json()) as {
@@ -553,10 +694,17 @@ export default function AppPage(): React.JSX.Element {
           && body.status?.preAudit === true;
         const rpcReady = version === "1.1.0"
           && isAddressEqual(implementation, OPENZAP_CONTRACTS.implementation)
+          && Boolean(implementationCode)
+          && keccak256(implementationCode as Hex).toLowerCase() === implementationHash.toLowerCase()
           && gatewayVersion === "1.0.0-candidate"
           && gatewayFee === OPENZAP_CREATION_FEE
           && isAddressEqual(gatewayFactory, OPENZAP_CONTRACTS.factory)
           && isAddressEqual(gatewayPot, OPENZAP_CREATION_FEE_CONTRACTS.pot)
+          && isAddressEqual(gatewayWeth, ROBINHOOD_ASSETS.weth)
+          && isAddressEqual(gatewayZaps, ROBINHOOD_ASSETS.zaps)
+          && isAddressEqual(gatewayAdapter, OPENZAP_CONTRACTS.adapter)
+          && isAddressEqual(potGateway, OPENZAP_CREATION_FEE_CONTRACTS.gateway)
+          && isAddressEqual(potZaps, ROBINHOOD_ASSETS.zaps)
           && Boolean(factoryCode && adapterCode && registryCode && allowlistCode && gatewayCode && potCode);
         if (!cancelled) setProtocolHealth(apiReady && rpcReady ? "ready" : "degraded");
       } catch {
@@ -570,6 +718,188 @@ export default function AppPage(): React.JSX.Element {
       window.clearInterval(timer);
     };
   }, [feeConfigured]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const checkV1_2Health = async (): Promise<void> => {
+      if (v1_2ConfigState === "absent") {
+        if (!cancelled) setV1_2Health("ready");
+        return;
+      }
+      if (v1_2ConfigState === "partial") {
+        if (!cancelled) setV1_2Health("degraded");
+        return;
+      }
+      try {
+        const blockNumber = await publicClient.getBlockNumber({ cacheTime: 0 });
+        const [
+          factoryCode,
+          configuredImplementationCode,
+          gatewayCode,
+          potCode,
+          adapterRegistryCode,
+          tokenAllowlistCode,
+          permit2Code,
+          implementation,
+          implementationHash,
+          version,
+          adapters,
+          tokens,
+          implementationFactory,
+          implementationPermit2,
+          gatewayVersion,
+          gatewayFactory,
+          gatewayFee,
+          gatewayPot,
+          gatewayWeth,
+          gatewayZaps,
+          gatewayAdapter,
+          potGateway,
+          potZaps,
+        ] = await Promise.all([
+          publicClient.getBytecode({ address: OPENZAP_V1_2_CONTRACTS.factory, blockNumber }),
+          publicClient.getBytecode({ address: OPENZAP_V1_2_CONTRACTS.implementation, blockNumber }),
+          publicClient.getBytecode({ address: OPENZAP_V1_2_CONTRACTS.creationGateway, blockNumber }),
+          publicClient.getBytecode({ address: OPENZAP_V1_2_CONTRACTS.creationFeePot, blockNumber }),
+          publicClient.getBytecode({ address: OPENZAP_CONTRACTS.adapterRegistry, blockNumber }),
+          publicClient.getBytecode({ address: OPENZAP_CONTRACTS.tokenAllowlist, blockNumber }),
+          publicClient.getBytecode({ address: PERMIT2_SIGNATURE_TRANSFER, blockNumber }),
+          publicClient.readContract({
+            address: OPENZAP_V1_2_CONTRACTS.factory,
+            abi: openZapV1_2FactoryAbi,
+            functionName: "implementation",
+            blockNumber,
+          }),
+          publicClient.readContract({
+            address: OPENZAP_V1_2_CONTRACTS.factory,
+            abi: openZapV1_2FactoryAbi,
+            functionName: "implCodeHash",
+            blockNumber,
+          }),
+          publicClient.readContract({
+            address: OPENZAP_V1_2_CONTRACTS.factory,
+            abi: openZapV1_2FactoryAbi,
+            functionName: "VERSION",
+            blockNumber,
+          }),
+          publicClient.readContract({
+            address: OPENZAP_V1_2_CONTRACTS.factory,
+            abi: openZapV1_2FactoryAbi,
+            functionName: "adapters",
+            blockNumber,
+          }),
+          publicClient.readContract({
+            address: OPENZAP_V1_2_CONTRACTS.factory,
+            abi: openZapV1_2FactoryAbi,
+            functionName: "tokens",
+            blockNumber,
+          }),
+          publicClient.readContract({
+            address: OPENZAP_V1_2_CONTRACTS.implementation,
+            abi: openZapV1_2Abi,
+            functionName: "FACTORY",
+            blockNumber,
+          }),
+          publicClient.readContract({
+            address: OPENZAP_V1_2_CONTRACTS.implementation,
+            abi: openZapV1_2Abi,
+            functionName: "PERMIT2",
+            blockNumber,
+          }),
+          publicClient.readContract({
+            address: OPENZAP_V1_2_CONTRACTS.creationGateway,
+            abi: openZapV1_2CreationGatewayAbi,
+            functionName: "VERSION",
+            blockNumber,
+          }),
+          publicClient.readContract({
+            address: OPENZAP_V1_2_CONTRACTS.creationGateway,
+            abi: openZapV1_2CreationGatewayAbi,
+            functionName: "V1_2_FACTORY",
+            blockNumber,
+          }),
+          publicClient.readContract({
+            address: OPENZAP_V1_2_CONTRACTS.creationGateway,
+            abi: openZapV1_2CreationGatewayAbi,
+            functionName: "CREATION_FEE",
+            blockNumber,
+          }),
+          publicClient.readContract({
+            address: OPENZAP_V1_2_CONTRACTS.creationGateway,
+            abi: openZapV1_2CreationGatewayAbi,
+            functionName: "CREATION_POT",
+            blockNumber,
+          }),
+          publicClient.readContract({
+            address: OPENZAP_V1_2_CONTRACTS.creationGateway,
+            abi: openZapV1_2CreationGatewayAbi,
+            functionName: "AEWETH",
+            blockNumber,
+          }),
+          publicClient.readContract({
+            address: OPENZAP_V1_2_CONTRACTS.creationGateway,
+            abi: openZapV1_2CreationGatewayAbi,
+            functionName: "ZAPS",
+            blockNumber,
+          }),
+          publicClient.readContract({
+            address: OPENZAP_V1_2_CONTRACTS.creationGateway,
+            abi: openZapV1_2CreationGatewayAbi,
+            functionName: "CREATION_ADAPTER",
+            blockNumber,
+          }),
+          publicClient.readContract({
+            address: OPENZAP_V1_2_CONTRACTS.creationFeePot,
+            abi: zapCreationFeePotAbi,
+            functionName: "gateway",
+            blockNumber,
+          }),
+          publicClient.readContract({
+            address: OPENZAP_V1_2_CONTRACTS.creationFeePot,
+            abi: zapCreationFeePotAbi,
+            functionName: "ZAPS",
+            blockNumber,
+          }),
+        ]);
+        const ready =
+          version === "1.2.0-candidate"
+          && gatewayVersion === "1.0.0-candidate"
+          && Boolean(
+            factoryCode
+            && configuredImplementationCode
+            && gatewayCode
+            && potCode
+            && adapterRegistryCode
+            && tokenAllowlistCode
+            && permit2Code
+          )
+          && isAddressEqual(implementation, OPENZAP_V1_2_CONTRACTS.implementation)
+          && keccak256(configuredImplementationCode as Hex).toLowerCase()
+            === implementationHash.toLowerCase()
+          && isAddressEqual(adapters, OPENZAP_CONTRACTS.adapterRegistry)
+          && isAddressEqual(tokens, OPENZAP_CONTRACTS.tokenAllowlist)
+          && isAddressEqual(implementationFactory, OPENZAP_V1_2_CONTRACTS.factory)
+          && isAddressEqual(implementationPermit2, PERMIT2_SIGNATURE_TRANSFER)
+          && isAddressEqual(gatewayFactory, OPENZAP_V1_2_CONTRACTS.factory)
+          && gatewayFee === OPENZAP_CREATION_FEE
+          && isAddressEqual(gatewayPot, OPENZAP_V1_2_CONTRACTS.creationFeePot)
+          && isAddressEqual(gatewayWeth, ROBINHOOD_ASSETS.weth)
+          && isAddressEqual(gatewayZaps, ROBINHOOD_ASSETS.zaps)
+          && isAddressEqual(gatewayAdapter, OPENZAP_CONTRACTS.adapter)
+          && isAddressEqual(potGateway, OPENZAP_V1_2_CONTRACTS.creationGateway)
+          && isAddressEqual(potZaps, ROBINHOOD_ASSETS.zaps);
+        if (!cancelled) setV1_2Health(ready ? "ready" : "degraded");
+      } catch {
+        if (!cancelled) setV1_2Health("degraded");
+      }
+    };
+    void checkV1_2Health();
+    const timer = window.setInterval(() => void checkV1_2Health(), 30_000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [v1_2ConfigState]);
 
 
   useEffect(() => {
@@ -591,6 +921,8 @@ export default function AppPage(): React.JSX.Element {
             amountIn: verified.resolved.steps[0].amountIn.toString(),
             policyHash: verified.policyHash,
             policyToken: verified.policyToken,
+            lineage: verified.lineage,
+            policyHalted: verified.policyHalted,
           } satisfies LiveZapRecord;
         }),
       );
@@ -735,7 +1067,7 @@ export default function AppPage(): React.JSX.Element {
   });
 
   const refreshCreationFeeQuote = useCallback(async (): Promise<CreationFeeQuote | null> => {
-    if (!feeConfigured) {
+    if (!creationGatewayConfigured) {
       setCreationFeeQuote(null);
       setCreationFeeError("Creation-fee gateway is not configured. New Zap creation is paused.");
       return null;
@@ -750,7 +1082,7 @@ export default function AppPage(): React.JSX.Element {
       setCreationFeeError(`Creation-fee quote unavailable: ${readableError(cause)}`);
       return null;
     }
-  }, [account, feeConfigured]);
+  }, [account, creationGatewayConfigured]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => void refreshCreationFeeQuote(), 0);
@@ -800,9 +1132,15 @@ export default function AppPage(): React.JSX.Element {
     clearMessages();
     try {
       const owner = requireAccount(account);
-      requireProtocolReady(protocolReady);
-      if (!feeConfigured || OPENZAP_CREATION_FEE_CONTRACTS.gateway === zeroAddress) {
-        throw new Error("Creation-fee gateway is not configured. New Zap creation is paused.");
+      requireProtocolReady(creationProtocolReady);
+      if (v1_2ConfigState === "partial") {
+        throw new Error("The optional v1.2 contract set is incomplete. New Zap creation is paused.");
+      }
+      if (
+        creationLineage === "v1.1"
+        && (!feeConfigured || OPENZAP_CREATION_FEE_CONTRACTS.gateway === zeroAddress)
+      ) {
+        throw new Error("The v1.1 creation-fee gateway is not configured. New Zap creation is paused.");
       }
       if (!creationFeeQuote) throw new Error("Review a creation-fee conversion quote before creating this Zap.");
       if (!route) throw new Error("Select a deployed route first.");
@@ -818,25 +1156,51 @@ export default function AppPage(): React.JSX.Element {
       // own calldata; the final minimum stays fresh in the signed intent.
       const policy = buildLivePolicy(owner, resolvedPolicy);
       const salt = randomHex32();
-      const predicted = await publicClient.readContract({
-        address: OPENZAP_CONTRACTS.factory,
-        abi: openZapFactoryAbi,
-        functionName: "predict",
-        args: [policy, salt],
-      });
-      const { request } = await publicClient.simulateContract({
-        account: owner,
-        address: OPENZAP_CREATION_FEE_CONTRACTS.gateway,
-        abi: openZapCreationGatewayAbi,
-        functionName: "createZap",
-        args: [0, policy, salt, creationFeeQuote.minZapsOut],
-        value: OPENZAP_CREATION_FEE,
-      });
-      const { hash, status } = await submitAndConfirm(
-        owner,
-        "Create the Zap + convert fee",
-        () => wallet.writeContract(request),
-      );
+      const predicted =
+        creationLineage === "v1.2"
+          ? await publicClient.readContract({
+              address: OPENZAP_V1_2_CONTRACTS.factory,
+              abi: openZapV1_2FactoryAbi,
+              functionName: "predict",
+              args: [policy, salt],
+            })
+          : await publicClient.readContract({
+              address: OPENZAP_CONTRACTS.factory,
+              abi: openZapFactoryAbi,
+              functionName: "predict",
+              args: [policy, salt],
+            });
+      let hash: Hex;
+      let status: "success" | "reverted";
+      if (creationLineage === "v1.2") {
+        const { request } = await publicClient.simulateContract({
+          account: owner,
+          address: OPENZAP_V1_2_CONTRACTS.creationGateway,
+          abi: openZapV1_2CreationGatewayAbi,
+          functionName: "createZap",
+          args: [policy, salt, creationFeeQuote.minZapsOut],
+          value: OPENZAP_CREATION_FEE,
+        });
+        ({ hash, status } = await submitAndConfirm(
+          owner,
+          "Create the v1.2 Zap + convert fee",
+          () => wallet.writeContract(request),
+        ));
+      } else {
+        const { request } = await publicClient.simulateContract({
+          account: owner,
+          address: OPENZAP_CREATION_FEE_CONTRACTS.gateway,
+          abi: openZapCreationGatewayAbi,
+          functionName: "createZap",
+          args: [0, policy, salt, creationFeeQuote.minZapsOut],
+          value: OPENZAP_CREATION_FEE,
+        });
+        ({ hash, status } = await submitAndConfirm(
+          owner,
+          "Create the v1.1 Zap + convert fee",
+          () => wallet.writeContract(request),
+        ));
+      }
       if (status !== "success") throw new Error("Creation gateway transaction reverted.");
 
       const verified = await inspectOwnedLiveZap(publicClient, predicted, owner);
@@ -848,13 +1212,19 @@ export default function AppPage(): React.JSX.Element {
         createdAt: new Date().toISOString(),
         policyHash: verified.policyHash,
         policyToken: verified.policyToken,
+        lineage: verified.lineage,
+        policyHalted: verified.policyHalted,
       };
       rememberZap(owner, nextZap);
       rememberCreationWorkspace(owner, nextZap.address);
       setCreationResult(nextZap);
       selectZap(nextZap);
       setNotice(
-        `Immutable Zap created at ${shortAddress(predicted)}. The ${formatToken(OPENZAP_CREATION_FEE, 18)} ETH creation fee converted atomically with the reviewed ${formatToken(creationFeeQuote.minZapsOut, 18)} 0xZAPS floor. Fund the Zap before execution.`,
+        `Immutable ${verified.lineage} Zap created at ${shortAddress(predicted)}. The ${formatToken(OPENZAP_CREATION_FEE, 18)} ETH creation fee converted atomically with the reviewed ${formatToken(creationFeeQuote.minZapsOut, 18)} 0xZAPS floor.${
+          verified.lineage === "v1.2"
+            ? " You can execute from your wallet through an exact, witnessed Permit2 pull or prefund it first."
+            : " Fund the Zap before execution."
+        }`,
       );
       trackEvent("robinhood_zap_created", {
         zap: predicted,
@@ -908,7 +1278,6 @@ export default function AppPage(): React.JSX.Element {
         publicClient,
         zap.address,
         owner,
-        { requireExecutable: false },
       );
       const firstStep = verifiedZap.resolved.steps[0];
       const tokenIn = firstStep.route.tokenIn;
@@ -983,11 +1352,19 @@ export default function AppPage(): React.JSX.Element {
   async function executeZap(): Promise<boolean> {
     setBusy("execute");
     clearMessages();
+    let ownerPullContext: {
+      owner: Address;
+      token: { address: Address; symbol: string; decimals: number };
+    } | null = null;
     try {
       const owner = requireAccount(account);
       if (!zap) throw new Error("Create or load a Zap first.");
       requireProtocolReady(protocolReady);
-      const verifiedZap = await inspectOwnedLiveZap(publicClient, zap.address, owner);
+      const verifiedZap = await inspectOwnedLiveZap(
+        publicClient,
+        zap.address,
+        owner,
+      );
       const zapPolicy = verifiedZap.resolved;
       const tokenIn = zapPolicy.inputRoute.tokenIn;
       const tokenOut = zapPolicy.outputRoute.tokenOut;
@@ -997,7 +1374,16 @@ export default function AppPage(): React.JSX.Element {
         functionName: "balanceOf",
         args: [verifiedZap.address],
       });
-      if (liveInputBalance < zapPolicy.steps[0].amountIn) throw new Error("Fund the Zap before execution.");
+      const fundingMode = oneShotFundingMode(
+        verifiedZap.lineage,
+        verifiedZap.policyHalted,
+        liveInputBalance,
+        zapPolicy.steps[0].amountIn,
+      );
+      if (fundingMode === "needs-funding") throw new Error("Fund the v1.1 Zap before execution.");
+      if (fundingMode === "owner-pull") {
+        ownerPullContext = { owner, token: tokenIn };
+      }
 
       // The signed minOut derives from a click-time re-quote (a swap pool quote,
       // or an ERC-4626 preview for a vault route); require a quote the user
@@ -1017,14 +1403,14 @@ export default function AppPage(): React.JSX.Element {
       setQuote(freshQuote);
       setQuoteGas(null);
 
-      const now = unixNowSeconds();
+      const now = verifiedZap.blockTimestamp;
       const nonce = randomNonce();
       const intent = {
         zap: verifiedZap.address,
         chainId: BigInt(ROBINHOOD_CHAIN_ID),
         nonce,
-        validAfter: BigInt(Math.max(0, now - 5)),
-        deadline: BigInt(now + 10 * 60),
+        validAfter: now > 5n ? now - 5n : 0n,
+        deadline: now + 10n * 60n,
         recipient: owner,
         relayer: zeroAddress,
         maxRelayerFee: 0n,
@@ -1036,29 +1422,96 @@ export default function AppPage(): React.JSX.Element {
       } as const;
 
       const wallet = await requireWallet(owner);
+      let ownerPull: ReturnType<typeof buildPermit2OwnerPull> | null = null;
+      if (fundingMode === "owner-pull") {
+        const [walletInput, currentAllowance] = await Promise.all([
+          publicClient.readContract({
+            address: tokenIn.address,
+            abi: erc20Abi,
+            functionName: "balanceOf",
+            args: [owner],
+          }),
+          publicClient.readContract({
+            address: tokenIn.address,
+            abi: erc20Abi,
+            functionName: "allowance",
+            args: [owner, PERMIT2_SIGNATURE_TRANSFER],
+          }),
+        ]);
+        setPermit2Allowance(currentAllowance);
+        if (walletInput < zapPolicy.steps[0].amountIn) {
+          throw new Error(
+            `Insufficient ${tokenIn.symbol}. ${formatToken(zapPolicy.steps[0].amountIn, tokenIn.decimals)} required for the exact owner pull.`,
+          );
+        }
+
+        for (const approval of exactPermit2ApprovalPlan(
+          currentAllowance,
+          zapPolicy.steps[0].amountIn,
+        )) {
+          const { request } = await publicClient.simulateContract({
+            account: owner,
+            address: tokenIn.address,
+            abi: erc20Abi,
+            functionName: "approve",
+            args: [PERMIT2_SIGNATURE_TRANSFER, approval],
+          });
+          const { status } = await submitAndConfirm(
+            owner,
+            approval === 0n
+              ? `Reset ${tokenIn.symbol} Permit2 approval`
+              : `Approve exact ${tokenIn.symbol} owner pull`,
+            () => wallet.writeContract(request),
+          );
+          if (status !== "success") throw new Error("The exact Permit2 approval transaction reverted.");
+          const allowanceAfter = await publicClient.readContract({
+            address: tokenIn.address,
+            abi: erc20Abi,
+            functionName: "allowance",
+            args: [owner, PERMIT2_SIGNATURE_TRANSFER],
+          });
+          if (allowanceAfter !== approval) {
+            throw new Error("The token did not record the exact Permit2 allowance requested.");
+          }
+          setPermit2Allowance(allowanceAfter);
+        }
+
+        for (let attempt = 0; attempt < 5 && ownerPull === null; attempt += 1) {
+          let permitNonce = randomNonce();
+          if (permitNonce === nonce) permitNonce = randomNonce();
+          const candidate = buildPermit2OwnerPull({
+            intent,
+            fundingStep: {
+              token: tokenIn.address,
+              amount: zapPolicy.steps[0].amountIn,
+            },
+            permitNonce,
+            now,
+          });
+          const bitmap = await publicClient.readContract({
+            address: PERMIT2_SIGNATURE_TRANSFER,
+            abi: permit2NonceBitmapAbi,
+            functionName: "nonceBitmap",
+            args: [owner, candidate.nonceBitmap.wordPos],
+          });
+          if (!isPermit2NonceConsumed(bitmap, permitNonce)) ownerPull = candidate;
+        }
+        if (ownerPull === null) {
+          throw new Error("Could not allocate an unused Permit2 nonce. No signature was requested.");
+        }
+      }
+
       const signature = await wallet.signTypedData({
         account: owner,
-        domain: { name: "OpenZap", version: "1", chainId: ROBINHOOD_CHAIN_ID, verifyingContract: verifiedZap.address },
-        primaryType: "OpenZapIntent",
-        types: {
-          OpenZapIntent: [
-            { name: "zap", type: "address" },
-            { name: "chainId", type: "uint256" },
-            { name: "nonce", type: "uint256" },
-            { name: "validAfter", type: "uint64" },
-            { name: "deadline", type: "uint64" },
-            { name: "recipient", type: "address" },
-            { name: "relayer", type: "address" },
-            { name: "maxRelayerFee", type: "uint256" },
-            { name: "maxGas", type: "uint256" },
-            { name: "maxFeePerGas", type: "uint256" },
-            { name: "policyHash", type: "bytes32" },
-            { name: "outAsset", type: "address" },
-            { name: "minOut", type: "uint256" },
-          ],
-        },
-        message: intent,
+        ...buildOpenZapOneShotTypedData(intent),
       });
+      const permitSignature =
+        ownerPull === null
+          ? null
+          : await wallet.signTypedData({
+              account: owner,
+              ...ownerPull.permitTypedData,
+            });
 
       const outputBefore = await publicClient.readContract({
         address: tokenOut.address,
@@ -1066,19 +1519,37 @@ export default function AppPage(): React.JSX.Element {
         functionName: "balanceOf",
         args: [owner],
       });
-      const { request } = await publicClient.simulateContract({
-        account: owner,
-        address: verifiedZap.address,
-        abi: openZapAbi,
-        functionName: "execute",
-        args: [intent, signature],
-        gas: BigInt(maxExecutionGas),
-      });
-      const { hash, status } = await submitAndConfirm(
-        owner,
-        `${tokenIn.symbol} → ${tokenOut.symbol} Zap`,
-        () => wallet.writeContract(request),
-      );
+      let hash: Hex;
+      let status: "success" | "reverted";
+      if (ownerPull !== null && permitSignature !== null) {
+        const { request } = await publicClient.simulateContract({
+          account: owner,
+          address: verifiedZap.address,
+          abi: openZapV1_2Abi,
+          functionName: "executeWithPermit2",
+          args: [intent, ownerPull.permit, signature, permitSignature],
+          gas: BigInt(maxExecutionGas),
+        });
+        ({ hash, status } = await submitAndConfirm(
+          owner,
+          `${tokenIn.symbol} → ${tokenOut.symbol} owner-pull Zap`,
+          () => wallet.writeContract(request),
+        ));
+      } else {
+        const { request } = await publicClient.simulateContract({
+          account: owner,
+          address: verifiedZap.address,
+          abi: openZapAbi,
+          functionName: "execute",
+          args: [intent, signature],
+          gas: BigInt(maxExecutionGas),
+        });
+        ({ hash, status } = await submitAndConfirm(
+          owner,
+          `${tokenIn.symbol} → ${tokenOut.symbol} Zap`,
+          () => wallet.writeContract(request),
+        ));
+      }
       if (status !== "success") throw new Error("Zap execution reverted.");
 
       const [outputAfter, nonceUsed] = await Promise.all([
@@ -1086,9 +1557,43 @@ export default function AppPage(): React.JSX.Element {
         publicClient.readContract({ address: verifiedZap.address, abi: openZapAbi, functionName: "nonceUsed", args: [nonce] }),
       ]);
       if (!nonceUsed || outputAfter <= outputBefore) throw new Error("Receipt confirmed but output or nonce verification failed.");
+      if (ownerPull !== null) {
+        const [bitmapAfter, capsuleInputAfter, allowanceAfter] = await Promise.all([
+          publicClient.readContract({
+            address: PERMIT2_SIGNATURE_TRANSFER,
+            abi: permit2NonceBitmapAbi,
+            functionName: "nonceBitmap",
+            args: [owner, ownerPull.nonceBitmap.wordPos],
+          }),
+          publicClient.readContract({
+            address: tokenIn.address,
+            abi: erc20Abi,
+            functionName: "balanceOf",
+            args: [verifiedZap.address],
+          }),
+          publicClient.readContract({
+            address: tokenIn.address,
+            abi: erc20Abi,
+            functionName: "allowance",
+            args: [owner, PERMIT2_SIGNATURE_TRANSFER],
+          }),
+        ]);
+        if (
+          !isPermit2NonceConsumed(bitmapAfter, ownerPull.permit.nonce)
+          || capsuleInputAfter !== 0n
+          || allowanceAfter !== 0n
+        ) {
+          throw new Error(
+            "Receipt confirmed but the Permit2 nonce, exact allowance, or capsule input readback did not settle cleanly.",
+          );
+        }
+        setPermit2Allowance(allowanceAfter);
+      }
       const received = outputAfter - outputBefore;
       setExecutedZap(verifiedZap.address);
-      setNotice(`Zap executed: received ${formatToken(received, tokenOut.decimals)} ${tokenOut.symbol}.`);
+      setNotice(
+        `Zap executed${ownerPull ? " through an exact witnessed owner pull" : " from prefunded input"}: received ${formatToken(received, tokenOut.decimals)} ${tokenOut.symbol}.`,
+      );
       // Success disables the still-focused execute button; hand focus to the
       // announcement instead of letting it fall to <body>.
       queueMicrotask(() => noticeRef.current?.focus());
@@ -1099,8 +1604,93 @@ export default function AppPage(): React.JSX.Element {
       });
       return true;
     } catch (cause) {
-      setError(readableError(cause));
+      let message = readableError(cause);
+      if (ownerPullContext !== null) {
+        try {
+          const allowance = await publicClient.readContract({
+            address: ownerPullContext.token.address,
+            abi: erc20Abi,
+            functionName: "allowance",
+            args: [ownerPullContext.owner, PERMIT2_SIGNATURE_TRANSFER],
+          });
+          setPermit2Allowance(allowance);
+          if (allowance > 0n) {
+            message += ` An exact ${formatToken(allowance, ownerPullContext.token.decimals)} ${ownerPullContext.token.symbol} ERC-20 allowance remains for canonical Permit2. It does not authorize an executor without your exact Permit2 signature; revoke it below before leaving if you do not want it retained.`;
+          }
+        } catch {
+          setPermit2Allowance(null);
+          message += " The canonical Permit2 token allowance could not be re-read; verify it onchain before leaving this flow.";
+        }
+      }
+      setError(message);
       return false;
+    } finally {
+      setBusy(null);
+      await refreshBalances();
+    }
+  }
+
+  async function revokePermit2Allowance(): Promise<void> {
+    setBusy("revoke-permit2");
+    clearMessages();
+    try {
+      const owner = requireAccount(account);
+      if (!zap) throw new Error("Create or load a Zap first.");
+      const verifiedZap = await inspectOwnedLiveZap(
+        publicClient,
+        zap.address,
+        owner,
+        { requireExecutable: false },
+      );
+      if (verifiedZap.lineage !== "v1.2") {
+        throw new Error("The live v1.1 lineage does not use Permit2 owner-pull funding.");
+      }
+      const tokenIn = verifiedZap.resolved.inputRoute.tokenIn;
+      const allowance = await publicClient.readContract({
+        address: tokenIn.address,
+        abi: erc20Abi,
+        functionName: "allowance",
+        args: [owner, PERMIT2_SIGNATURE_TRANSFER],
+      });
+      setPermit2Allowance(allowance);
+      if (allowance === 0n) {
+        setNotice(`Canonical Permit2 already has zero ${tokenIn.symbol} allowance from this wallet.`);
+        return;
+      }
+
+      const wallet = await requireWallet(owner);
+      const { request } = await publicClient.simulateContract({
+        account: owner,
+        address: tokenIn.address,
+        abi: erc20Abi,
+        functionName: "approve",
+        args: [PERMIT2_SIGNATURE_TRANSFER, 0n],
+      });
+      const { hash, status } = await submitAndConfirm(
+        owner,
+        `Revoke ${tokenIn.symbol} Permit2 approval`,
+        () => wallet.writeContract(request),
+      );
+      if (status !== "success") throw new Error("Permit2 allowance revocation reverted.");
+      const allowanceAfter = await publicClient.readContract({
+        address: tokenIn.address,
+        abi: erc20Abi,
+        functionName: "allowance",
+        args: [owner, PERMIT2_SIGNATURE_TRANSFER],
+      });
+      setPermit2Allowance(allowanceAfter);
+      if (allowanceAfter !== 0n) {
+        throw new Error("Receipt confirmed but the Permit2 token allowance did not read back zero.");
+      }
+      setNotice(
+        `Canonical Permit2's ${tokenIn.symbol} token allowance is now zero. No OpenZap policy or recovery authority changed.`,
+      );
+      trackEvent("robinhood_permit2_allowance_revoked", {
+        zap: verifiedZap.address,
+        tx: hash,
+      });
+    } catch (cause) {
+      setError(readableError(cause));
     } finally {
       setBusy(null);
       await refreshBalances();
@@ -1113,7 +1703,12 @@ export default function AppPage(): React.JSX.Element {
     try {
       const owner = requireAccount(account);
       if (!zap) throw new Error("Create or load a Zap first.");
-      const verifiedZap = await inspectOwnedLiveZap(publicClient, zap.address, owner);
+      const verifiedZap = await inspectOwnedLiveZap(
+        publicClient,
+        zap.address,
+        owner,
+        { requireExecutable: false },
+      );
       const wallet = await requireWallet(owner);
       // Sweep the ZAP's OWN tracked assets — not a hardcoded [aeWETH, 0xZAPS],
       // which for a USDG/vault capsule would move assets it never held and
@@ -1143,6 +1738,71 @@ export default function AppPage(): React.JSX.Element {
     }
   }
 
+  async function haltPolicy(): Promise<void> {
+    setBusy("halt");
+    clearMessages();
+    try {
+      const owner = requireAccount(account);
+      if (!zap) throw new Error("Create or load a Zap first.");
+      if (haltConfirmation.trim() !== "HALT") {
+        throw new Error('Type "HALT" to confirm this irreversible policy shutdown.');
+      }
+      const verifiedZap = await inspectOwnedLiveZap(
+        publicClient,
+        zap.address,
+        owner,
+        { requireExecutable: false },
+      );
+      if (verifiedZap.lineage !== "v1.2") {
+        throw new Error("The live v1.1 lineage has no policy-halt entry point.");
+      }
+      if (verifiedZap.policyHalted) {
+        throw new Error("This Zap's execution policy is already permanently halted.");
+      }
+      const wallet = await requireWallet(owner);
+      const { request } = await publicClient.simulateContract({
+        account: owner,
+        address: verifiedZap.address,
+        abi: openZapV1_2Abi,
+        functionName: "haltPolicy",
+      });
+      const { hash, status } = await submitAndConfirm(
+        owner,
+        "Permanently halt this Zap policy",
+        () => wallet.writeContract(request),
+      );
+      if (status !== "success") throw new Error("Policy halt transaction reverted.");
+      const halted = await publicClient.readContract({
+        address: verifiedZap.address,
+        abi: openZapV1_2Abi,
+        functionName: "policyHalted",
+      });
+      if (!halted) throw new Error("Receipt confirmed but policyHalted did not read back true.");
+
+      const applyHalted = (record: LiveZapRecord): LiveZapRecord =>
+        record.address === verifiedZap.address
+          ? { ...record, lineage: "v1.2", policyHalted: true }
+          : record;
+      setZap((current) => (current ? applyHalted(current) : current));
+      setSavedZaps((current) => {
+        const next = current.map(applyHalted);
+        saveZapList(owner, next);
+        return next;
+      });
+      setCreationResult((current) => (current ? applyHalted(current) as CreatedZapResult : current));
+      setHaltConfirmation("");
+      setNotice(
+        "Execution is permanently halted for this Zap. Nonce invalidation and emergency asset recovery remain available.",
+      );
+      trackEvent("robinhood_zap_policy_halted", { zap: verifiedZap.address, tx: hash });
+    } catch (cause) {
+      setError(readableError(cause));
+    } finally {
+      setBusy(null);
+      await refreshBalances();
+    }
+  }
+
   async function loadExistingZap(): Promise<void> {
     setBusy("load");
     clearMessages();
@@ -1163,6 +1823,8 @@ export default function AppPage(): React.JSX.Element {
         createdAt: new Date().toISOString(),
         policyHash: verified.policyHash,
         policyToken: verified.policyToken,
+        lineage: verified.lineage,
+        policyHalted: verified.policyHalted,
       };
       rememberZap(owner, record);
       selectZap(record);
@@ -1189,37 +1851,58 @@ export default function AppPage(): React.JSX.Element {
     }
   }
 
-  function exportCurrentZap(): void {
+  async function exportCurrentZap(): Promise<void> {
     if (!zap) return;
-    // Export the zap's REAL adapter/route, not a hardcoded original one — a
-    // USDG/vault config would otherwise name the wrong adapter.
-    const exportedRoute = resolveRouteById(zap.routeId);
-    const exportedPlan = zap.policyToken ? decodeLivePolicyPlan(zap.policyToken) : null;
-    const payload = JSON.stringify(
-      {
-        schema: "openzaps.robinhood.zap.v1",
-        chainId: ROBINHOOD_CHAIN_ID,
-        factory: OPENZAP_CONTRACTS.factory,
-        routeId: zap.routeId,
-        adapter: exportedRoute?.adapter ?? OPENZAP_CONTRACTS.adapter,
-        tokenIn: exportedRoute?.tokenIn.address,
-        tokenOut: exportedRoute?.tokenOut.address,
-        orderedPolicy: exportedPlan,
-        zap,
-      },
-      null,
-      2,
-    );
-    const url = URL.createObjectURL(new Blob([payload], { type: "application/json" }));
-    const anchor = document.createElement("a");
-    anchor.href = url;
-    anchor.download = `openzap-${zap.address}.json`;
-    anchor.click();
-    window.setTimeout(() => URL.revokeObjectURL(url), 10_000);
+    clearMessages();
+    try {
+      const owner = requireAccount(account);
+      const verified = await inspectOwnedLiveZap(
+        publicClient,
+        zap.address,
+        owner,
+        { requireExecutable: false },
+      );
+      // Export the route and lineage re-derived from chain, not the browser
+      // record that merely helped the user select this capsule.
+      const exportedRoute = verified.resolved.inputRoute;
+      const payload = JSON.stringify(
+        {
+          schema: "openzaps.robinhood.zap.v1",
+          chainId: ROBINHOOD_CHAIN_ID,
+          lineage: verified.lineage,
+          factory:
+            verified.lineage === "v1.2"
+              ? OPENZAP_V1_2_CONTRACTS.factory
+              : OPENZAP_CONTRACTS.factory,
+          routeId: exportedRoute.id,
+          adapter: exportedRoute.adapter,
+          tokenIn: exportedRoute.tokenIn.address,
+          tokenOut: verified.resolved.outputRoute.tokenOut.address,
+          orderedPolicy: verified.resolved.plan,
+          policyHalted: verified.policyHalted,
+          zap: {
+            address: verified.address,
+            policyHash: verified.policyHash,
+            amountIn: verified.resolved.steps[0].amountIn.toString(),
+          },
+        },
+        null,
+        2,
+      );
+      const url = URL.createObjectURL(new Blob([payload], { type: "application/json" }));
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = `openzap-${zap.address}.json`;
+      anchor.click();
+      window.setTimeout(() => URL.revokeObjectURL(url), 10_000);
+    } catch (cause) {
+      setError(`Could not export a verified Zap configuration: ${readableError(cause)}`);
+    }
   }
 
   async function disconnect(): Promise<void> {
     clearMessages();
+    setPermit2Allowance(null);
     await disconnectSession();
   }
 
@@ -1268,6 +1951,7 @@ export default function AppPage(): React.JSX.Element {
   // They are the only route into direction/amount/zap state that keeps the
   // quote epoch in step.
   const changeRoute = useCallback((nextRouteId: string): void => {
+    setPermit2Allowance(null);
     setPolicyToken(null);
     setRouteId(nextRouteId);
     resetQuoteState();
@@ -1294,7 +1978,9 @@ export default function AppPage(): React.JSX.Element {
     if (account) clearCreationWorkspace(account);
     setCreationResult(null);
     setZap(null);
+    setPermit2Allowance(null);
     setExecutedZap(null);
+    setHaltConfirmation("");
     resetQuoteState();
     setManualZap("");
     clearMessages();
@@ -1487,6 +2173,7 @@ export default function AppPage(): React.JSX.Element {
   const creationResultOutputRoute = creationResultPolicy?.outputRoute ?? creationResultRoute;
   const creationResultActive = creationResult !== null && zap?.address === creationResult.address;
   const creationResultFunded = creationResultActive && funded;
+  const creationResultFundingReady = creationResultActive && fundingReady;
   const creationResultExecuted = creationResultActive && executionComplete;
   /**
    * The four steps of getting a Zap onchain, as state rather than as a label.
@@ -1496,11 +2183,11 @@ export default function AppPage(): React.JSX.Element {
    * button is disabled and nothing says why — the step expands with the
    * warning and the switch button in it.
    */
-  const stepIndex = !account || wrongNetwork ? 1 : !zap ? 2 : !funded ? 3 : 4;
+  const stepIndex = !account || wrongNetwork ? 1 : !zap ? 2 : !fundingReady ? 3 : 4;
   const stepDone: readonly boolean[] = [
     account !== null && !wrongNetwork,
     zap !== null,
-    funded,
+    fundingReady,
     executionComplete,
   ];
   const stepStateFor = (step: number): StepState =>
@@ -1514,9 +2201,13 @@ export default function AppPage(): React.JSX.Element {
       // factory version and implementation, bytecode at the adapter, registry,
       // allowlist, fee gateway and pot, and the gateway's own fee config.
       label: "Protocol health",
-      value: protocolReady ? "Contracts and gateway verified" : protocolHealth,
-      href: configured ? explorerAddress(OPENZAP_CONTRACTS.factory) : undefined,
-      ok: protocolReady,
+      value: creationProtocolReady
+        ? `${creationLineage} contracts and gateway verified`
+        : v1_2ConfigState === "partial"
+          ? "partial v1.2 configuration"
+          : protocolHealth,
+      href: configured && creationFactory !== zeroAddress ? explorerAddress(creationFactory) : undefined,
+      ok: creationProtocolReady,
     },
     {
       // A vault or LP route has no pool of its own, so this cannot claim to be
@@ -1532,7 +2223,18 @@ export default function AppPage(): React.JSX.Element {
     },
     { label: "Settles through", value: settlementLabel, ok: route !== null },
     { label: "Adapter allowance", value: "Exact amount, reset to zero", ok: true },
-    { label: "Permit2 allowance", value: "Cleared after every swap", ok: true },
+    {
+      label: "Owner Permit2 approval",
+      value:
+        selectedLineage === "v1.2"
+          ? permit2Allowance === null
+            ? "Allowance read unavailable"
+            : permit2Allowance > 0n
+              ? `${formatToken(permit2Allowance, inDecimals)} ${inputSymbol} to canonical Permit2; an exact signature is still required`
+              : "Zero; exact frozen input is approved only when needed"
+          : "Not used by prefunded v1.1",
+      ok: selectedLineage !== "v1.2" || permit2Allowance !== null,
+    },
     { label: "Output protection", value: "Signed minOut in OpenZap", ok: true },
     ...(zap
       ? [{
@@ -1541,8 +2243,16 @@ export default function AppPage(): React.JSX.Element {
           // row only reads red while funding is still owed.
           value: executionComplete
             ? `${formatToken(zapInBalance, inDecimals)} ${inputSymbol} — input spent`
-            : `${formatToken(zapInBalance, inDecimals)} ${inputSymbol} — ${funded ? "funded" : "not funded"}`,
-          ok: funded || executionComplete,
+            : `${formatToken(zapInBalance, inDecimals)} ${inputSymbol} — ${
+                funded
+                  ? "prefunded"
+                  : ownerPullAvailable
+                    ? "empty; exact owner pull ready"
+                    : partiallyFunded
+                      ? "partially funded"
+                      : "not funded"
+              }`,
+          ok: fundingReady || executionComplete,
         }]
       : []),
   ];
@@ -1561,13 +2271,13 @@ export default function AppPage(): React.JSX.Element {
           {protocolHealth === "checking" ? "Checking contracts" : protocolReady ? "Live" : "Transactions paused"}
         </span>
         <p>
-          {protocolReady ? (
+          {creationProtocolReady ? (
             <>
               {/* Not "pool-bound": the offered set includes ERC-4626 vault and
                   full-range LP routes, which have no pool of their own. */}
-              {routePairLabel} creation is open through factory{" "}
-              <a href={explorerAddress(OPENZAP_CONTRACTS.factory)} target="_blank" rel="noreferrer">
-                {shortAddress(OPENZAP_CONTRACTS.factory)}
+              {routePairLabel} creation is open through the verified {creationLineage} factory{" "}
+              <a href={explorerAddress(creationFactory)} target="_blank" rel="noreferrer">
+                {shortAddress(creationFactory)}
               </a>
               . Depositing funds can result in total loss.
             </>
@@ -1586,7 +2296,9 @@ export default function AppPage(): React.JSX.Element {
           </p>
         </div>
         <div className={styles.headAside}>
-          <span className={styles.lineageChip}>v1.1 · one-shot nonce</span>
+          <span className={styles.lineageChip}>
+            {zap ? selectedLineage : creationLineage} · one-shot nonce
+          </span>
           {holderTier !== "none" && <span className={styles.holderChip}>{tierLabel(holderTier)}</span>}
           {account && (
             <>
@@ -1623,7 +2335,7 @@ export default function AppPage(): React.JSX.Element {
 
       {creationResult ? (
         <CreationWorkspace
-          eyebrow="Creation receipt · v1.1"
+          eyebrow={`Creation receipt · ${creationResult.lineage ?? "v1.1"}`}
           title="Your immutable Zap is live."
           detail="The gateway transaction confirmed, the Zap's owner and bytecode were verified through Robinhood RPC, and the reviewed creation-fee floor settled atomically. Funding and execution are separate wallet-confirmed steps."
           facts={[
@@ -1669,19 +2381,21 @@ export default function AppPage(): React.JSX.Element {
               label: "Fund",
               detail: creationResultFunded
                 ? "Exact input is held by the Zap."
+                : creationResultActive && creationResult.lineage === "v1.2"
+                  ? "Exact witnessed owner-pull is available; prefunding remains optional."
                 : creationResultActive
                   ? "Transfer only the route's exact input."
                   : "Re-open this Zap to continue.",
-              status: creationResultFunded ? "done" : creationResultActive ? "current" : "pending",
+              status: creationResultFundingReady ? "done" : creationResultActive ? "current" : "pending",
             },
             {
               label: "Execute",
               detail: creationResultExecuted
                 ? "Signed execution confirmed."
-                : creationResultFunded
+                : creationResultFundingReady
                   ? "Review the quote, then sign once."
                   : "Available after funding.",
-              status: creationResultExecuted ? "done" : creationResultFunded ? "current" : "pending",
+              status: creationResultExecuted ? "done" : creationResultFundingReady ? "current" : "pending",
             },
           ]}
         >
@@ -1691,13 +2405,13 @@ export default function AppPage(): React.JSX.Element {
             </button>
           ) : !creationResultExecuted ? (
             <a className="btn btnPrimary" href="#zap-lifecycle">
-              {creationResultFunded ? "Continue to execution" : "Continue to funding"}
+              {creationResultFundingReady ? "Continue to execution" : "Continue to funding"}
             </a>
           ) : null}
           {/* The capsule address is already fixed, so an enabled, authenticated
               Across integration can fund it from Base. The panel also receives
               the route's own input token and refuses any asset mismatch. */}
-          {creationResultActive && !creationResultFunded && creationResultRoute && BRIDGE_FUNDING_ENABLED ? (
+          {creationResultActive && !creationResultFundingReady && creationResultRoute && BRIDGE_FUNDING_ENABLED ? (
             <BridgeFundPanel
               capsule={creationResult.address}
               fundingAsset={creationResultRoute.tokenIn.address}
@@ -2047,13 +2761,29 @@ export default function AppPage(): React.JSX.Element {
                       ? `est. ${formatToken(creationFeeQuote.amountOut, 18)} · min ${formatToken(creationFeeQuote.minZapsOut, 18)} 0xZAPS`
                       : creationFeeError || "Reading the pinned aeWETH → 0xZAPS route…"}
                   </strong>
-                  {feeConfigured ? (
+                  {creationProtocolReady ? (
                     <small>
-                      <a href={explorerAddress(OPENZAP_CREATION_FEE_CONTRACTS.gateway)} rel="noreferrer" target="_blank">
+                      <a
+                        href={explorerAddress(
+                          creationLineage === "v1.2"
+                            ? OPENZAP_V1_2_CONTRACTS.creationGateway
+                            : OPENZAP_CREATION_FEE_CONTRACTS.gateway,
+                        )}
+                        rel="noreferrer"
+                        target="_blank"
+                      >
                         Fee gateway
                       </a>
                       {" · "}
-                      <a href={explorerAddress(OPENZAP_CREATION_FEE_CONTRACTS.pot)} rel="noreferrer" target="_blank">
+                      <a
+                        href={explorerAddress(
+                          creationLineage === "v1.2"
+                            ? OPENZAP_V1_2_CONTRACTS.creationFeePot
+                            : OPENZAP_CREATION_FEE_CONTRACTS.pot,
+                        )}
+                        rel="noreferrer"
+                        target="_blank"
+                      >
                         0xZAPS pot
                       </a>
                     </small>
@@ -2071,7 +2801,7 @@ export default function AppPage(): React.JSX.Element {
                   data-busy={busy === "create"}
                   className="btn btnPrimary"
                   data-testid="create-zap"
-                  disabled={!account || !protocolReady || !feeConfigured || creationFeeQuote === null || wrongNetwork || zap !== null || busy !== null || chainedRun || amountIn <= 0n || resolvedPolicy === null || !routeOffered}
+                  disabled={!account || !creationProtocolReady || creationFeeQuote === null || wrongNetwork || zap !== null || busy !== null || chainedRun || amountIn <= 0n || resolvedPolicy === null || !routeOffered}
                   onClick={() => void createZap()}
                   type="button"
                 >
@@ -2084,23 +2814,60 @@ export default function AppPage(): React.JSX.Element {
             <Step
               index={3}
               state={stepStateFor(3)}
-              title={funded || executionComplete ? "Zap funded" : "Fund the Zap"}
+              title={
+                executionComplete
+                  ? "Input settled"
+                  : policyHalted
+                    ? "Execution halted"
+                    : funded
+                      ? "Zap prefunded"
+                      : ownerPullAvailable
+                        ? "Exact owner pull ready"
+                        : "Fund the Zap"
+              }
               detail={
                 // After a confirmed execution the input is gone, so reading the
                 // live balance back would print "0 aeWETH held" under a tick.
                 executionComplete
                   ? `${formatToken(requiredAmount, inDecimals)} ${inputSymbol} spent by the execution`
+                  : policyHalted
+                    ? "No execution path can consume input; owner recovery remains available."
                   : funded
                     ? `${formatToken(zapInBalance, inDecimals)} ${inputSymbol} held by the Zap`
-                    : "Direct ERC-20 transfer only. No standing wallet allowance is created."
+                    : ownerPullAvailable
+                      ? "The empty v1.2 capsule can pull exactly one frozen input under two bounded signatures."
+                      : partiallyFunded
+                        ? "Partial prefunding disables owner-pull; top up or recover before execution."
+                        : "Direct ERC-20 transfer only. No standing wallet allowance is created."
               }
             >
               <p className={styles.stepBody}>
-                Send exactly <strong>{formatToken(requiredAmount, inDecimals)} {inputSymbol}</strong> to the Zap. It can
-                only spend that input on the route above — nothing else, no approvals to widen. With a reviewed quote in
-                hand, Fund &amp; Zap does the transfer and the signed execution back to back, so a funded Zap never sits
-                idle.
+                {selectedLineage === "v1.2" ? (
+                  <>
+                    Leave the capsule empty to use the witnessed owner-pull path, or send exactly{" "}
+                    <strong>{formatToken(requiredAmount, inDecimals)} {inputSymbol}</strong> to prefund it. Owner-pull
+                    binds canonical Permit2 to this capsule, this intent, and the frozen token/amount; a partial
+                    capsule balance is refused rather than mixed with a pull.
+                  </>
+                ) : (
+                  <>
+                    Send exactly <strong>{formatToken(requiredAmount, inDecimals)} {inputSymbol}</strong> to the Zap.
+                    It can only spend that input on the route above — nothing else, no approvals to widen. With a
+                    reviewed quote in hand, Fund &amp; Zap does the transfer and signed execution back to back.
+                  </>
+                )}
               </p>
+              {permit2AllowanceOutstanding ? (
+                <p className={styles.stepBody} role="alert">
+                  <strong>
+                    Canonical Permit2 currently has a {formatToken(permit2Allowance ?? 0n, inDecimals)} {inputSymbol} token
+                    allowance from this wallet.
+                  </strong>{" "}
+                  That allowance alone cannot execute this Zap; the exact witnessed Permit2 signature is still
+                  required. Revoke it if you stop before execution. Revoking sets this token&apos;s shared Permit2
+                  allowance to zero and can affect other pending Permit2 transfers.
+                </p>
+              ) : null}
               <div className={styles.stepActions}>
                 {canWrapInput && (
                   <button
@@ -2117,18 +2884,24 @@ export default function AppPage(): React.JSX.Element {
                   data-busy={chainedRun}
                   className="btn btnPrimary"
                   data-testid="fund-and-run"
-                  disabled={!zap || !protocolReady || wrongNetwork || funded || busy !== null || chainedRun || reviewedQuote === null || executionComplete}
+                  disabled={!zap || !protocolReady || wrongNetwork || funded || busy !== null || chainedRun || reviewedQuote === null || executionComplete || policyHalted}
                   onClick={() => void fundAndRun()}
                   type="button"
                   title={reviewedQuote === null ? "Request a live quote first — Zapping signs against the minimum you reviewed." : undefined}
                 >
                   <BlockGlyph name="bolt" className={styles.btnGlyph} />
-                  {chainedRun ? (busy === "execute" ? "Zapping…" : "Funding…") : "Fund & Zap"}
+                  {chainedRun
+                    ? busy === "execute"
+                      ? "Zapping…"
+                      : "Funding…"
+                    : selectedLineage === "v1.2"
+                      ? "Prefund & Zap"
+                      : "Fund & Zap"}
                 </button>
                 <button
                   data-busy={busy === "fund"}
                   className="btn btnGhost"
-                  disabled={!zap || !protocolReady || wrongNetwork || funded || busy !== null || chainedRun}
+                  disabled={!zap || !protocolReady || wrongNetwork || funded || busy !== null || chainedRun || policyHalted}
                   onClick={() => void fundZap()}
                   type="button"
                 >
@@ -2140,7 +2913,7 @@ export default function AppPage(): React.JSX.Element {
                 {/* Fund only is one confirmation; "Fund & Zap" runs the funding
                     transfer, the EIP-712 signature, and the execution. */}
                 <span className={styles.actionNote}>
-                  ≈ 1 wallet confirmation to fund · Fund &amp; Zap adds the signature and one more confirmation
+                  ≈ 1 wallet confirmation to prefund · the combined path adds the signature and one more confirmation
                 </span>
               </div>
             </Step>
@@ -2152,24 +2925,48 @@ export default function AppPage(): React.JSX.Element {
               detail={
                 executionComplete
                   ? "signed, submitted, and receipt-verified"
-                  : "EIP-712 over the reviewed minimum output, then anyone can submit it."
+                  : policyHalted
+                    ? "This policy can never execute again."
+                    : ownerPullAvailable
+                      ? "Two exact signatures, then one owner-pull execution transaction."
+                      : "EIP-712 over the reviewed minimum output, then anyone can submit it."
               }
             >
               <p className={styles.stepBody}>
-                EIP-712 over the reviewed minimum output, then anyone can submit it. The Zap reverts if the price drops
-                below your displayed minimum; the intent expires in ten minutes and caps gas and fee price.
+                {ownerPullAvailable ? (
+                  <>
+                    Sign the unchanged OpenZap intent and a Permit2 witness of its exact digest. The capsule is the
+                    only spender and destination; the permit expires with the ten-minute intent and never later than
+                    one hour. An exact ERC-20 approval to canonical Permit2 is requested first only when needed.
+                  </>
+                ) : (
+                  <>
+                    EIP-712 binds the reviewed minimum output. The Zap reverts if the price drops below that floor;
+                    the intent expires in ten minutes and caps gas and fee price.
+                  </>
+                )}
               </p>
               <div className={styles.stepActions}>
                 <button
                   data-busy={busy === "execute"}
                   className="btn btnPrimary"
-                  disabled={!protocolReady || wrongNetwork || !funded || reviewedQuote === null || busy !== null || chainedRun || executionComplete}
+                  disabled={!protocolReady || wrongNetwork || !fundingReady || reviewedQuote === null || busy !== null || chainedRun || executionComplete || policyHalted}
                   onClick={() => void executeZap()}
                   type="button"
                 >
-                  {busy === "execute" ? "Zapping…" : executionComplete ? "Zap confirmed" : "Sign & Zap"}
+                  {busy === "execute"
+                    ? "Zapping…"
+                    : executionComplete
+                      ? "Zap confirmed"
+                      : ownerPullAvailable
+                        ? "Sign exact pull & Zap"
+                        : "Sign & Zap"}
                 </button>
-                <span className={styles.actionNote}>≈ 1 wallet signature + 1 confirmation</span>
+                <span className={styles.actionNote}>
+                  {ownerPullAvailable
+                    ? "2 wallet signatures + 1 execution confirmation; an exact Permit2 approval may be required first"
+                    : "≈ 1 wallet signature + 1 confirmation"}
+                </span>
               </div>
             </Step>
           </section>
@@ -2215,8 +3012,16 @@ export default function AppPage(): React.JSX.Element {
                 {/* The chip states are the three real ones. "waiting" after a
                     confirmed execution would be a lie about a spent Zap. */}
                 <div className={styles.logRow}>
-                  <span className={executionComplete ? styles.logChipNeutral : funded ? styles.logChipOk : styles.logChipWarn}>
-                    {executionComplete ? "spent" : funded ? "funded" : "waiting"}
+                  <span
+                    className={
+                      executionComplete
+                        ? styles.logChipNeutral
+                        : fundingReady
+                          ? styles.logChipOk
+                          : styles.logChipWarn
+                    }
+                  >
+                    {executionComplete ? "spent" : funded ? "funded" : ownerPullAvailable ? "pull ready" : "waiting"}
                   </span>
                   <span className={styles.logText}>
                     Zap balance {formatToken(zapInBalance, inDecimals)} {inputSymbol}
@@ -2224,7 +3029,11 @@ export default function AppPage(): React.JSX.Element {
                       ? " — the input was spent by the confirmed execution"
                       : funded
                         ? " — exact input held"
-                        : " — nothing can execute until it is funded"}
+                        : ownerPullAvailable
+                          ? " — empty by design; exact witnessed owner pull is ready"
+                          : partiallyFunded
+                            ? " — partial input; top up or recover before execution"
+                            : " — nothing can execute until it is funded"}
                   </span>
                   <code className={styles.logMeta}>read just now</code>
                   <span />
@@ -2302,8 +3111,24 @@ export default function AppPage(): React.JSX.Element {
                 </div>
                 <div className={styles.factRow}>
                   <span className={styles.factLabel}>Lineage</span>
-                  <code className={styles.factValue}>v1.1 · one-shot nonce</code>
+                  <code className={styles.factValue}>{selectedLineage} · one-shot nonce</code>
                 </div>
+                <div className={styles.factRow}>
+                  <span className={styles.factLabel}>Execution policy</span>
+                  <span className={policyHalted ? styles.factValue : styles.factOk}>
+                    {policyHalted ? "permanently halted" : "active"}
+                  </span>
+                </div>
+                {selectedLineage === "v1.2" ? (
+                  <div className={styles.factRow}>
+                    <span className={styles.factLabel}>Permit2 token allowance</span>
+                    <span className={permit2AllowanceOutstanding ? styles.factValue : styles.factOk}>
+                      {permit2Allowance === null
+                        ? "read unavailable"
+                        : `${formatToken(permit2Allowance, inDecimals)} ${inputSymbol}`}
+                    </span>
+                  </div>
+                ) : null}
                 <div className={styles.factRow}>
                   <span className={styles.factLabel}>Venue</span>
                   <span className={styles.factValue}>{venueLabel}</span>
@@ -2336,7 +3161,7 @@ export default function AppPage(): React.JSX.Element {
                   <Link className={styles.ghostFull} href={`/explore/${zap.address}`}>
                     Onchain Zap page →
                   </Link>
-                  <button className={styles.ghostFull} disabled={busy !== null} onClick={exportCurrentZap} type="button">
+                  <button className={styles.ghostFull} disabled={busy !== null} onClick={() => void exportCurrentZap()} type="button">
                     Export public config
                   </button>
                   <button
@@ -2348,7 +3173,51 @@ export default function AppPage(): React.JSX.Element {
                   >
                     {busy === "recover" ? "Recovering…" : "Emergency recover"}
                   </button>
+                  {selectedLineage === "v1.2" && permit2AllowanceOutstanding ? (
+                    <button
+                      className={styles.ghostFull}
+                      data-busy={busy === "revoke-permit2"}
+                      disabled={wrongNetwork || busy !== null}
+                      onClick={() => void revokePermit2Allowance()}
+                      type="button"
+                    >
+                      {busy === "revoke-permit2" ? "Revoking…" : `Revoke ${inputSymbol} Permit2 allowance`}
+                    </button>
+                  ) : null}
                 </div>
+                {selectedLineage === "v1.2" ? (
+                  <div className={styles.loadRow}>
+                    <label className={styles.loadLabel} htmlFor="halt-confirmation">
+                      Irreversible policy halt
+                    </label>
+                    <p className={styles.logEmpty}>
+                      This permanently disables every execution path for this capsule. It cannot be undone.
+                      Emergency recovery remains available.
+                    </p>
+                    <input
+                      id="halt-confirmation"
+                      className={styles.loadInput}
+                      disabled={policyHalted || busy !== null}
+                      placeholder={policyHalted ? "Policy already halted" : 'Type "HALT"'}
+                      value={haltConfirmation}
+                      onChange={(event) => setHaltConfirmation(event.target.value)}
+                    />
+                    <button
+                      className={styles.ghostFull}
+                      data-busy={busy === "halt"}
+                      disabled={
+                        policyHalted
+                        || wrongNetwork
+                        || busy !== null
+                        || haltConfirmation.trim() !== "HALT"
+                      }
+                      onClick={() => void haltPolicy()}
+                      type="button"
+                    >
+                      {busy === "halt" ? "Halting…" : policyHalted ? "Policy halted" : "Permanently halt policy"}
+                    </button>
+                  </div>
+                ) : null}
               </>
             )}
           </section>
@@ -2441,7 +3310,7 @@ export default function AppPage(): React.JSX.Element {
               {/* Labelled for what it is. There is no template store behind
                   this — it is the same public-config JSON download as the Zap
                   panel's, and it needs a created Zap to have anything to write. */}
-              <button className={styles.reuseRow} disabled={!zap} onClick={exportCurrentZap} type="button">
+              <button className={styles.reuseRow} disabled={!zap} onClick={() => void exportCurrentZap()} type="button">
                 <BlockGlyph name="download" className={styles.reuseGlyph} />
                 Download this Zap&apos;s config (JSON)
               </button>
@@ -2635,6 +3504,8 @@ function normalizeZapRecord(value: unknown): LiveZapRecord | null {
       policyHash,
       createTx,
       policyToken: normalizedPolicyToken,
+      lineage: record.lineage === "v1.2" ? "v1.2" : "v1.1",
+      policyHalted: record.policyHalted === true,
     };
   } catch {
     return null;
@@ -2757,10 +3628,6 @@ type VerifyCheck = {
   href?: string;
   ok: boolean;
 };
-
-function unixNowSeconds(): number {
-  return Math.floor(Date.now() / 1_000);
-}
 
 /**
  * One row of "Getting it onchain".

@@ -33,6 +33,32 @@ function recurring() {
   }));
 }
 
+function recurringStack() {
+  return parseAutomationIntent(JSON.stringify({
+    kind: "recurring-stack",
+    intent: {
+      zap: ZAP,
+      chainId: "4663",
+      seriesId: "9",
+      validAfter: "100",
+      deadline: "1000",
+      interval: "100",
+      maxRuns: "3",
+      recipient: OWNER,
+      executor: ZERO,
+      maxGas: "2000000",
+      maxFeePerGas: "10000000000",
+      policyHash: HASH,
+      outAsset: OUT,
+      priceSource: "0xB4f66bFa00D2496513a5fD43ff47912A3fe0Bb5F",
+      maxSlippageBps: "500",
+      stackPriceSource: ZERO,
+      stackBps: "500",
+    },
+    signature: SIG,
+  }));
+}
+
 function trigger() {
   return parseAutomationIntent(JSON.stringify({
     kind: "trigger",
@@ -75,6 +101,34 @@ describe("deriveAutomationLifecycle", () => {
     expect(waiting.lifecycle).toBe("waiting");
     expect(due.lifecycle).toBe("due");
     expect(due.cancelable).toBe(true);
+  });
+
+  it("manages recurring-stack authorization state as a cadence-bound series", () => {
+    const waiting = deriveAutomationLifecycle(
+      recurringStack(),
+      { nonceUsed: false, runs: 1, lastRun: 200n, priceX96: null },
+      { revoked: false, completed: false },
+      250n,
+    );
+    const due = deriveAutomationLifecycle(
+      recurringStack(),
+      { nonceUsed: false, runs: 1, lastRun: 200n, priceX96: null },
+      { revoked: false, completed: false },
+      300n,
+    );
+    const completed = deriveAutomationLifecycle(
+      recurringStack(),
+      { nonceUsed: false, runs: 3, lastRun: 300n, priceX96: null },
+      { revoked: false, completed: false },
+      350n,
+    );
+
+    expect(waiting.lifecycle).toBe("waiting");
+    expect(waiting.cancelable).toBe(true);
+    expect(due.lifecycle).toBe("due");
+    expect(due.cancelable).toBe(true);
+    expect(completed.lifecycle).toBe("completed");
+    expect(completed.cancelable).toBe(false);
   });
 
   it("marks a trigger armed only after its one-sided bound is met", () => {

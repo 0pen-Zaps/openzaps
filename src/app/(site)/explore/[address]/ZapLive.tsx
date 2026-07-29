@@ -133,7 +133,16 @@ export function ZapLive({
   // printing one number would make this page contradict the cap it prints above.
   const relayerFeeTotals = feeTotalsFor(executions, (kind) => kind === "one-shot");
   const protocolFeeTotals = feeTotalsFor(executions, (kind) => kind !== "one-shot");
+  const stackedInputTotals = Object.entries(stats.stackedInputByAsset);
   const recoveredTotals = totalsByAsset(recoveries);
+  const haltCopy =
+    data.policyHalt.status === "halted"
+      ? "Permanently halted — no signed execution can run again. Recovery remains available to the owner."
+      : data.policyHalt.status === "active"
+        ? "Active — this lineage supports the one-way stop and it has not been used."
+        : data.policyHalt.status === "unsupported"
+          ? `Unsupported on deployed ${data.lineage}; this runtime predates the one-way policy stop.`
+          : "Unavailable — the pinned policyHalted read did not complete, so no active/halted claim is made.";
 
   return (
     <>
@@ -161,6 +170,23 @@ export function ZapLive({
             ? "The factory's own ZapCreated log names this address. Its runtime is the EIP-1167 clone of the canonical implementation. The policy it exposes rehashes to the policyHash it committed to."
             : "The factory created this address, but at least one integrity check does not hold. Every failing check is listed below. Nothing has been rounded off or assumed."}
         </p>
+        {data.policyHalt.status === "halted" ? (
+          <div className={styles.deviations} role="alert">
+            <strong>Execution policy permanently stopped.</strong>
+            <p>
+              This is irreversible: the capsule cannot be reactivated. The owner can still revoke authorizations
+              and recover tracked assets.
+              {data.policyHalt.haltedTx ? (
+                <>
+                  {" "}
+                  <a href={explorerTransaction(data.policyHalt.haltedTx)} target="_blank" rel="noreferrer">
+                    Halt transaction ↗
+                  </a>
+                </>
+              ) : null}
+            </p>
+          </div>
+        ) : null}
         <dl className={styles.factGrid}>
           <Fact label="Read at block">
             <span>{Number(data.headBlock).toLocaleString("en-US")}</span>
@@ -170,6 +196,12 @@ export function ZapLive({
           </Fact>
           <Fact label="Lifecycle">
             <span>{LIFECYCLE_COPY[data.lifecycle]}</span>
+          </Fact>
+          <Fact label="Lineage">
+            <span>{data.lineage}</span>
+          </Fact>
+          <Fact label="Policy execution">
+            <span>{haltCopy}</span>
           </Fact>
         </dl>
         <p className={`${styles.cardFoot} ${styles.refreshLine}`}>
@@ -341,13 +373,15 @@ export function ZapLive({
               <ul className={styles.totalsList}>
                 {Object.entries(stats.amountOutByAsset).map(([symbol, net]) => {
                   const fee = stats.feeByAsset[symbol] ?? "0";
-                  const gross = (BigInt(net) + BigInt(fee)).toString();
+                  const stacked = stats.stackedInputByAsset[symbol] ?? "0";
+                  const gross = (BigInt(net) + BigInt(fee) + BigInt(stacked)).toString();
                   return (
                     <li key={symbol}>
                       <Amount raw={net} symbol={symbol} />
                       <span className={styles.totalsNote}>
                         net to the recipient · gross out of the adapter{" "}
                         <Amount raw={gross} symbol={symbol} inline />
+                        {stacked !== "0" ? " · includes the signed stack slice shown below" : null}
                       </span>
                     </li>
                   );
@@ -390,6 +424,28 @@ export function ZapLive({
           </div>
 
           <div className={styles.totalsCard}>
+            <h3>Stacked into 0xZAPS</h3>
+            {stackedInputTotals.length === 0 ? (
+              <p className={styles.empty}>None — no recurring-stack execution appears in this Zap&apos;s logs.</p>
+            ) : (
+              <ul className={styles.totalsList}>
+                {stackedInputTotals.map(([symbol, raw]) => (
+                  <li key={symbol}>
+                    <Amount raw={raw} symbol={symbol} />
+                    <span className={styles.totalsNote}>signed output slice converted through the stack route</span>
+                  </li>
+                ))}
+                <li>
+                  <Amount raw={stats.stackedZaps} symbol="0xZAPS" />
+                  <span className={styles.totalsNote}>
+                    credited to the owner as current-round tickets and prize contribution
+                  </span>
+                </li>
+              </ul>
+            )}
+          </div>
+
+          <div className={styles.totalsCard}>
             <h3>Swept by emergency exit</h3>
             {recoveredTotals.length === 0 ? (
               <p className={styles.empty}>None — the owner has never pulled assets back out of this Zap.</p>
@@ -427,10 +483,10 @@ export function ZapLive({
 
         <p className={styles.cardFoot}>
           Counts and totals come only from this contract&apos;s own execution logs — Executed for an owner-signed
-          run, ExecutedRecurring, ExecutedRecurringRelative and ExecutedTrigger for an automated one — plus its
-          EmergencyExit logs. No USD value, token price, PnL, APY, or success rate appears on this page. A reverted
-          execution emits no log at all, so a success rate computed from these logs would be unfalsifiable, and
-          none is shown.
+          run, ExecutedRecurring, ExecutedRecurringRelative, ExecutedRecurringStack and ExecutedTrigger for an
+          automated one — plus its EmergencyExit logs. No USD value, token price, PnL, APY, or success rate appears
+          on this page. A reverted execution emits no log at all, so a success rate computed from these logs would
+          be unfalsifiable, and none is shown.
         </p>
       </section>
 
@@ -472,6 +528,14 @@ export function ZapLive({
                       <Amount raw={execution.fee} symbol={execution.assetSymbol} inline />
                     </>
                   )}
+                  {execution.stackIn !== null && execution.stackedZaps !== null ? (
+                    <>
+                      {" · stacked "}
+                      <Amount raw={execution.stackIn} symbol={execution.assetSymbol} inline />
+                      {" → "}
+                      <Amount raw={execution.stackedZaps} symbol="0xZAPS" inline />
+                    </>
+                  ) : null}
                 </strong>
                 {/* A 78-digit nonce or series id would swallow the row, and half
                     of one is not an id, so the full value stays in the title.
@@ -907,6 +971,13 @@ function shortDigits(value: string): string {
  * it on this page. Unknown versions fall back to the neutral description.
  */
 function capsuleLineage(version: string): { title: string; detail: string } {
+  if (version.startsWith("3.2")) {
+    return {
+      title: "Automated · v3.2",
+      detail:
+        "Can hold a recurring series whose live execution floor comes from an allowlisted price source, with an optional owner-signed slice stacked into 0xZAPS on every run.",
+    };
+  }
   if (version.startsWith("3.1")) {
     return {
       title: "Automated · v3.1",
