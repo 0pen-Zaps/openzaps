@@ -15,6 +15,8 @@ import {
   type Address,
   type Hex,
 } from "viem";
+import { BRIDGE_FUNDING_ENABLED } from "@/lib/bridge";
+import { BridgeFundPanel } from "./BridgeFundPanel";
 import { useWalletSession } from "@/components/WalletProvider";
 import { BlockGlyph } from "./BlockGlyph";
 import { CreationWorkspace } from "./CreationWorkspace";
@@ -39,13 +41,19 @@ import {
   type HolderTier,
 } from "@/lib/holder";
 import {
-  buildRoutePolicy,
-  inspectOwnedZap,
   parseRouterAmount,
   randomHex32,
   randomNonce,
   type SavedZapRecord,
 } from "@/lib/openzap";
+import {
+  buildLivePolicy,
+  decodeLivePolicyPlan,
+  encodeLivePolicyPlan,
+  quoteLivePolicy,
+  resolveLivePolicyPlan,
+  type ResolvedLivePolicy,
+} from "@/lib/live-policy";
 import {
   MAX_EXECUTION_FEE_GWEI,
   MAX_EXECUTION_GAS_UNITS,
@@ -63,7 +71,7 @@ import {
   resolveRouteById,
   type Route,
 } from "@/lib/routes";
-import { quoteCreationFee, quoteRoute, type CreationFeeQuote } from "@/lib/route-quote";
+import { quoteCreationFee, type CreationFeeQuote } from "@/lib/route-quote";
 import {
   OPENZAP_CREATION_FEE,
   OPENZAP_CREATION_FEE_CONTRACTS,
@@ -87,6 +95,7 @@ import {
 } from "@/lib/robinhood";
 import { protocolsForRouteKind } from "@/lib/protocols";
 import type { TransactionLifecycleState } from "@/lib/transaction-lifecycle";
+import { inspectOwnedLiveZap } from "@/lib/zap";
 import { ProtocolStack } from "@/components/ProtocolLogo";
 import styles from "./app.module.css";
 
@@ -144,7 +153,8 @@ type ZapHistoryEntry = {
   assetDecimals: number;
 };
 type ZapHistoryState = "loading" | "unavailable" | ZapHistoryEntry[];
-type CreatedZapResult = SavedZapRecord & { createTx: Hex };
+type LiveZapRecord = SavedZapRecord & { policyToken?: string };
+type CreatedZapResult = LiveZapRecord & { createTx: Hex };
 
 const publicClient = createPublicClient({
   chain: robinhoodChain,
@@ -177,6 +187,8 @@ export default function AppPage(): React.JSX.Element {
   /** True once the async seeded-vault read has settled (success or failure). */
   const [offeredReady, setOfferedReady] = useState(false);
   const [amount, setAmount] = useState("0.001");
+  /** Null is the editable single-route form; a value freezes an imported or verified ordered plan. */
+  const [policyToken, setPolicyToken] = useState<string | null>(null);
   const [slippageBps, setSlippageBps] = useState(100);
   // The two disclosures on the signing card. Both start closed: the card's job
   // is to show the one route being signed, and ten route cards on first paint
@@ -194,8 +206,8 @@ export default function AppPage(): React.JSX.Element {
   // compares against the floor the user actually acknowledged.
   const [reviewedQuote, setReviewedQuote] = useState<bigint | null>(null);
   const [autoRefreshedAt, setAutoRefreshedAt] = useState<string | null>(null);
-  const [zap, setZap] = useState<SavedZapRecord | null>(null);
-  const [savedZaps, setSavedZaps] = useState<SavedZapRecord[]>([]);
+  const [zap, setZap] = useState<LiveZapRecord | null>(null);
+  const [savedZaps, setSavedZaps] = useState<LiveZapRecord[]>([]);
   const [creationResult, setCreationResult] = useState<CreatedZapResult | null>(null);
   const [executedZap, setExecutedZap] = useState<Address | null>(null);
   const [manualZap, setManualZap] = useState("");
@@ -210,6 +222,7 @@ export default function AppPage(): React.JSX.Element {
   const [zapInBalance, setZapInBalance] = useState(0n);
   const [zapOutBalance, setZapOutBalance] = useState(0n);
   const [zapNativeBalance, setZapNativeBalance] = useState(0n);
+  const [zapHasRecoverableBalance, setZapHasRecoverableBalance] = useState(false);
   const [nativeBalance, setNativeBalance] = useState(0n);
   const [busy, setBusy] = useState<BusyAction>(null);
   /** True for the whole "Fund & run" chain, including the gap between its two legs where `busy`
@@ -220,7 +233,7 @@ export default function AppPage(): React.JSX.Element {
   const [transactions, setTransactions] = useState<TransactionRecord[]>([]);
   const [transactionLifecycle, setTransactionLifecycle] = useState<TransactionLifecycleState | null>(null);
   const [zapHistory, setZapHistory] = useState<ZapHistoryState>([]);
-  const zapRef = useRef<SavedZapRecord | null>(null);
+  const zapRef = useRef<LiveZapRecord | null>(null);
   const noticeRef = useRef<HTMLDivElement>(null);
   const holderTierRef = useRef<HolderTier>("none");
   const autoQuoteRef = useRef<(() => void) | null>(null);
@@ -245,8 +258,9 @@ export default function AppPage(): React.JSX.Element {
     setAutoRefreshedAt(null);
   }, []);
 
-  const selectZap = useCallback((record: SavedZapRecord): void => {
+  const selectZap = useCallback((record: LiveZapRecord): void => {
     setZap(record);
+    setPolicyToken(record.policyToken ?? null);
     setRouteId(record.routeId);
     // Format the stored raw amount at the ROUTE's real decimals — 6 for USDG,
     // 9 for ozUSDG — or the input box shows a value ~10^12x off.
@@ -320,17 +334,32 @@ export default function AppPage(): React.JSX.Element {
     // confirmed receipt (execute, recover) for the selected zap.
   }, [zap?.address, executedZap, transactions]);
 
-  // The active route — the single source of tokens, decimals, pool/vault, and
-  // Step.data encoding for everything below. When a zap is selected, selectZap
-  // sets routeId to the zap's route, so `route` is also the capsule's route.
+  // The selected route stays the first/funding route. An imported or verified
+  // multi-step token resolves the final settlement route separately.
   const route = useMemo(() => resolveRouteById(routeId), [routeId]);
+  const resolvedPolicy = useMemo((): ResolvedLivePolicy | null => {
+    try {
+      const decoded = policyToken ? decodeLivePolicyPlan(policyToken) : null;
+      return resolveLivePolicyPlan(
+        decoded ?? { version: 1, steps: [{ routeId, amountIn: amount }] },
+      );
+    } catch {
+      return null;
+    }
+  }, [amount, policyToken, routeId]);
+  const outputRoute = resolvedPolicy?.outputRoute ?? route;
+  const policyStepCount = resolvedPolicy?.steps.length ?? 1;
   const inDecimals = route?.tokenIn.decimals ?? 18;
   const inputSymbol = route?.tokenIn.symbol ?? "";
-  const outputSymbol = route?.tokenOut.symbol ?? "";
-  const outDecimals = route?.tokenOut.decimals ?? 18;
-  const routeOffered = offeredRoutes.some((candidate) => candidate.id === routeId);
+  const outputSymbol = outputRoute?.tokenOut.symbol ?? "";
+  const outDecimals = outputRoute?.tokenOut.decimals ?? 18;
+  const routeOffered = resolvedPolicy !== null
+    && resolvedPolicy.steps.every((step) => offeredRoutes.some((candidate) => candidate.id === step.route.id));
   const canWrapInput = route !== null && isAddressEqual(route.tokenIn.address, ROBINHOOD_ASSETS.weth);
   const venueLabel =
+    policyStepCount > 1
+      ? `${policyStepCount} ordered, allowlisted adapters`
+      :
     route === null
       ? "—"
       : route.kind === "swap"
@@ -344,21 +373,27 @@ export default function AppPage(): React.JSX.Element {
               : route.kind === "vault-deposit"
                 ? "ERC-4626 vault deposit"
                 : "ERC-4626 vault redeem";
-  const routePairLabel = route === null ? "—" : `${route.tokenIn.symbol} → ${route.tokenOut.symbol}`;
-  const settlementLabel =
-    route === null
+  const routePairLabel =
+    route === null || outputRoute === null
       ? "—"
+      : `${route.tokenIn.symbol} → ${outputRoute.tokenOut.symbol}${policyStepCount > 1 ? ` · ${policyStepCount} fixed steps` : ""}`;
+  const settlementLabel =
+    route === null || outputRoute === null
+      ? "—"
+      : policyStepCount > 1
+        ? `${routePairLabel} · ordered v1.1 policy`
       : route.quote.source === "v4"
         ? `${routePairLabel} · Uniswap v4`
         : route.quote.source === "v4-route"
           ? `${routePairLabel} · via aeWETH, one signed step`
           : `Vault ${shortAddress(route.quote.vault)}`;
-  const amountIn = useMemo(() => parseOptionalRouterAmount(amount, inDecimals), [amount, inDecimals]);
+  const amountIn = resolvedPolicy?.steps[0].amountIn
+    ?? parseOptionalRouterAmount(amount, inDecimals);
   const requiredAmount = zap ? BigInt(zap.amountIn) : amountIn;
   const walletInputBalance = walletInBalance;
   const walletOutputBalance = walletOutBalance;
   const zapInputBalance = zapInBalance;
-  const recoverableBalance = zapInBalance + zapOutBalance + zapNativeBalance;
+  const hasRecoverableBalance = zapHasRecoverableBalance || zapNativeBalance > 0n;
   const funded = zap !== null && requiredAmount > 0n && zapInputBalance >= requiredAmount;
   const executionComplete = zap !== null && executedZap === zap.address;
   const minOut = quote === null ? null : (quote * BigInt(10_000 - slippageBps)) / 10_000n;
@@ -378,11 +413,12 @@ export default function AppPage(): React.JSX.Element {
   }, []);
 
   const refreshBalances = useCallback(async (): Promise<void> => {
-    if (!account || !route) return;
+    if (!account || !route || !outputRoute) return;
     const tokenIn = route.tokenIn.address;
-    const tokenOut = route.tokenOut.address;
+    const tokenOut = outputRoute.tokenOut.address;
+    const recoveryAssets = resolvedPolicy?.trackedAssets ?? route.trackedAssets;
     try {
-      const [walletIn, walletOut, walletZaps, native, zapIn, zapOut, zapNative] = await Promise.all([
+      const [walletIn, walletOut, walletZaps, native, zapIn, zapOut, zapNative, trackedBalances] = await Promise.all([
         publicClient.readContract({ address: tokenIn, abi: erc20Abi, functionName: "balanceOf", args: [account] }),
         publicClient.readContract({ address: tokenOut, abi: erc20Abi, functionName: "balanceOf", args: [account] }),
         // Always the 0xZAPS balance, regardless of route — it drives the holder tier.
@@ -397,6 +433,13 @@ export default function AppPage(): React.JSX.Element {
         zap
           ? publicClient.getBalance({ address: zap.address })
           : Promise.resolve(0n),
+        zap
+          ? Promise.all(
+              recoveryAssets.map((asset) =>
+                publicClient.readContract({ address: asset, abi: erc20Abi, functionName: "balanceOf", args: [zap.address] }),
+              ),
+            )
+          : Promise.resolve([]),
       ]);
       setWalletInBalance(walletIn);
       setWalletOutBalance(walletOut);
@@ -405,10 +448,11 @@ export default function AppPage(): React.JSX.Element {
       setZapInBalance(zapIn);
       setZapOutBalance(zapOut);
       setZapNativeBalance(zapNative);
+      setZapHasRecoverableBalance(trackedBalances.some((balance) => balance > 0n));
     } catch (cause) {
       setError(readableError(cause));
     }
-  }, [account, zap, route]);
+  }, [account, outputRoute, resolvedPolicy, route, zap]);
 
   // The offered set: deployed swaps plus any vault route whose vault is seeded.
   // Read once on mount; an unseeded vault route stays out of the selector and
@@ -535,17 +579,23 @@ export default function AppPage(): React.JSX.Element {
       const records = readSavedZaps(account);
       const checks = await Promise.allSettled(
         records.map(async (record) => {
-          const verified = await inspectOwnedZap(publicClient, record.address, account);
+          const verified = await inspectOwnedLiveZap(
+            publicClient,
+            record.address,
+            account,
+            { requireExecutable: false },
+          );
           return {
             ...record,
-            routeId: verified.route.id,
-            amountIn: verified.amountIn.toString(),
+            routeId: verified.resolved.inputRoute.id,
+            amountIn: verified.resolved.steps[0].amountIn.toString(),
             policyHash: verified.policyHash,
-          } satisfies SavedZapRecord;
+            policyToken: verified.policyToken,
+          } satisfies LiveZapRecord;
         }),
       );
       if (cancelled) return;
-      const verified = new Map<string, SavedZapRecord>();
+      const verified = new Map<string, LiveZapRecord>();
       let sawFailure = false;
       checks.forEach((check, index) => {
         if (check.status === "fulfilled") verified.set(records[index].address, check.value);
@@ -635,11 +685,14 @@ export default function AppPage(): React.JSX.Element {
       clearMessages();
     }
     try {
-      if (!route) throw new Error("Select a deployed route first.");
-      const exactAmount = parseRouterAmount(amount, route.tokenIn.decimals);
-      // Swap: the v4 quoter for this route's OWN pool key. Vault: the ERC-4626
-      // preview — no pool, no gas estimate, and a zero preview means "would revert".
-      const { amountOut, gasEstimate } = await quoteRoute(publicClient, route, exactAmount, account ?? zeroAddress);
+      if (!route || !resolvedPolicy) throw new Error("Select a valid deployed policy first.");
+      // Quote every frozen amount independently. No output is invented as the
+      // next step's input: an under-producing intermediate quote blocks.
+      const { amountOut, gasEstimate } = await quoteLivePolicy(
+        publicClient,
+        resolvedPolicy,
+        account ?? zeroAddress,
+      );
       // The route/amount/zap context changed while this quote was in flight; its
       // result belongs to the old context and must be dropped.
       if (epoch !== quoteEpochRef.current) return null;
@@ -651,7 +704,7 @@ export default function AppPage(): React.JSX.Element {
         setReviewedQuote(amountOut);
         setAutoRefreshedAt(null);
         setNotice(
-          `${quoteSourceLabel(route)} loaded. The signed minimum output is enforced by the Zap after the adapter returns.`,
+          `${policyStepCount > 1 ? `${policyStepCount}-step policy quote` : quoteSourceLabel(route)} loaded. Intermediate amounts are fixed in the policy; the final signed minimum is enforced after the last adapter returns.`,
         );
       }
       return amountOut;
@@ -760,13 +813,10 @@ export default function AppPage(): React.JSX.Element {
           "This route is not currently offered. Every route needs a deployed adapter, and a vault route needs a seeded vault (totalSupply > 0).",
         );
       }
-      const exactAmount = parseRouterAmount(amount, route.tokenIn.decimals);
       const wallet = await requireWallet(owner);
-      // Bounded swap + both vault adapters take Step.data 0x; the USDG pool
-      // adapter takes abi.encode(uint256 minOut). buildRoutePolicy emits the
-      // right shape from route.data — minOut 0 here (no stale frozen floor); the
-      // binding slippage floor is the owner-signed intent.minOut at execute time.
-      const policy = buildRoutePolicy(owner, route, exactAmount);
+      // Every intermediate adapter binds the next frozen step amount in its
+      // own calldata; the final minimum stays fresh in the signed intent.
+      const policy = buildLivePolicy(owner, resolvedPolicy);
       const salt = randomHex32();
       const predicted = await publicClient.readContract({
         address: OPENZAP_CONTRACTS.factory,
@@ -789,14 +839,15 @@ export default function AppPage(): React.JSX.Element {
       );
       if (status !== "success") throw new Error("Creation gateway transaction reverted.");
 
-      const verified = await inspectOwnedZap(publicClient, predicted, owner);
+      const verified = await inspectOwnedLiveZap(publicClient, predicted, owner);
       const nextZap: CreatedZapResult = {
         address: verified.address,
-        routeId: verified.route.id,
-        amountIn: verified.amountIn.toString(),
+        routeId: verified.resolved.inputRoute.id,
+        amountIn: verified.resolved.steps[0].amountIn.toString(),
         createTx: hash,
         createdAt: new Date().toISOString(),
         policyHash: verified.policyHash,
+        policyToken: verified.policyToken,
       };
       rememberZap(owner, nextZap);
       rememberCreationWorkspace(owner, nextZap.address);
@@ -807,7 +858,7 @@ export default function AppPage(): React.JSX.Element {
       );
       trackEvent("robinhood_zap_created", {
         zap: predicted,
-        route: route.id,
+        route: resolvedPolicy.steps.map((step) => step.route.id).join(","),
         fee: OPENZAP_CREATION_FEE.toString(),
       });
     } catch (cause) {
@@ -853,15 +904,21 @@ export default function AppPage(): React.JSX.Element {
       const owner = requireAccount(account);
       if (!zap) throw new Error("Create or load a Zap first.");
       requireProtocolReady(protocolReady);
-      const verifiedZap = await inspectOwnedZap(publicClient, zap.address, owner);
-      const tokenIn = verifiedZap.route.tokenIn;
+      const verifiedZap = await inspectOwnedLiveZap(
+        publicClient,
+        zap.address,
+        owner,
+        { requireExecutable: false },
+      );
+      const firstStep = verifiedZap.resolved.steps[0];
+      const tokenIn = firstStep.route.tokenIn;
       const current = await publicClient.readContract({
         address: tokenIn.address,
         abi: erc20Abi,
         functionName: "balanceOf",
         args: [verifiedZap.address],
       });
-      const target = verifiedZap.amountIn;
+      const target = firstStep.amountIn;
       if (current >= target) {
         setNotice("Zap is already funded for this execution.");
         return true;
@@ -930,17 +987,17 @@ export default function AppPage(): React.JSX.Element {
       const owner = requireAccount(account);
       if (!zap) throw new Error("Create or load a Zap first.");
       requireProtocolReady(protocolReady);
-      const verifiedZap = await inspectOwnedZap(publicClient, zap.address, owner);
-      const zapRoute = verifiedZap.route;
-      const tokenIn = zapRoute.tokenIn;
-      const tokenOut = zapRoute.tokenOut;
+      const verifiedZap = await inspectOwnedLiveZap(publicClient, zap.address, owner);
+      const zapPolicy = verifiedZap.resolved;
+      const tokenIn = zapPolicy.inputRoute.tokenIn;
+      const tokenOut = zapPolicy.outputRoute.tokenOut;
       const liveInputBalance = await publicClient.readContract({
         address: tokenIn.address,
         abi: erc20Abi,
         functionName: "balanceOf",
         args: [verifiedZap.address],
       });
-      if (liveInputBalance < verifiedZap.amountIn) throw new Error("Fund the Zap before execution.");
+      if (liveInputBalance < zapPolicy.steps[0].amountIn) throw new Error("Fund the Zap before execution.");
 
       // The signed minOut derives from a click-time re-quote (a swap pool quote,
       // or an ERC-4626 preview for a vault route); require a quote the user
@@ -949,7 +1006,7 @@ export default function AppPage(): React.JSX.Element {
       // threshold.
       if (reviewedQuote === null) throw new Error("Request a live quote first to review the minimum output you are signing.");
       const reviewedFloor = (reviewedQuote * BigInt(10_000 - slippageBps)) / 10_000n;
-      const freshQuote = (await quoteRoute(publicClient, zapRoute, verifiedZap.amountIn, owner)).amountOut;
+      const freshQuote = (await quoteLivePolicy(publicClient, zapPolicy, owner)).amountOut;
       if (freshQuote < reviewedFloor) {
         setQuote(freshQuote);
         setQuoteGas(null);
@@ -1035,7 +1092,11 @@ export default function AppPage(): React.JSX.Element {
       // Success disables the still-focused execute button; hand focus to the
       // announcement instead of letting it fall to <body>.
       queueMicrotask(() => noticeRef.current?.focus());
-      trackEvent("robinhood_zap_executed", { zap: verifiedZap.address, route: zapRoute.id, tx: hash });
+      trackEvent("robinhood_zap_executed", {
+        zap: verifiedZap.address,
+        route: zapPolicy.steps.map((step) => step.route.id).join(","),
+        tx: hash,
+      });
       return true;
     } catch (cause) {
       setError(readableError(cause));
@@ -1052,7 +1113,7 @@ export default function AppPage(): React.JSX.Element {
     try {
       const owner = requireAccount(account);
       if (!zap) throw new Error("Create or load a Zap first.");
-      const verifiedZap = await inspectOwnedZap(publicClient, zap.address, owner);
+      const verifiedZap = await inspectOwnedLiveZap(publicClient, zap.address, owner);
       const wallet = await requireWallet(owner);
       // Sweep the ZAP's OWN tracked assets — not a hardcoded [aeWETH, 0xZAPS],
       // which for a USDG/vault capsule would move assets it never held and
@@ -1062,7 +1123,7 @@ export default function AppPage(): React.JSX.Element {
         address: verifiedZap.address,
         abi: openZapAbi,
         functionName: "emergencyExit",
-        args: [[...verifiedZap.route.trackedAssets]],
+        args: [[...verifiedZap.resolved.trackedAssets]],
       });
       const { hash, status } = await submitAndConfirm(
         owner,
@@ -1071,7 +1132,7 @@ export default function AppPage(): React.JSX.Element {
       );
       if (status !== "success") throw new Error("Recovery transaction reverted.");
       setNotice(
-        `Tracked ${verifiedZap.route.tokenIn.symbol} and ${verifiedZap.route.tokenOut.symbol} balances returned to the Zap owner.`,
+        `${verifiedZap.resolved.trackedAssets.length} tracked policy asset${verifiedZap.resolved.trackedAssets.length === 1 ? "" : "s"} returned to the Zap owner.`,
       );
       trackEvent("robinhood_zap_recovered", { zap: verifiedZap.address, tx: hash });
     } catch (cause) {
@@ -1089,13 +1150,19 @@ export default function AppPage(): React.JSX.Element {
       const owner = requireAccount(account);
       requireProtocolReady(protocolReady);
       const address = getAddress(manualZap.trim());
-      const verified = await inspectOwnedZap(publicClient, address, owner);
-      const record: SavedZapRecord = {
+      const verified = await inspectOwnedLiveZap(
+        publicClient,
+        address,
+        owner,
+        { requireExecutable: false },
+      );
+      const record: LiveZapRecord = {
         address: verified.address,
-        routeId: verified.route.id,
-        amountIn: verified.amountIn.toString(),
+        routeId: verified.resolved.inputRoute.id,
+        amountIn: verified.resolved.steps[0].amountIn.toString(),
         createdAt: new Date().toISOString(),
         policyHash: verified.policyHash,
+        policyToken: verified.policyToken,
       };
       rememberZap(owner, record);
       selectZap(record);
@@ -1127,6 +1194,7 @@ export default function AppPage(): React.JSX.Element {
     // Export the zap's REAL adapter/route, not a hardcoded original one — a
     // USDG/vault config would otherwise name the wrong adapter.
     const exportedRoute = resolveRouteById(zap.routeId);
+    const exportedPlan = zap.policyToken ? decodeLivePolicyPlan(zap.policyToken) : null;
     const payload = JSON.stringify(
       {
         schema: "openzaps.robinhood.zap.v1",
@@ -1136,6 +1204,7 @@ export default function AppPage(): React.JSX.Element {
         adapter: exportedRoute?.adapter ?? OPENZAP_CONTRACTS.adapter,
         tokenIn: exportedRoute?.tokenIn.address,
         tokenOut: exportedRoute?.tokenOut.address,
+        orderedPolicy: exportedPlan,
         zap,
       },
       null,
@@ -1199,16 +1268,18 @@ export default function AppPage(): React.JSX.Element {
   // They are the only route into direction/amount/zap state that keeps the
   // quote epoch in step.
   const changeRoute = useCallback((nextRouteId: string): void => {
+    setPolicyToken(null);
     setRouteId(nextRouteId);
     resetQuoteState();
   }, [resetQuoteState]);
 
   const changeAmount = useCallback((nextAmount: string): void => {
+    setPolicyToken(null);
     setAmount(nextAmount);
     resetQuoteState();
   }, [resetQuoteState]);
 
-  function rememberZap(owner: Address, record: SavedZapRecord): void {
+  function rememberZap(owner: Address, record: LiveZapRecord): void {
     setSavedZaps((current) => {
       // A tier downgrade caps future growth but must never destructively
       // prune existing records — they can point at funded capsules.
@@ -1232,12 +1303,20 @@ export default function AppPage(): React.JSX.Element {
   async function copyCreationResult(): Promise<void> {
     if (!creationResult) return;
     const resultRoute = resolveRouteById(creationResult.routeId);
+    const decoded = creationResult.policyToken ? decodeLivePolicyPlan(creationResult.policyToken) : null;
+    let resultPolicy: ResolvedLivePolicy | null = null;
+    try {
+      resultPolicy = decoded ? resolveLivePolicyPlan(decoded) : null;
+    } catch {
+      resultPolicy = null;
+    }
+    const resultOutputRoute = resultPolicy?.outputRoute ?? resultRoute;
     const summary = [
       "OpenZaps creation receipt",
       `Zap: ${creationResult.address}`,
       `Transaction: ${creationResult.createTx}`,
       `Policy: ${creationResult.policyHash}`,
-      `Route: ${resultRoute ? `${resultRoute.tokenIn.symbol} -> ${resultRoute.tokenOut.symbol}` : creationResult.routeId}`,
+      `Route: ${resultRoute && resultOutputRoute ? `${resultRoute.tokenIn.symbol} -> ${resultOutputRoute.tokenOut.symbol}${resultPolicy && resultPolicy.steps.length > 1 ? ` (${resultPolicy.steps.length} ordered steps)` : ""}` : creationResult.routeId}`,
       `Exact input: ${formatToken(BigInt(creationResult.amountIn), resultRoute?.tokenIn.decimals ?? 18)} ${resultRoute?.tokenIn.symbol ?? "tokens"}`,
       `Created: ${creationResult.createdAt}`,
     ].join("\n");
@@ -1269,6 +1348,7 @@ export default function AppPage(): React.JSX.Element {
     const rawRoute = params.get("route");
     const rawDirection = params.get("dir");
     const rawAmount = (params.get("amount") ?? "").trim();
+    const rawPolicyToken = params.get("policy");
     const executionPolicy = readExecutionPolicyParams(params);
     const resolvedRouteId =
       rawRoute && resolveRouteById(rawRoute)
@@ -1279,36 +1359,73 @@ export default function AppPage(): React.JSX.Element {
             ? BOUNDED_SWAP_IDS[1]
             : null;
     const candidateRoute = resolvedRouteId ? resolveRouteById(resolvedRouteId) : null;
+    let candidatePolicy: ResolvedLivePolicy | null = null;
+    try {
+      const decoded = rawPolicyToken ? decodeLivePolicyPlan(rawPolicyToken) : null;
+      if (rawPolicyToken && !decoded) throw new Error("invalid ordered policy");
+      candidatePolicy = resolveLivePolicyPlan(
+        decoded ?? {
+          version: 1,
+          steps: resolvedRouteId ? [{ routeId: resolvedRouteId, amountIn: rawAmount }] : [],
+        },
+      );
+      if (
+        !candidateRoute
+        || candidatePolicy.inputRoute.id !== candidateRoute.id
+        || candidatePolicy.steps[0].amountIn !==
+          parseRouterAmount(rawAmount, candidateRoute.tokenIn.decimals)
+      ) {
+        candidatePolicy = null;
+      }
+    } catch {
+      candidatePolicy = null;
+    }
 
     // A vault-backed route cannot be judged against the pre-read offered set —
     // that set NEVER contains one, so a mount-time verdict would reject every
     // LP and vault handoff regardless of the vault's real seeded state. Leave
     // the one-shot ref unset and let the effect re-run once the seeding read
     // settles; everything else is decidable right now.
-    if (candidateRoute?.requiresSeededVault && !offeredReady) return;
+    if (candidatePolicy?.steps.some((step) => step.route.requiresSeededVault) && !offeredReady) return;
     builderImportRef.current = "rejected";
 
     // Fail closed: only import a route that is deployed AND currently offered.
     // A vault route is offered only while its vault is seeded; an unseeded or
     // undeployed route is rejected exactly like an invalid import.
-    const offered = resolvedRouteId !== null && offeredRoutes.some((candidate) => candidate.id === resolvedRouteId);
-    let imported: { routeId: string; route: Route; amount: string; bps: number; executionPolicy: ExecutionPolicy } | null = null;
-    if (candidateRoute && offered && resolvedRouteId && executionPolicy) {
+    const offered = candidatePolicy !== null
+      && candidatePolicy.steps.every((step) => offeredRoutes.some((candidate) => candidate.id === step.route.id));
+    let imported: {
+      routeId: string;
+      route: Route;
+      amount: string;
+      bps: number;
+      executionPolicy: ExecutionPolicy;
+      policyToken: string | null;
+      stepCount: number;
+      outputRoute: Route;
+    } | null = null;
+    if (candidateRoute && candidatePolicy && offered && resolvedRouteId && executionPolicy) {
       try {
         // Validate the amount at the ROUTE's real decimals (USDG 6, ozUSDG 9).
         parseRouterAmount(rawAmount, candidateRoute.tokenIn.decimals);
         // A missing key reads as null and Number(null) is 0 — finite, so an
         // absent bps would snap to the 10 bps floor and quietly sign a 0.10%
         // cap. Anything that is not a real number has to reach the default.
-        const parsedBps = Number(params.get("bps"));
+        const rawBps = params.get("bps");
+        const parsedBps = rawBps === null || rawBps.trim() === "" ? Number.NaN : Number(rawBps);
         imported = {
           routeId: resolvedRouteId,
           route: candidateRoute,
-          amount: rawAmount,
+          amount: candidatePolicy.plan.steps[0].amountIn,
           // Snapped to the slider's own min/max/step below.
           // 100 is the same 1.00% the slider starts on when nobody touches it.
           bps: Number.isFinite(parsedBps) ? Math.min(500, Math.max(10, Math.round(parsedBps / 10) * 10)) : 100,
           executionPolicy,
+          policyToken: candidatePolicy.steps.length > 1
+            ? encodeLivePolicyPlan(candidatePolicy.plan.steps)
+            : null,
+          stepCount: candidatePolicy.steps.length,
+          outputRoute: candidatePolicy.outputRoute,
         };
       } catch {
         imported = null;
@@ -1344,11 +1461,12 @@ export default function AppPage(): React.JSX.Element {
       startNewZap();
       changeRoute(imported.routeId);
       changeAmount(imported.amount);
+      setPolicyToken(imported.policyToken);
       setSlippageBps(imported.bps);
       setMaxExecutionGas(imported.executionPolicy.maxGas);
       setMaxFeePerGasGwei(imported.executionPolicy.maxFeePerGasGwei);
       setNotice(
-        `Imported from the builder: ${imported.route.tokenIn.symbol} → ${imported.route.tokenOut.symbol}, ${imported.amount} ${imported.route.tokenIn.symbol}, ${(imported.bps / 100).toFixed(2)}% max slippage, ${imported.executionPolicy.maxGas.toLocaleString("en-US")} gas, and ${imported.executionPolicy.maxFeePerGasGwei} gwei. Nothing has been created — check the numbers, then press Create the Zap.`,
+        `Imported from the builder: ${imported.route.tokenIn.symbol} → ${imported.outputRoute.tokenOut.symbol}${imported.stepCount > 1 ? ` in ${imported.stepCount} exact ordered steps` : ""}, ${imported.amount} ${imported.route.tokenIn.symbol}, ${(imported.bps / 100).toFixed(2)}% max slippage, ${imported.executionPolicy.maxGas.toLocaleString("en-US")} gas, and ${imported.executionPolicy.maxFeePerGasGwei} gwei. Nothing has been created — check the numbers, then press Create the Zap.`,
       );
       trackEvent("robinhood_builder_import", { route: imported.routeId });
     });
@@ -1356,6 +1474,17 @@ export default function AppPage(): React.JSX.Element {
 
   const wrongNetwork = account !== null && walletChainId !== ROBINHOOD_CHAIN_ID;
   const creationResultRoute = creationResult ? resolveRouteById(creationResult.routeId) : null;
+  const creationResultPolicy = useMemo(() => {
+    if (!creationResult?.policyToken) return null;
+    const decoded = decodeLivePolicyPlan(creationResult.policyToken);
+    if (!decoded) return null;
+    try {
+      return resolveLivePolicyPlan(decoded);
+    } catch {
+      return null;
+    }
+  }, [creationResult]);
+  const creationResultOutputRoute = creationResultPolicy?.outputRoute ?? creationResultRoute;
   const creationResultActive = creationResult !== null && zap?.address === creationResult.address;
   const creationResultFunded = creationResultActive && funded;
   const creationResultExecuted = creationResultActive && executionComplete;
@@ -1393,9 +1522,13 @@ export default function AppPage(): React.JSX.Element {
       // A vault or LP route has no pool of its own, so this cannot claim to be
       // pool-bound. It is the adapter the selected route resolves to.
       label: "Route adapter",
-      value: route ? shortAddress(route.adapter) : "—",
+      value: resolvedPolicy
+        ? resolvedPolicy.steps.length === 1
+          ? shortAddress(resolvedPolicy.steps[0].route.adapter)
+          : `${resolvedPolicy.steps.length} current allowlisted adapters`
+        : "—",
       href: route ? explorerAddress(route.adapter) : undefined,
-      ok: route !== null,
+      ok: resolvedPolicy !== null,
     },
     { label: "Settles through", value: settlementLabel, ok: route !== null },
     { label: "Adapter allowance", value: "Exact amount, reset to zero", ok: true },
@@ -1512,9 +1645,9 @@ export default function AppPage(): React.JSX.Element {
               mono: true,
             },
             {
-              label: "Bounded route",
-              value: creationResultRoute
-                ? `${creationResultRoute.tokenIn.symbol} → ${creationResultRoute.tokenOut.symbol}`
+              label: creationResultPolicy && creationResultPolicy.steps.length > 1 ? "Ordered policy" : "Bounded route",
+              value: creationResultRoute && creationResultOutputRoute
+                ? `${creationResultRoute.tokenIn.symbol} → ${creationResultOutputRoute.tokenOut.symbol}${creationResultPolicy && creationResultPolicy.steps.length > 1 ? ` · ${creationResultPolicy.steps.length} fixed steps` : ""}`
                 : creationResult.routeId,
             },
             {
@@ -1561,6 +1694,16 @@ export default function AppPage(): React.JSX.Element {
               {creationResultFunded ? "Continue to execution" : "Continue to funding"}
             </a>
           ) : null}
+          {/* The capsule address is already fixed, so an enabled, authenticated
+              Across integration can fund it from Base. The panel also receives
+              the route's own input token and refuses any asset mismatch. */}
+          {creationResultActive && !creationResultFunded && creationResultRoute && BRIDGE_FUNDING_ENABLED ? (
+            <BridgeFundPanel
+              capsule={creationResult.address}
+              fundingAsset={creationResultRoute.tokenIn.address}
+              requiredAmount={BigInt(creationResult.amountIn)}
+            />
+          ) : null}
           <Link className="btn btnGhost" href={`/explore/${creationResult.address}`}>Onchain page</Link>
           <Link className="btn btnGhost" href="/profile">View profile</Link>
           <button className="btn btnGhost" onClick={() => void copyCreationResult()} type="button">Copy receipt</button>
@@ -1583,7 +1726,13 @@ export default function AppPage(): React.JSX.Element {
                 className={`${styles.cardAction} ${styles.cardActionEnd}`}
                 disabled={zap !== null}
                 onClick={() => setRouteOpen(!routeVisible)}
-                title={zap !== null ? "Route is frozen once the Zap exists" : undefined}
+                title={
+                  zap !== null
+                    ? "Route is frozen once the Zap exists"
+                    : policyStepCount > 1
+                      ? "Choosing a single route replaces the imported ordered policy"
+                      : undefined
+                }
                 type="button"
               >
                 {routeVisible ? "Hide routes" : "Change route"}
@@ -1630,7 +1779,8 @@ export default function AppPage(): React.JSX.Element {
                     aria-label={`Exact input in ${inputSymbol}`}
                     value={amount}
                     onChange={(event) => changeAmount(sanitizeDecimal(event.target.value))}
-                    disabled={zap !== null}
+                    disabled={zap !== null || policyStepCount > 1}
+                    title={policyStepCount > 1 ? "Edit exact intermediate amounts in Design, then hand the policy off again." : undefined}
                   />
                   <span className={styles.tokenTag}>
                     <i className={styles.tokenDot} aria-hidden="true" />
@@ -1647,6 +1797,17 @@ export default function AppPage(): React.JSX.Element {
                     ? `Wallet holds ${formatToken(walletInputBalance, inDecimals)} ${inputSymbol}`
                     : `Connect a wallet to see your ${inputSymbol} balance`}
                 </span>
+                {resolvedPolicy && resolvedPolicy.steps.length > 1 ? (
+                  <span className={styles.legHint}>
+                    Ordered amounts:{" "}
+                    {resolvedPolicy.steps
+                      .map(
+                        (step, index) =>
+                          `${index + 1}. ${formatToken(step.amountIn, step.route.tokenIn.decimals)} ${step.route.tokenIn.symbol}`,
+                      )
+                      .join(" · ")}
+                  </span>
+                ) : null}
               </div>
 
               <div className={styles.arrow} aria-hidden="true">
@@ -1666,7 +1827,7 @@ export default function AppPage(): React.JSX.Element {
                 <span className={styles.legHintLive}>
                   {quote === null
                     ? "Request a live quote to see the floor you would sign."
-                    : `${quoteSourceLabel(route)} ${formatToken(quote, outDecimals)} · floor is what the Zap enforces`}
+                    : `${policyStepCount > 1 ? `${policyStepCount}-step quote` : quoteSourceLabel(route)} ${formatToken(quote, outDecimals)} · floor is what the Zap enforces`}
                 </span>
                 {autoRefreshedAt && (
                   <span className={styles.legHint}>
@@ -1869,8 +2030,9 @@ export default function AppPage(): React.JSX.Element {
               }
             >
               <p className={styles.stepBody}>
-                The policy binds owner, recipient, adapter, spender, input token, and exact amount. The separate fee
-                converts only if creation succeeds; any conversion-floor failure reverts the whole transaction.
+                The policy binds owner, recipient, every ordered adapter and spender, every fixed input amount, and
+                all recovery assets. The separate fee converts only if creation succeeds; any conversion-floor
+                failure reverts the whole transaction.
               </p>
 
               <div className={styles.creationFeeBox} data-ready={creationFeeQuote !== null} role="note">
@@ -1909,7 +2071,7 @@ export default function AppPage(): React.JSX.Element {
                   data-busy={busy === "create"}
                   className="btn btnPrimary"
                   data-testid="create-zap"
-                  disabled={!account || !protocolReady || !feeConfigured || creationFeeQuote === null || wrongNetwork || zap !== null || busy !== null || chainedRun || amountIn <= 0n}
+                  disabled={!account || !protocolReady || !feeConfigured || creationFeeQuote === null || wrongNetwork || zap !== null || busy !== null || chainedRun || amountIn <= 0n || resolvedPolicy === null || !routeOffered}
                   onClick={() => void createZap()}
                   type="button"
                 >
@@ -2180,7 +2342,7 @@ export default function AppPage(): React.JSX.Element {
                   <button
                     data-busy={busy === "recover"}
                     className={styles.ghostFull}
-                    disabled={wrongNetwork || busy !== null || recoverableBalance === 0n}
+                    disabled={wrongNetwork || busy !== null || !hasRecoverableBalance}
                     onClick={() => void recoverFunds()}
                     type="button"
                   >
@@ -2199,10 +2361,7 @@ export default function AppPage(): React.JSX.Element {
               <div aria-label="Saved verified Zaps" className={styles.zapList} role="group">
                 {savedZaps.map((record) => {
                   const active = zap?.address === record.address;
-                  const recordRoute = resolveRouteById(record.routeId);
-                  const recordLabel = recordRoute
-                    ? `${recordRoute.tokenIn.symbol} → ${recordRoute.tokenOut.symbol}`
-                    : "Unknown route";
+                  const recordLabel = describeZapRecord(record);
                   return (
                     // Two controls, not one: selecting a Zap for this console and
                     // opening its public page are different intents, and a link
@@ -2404,7 +2563,7 @@ function clearCreationWorkspace(owner: Address): void {
   }
 }
 
-function saveZapList(owner: Address, records: SavedZapRecord[]): void {
+function saveZapList(owner: Address, records: LiveZapRecord[]): void {
   try {
     window.localStorage.setItem(`${ZAP_STORAGE_KEY}:${owner.toLowerCase()}`, JSON.stringify(records));
   } catch {
@@ -2412,7 +2571,7 @@ function saveZapList(owner: Address, records: SavedZapRecord[]): void {
   }
 }
 
-function readSavedZaps(owner: Address): SavedZapRecord[] {
+function readSavedZaps(owner: Address): LiveZapRecord[] {
   const currentKey = `${ZAP_STORAGE_KEY}:${owner.toLowerCase()}`;
   const legacyKey = `${LEGACY_STORAGE_KEY}:${owner.toLowerCase()}`;
   try {
@@ -2439,7 +2598,7 @@ function readSavedZaps(owner: Address): SavedZapRecord[] {
   }
 }
 
-function normalizeZapRecord(value: unknown): SavedZapRecord | null {
+function normalizeZapRecord(value: unknown): LiveZapRecord | null {
   if (!value || typeof value !== "object") return null;
   const record = value as Record<string, unknown>;
   const rawAddress = typeof record.address === "string" ? record.address : record.zapAddress;
@@ -2465,6 +2624,9 @@ function normalizeZapRecord(value: unknown): SavedZapRecord | null {
     const createTx = typeof record.createTx === "string" && /^0x[0-9a-fA-F]{64}$/.test(record.createTx)
       ? record.createTx as Hex
       : undefined;
+    const decodedPolicy =
+      typeof record.policyToken === "string" ? decodeLivePolicyPlan(record.policyToken) : null;
+    const normalizedPolicyToken = decodedPolicy ? encodeLivePolicyPlan(decodedPolicy.steps) : undefined;
     return {
       address: getAddress(rawAddress),
       routeId,
@@ -2472,9 +2634,26 @@ function normalizeZapRecord(value: unknown): SavedZapRecord | null {
       createdAt: record.createdAt,
       policyHash,
       createTx,
+      policyToken: normalizedPolicyToken,
     };
   } catch {
     return null;
+  }
+}
+
+function describeZapRecord(record: LiveZapRecord): string {
+  const input = resolveRouteById(record.routeId);
+  if (!input) return "Unknown route";
+  if (!record.policyToken) return `${input.tokenIn.symbol} → ${input.tokenOut.symbol}`;
+  const decoded = decodeLivePolicyPlan(record.policyToken);
+  if (!decoded) return `${input.tokenIn.symbol} → ${input.tokenOut.symbol}`;
+  try {
+    const resolved = resolveLivePolicyPlan(decoded);
+    return `${resolved.inputRoute.tokenIn.symbol} → ${resolved.outputRoute.tokenOut.symbol}${
+      resolved.steps.length > 1 ? ` · ${resolved.steps.length} steps` : ""
+    }`;
+  } catch {
+    return `${input.tokenIn.symbol} → ${input.tokenOut.symbol}`;
   }
 }
 

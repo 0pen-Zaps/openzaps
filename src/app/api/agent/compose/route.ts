@@ -13,6 +13,7 @@ import {
 import { reduceChainToLivePolicy } from "@/lib/deployable";
 import { callerKey, createRateLimit } from "@/lib/rate-limit";
 import { planFromCompiled, type TranscriptPlan } from "@/lib/transcript";
+import { deterministicProposalFor } from "@/lib/intent-compose";
 
 /**
  * Natural language in, a compiled Zap proposal out.
@@ -46,14 +47,6 @@ export type AgentComposeResponse =
 const rateLimited = createRateLimit(6, 60_000);
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
-  if (!ANTHROPIC_API_KEY) {
-    // Same degradation shape as the relay's `relayConfigured()`: a deployment without the
-    // dependency says so, rather than failing in a way that reads as a bug.
-    return NextResponse.json(
-      { ok: false, error: "The agent is not configured on this deployment." } satisfies AgentComposeResponse,
-      { status: 503 },
-    );
-  }
   if (rateLimited(callerKey(request))) {
     return NextResponse.json({ ok: false, error: "Too many requests." } satisfies AgentComposeResponse, { status: 429 });
   }
@@ -70,6 +63,19 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       { ok: false, error: "Body must be JSON with a non-empty prompt." } satisfies AgentComposeResponse,
       { status: 400 },
     );
+  }
+
+  if (!ANTHROPIC_API_KEY) {
+    const proposal = deterministicProposalFor(prompt);
+    if (!proposal) {
+      return NextResponse.json(
+        refuse(
+          "This deployment has no hosted model, and that request does not match a reviewed catalog blueprint.",
+          ["Try naming the input and outcome, such as “buy 0xZAPS with aeWETH”, “DCA weekly”, or “redeem ozUSDG”."],
+        ),
+      );
+    }
+    return NextResponse.json(materializeAndCompile(proposal, "deterministic-catalog"));
   }
 
   const client = new Anthropic({ apiKey: ANTHROPIC_API_KEY });
@@ -130,7 +136,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
  * Exported for tests: every fail-closed branch below is reachable with a hand-written input, so
  * the guarantees can be verified without a live model.
  */
-export function materializeAndCompile(input: unknown): AgentComposeResponse {
+export function materializeAndCompile(input: unknown, model: string = AGENT_MODEL): AgentComposeResponse {
   const parsed = parseProposal(input);
   if (!parsed) return refuse("The agent's proposal was malformed.", []);
 
@@ -173,7 +179,7 @@ export function materializeAndCompile(input: unknown): AgentComposeResponse {
       handoff: { label: "Open in the composer", href: `/zap?view=design&d=${encodeURIComponent(encodeChain(chain))}` },
     }),
     rationale: parsed.rationale,
-    model: AGENT_MODEL,
+    model,
   };
 }
 

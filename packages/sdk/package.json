@@ -1,0 +1,37 @@
+{
+  "name": "@openzaps/sdk",
+  "version": "0.1.0",
+  "description": "Read-only policy compiler and simulation client for OpenZaps",
+  "type": "module",
+  "main": "./index.js",
+  "types": "./index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./index.d.ts",
+      "import": "./index.js"
+    }
+  },
+  "files": [
+    "index.js",
+    "index.d.ts",
+    "README.md"
+  ],
+  "sideEffects": false,
+  "license": "MIT",
+  "homepage": "https://www.0xzaps.com/docs",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/0pen-Zaps/openzaps.git",
+    "directory": "packages/sdk"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "peerDependencies": {
+    "viem": ">=2.55.5 <3"
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  }
+}

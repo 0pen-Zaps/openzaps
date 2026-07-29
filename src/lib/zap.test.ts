@@ -10,6 +10,7 @@ import {
   expectedCloneRuntime,
   hashRobinhoodPolicy,
 } from "@/lib/openzap";
+import { buildLivePolicy, resolveLivePolicyPlan } from "@/lib/live-policy";
 import {
   OPENZAP_CONTRACTS,
   OPENZAP_V3_CONTRACTS,
@@ -455,6 +456,39 @@ describe("policy view", () => {
     expect(policy.canonicalClone).toBe(true);
     expect(policy.matchesLiveRoute).toBe(true);
     expect(policy.deviations).toEqual([]);
+  });
+
+  it("recognizes an exact ordered two-step v1.1 policy", () => {
+    const resolved = resolveLivePolicyPlan({
+      version: 1,
+      steps: [
+        { routeId: "robinhood-v4-weth-usdg", amountIn: "0.05" },
+        { routeId: "robinhood-v4-route-usdg-zaps", amountIn: "20" },
+      ],
+    });
+    const ordered = buildLivePolicy(OWNER, resolved);
+    const { policy } = aggregateZapDetail(
+      detailInput({
+        policy: policyRead({
+          trackedAssets: ordered.trackedAssets,
+          stepCount: 2n,
+          steps: ordered.steps as readonly ZapStepRead[],
+          policyHash: hashRobinhoodPolicy(ordered),
+        }),
+      }),
+    );
+
+    expect(policy.hashMatches).toBe(true);
+    expect(policy.matchesLiveRoute).toBe(true);
+    expect(policy.deviations).toEqual([]);
+    expect(policy.routeIds).toEqual([
+      "robinhood-v4-weth-usdg",
+      "robinhood-v4-route-usdg-zaps",
+    ]);
+    expect(policy.steps).toHaveLength(2);
+    expect(policy.inputSymbol).toBe("aeWETH");
+    expect(policy.outputSymbol).toBe("0xZAPS");
+    expect(policy.outAsset).toBe(resolved.outputRoute.tokenOut.address);
   });
 
   it("reports hashMatches false when the committed hash is not the policy's own", () => {

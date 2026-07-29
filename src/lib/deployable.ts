@@ -13,6 +13,12 @@ import {
 } from "@/lib/chains";
 import { parseRouterAmount, type ZapDirection } from "@/lib/openzap";
 import { resolveExecutionPolicy, type ExecutionPolicy } from "@/lib/execution-policy";
+import {
+  encodeLivePolicyPlan,
+  resolveLivePolicyPlan,
+  type LivePolicyPlanStep,
+} from "@/lib/live-policy";
+import { resolveRouteById } from "@/lib/routes";
 
 /**
  * The bridge between the visual builder and what Robinhood Chain will actually
@@ -22,9 +28,9 @@ import { resolveExecutionPolicy, type ExecutionPolicy } from "@/lib/execution-po
  * cadences. The capsule holds up to sixteen steps, but a step is only real if
  * an adapter for it is deployed AND allowlisted — so what this module will
  * offer is decided entirely by `chains.ts`, the registry of adapters that
- * exist. With nothing new configured, that set is one bounded aeWETH ↔ 0xZAPS
- * swap, which is why the reductions below still collapse to the single route
- * the live app signs.
+ * exist. A longer chain is offered only when every intermediate adapter can
+ * bind the next step's fixed amount; the contract has no balance-relative
+ * step sentinel.
  *
  * Two layers, because "what the contracts can carry" and "what the app page
  * can sign" are different questions and answering them with one function is
@@ -33,10 +39,9 @@ import { resolveExecutionPolicy, type ExecutionPolicy } from "@/lib/execution-po
  *   `reduceChainToLivePolicy` — the general reduction. Emits a multi-step
  *   policy when the adapters for those steps are deployed.
  *
- *   `reduceChainToLiveRoute`  — the deploy handoff. `/app` builds its policy
- *   with `buildRobinhoodPolicy`, which emits exactly ONE step through the
- *   bounded swap, so this narrows the policy to that shape and rejects
- *   anything else by name. It never widens what the CTA offers on its own.
+ *   `reduceChainToLiveRoute`  — the signer handoff. It carries exact ordered
+ *   route ids and amounts; the signer resolves addresses/calldata from the
+ *   shipped manifest and rejects any chain whose lineage is not enforceable.
  *
  * Everything either layer cannot map is rejected by name rather than quietly
  * approximated.
@@ -112,12 +117,16 @@ export type LiveRouteMapping =
   | {
       deployable: true;
       /**
-       * The deployed route `/app` will sign — a `chains.ts` adapter id. This is
-       * the route identity the handoff carries; `direction` is a legacy hint
+       * The first deployed route `/zap` will sign — a `chains.ts` adapter id.
+       * `steps` is the complete identity; `direction` is a legacy hint
        * that is non-null ONLY for the bounded aeWETH↔0xZAPS pair, because a
        * buy/sell bit is ambiguous once a second pool shares an input token.
        */
       routeId: string;
+      /** Every onchain step in exact execution order. */
+      steps: readonly LivePolicyPlanStep[];
+      /** Deterministic, bounded route+amount handoff; never contains addresses. */
+      policyToken: string;
       direction: ZapDirection | null;
       amountIn: string;
       slippageBps: number;
@@ -136,7 +145,7 @@ type Placed = { node: ChainNode; block: LegoBlock };
  */
 const SOURCE_REJECTIONS: Record<string, string> = {
   "recurring-stream":
-    "Recurring deposit sets a cadence, and a cadence is not expressible in the v1.1 policy this canvas deploys: that capsule holds one signed step, not a schedule. A cadence IS enforceable by the v3 capsule — build it in Automate, where the interval and total Zap count are bound onchain.",
+    "Recurring deposit sets a cadence, and a cadence is not expressible in the v1.1 policy this canvas deploys: that capsule authorizes one signed run, not a schedule. A cadence IS enforceable by the v3 capsule — build it in Automate, where the interval and total Zap count are bound onchain.",
   "pending-rewards":
     "Pending rewards emits a claimable, not tokens. The live route can only spend an ERC-20 amount pulled from the owner wallet, so there is nothing for it to swap.",
 };
@@ -173,7 +182,7 @@ function unenforcedGuardNote(block: LegoBlock, node: ChainNode): string | null {
     case "guard-approval":
       return "Human gate is designed but not enforced: the v1.1 policy has no per-run approval step. The signed policy is the only authority, bounded by its amount.";
     case "guard-spend":
-      return `Spend ceiling (${node.params.cap ?? "?"}) is designed but not enforced: the v1.1 policy tracks no cumulative budget. The only onchain bound is the single step amount you sign.`;
+      return `Spend ceiling (${node.params.cap ?? "?"}) is designed but not enforced: the v1.1 policy tracks no cumulative budget. The onchain spend bounds are the fixed step amounts you sign.`;
     case "guard-executor":
       return node.params.access === "Owner only"
         ? "Executor access is set to Owner only, but the v1.1 one-shot intent cannot restrict who submits a zero-fee execution. This owner-only choice is enforced by v3/v3.1 automation, not by Zap now."
@@ -224,10 +233,23 @@ export function reduceChainToLivePolicy(
     );
   }
   for (const entry of sources) {
-    // Both sources are the same onchain fact — an exact ERC-20 pull from the
-    // owner wallet. `lp-position` pulls the ozRANGE share token, which IS an
-    // ERC-20; the lp shape only decides which blocks can seat below it.
-    if (entry.block.id === "wallet-balance" || entry.block.id === "lp-position") {
+    // All three sources reduce to the same onchain fact: an exact ERC-20 amount
+    // sitting in the capsule when the run starts. `lp-position` pulls the
+    // ozRANGE share token, which IS an ERC-20; the lp shape only decides which
+    // blocks can seat below it.
+    //
+    // `bridge` differs only in HOW the tokens arrive — Across delivers them to
+    // the capsule's deterministic address instead of the owner transferring
+    // them — and an Across V3 fill is exact-output, so the arriving quantity is
+    // known when the policy is signed, exactly like a wallet pull. The bridge
+    // leg itself is not bound by the policy and must never be described as if
+    // it were; what the capsule binds begins at arrival.
+    if (
+      entry.block.id === "wallet-balance"
+      || entry.block.id === "lp-position"
+      || entry.block.id === "vault-position"
+      || entry.block.id === "bridge"
+    ) {
       source ??= entry;
       continue;
     }
@@ -246,8 +268,11 @@ export function reduceChainToLivePolicy(
       parseRouterAmount(raw);
       amountIn = raw;
     } catch (error) {
+      // Named from the block that actually failed. There are three source
+      // blocks now, so a hardcoded "Wallet balance" would point a user at a
+      // card that is not on their canvas.
       reasons.push(
-        `Wallet balance amount ${raw ? `"${raw}"` : "is empty and"} cannot be deployed: ${error instanceof Error ? error.message : String(error)}`,
+        `${source.block.name} amount ${raw ? `"${raw}"` : "is empty and"} cannot be deployed: ${error instanceof Error ? error.message : String(error)}`,
       );
     }
   }
@@ -541,7 +566,8 @@ function resolveStep(
   }
   if (position > 1) {
     try {
-      parseRouterAmount(amountIn);
+      const route = resolveRouteById(adapter.id, adapters);
+      parseRouterAmount(amountIn, route?.tokenIn.decimals ?? 18);
     } catch (error) {
       return {
         ok: false,
@@ -669,12 +695,9 @@ function strandingNotices(steps: readonly LiveStep[]): string[] {
 /**
  * Reduce a builder chain to the one deployed route the deploy handoff can sign.
  *
- * `/app` signs SINGLE-STEP capsules — one adapter call — resolved by route id.
- * So this accepts any single-step policy whose one step runs through a deployed
- * adapter (the bounded swap, the USDG pool, or a vault deposit) and hands `/app`
- * the `routeId` to sign. A MULTI-STEP capsule is still refused: `/app` has no
- * way to sign it, and an enabled CTA that creates a different capsule from the
- * one on the canvas is the same broken promise as an unenforced guard.
+ * `/zap?view=sign` resolves every ordered route id through the same deployment
+ * manifest and signs the exact fixed amounts below. Single-step links keep
+ * their established route/amount fields; multi-step links add `policyToken`.
  *
  * The vault seeding gate is NOT applied here (this reducer is pure — no RPC):
  * `/app` reads `vault.totalSupply() > 0` on import and refuses an unseeded vault
@@ -687,14 +710,24 @@ export function reduceChainToLiveRoute(
   const policy = reduceChainToLivePolicy(chain, adapters);
   if (!policy.deployable) return { deployable: false, reasons: policy.reasons };
 
-  if (policy.steps.length > 1) {
-    const rest = policy.steps.slice(1);
-    const named = rest.map((step) => `${step.position} (${step.label})`).join(", ");
+  const steps = policy.steps.map((step) => ({
+    routeId: step.adapterId,
+    amountIn: step.amountIn,
+  }));
+  const policyToken = encodeLivePolicyPlan(steps);
+
+  // The contract accepts arbitrary fixed steps, but the product accepts only a
+  // lineage-safe chain. Every non-final adapter must bind the NEXT fixed amount
+  // in calldata; otherwise an under-producing step could consume old capsule
+  // dust. `resolveLivePolicyPlan` also checks continuity, settlement delta, and
+  // the 16-asset recovery ceiling against the shipped route manifest.
+  try {
+    if (steps.length > 1) resolveLivePolicyPlan({ version: 1, steps });
+  } catch (error) {
     return {
       deployable: false,
       reasons: [
-        `This design reduces to a ${policy.steps.length}-step capsule, and the deploy page signs single-step capsules only — one adapter call. ${rest.length === 1 ? "Step" : "Steps"} ${named} would have nowhere to be signed, so no Deploy button is offered rather than one that creates a capsule this design did not describe.`,
-        ...policy.notices,
+        `This ${policy.steps.length}-step design cannot be handed to Zap now safely: ${error instanceof Error ? error.message : String(error)}`,
       ],
     };
   }
@@ -703,10 +736,17 @@ export function reduceChainToLiveRoute(
   // This reducer cannot read the chain, so it cannot know if a vault is seeded.
   // A vault route deploys only while the vault holds shares; say so verbatim so
   // the CTA does not read as a promise the /app seed gate will then refuse.
+  const seedBound = policy.steps.some(
+    (candidate) =>
+      candidate.kind === "vault-deposit"
+      || candidate.kind === "vault-redeem"
+      || candidate.kind === "lp-deposit"
+      || candidate.kind === "lp-withdraw",
+  );
   const seedNote =
-    step.kind === "vault-deposit" || step.kind === "vault-redeem"
+    seedBound
       ? [
-          "This vault route deploys only while the vault is seeded (totalSupply > 0). An unseeded ERC-4626 is grief-able, so the live app refuses one — the capsule may not be creatable yet.",
+          "This policy includes a vault-backed route and deploys only while every required vault is seeded (totalSupply > 0). The static builder cannot prove that state, so it withholds the handoff; RPC-backed signing surfaces must fail closed when the proof is unavailable.",
         ]
       : [];
   return {
@@ -715,6 +755,8 @@ export function reduceChainToLiveRoute(
     // tokens and their decimals, and the Step.data encoding from it — never from
     // `direction`, which is null for everything but the bounded pair.
     routeId: step.adapterId,
+    steps,
+    policyToken,
     direction: policy.direction,
     amountIn: policy.amountIn,
     slippageBps: policy.slippageBps,

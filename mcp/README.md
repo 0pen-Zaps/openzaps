@@ -10,26 +10,31 @@ way.
 
 ## Install
 
-No build step and no dependencies of its own — it runs from this repo and reuses the executor's
-modules. Add it to your MCP client's config:
+`@openzaps/mcp` is release-ready in [`../packages/mcp`](../packages/mcp) but is not yet published to
+npm. Until publication, protocol contributors can run `node mcp/index.mjs` from this repository.
+After npm publication is verified, the production site may set
+`NEXT_PUBLIC_OPENZAPS_AGENT_KIT_PUBLISHED=true` and advertise this client configuration:
 
 ```json
 {
   "mcpServers": {
     "openzaps": {
-      "command": "node",
-      "args": ["/absolute/path/to/openzaps/mcp/index.mjs"]
+      "command": "npx",
+      "args": ["-y", "@openzaps/mcp"]
     }
   }
 }
 ```
 
-Two commands work without a client, for checking your setup:
+After publication, two commands work without a client:
 
 ```sh
-node mcp/index.mjs identity   # this agent's executor address, or read-only
-node mcp/index.mjs tools      # the tool table with safety classes
+npx -y @openzaps/mcp identity
+npx -y @openzaps/mcp tools
 ```
+
+The Connect surface hides the npx instructions while the publication flag is off, so an unavailable
+package is never presented as an installable release.
 
 ## Connecting an agent to a Zap
 
@@ -37,7 +42,8 @@ There is no pairing artifact and nothing to exchange. An agent is connected to a
 owner has signed a standing intent naming that agent's address in `executor` — the capsule itself
 reverts `ExecutorMismatch` for anyone else.
 
-1. Ask the agent for its address (`agent_identity`), or run `node mcp/index.mjs identity`.
+1. Ask the agent for its public address (`agent_identity`), run `node mcp/index.mjs identity` from a
+   source checkout, or use `npx -y @openzaps/mcp identity` after publication.
 2. Open `/zap?view=connect`, pick the capsule, and choose **Pin one agent**.
 3. Paste the address and sign. The signature is the connection.
 
@@ -63,9 +69,25 @@ Every tool declares a safety class, and the class is part of what the model read
 | `read_intent` | The full signed terms of one authorization. |
 | `check_intent_status` | Is this run due, waiting, finished, or expired right now? |
 | `simulate_run` | Would the capsule accept a run right now — and if not, which guard refuses? |
-| `list_connections` | What is a given agent address allowed to submit? |
+| `list_connections` | Which relay-listed rows name a given agent address? |
 | `draft_intent` | An **unsigned** draft plus the link a human opens to review and sign it. |
 | `explain_error` | What did that revert mean, and is it worth retrying? |
+
+`list_intents` and `list_connections` are keyset-paginated. Their responses include
+`nextCursor` and `incomplete`; pass a non-null cursor into the next call. Intent
+pages default to 50 records and cap at 100, while connection pages default to
+25 records and cap at 50.
+
+Those list results are discovery, not chain-current authority. Connection responses preserve
+`source: "relay"`, `chainVerified: false`, `statusBasis: "relay-open-row"`, and
+`stalePossible: true`; clients must not relabel them as current onchain permission. The packaged
+server uses the same truth labels.
+
+Exact authorization tools (`read_intent`, `check_intent_status`, and
+`simulate_run`) search the local store first, then at most four 100-record relay
+pages scoped to the requested capsule. A bounded miss returns `found: false`.
+When it also returns `incomplete: true`, pass `nextCursor` back to the same tool
+to continue instead of reporting that the authorization does not exist.
 
 ### `publish` — moves an artifact the owner already signed; cannot create authority
 
@@ -90,16 +112,17 @@ send a transaction rather than merely instructed not to.
 
 ## Configuration
 
-All of it optional, and all shared with the executor daemon ([`executor/config.mjs`](../executor/config.mjs)):
+All configuration is optional. Discovery identity is explicitly separate from
+the executor daemon’s signing credential:
 
 | Variable | Default | Purpose |
 |---|---|---|
 | `OPENZAPS_APP_URL` | `https://www.0xzaps.com` | Where the read APIs live. Point at a dev server to work against a branch. |
 | `OPENZAPS_RPC_URL` / `OPENZAPS_RPC_URLS` | Robinhood Chain mainnet | Chain reads. |
-| `OPENZAPS_EXECUTOR_KEYFILE` | — | Only used to *derive an address* for `agent_identity`. Never used to sign. |
+| `OPENZAPS_AGENT_ADDRESS` | — | Optional public address reported by `agent_identity`. No private key is read or derived. |
 
-Without a key the server reports `mode: "read-only"` and has no address to pin — the honest state for
-an agent that is not set up to submit anything.
+Without a public address the server reports `mode: "read-only"` and makes no
+claim that an executor is configured.
 
 ## Safety notes
 
@@ -112,4 +135,10 @@ an agent that is not set up to submit anything.
   happened. Do not report a run as executed without a transaction hash.
 - **No unbounded chain-read string may reach a tool result.** Relay fields are regex-bounded and
   symbols come from fixed tables; keep it that way, or a capsule could inject text into a model's
-  context.
+  context. The stdio boundary enforces every advertised input schema itself (clients are not
+  trusted to do so), caps API response bytes before parsing, and projects profile, capsule, intent,
+  and connection responses into bounded validated shapes before they reach the model.
+- **Packaged stdio requests are serialized and backpressured.** A bounded queue prevents a
+  pipelined client from multiplying 20-second HTTP calls and response buffers. Its policy simulator
+  also advertises and enforces exact canonical decimal ranges for Solidity `uint256` and `uint64`
+  fields, rather than accepting every string with the same digit count.

@@ -15,11 +15,11 @@ import { BLOCKS, RECIPES, type LegoBlock } from "@/lib/blocks";
 export const AGENT_MODEL = process.env.OPENZAPS_AGENT_MODEL ?? "claude-opus-5";
 
 /**
- * The first eleven recipes are the deployable set, held to that claim by deployable.test.ts.
+ * The first twelve recipes are the deployable set, held to that claim by deployable.test.ts.
  * Citing anything past that boundary in the prompt would teach the model to propose designs the
  * compiler then refuses — a worse experience than not suggesting them at all.
  */
-export const DEPLOYABLE_RECIPE_COUNT = 11;
+export const DEPLOYABLE_RECIPE_COUNT = 12;
 
 /**
  * Blocks the model may propose.

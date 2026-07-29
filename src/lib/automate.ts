@@ -6,8 +6,11 @@ import type { Address, Hex } from "viem";
 import {
   BPS,
   computeExecutorFeeSplit,
+  isValidStackBps,
+  slippageClearsFee,
   type RecurringIntent,
   type RecurringRelativeIntent,
+  type RecurringStackIntent,
   type TriggerIntent,
 } from "@/lib/executions";
 import { BOUNDED_SWAP_IDS } from "@/lib/chains";
@@ -361,6 +364,61 @@ export function draftRecurringRelativeIntent(input: RecurringRelativeDraftInput)
     outAsset: input.outAsset,
     priceSource: input.priceSource,
     maxSlippageBps: Math.min(Math.max(Math.trunc(input.maxSlippageBps), 1), 9_999),
+  };
+}
+
+/** The stack sizes the UI offers, phrased as the share of each run that becomes 0xZAPS. */
+export const STACK_PRESETS: readonly { id: string; label: string; bps: number }[] = [
+  { id: "1", label: "1% of every run", bps: 100 },
+  { id: "5", label: "5% of every run", bps: 500 },
+  { id: "10", label: "10% of every run", bps: 1_000 },
+  { id: "25", label: "25% of every run", bps: 2_500 },
+] as const;
+
+export interface RecurringStackDraftInput extends RecurringRelativeDraftInput {
+  /** Prices `outAsset` -> 0xZAPS. Omit ONLY when `outAsset` already is 0xZAPS. */
+  stackPriceSource?: Address | null;
+  /** The 0xZAPS token address, so the draft can enforce the source/no-source rule the capsule checks. */
+  zaps: Address;
+  stackBps: number;
+}
+
+/**
+ * Draft a 0xZAPS-stacking recurring intent: the relative-floor draft plus the signed slice.
+ *
+ * Three bounds are enforced HERE rather than left to the capsule, because a signature the capsule
+ * will always reject is worse than an error — the user pays a wallet interaction for an authorization
+ * that can never run:
+ *   1. `stackBps` must be a real slice (the capsule reverts `InvalidStackBps` otherwise).
+ *   2. `maxSlippageBps` must exceed the 1% fee, or every run reverts forever (`SlippageBelowFee`).
+ *   3. `stackPriceSource` must be present exactly when a conversion leg exists — absent when the
+ *      output already IS 0xZAPS, present when it is not (`StackSourceMismatch`).
+ */
+export function draftRecurringStackIntent(input: RecurringStackDraftInput): RecurringStackIntent {
+  if (!isValidStackBps(input.stackBps)) {
+    throw new Error("The 0xZAPS slice must be greater than 0% and less than 100% of each run.");
+  }
+  if (!slippageClearsFee(input.maxSlippageBps)) {
+    throw new Error(
+      "Slippage tolerance must be above 1% — the per-run floor is checked after the 1% protocol fee, " +
+        "so a tighter band would block every run of the series.",
+    );
+  }
+  const outIsZaps = input.outAsset.toLowerCase() === input.zaps.toLowerCase();
+  const stackPriceSource = input.stackPriceSource ?? OPEN_EXECUTOR;
+  const hasSource = stackPriceSource !== OPEN_EXECUTOR;
+  if (outIsZaps && hasSource) {
+    throw new Error("This zap already outputs 0xZAPS, so it needs no conversion price source.");
+  }
+  if (!outIsZaps && !hasSource) {
+    throw new Error("A price source is required to floor the 0xZAPS conversion for this output asset.");
+  }
+
+  const base = draftRecurringRelativeIntent(input);
+  return {
+    ...base,
+    stackPriceSource,
+    stackBps: Math.trunc(input.stackBps),
   };
 }
 

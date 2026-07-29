@@ -77,7 +77,7 @@ describe("the system prompt", () => {
   });
 
   it("cites only recipes from the deployable set", () => {
-    // deployable.test.ts holds the first eleven recipes to that claim. Citing
+    // deployable.test.ts holds the first twelve recipes to that claim. Citing
     // past that boundary would teach the model to propose designs the compiler
     // then refuses.
     const deployable = RECIPES.slice(0, DEPLOYABLE_RECIPE_COUNT);

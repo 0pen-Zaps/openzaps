@@ -2,7 +2,7 @@
 // (The full on-chain buyZaps path is covered end-to-end in e2e-local.mjs against anvil.)
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { planPotConversion, gasHealth } from "./keeper.mjs";
+import { convertPotFees, planPotConversion, gasHealth } from "./keeper.mjs";
 
 const Q96 = 1n << 96n;
 const ONE = 1_000_000_000_000_000_000n; // 1e18
@@ -61,4 +61,104 @@ test("gasHealth: ok with a comfortable cushion", () => {
   const perRun = MIN;
   const h = gasHealth({ balanceWei: perRun * 50n, perRunWei: perRun, warnRuns: 10 });
   assert.equal(h.level, "ok");
+});
+
+test("pot conversion obeys the shared pre-broadcast nonce-lane gate", async () => {
+  let broadcasts = 0;
+  const result = await convertPotFees({
+    publicClient: {
+      readContract: async ({ functionName }) => (functionName === "balanceOf" ? ONE : 2n * Q96),
+      simulateContract: async () => ({ request: { address: "0x0000000000000000000000000000000000000001" } }),
+    },
+    walletClient: {
+      account: { address: "0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC" },
+      writeContract: async () => {
+        broadcasts += 1;
+        return `0x${"12".repeat(32)}`;
+      },
+    },
+    cfg: {
+      lotteryPot: "0x0000000000000000000000000000000000000001",
+      poolPriceSource: "0x0000000000000000000000000000000000000002",
+      feeAsset: "0x0000000000000000000000000000000000000003",
+      convertMinWei: MIN,
+      convertSlippageBps: 300,
+      maxFeePerGasWei: 2_000_000_000n,
+    },
+    canBroadcast: async () => ({
+      allowed: false,
+      outcome: "nonce-lane-pending",
+      detail: "executor nonce lane has one unresolved transaction",
+    }),
+  });
+
+  assert.equal(result.outcome, "nonce-lane-pending");
+  assert.equal(broadcasts, 0);
+});
+
+test("pot conversion reports confirmation-pending after broadcast instead of broadcast-failed", async () => {
+  const hash = `0x${"34".repeat(32)}`;
+  const result = await convertPotFees({
+    publicClient: {
+      readContract: async ({ functionName }) => (functionName === "balanceOf" ? ONE : 2n * Q96),
+      simulateContract: async () => ({ request: { address: "0x0000000000000000000000000000000000000001" } }),
+      getBlock: async () => ({ baseFeePerGas: 1n }),
+      waitForTransactionReceipt: async () => {
+        throw new Error("timeout");
+      },
+    },
+    walletClient: {
+      account: { address: "0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC" },
+      writeContract: async () => hash,
+    },
+    cfg: {
+      lotteryPot: "0x0000000000000000000000000000000000000001",
+      poolPriceSource: "0x0000000000000000000000000000000000000002",
+      feeAsset: "0x0000000000000000000000000000000000000003",
+      convertMinWei: MIN,
+      convertSlippageBps: 300,
+      maxFeePerGasWei: 2_000_000_000n,
+    },
+  });
+
+  assert.equal(result.outcome, "confirmation-pending");
+  assert.equal(result.txHash, hash);
+});
+
+test("pot conversion fails closed when the pending base fee is unreadable or above its cap", async (t) => {
+  for (const [name, getBlock, expected] of [
+    ["unreadable", async () => { throw new Error("pending fee unavailable"); }, "fee-market-unknown"],
+    ["above cap", async () => ({ baseFeePerGas: 2_000_000_001n }), "gas-above-cap"],
+  ]) {
+    await t.test(name, async () => {
+      let broadcasts = 0;
+      const result = await convertPotFees({
+        publicClient: {
+          readContract: async ({ functionName }) => (functionName === "balanceOf" ? ONE : 2n * Q96),
+          simulateContract: async () => ({
+            request: { address: "0x0000000000000000000000000000000000000001" },
+          }),
+          getBlock,
+        },
+        walletClient: {
+          account: { address: "0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC" },
+          writeContract: async () => {
+            broadcasts += 1;
+            return `0x${"56".repeat(32)}`;
+          },
+        },
+        cfg: {
+          lotteryPot: "0x0000000000000000000000000000000000000001",
+          poolPriceSource: "0x0000000000000000000000000000000000000002",
+          feeAsset: "0x0000000000000000000000000000000000000003",
+          convertMinWei: MIN,
+          convertSlippageBps: 300,
+          maxFeePerGasWei: 2_000_000_000n,
+        },
+      });
+
+      assert.equal(result.outcome, expected);
+      assert.equal(broadcasts, 0);
+    });
+  }
 });

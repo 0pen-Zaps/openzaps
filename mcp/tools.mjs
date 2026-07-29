@@ -21,15 +21,33 @@ import { readFileSync } from "node:fs";
 import { getAddress, isAddressEqual, zeroAddress } from "viem";
 
 import { evaluateRecurring, evaluateTrigger, submitExecution } from "../executor/engine.mjs";
-import { fetchRelayIntents } from "../executor/relay-source.mjs";
 import { loadIntents, validateIntentObject } from "../executor/store.mjs";
-import { appGet } from "./config.mjs";
+import { appGet, boundedResponseJson } from "./config.mjs";
 
 export const READ_ONLY = "read-only";
 export const PUBLISH = "publish";
 
 const ADDRESS = { type: "string", pattern: "^0x[0-9a-fA-F]{40}$" };
 const UINT = { type: "string", pattern: "^[0-9]{1,78}$" };
+const UINT_PATTERN = /^[0-9]{1,78}$/;
+const CURSOR = { type: "string", pattern: "^[A-Za-z0-9_-]{1,512}$" };
+const RELAY_CURSOR = /^[A-Za-z0-9_-]{1,512}$/;
+const RELAY_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const INTENT_LIST_DEFAULT_LIMIT = 50;
+const INTENT_LIST_MAX_LIMIT = 100;
+const CONNECTION_LIST_DEFAULT_LIMIT = 25;
+const CONNECTION_LIST_MAX_LIMIT = 50;
+const FIND_INTENT_PAGE_LIMIT = 100;
+const FIND_INTENT_MAX_PAGES = 4;
+const INTENT_STATUSES = new Set(["open", "consumed", "expired"]);
+const INTENT_KINDS = new Set(["recurring", "recurring-relative", "recurring-stack", "trigger"]);
+const RELAY_CONNECTION_DISCLAIMER =
+  "Relay-discovered signed authorizations only. Open is not current chain status; verify the capsule at a pinned canonical block before execution.";
+const PROFILE_ZAP_LIMIT = 200;
+const ZAP_ACTIVITY_LIMIT = 200;
+const MODEL_VALUE_MAX_DEPTH = 12;
+const MODEL_VALUE_MAX_NODES = 5_000;
+const MODEL_STRING_MAX_CHARS = 32_768;
 
 // ---------------------------------------------------------------------------
 // Shared helpers
@@ -46,23 +64,461 @@ function authorizationIdOf(item) {
  * while the relay is a shared pool anyone can publish into. Both are re-validated by the same
  * schema gate and both are re-verified onchain, so the ordering is about provenance, not trust.
  */
-async function findIntent(ctx, zapRaw, authorizationId) {
+async function findIntent(ctx, zapRaw, authorizationId, { cursor: initialCursor = null } = {}) {
   const zap = getAddress(zapRaw);
+  if (typeof authorizationId !== "string" || !UINT_PATTERN.test(authorizationId)) {
+    throw new Error("authorizationId is malformed");
+  }
+  if (initialCursor !== null && (typeof initialCursor !== "string" || !RELAY_CURSOR.test(initialCursor))) {
+    throw new Error("intent lookup cursor is malformed");
+  }
   const wanted = BigInt(authorizationId);
   const matches = (item) => isAddressEqual(getAddress(item.intent.zap), zap) && authorizationIdOf(item) === wanted;
 
-  const local = loadIntents(ctx.cfg.intentsDir);
-  const localHit = local.ok.find(matches);
-  if (localHit) return { ...localHit, source: "local" };
-
-  if (ctx.cfg.relayUrl) {
-    const relay = await fetchRelayIntents(ctx.cfg.relayUrl);
-    const relayHit = relay.ok.find(matches);
-    if (relayHit) return relayHit;
+  let local;
+  try {
+    local = loadIntents(ctx.cfg.intentsDir);
+  } catch (error) {
+    if (error?.code !== "ENOENT") throw error;
+    local = { ok: [], bad: [] };
   }
-  throw new Error(
-    `No signed authorization ${authorizationId} found for ${zap} in the local store or the relay.`,
+  const localHit = local.ok.find(matches);
+  if (localHit) {
+    return {
+      item: { ...localHit, source: "local" },
+      incomplete: false,
+      nextCursor: null,
+      pagesSearched: 0,
+      recordsSearched: 0,
+      invalidRecords: 0,
+    };
+  }
+
+  if (!ctx.cfg.relayUrl) {
+    return {
+      item: null,
+      incomplete: false,
+      nextCursor: null,
+      pagesSearched: 0,
+      recordsSearched: 0,
+      invalidRecords: 0,
+    };
+  }
+
+  let cursor = initialCursor;
+  const seen = new Set(cursor ? [cursor] : []);
+  let pagesSearched = 0;
+  let recordsSearched = 0;
+  let invalidRecords = 0;
+
+  while (pagesSearched < FIND_INTENT_MAX_PAGES) {
+    const params = new URLSearchParams({
+      status: "open",
+      zap,
+      limit: String(FIND_INTENT_PAGE_LIMIT),
+    });
+    if (cursor) params.set("cursor", cursor);
+    const path = `/api/intents?${params.toString()}`;
+    const response = await fetch(`${ctx.cfg.relayUrl}${path}`, {
+      cache: "no-store",
+      signal: AbortSignal.timeout(15_000),
+    });
+    if (!response.ok) {
+      throw new Error(`GET ${path} returned HTTP ${response.status}`);
+    }
+    const body = await boundedResponseJson(response, 1_048_576, `GET ${path}`);
+    if (!Array.isArray(body?.intents) || body.intents.length > FIND_INTENT_PAGE_LIMIT) {
+      throw new Error("relay returned an invalid intent page");
+    }
+
+    pagesSearched += 1;
+    recordsSearched += body.intents.length;
+    for (const record of body.intents) {
+      try {
+        if (typeof record?.id !== "string" || !RELAY_ID.test(record.id)) {
+          throw new Error("relay row id is malformed");
+        }
+        const item = validateIntentObject({
+          kind: record.kind,
+          intent: record.intent,
+          signature: record.signature,
+        });
+        if (matches(item)) {
+          return {
+            item: {
+              ...item,
+              file: `relay:${record.id.toLowerCase()}`,
+              source: "relay",
+              relayId: record.id.toLowerCase(),
+            },
+            incomplete: false,
+            nextCursor: null,
+            pagesSearched,
+            recordsSearched,
+            invalidRecords,
+          };
+        }
+      } catch {
+        invalidRecords += 1;
+      }
+    }
+
+    const nextCursor = nextCursorOf(body, "relay intent search");
+    if (nextCursor !== null) {
+      if (seen.has(nextCursor)) throw new Error("relay returned a repeated intent cursor");
+      seen.add(nextCursor);
+    }
+    cursor = nextCursor;
+    if (!cursor) {
+      return {
+        item: null,
+        incomplete: false,
+        nextCursor: null,
+        pagesSearched,
+        recordsSearched,
+        invalidRecords,
+      };
+    }
+  }
+
+  return {
+    item: null,
+    incomplete: true,
+    nextCursor: cursor,
+    pagesSearched,
+    recordsSearched,
+    invalidRecords,
+  };
+}
+
+function lookupEnvelope(result) {
+  return {
+    found: result.item !== null,
+    incomplete: result.incomplete,
+    truncated: result.incomplete,
+    nextCursor: result.nextCursor,
+    pagesSearched: result.pagesSearched,
+    recordsSearched: result.recordsSearched,
+    invalidRecords: result.invalidRecords,
+  };
+}
+
+function missingIntentResult(result, zap, authorizationId) {
+  return {
+    ...lookupEnvelope(result),
+    zap: getAddress(zap),
+    authorizationId: String(authorizationId),
+    detail: result.incomplete
+      ? `No matching signed authorization was found within this bounded search. Continue with cursor ${result.nextCursor}.`
+      : "No matching signed authorization was found in the local store or the complete relay search.",
+  };
+}
+
+function nextCursorOf(body, label) {
+  const value = body?.nextCursor;
+  if (value === undefined || value === null || value === "") return null;
+  if (typeof value !== "string" || !RELAY_CURSOR.test(value)) {
+    throw new Error(`${label} returned a malformed cursor`);
+  }
+  return value;
+}
+
+function paginationArgs(limitRaw, cursorRaw, defaultLimit, maxLimit, label) {
+  const limit = limitRaw ?? defaultLimit;
+  if (!Number.isInteger(limit) || limit < 1 || limit > maxLimit) {
+    throw new Error(`${label} limit must be an integer from 1 to ${maxLimit}`);
+  }
+  if (
+    cursorRaw !== undefined
+    && cursorRaw !== null
+    && (typeof cursorRaw !== "string" || !RELAY_CURSOR.test(cursorRaw))
+  ) {
+    throw new Error(`${label} cursor is malformed`);
+  }
+  return { limit, cursor: cursorRaw ?? null };
+}
+
+function objectValue(value, label) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error(`${label} must be an object`);
+  }
+  return value;
+}
+
+function stringValue(value, label, maxLength, pattern = null) {
+  if (
+    typeof value !== "string"
+    || value.length === 0
+    || value.length > maxLength
+    || (pattern && !pattern.test(value))
+  ) {
+    throw new Error(`${label} is malformed`);
+  }
+  return value;
+}
+
+function addressValue(value, label) {
+  try {
+    return getAddress(stringValue(value, label, 42));
+  } catch {
+    throw new Error(`${label} is not a 20-byte hex address`);
+  }
+}
+
+function decimalValue(value, label) {
+  return stringValue(value, label, 78, /^[0-9]+$/);
+}
+
+function timestampValue(value, label) {
+  const timestamp = stringValue(value, label, 64);
+  if (!Number.isFinite(Date.parse(timestamp))) throw new Error(`${label} is not an ISO timestamp`);
+  return timestamp;
+}
+
+function nonnegativeInteger(value, label) {
+  if (!Number.isSafeInteger(value) || value < 0) throw new Error(`${label} is not a non-negative integer`);
+  return value;
+}
+
+function nullableNonnegativeInteger(value, label) {
+  return value === null ? null : nonnegativeInteger(value, label);
+}
+
+function projectIntentSummary(record, index) {
+  const row = objectValue(record, `intent list row ${index}`);
+  const intent = objectValue(row.intent, `intent list row ${index}.intent`);
+  if (!INTENT_KINDS.has(row.kind)) throw new Error(`intent list row ${index}.kind is malformed`);
+  if (!INTENT_STATUSES.has(row.status)) throw new Error(`intent list row ${index}.status is malformed`);
+  return {
+    id: stringValue(row.id, `intent list row ${index}.id`, 36, RELAY_ID),
+    zap: addressValue(row.zap, `intent list row ${index}.zap`),
+    owner: addressValue(row.owner, `intent list row ${index}.owner`),
+    kind: row.kind,
+    status: row.status,
+    createdAt: timestampValue(row.createdAt, `intent list row ${index}.createdAt`),
+    executor: addressValue(intent.executor, `intent list row ${index}.intent.executor`),
+    recipient: addressValue(intent.recipient, `intent list row ${index}.intent.recipient`),
+  };
+}
+
+function assertIntentMatchesFilters(intent, requestedFilters, index) {
+  if (intent.status !== requestedFilters.status) {
+    throw new Error(`intent list row ${index}.status does not match the request`);
+  }
+  for (const key of ["owner", "zap", "executor"]) {
+    const requested = requestedFilters[key];
+    if (requested && !isAddressEqual(intent[key], requested)) {
+      throw new Error(`intent list row ${index}.${key} does not match the request`);
+    }
+  }
+}
+
+function projectProfile(profileRaw, requestedOwner) {
+  const profile = objectValue(profileRaw, "profile response");
+  const owner = addressValue(profile.owner, "profile.owner");
+  if (!isAddressEqual(owner, requestedOwner)) throw new Error("profile response owner does not match the request");
+  if (profile.sourceStatus !== "live" && profile.sourceStatus !== "degraded") {
+    throw new Error("profile.sourceStatus is malformed");
+  }
+  const stats = objectValue(profile.stats, "profile.stats");
+  const executedVolume = objectValue(stats.executedVolume, "profile.stats.executedVolume");
+  if (Object.keys(executedVolume).length > 32) throw new Error("profile executed-volume map is too large");
+  const projectedVolume = Object.fromEntries(
+    Object.entries(executedVolume).map(([symbol, amount]) => [
+      stringValue(symbol, "profile executed-volume symbol", 64),
+      decimalValue(amount, `profile executed volume for ${symbol}`),
+    ]),
   );
+  if (!Array.isArray(profile.zaps) || profile.zaps.length > PROFILE_ZAP_LIMIT) {
+    throw new Error(`profile response must contain at most ${PROFILE_ZAP_LIMIT} zaps`);
+  }
+  return {
+    owner,
+    sourceStatus: profile.sourceStatus,
+    stats: {
+      zapsCreated: nonnegativeInteger(stats.zapsCreated, "profile.stats.zapsCreated"),
+      oneShotExecutions: nonnegativeInteger(stats.oneShotExecutions, "profile.stats.oneShotExecutions"),
+      automatedRuns: nonnegativeInteger(stats.automatedRuns, "profile.stats.automatedRuns"),
+      recoveries: nonnegativeInteger(stats.recoveries, "profile.stats.recoveries"),
+      authorizationsRevoked: nonnegativeInteger(
+        stats.authorizationsRevoked,
+        "profile.stats.authorizationsRevoked",
+      ),
+      executedVolume: projectedVolume,
+    },
+    zaps: profile.zaps.map((zapRaw, index) => {
+      const zap = objectValue(zapRaw, `profile.zaps[${index}]`);
+      if (!["v1.1", "v3", "v3.1", "v3.2"].includes(zap.lineage)) {
+        throw new Error(`profile.zaps[${index}].lineage is malformed`);
+      }
+      return {
+        address: addressValue(zap.address, `profile.zaps[${index}].address`),
+        lineage: zap.lineage,
+        executionCount: nonnegativeInteger(zap.executionCount, `profile.zaps[${index}].executionCount`),
+        automatedRunCount: nonnegativeInteger(
+          zap.automatedRunCount,
+          `profile.zaps[${index}].automatedRunCount`,
+        ),
+        lastActivityAt: nullableNonnegativeInteger(
+          zap.lastActivityAt,
+          `profile.zaps[${index}].lastActivityAt`,
+        ),
+      };
+    }),
+  };
+}
+
+function projectConnectionPage(bodyRaw, requestedAgent, limit, nextCursor) {
+  const body = objectValue(bodyRaw, "connection list response");
+  const agent = addressValue(body.agent, "connection list agent");
+  if (!isAddressEqual(agent, requestedAgent)) {
+    throw new Error("connection list agent does not match the request");
+  }
+  if (!Array.isArray(body.connections) || body.connections.length > limit) {
+    throw new Error("connection list returned an invalid page");
+  }
+  const relayTruth = relayTruthMetadata(body, "connection list response");
+  let authorizationCount = 0;
+  const connections = body.connections.map((connectionRaw, index) => {
+    const row = objectValue(connectionRaw, `connection list row ${index}`);
+    const zap = addressValue(row.zap, `connection list row ${index}.zap`);
+    const owner = addressValue(row.owner, `connection list row ${index}.owner`);
+    const connection = objectValue(row.connection, `connection list row ${index}.connection`);
+    if (!["open", "self", "pinned"].includes(connection.state)) {
+      throw new Error(`connection list row ${index}.connection.state is malformed`);
+    }
+    if (connection.state === "open") {
+      throw new Error(
+        `connection list row ${index}.connection.state cannot be open for an agent-filtered response`,
+      );
+    }
+    const expectedState = isAddressEqual(owner, requestedAgent) ? "self" : "pinned";
+    if (connection.state !== expectedState) {
+      throw new Error(
+        `connection list row ${index}.connection.state does not match its owner and requested agent`,
+      );
+    }
+    const connectionAgent = addressValue(
+      connection.agent,
+      `connection list row ${index}.connection.agent`,
+    );
+    if (!isAddressEqual(connectionAgent, requestedAgent)) {
+      throw new Error(`connection list row ${index}.connection.agent does not match the request`);
+    }
+    const projectedConnection = { state: connection.state, agent: connectionAgent };
+    if (!Array.isArray(row.authorizations) || row.authorizations.length === 0) {
+      throw new Error(`connection list row ${index}.authorizations must be a non-empty array`);
+    }
+    authorizationCount += row.authorizations.length;
+    if (authorizationCount > limit) throw new Error("connection list returned too many authorizations");
+    const authorizations = row.authorizations.map((authorizationRaw, authorizationIndex) => {
+      const label = `connection list row ${index}.authorizations[${authorizationIndex}]`;
+      const authorization = objectValue(authorizationRaw, label);
+      if (!INTENT_KINDS.has(authorization.kind)) throw new Error(`${label}.kind is malformed`);
+      return {
+        id: stringValue(authorization.id, `${label}.id`, 36, RELAY_ID),
+        kind: authorization.kind,
+        publishedAt: timestampValue(authorization.publishedAt, `${label}.publishedAt`),
+        authorizationId: decimalValue(authorization.authorizationId, `${label}.authorizationId`),
+        recipient: addressValue(authorization.recipient, `${label}.recipient`),
+        outAsset: addressValue(authorization.outAsset, `${label}.outAsset`),
+        deadline: decimalValue(authorization.deadline, `${label}.deadline`),
+        interval:
+          authorization.interval === null
+            ? null
+            : decimalValue(authorization.interval, `${label}.interval`),
+        maxRuns:
+          authorization.maxRuns === null
+            ? null
+            : nonnegativeInteger(authorization.maxRuns, `${label}.maxRuns`),
+      };
+    });
+    return { zap, owner, connection: projectedConnection, authorizations };
+  });
+  const owners = [
+    ...new Map(connections.map((connection) => [connection.owner.toLowerCase(), connection.owner])).values(),
+  ];
+  return {
+    agent,
+    ...relayTruth,
+    connections,
+    owners,
+    nextCursor,
+    incomplete: nextCursor !== null,
+    readAt: timestampValue(body.readAt, "connection list readAt"),
+  };
+}
+
+function relayTruthMetadata(body, label) {
+  if (body.source !== "relay") throw new Error(`${label}.source must be relay`);
+  if (body.chainVerified !== false) throw new Error(`${label}.chainVerified must be false`);
+  if (body.statusBasis !== "relay-open-row") {
+    throw new Error(`${label}.statusBasis must be relay-open-row`);
+  }
+  if (body.stalePossible !== true) throw new Error(`${label}.stalePossible must be true`);
+  if (body.disclaimer !== RELAY_CONNECTION_DISCLAIMER) {
+    throw new Error(`${label}.disclaimer is malformed`);
+  }
+  return {
+    source: "relay",
+    chainVerified: false,
+    statusBasis: "relay-open-row",
+    stalePossible: true,
+    disclaimer: RELAY_CONNECTION_DISCLAIMER,
+  };
+}
+
+function boundedModelValue(value, label, state = { nodes: 0 }, depth = 0) {
+  state.nodes += 1;
+  if (state.nodes > MODEL_VALUE_MAX_NODES) throw new Error(`${label} contains too many values`);
+  if (depth > MODEL_VALUE_MAX_DEPTH) throw new Error(`${label} is nested too deeply`);
+  if (value === null || typeof value === "boolean") return value;
+  if (typeof value === "number") {
+    if (!Number.isFinite(value)) throw new Error(`${label} contains a non-finite number`);
+    return value;
+  }
+  if (typeof value === "string") {
+    if (value.length > MODEL_STRING_MAX_CHARS) throw new Error(`${label} contains an oversized string`);
+    return value;
+  }
+  if (Array.isArray(value)) {
+    if (value.length > ZAP_ACTIVITY_LIMIT) throw new Error(`${label} contains too many rows`);
+    return value.map((entry, index) => boundedModelValue(entry, `${label}[${index}]`, state, depth + 1));
+  }
+  const object = objectValue(value, label);
+  const entries = Object.entries(object);
+  if (entries.length > 200) throw new Error(`${label} contains too many fields`);
+  return Object.fromEntries(
+    entries.map(([key, entry]) => [
+      stringValue(key, `${label} field name`, 128),
+      boundedModelValue(entry, `${label}.${key}`, state, depth + 1),
+    ]),
+  );
+}
+
+function projectZapDetail(detailRaw) {
+  const detail = objectValue(detailRaw, "zap response");
+  if (!["created", "funded", "executed", "recovered"].includes(detail.lifecycle)) {
+    throw new Error("zap response lifecycle is malformed");
+  }
+  if (!Array.isArray(detail.executions) || detail.executions.length > ZAP_ACTIVITY_LIMIT) {
+    throw new Error(`zap response must contain at most ${ZAP_ACTIVITY_LIMIT} executions`);
+  }
+  if (!Array.isArray(detail.recoveries) || detail.recoveries.length > ZAP_ACTIVITY_LIMIT) {
+    throw new Error(`zap response must contain at most ${ZAP_ACTIVITY_LIMIT} recoveries`);
+  }
+  return {
+    provenance: boundedModelValue(objectValue(detail.provenance, "zap.provenance"), "zap.provenance"),
+    policy: boundedModelValue(objectValue(detail.policy, "zap.policy"), "zap.policy"),
+    stats: boundedModelValue(objectValue(detail.stats, "zap.stats"), "zap.stats"),
+    balances: boundedModelValue(objectValue(detail.balances, "zap.balances"), "zap.balances"),
+    executions: boundedModelValue(detail.executions, "zap.executions"),
+    recoveries: boundedModelValue(detail.recoveries, "zap.recoveries"),
+    lifecycle: detail.lifecycle,
+    headBlock: decimalValue(detail.headBlock, "zap.headBlock"),
+    readAt: timestampValue(detail.readAt, "zap.readAt"),
+    factory: boundedModelValue(objectValue(detail.factory, "zap.factory"), "zap.factory"),
+  };
 }
 
 function describeIntent(item) {
@@ -129,7 +585,7 @@ export const TOOLS = [
     name: "agent_identity",
     safety: READ_ONLY,
     description:
-      "Report this agent's executor address — the address a human pins in a signed intent so that only this agent may submit its runs. Returns read-only when no executor key is configured.",
+      "Report this agent's explicitly configured public address — the address a human may pin in a signed intent. This MCP server never reads or derives it from an executor key.",
     inputSchema: { type: "object", properties: {}, additionalProperties: false },
     async handler(_args, ctx) {
       if (!ctx.executorAddress) {
@@ -137,15 +593,15 @@ export const TOOLS = [
           mode: "read-only",
           executorAddress: null,
           detail:
-            "No executor key is configured, so this agent has no address to pin and cannot submit runs. It can still read capsules, explain policies, and simulate.",
+            "No OPENZAPS_AGENT_ADDRESS is configured, so this discovery server has no public address to propose. It can still read capsules, explain policies, and simulate.",
         };
       }
       return {
-        mode: "executor",
+        mode: "public-address",
         executorAddress: ctx.executorAddress,
         chainId: ctx.cfg.chainId,
         detail:
-          "Pin this address as the executor when signing a standing intent and only this agent may submit its runs. Pinning is a liveness trade: if this agent stops, the series stalls until the owner submits it themselves.",
+          "This is a public identifier, not proof that an executor key exists. If the owner pins it, only that address may submit; pinning remains a liveness trade.",
         howToPin: `${ctx.appUrl}/zap?view=connect&agent=${ctx.executorAddress}`,
       };
     },
@@ -162,19 +618,9 @@ export const TOOLS = [
       additionalProperties: false,
     },
     async handler({ owner }, ctx) {
-      const profile = await appGet(ctx, `/api/profile/${getAddress(owner)}`);
-      return {
-        owner: profile.owner,
-        sourceStatus: profile.sourceStatus,
-        stats: profile.stats,
-        zaps: profile.zaps.map((zap) => ({
-          address: zap.address,
-          lineage: zap.lineage,
-          executionCount: zap.executionCount,
-          automatedRunCount: zap.automatedRunCount,
-          lastActivityAt: zap.lastActivityAt,
-        })),
-      };
+      const requestedOwner = getAddress(owner);
+      const profile = await appGet(ctx, `/api/profile/${requestedOwner}`);
+      return projectProfile(profile, requestedOwner);
     },
   },
 
@@ -190,7 +636,7 @@ export const TOOLS = [
       additionalProperties: false,
     },
     async handler({ address }, ctx) {
-      return appGet(ctx, `/api/zaps/${getAddress(address)}`);
+      return projectZapDetail(await appGet(ctx, `/api/zaps/${getAddress(address)}`));
     },
   },
 
@@ -206,7 +652,7 @@ export const TOOLS = [
       additionalProperties: false,
     },
     async handler({ address }, ctx) {
-      const detail = await appGet(ctx, `/api/zaps/${getAddress(address)}`);
+      const detail = projectZapDetail(await appGet(ctx, `/api/zaps/${getAddress(address)}`));
       const policy = detail.policy;
       return {
         address: getAddress(address),
@@ -248,29 +694,46 @@ export const TOOLS = [
         owner: ADDRESS,
         zap: ADDRESS,
         executor: ADDRESS,
-        status: { type: "string", enum: ["open", "consumed"] },
+        status: { type: "string", enum: ["open", "consumed", "expired"] },
+        limit: { type: "integer", minimum: 1, maximum: INTENT_LIST_MAX_LIMIT },
+        cursor: CURSOR,
       },
       additionalProperties: false,
     },
     async handler(args, ctx) {
+      const status = args.status ?? "open";
+      if (!INTENT_STATUSES.has(status)) throw new Error("intent list status is malformed");
+      const { limit, cursor } = paginationArgs(
+        args.limit,
+        args.cursor,
+        INTENT_LIST_DEFAULT_LIMIT,
+        INTENT_LIST_MAX_LIMIT,
+        "intent list",
+      );
       const params = new URLSearchParams();
+      const requestedFilters = { status };
       for (const key of ["owner", "zap", "executor"]) {
-        if (args[key]) params.set(key, getAddress(args[key]));
+        if (args[key] !== undefined) {
+          const address = getAddress(args[key]);
+          params.set(key, address);
+          requestedFilters[key] = address;
+        }
       }
-      params.set("status", args.status ?? "open");
+      params.set("status", status);
+      params.set("limit", String(limit));
+      if (cursor) params.set("cursor", cursor);
       const body = await appGet(ctx, `/api/intents?${params.toString()}`);
+      if (!Array.isArray(body?.intents) || body.intents.length > limit) {
+        throw new Error("intent list returned an invalid page");
+      }
+      const nextCursor = nextCursorOf(body, "intent list");
+      const intents = body.intents.map(projectIntentSummary);
+      intents.forEach((intent, index) => assertIntentMatchesFilters(intent, requestedFilters, index));
       return {
-        count: body.intents.length,
-        intents: body.intents.map((record) => ({
-          id: record.id,
-          zap: record.zap,
-          owner: record.owner,
-          kind: record.kind,
-          status: record.status,
-          createdAt: record.createdAt,
-          executor: record.intent.executor,
-          recipient: record.intent.recipient,
-        })),
+        count: intents.length,
+        intents,
+        nextCursor,
+        incomplete: nextCursor !== null,
       };
     },
   },
@@ -282,13 +745,17 @@ export const TOOLS = [
       "Read the full signed terms of one standing authorization, from the local store or the relay.",
     inputSchema: {
       type: "object",
-      properties: { zap: ADDRESS, authorizationId: UINT },
+      properties: { zap: ADDRESS, authorizationId: UINT, cursor: CURSOR },
       required: ["zap", "authorizationId"],
       additionalProperties: false,
     },
-    async handler({ zap, authorizationId }, ctx) {
-      const item = await findIntent(ctx, zap, authorizationId);
-      return describeIntent(item);
+    async handler({ zap, authorizationId, cursor }, ctx) {
+      const result = await findIntent(ctx, zap, authorizationId, { cursor });
+      if (!result.item) return missingIntentResult(result, zap, authorizationId);
+      return {
+        ...lookupEnvelope(result),
+        ...describeIntent(result.item),
+      };
     },
   },
 
@@ -299,16 +766,19 @@ export const TOOLS = [
       "Ask the chain whether one authorization is due, waiting, finished, or expired right now. Reads the same state the capsule enforces.",
     inputSchema: {
       type: "object",
-      properties: { zap: ADDRESS, authorizationId: UINT },
+      properties: { zap: ADDRESS, authorizationId: UINT, cursor: CURSOR },
       required: ["zap", "authorizationId"],
       additionalProperties: false,
     },
-    async handler({ zap, authorizationId }, ctx) {
-      const item = await findIntent(ctx, zap, authorizationId);
+    async handler({ zap, authorizationId, cursor }, ctx) {
+      const result = await findIntent(ctx, zap, authorizationId, { cursor });
+      if (!result.item) return missingIntentResult(result, zap, authorizationId);
+      const item = result.item;
       const block = await ctx.publicClient.getBlock({ blockTag: "latest" });
       const evaluate = item.kind === "trigger" ? evaluateTrigger : evaluateRecurring;
       const verdict = await evaluate(ctx.publicClient, item, block.timestamp);
       return {
+        ...lookupEnvelope(result),
         zap: getAddress(zap),
         authorizationId: String(authorizationId),
         kind: item.kind,
@@ -327,24 +797,27 @@ export const TOOLS = [
       "Ask the capsule whether it would accept a run of this authorization right now, and if not, which guard refuses. Never sends a transaction.",
     inputSchema: {
       type: "object",
-      properties: { zap: ADDRESS, authorizationId: UINT },
+      properties: { zap: ADDRESS, authorizationId: UINT, cursor: CURSOR },
       required: ["zap", "authorizationId"],
       additionalProperties: false,
     },
-    async handler({ zap, authorizationId }, ctx) {
-      const item = await findIntent(ctx, zap, authorizationId);
+    async handler({ zap, authorizationId, cursor }, ctx) {
+      const lookup = await findIntent(ctx, zap, authorizationId, { cursor });
+      if (!lookup.item) return missingIntentResult(lookup, zap, authorizationId);
+      const item = lookup.item;
       // The null walletClient IS the guarantee. submitExecution returns
       // { outcome: "watch-only" } on a passing simulation and cannot reach its
       // broadcast branch without a signer — so this is unable to send a
       // transaction, not merely instructed not to.
-      const result = await submitExecution(ctx.publicClient, null, item, ctx.cfg);
+      const submission = await submitExecution(ctx.publicClient, null, item, ctx.cfg);
       return {
+        ...lookupEnvelope(lookup),
         zap: getAddress(zap),
         authorizationId: String(authorizationId),
-        outcome: result.outcome,
-        detail: result.detail,
-        wouldExecute: result.outcome === "watch-only",
-        refusedBy: result.outcome === "simulation-reverted" ? namedError(result.detail) : null,
+        outcome: submission.outcome,
+        detail: submission.detail,
+        wouldExecute: submission.outcome === "watch-only",
+        refusedBy: refusedByForSubmission(submission),
       };
     },
   },
@@ -353,15 +826,31 @@ export const TOOLS = [
     name: "list_connections",
     safety: READ_ONLY,
     description:
-      "List the capsules whose open authorizations pin a given agent address — what that agent is allowed to submit.",
+      "List relay-discovered capsules whose relay rows name an agent address. Rows may be stale and are not proof of chain-current authority.",
     inputSchema: {
       type: "object",
-      properties: { agent: ADDRESS },
+      properties: {
+        agent: ADDRESS,
+        limit: { type: "integer", minimum: 1, maximum: CONNECTION_LIST_MAX_LIMIT },
+        cursor: CURSOR,
+      },
       required: ["agent"],
       additionalProperties: false,
     },
-    async handler({ agent }, ctx) {
-      return appGet(ctx, `/api/agents/${getAddress(agent)}`);
+    async handler({ agent, limit, cursor }, ctx) {
+      const page = paginationArgs(
+        limit,
+        cursor,
+        CONNECTION_LIST_DEFAULT_LIMIT,
+        CONNECTION_LIST_MAX_LIMIT,
+        "connection list",
+      );
+      const params = new URLSearchParams({ limit: String(page.limit) });
+      if (page.cursor) params.set("cursor", page.cursor);
+      const requestedAgent = getAddress(agent);
+      const body = await appGet(ctx, `/api/agents/${requestedAgent}?${params.toString()}`);
+      const nextCursor = nextCursorOf(body, "connection list");
+      return projectConnectionPage(body, requestedAgent, page.limit, nextCursor);
     },
   },
 
@@ -434,6 +923,7 @@ export const TOOLS = [
             intent: { type: "object" },
             signature: { type: "string", pattern: "^0x[0-9a-fA-F]{130,}$" },
           },
+          additionalProperties: false,
         },
       },
     },
@@ -451,11 +941,17 @@ export const TOOLS = [
         body: JSON.stringify(signedIntent),
         signal: AbortSignal.timeout(15_000),
       });
-      const body = await response.json().catch(() => null);
+      const body = await boundedResponseJson(response, 65_536, "relay publish response");
       if (!response.ok) {
-        throw new Error(`relay refused the intent (HTTP ${response.status})${body?.error ? ` — ${body.error}` : ""}`);
+        const detail =
+          typeof body?.error === "string" && body.error.length <= 1_024 ? ` — ${body.error}` : "";
+        throw new Error(`relay refused the intent (HTTP ${response.status})${detail}`);
       }
-      return { published: "relay", id: body?.id ?? null, detail: "Executors can now discover this authorization." };
+      return {
+        published: "relay",
+        id: stringValue(body?.id, "relay publish id", 36, RELAY_ID),
+        detail: "Executors can now discover this authorization.",
+      };
     },
   },
 
@@ -477,6 +973,7 @@ export const TOOLS = [
             intent: { type: "object" },
             signature: { type: "string", pattern: "^0x[0-9a-fA-F]{130,}$" },
           },
+          additionalProperties: false,
         },
       },
     },
@@ -507,8 +1004,11 @@ export const TOOLS = [
       if (!response.ok) {
         throw new Error(`the local executor refused the intent (HTTP ${response.status})`);
       }
-      const body = await response.json().catch(() => ({}));
-      return { delivered: "local-executor", stored: body?.stored ?? null };
+      const body = await boundedResponseJson(response, 65_536, "local executor response");
+      return {
+        delivered: "local-executor",
+        stored: stringValue(body?.stored, "local executor stored filename", 256),
+      };
     },
   },
 
@@ -546,6 +1046,12 @@ function namedError(message) {
   return null;
 }
 
+function refusedByForSubmission(result) {
+  return result?.outcome === "blocked" || result?.outcome === "underfunded"
+    ? namedError(result.detail)
+    : null;
+}
+
 /** Sanity net: a broadcast-capable tool must never be added without a class for it. */
 export function assertNoBroadcastTools(tools = TOOLS) {
   const bad = tools.filter((tool) => tool.safety !== READ_ONLY && tool.safety !== PUBLISH);
@@ -554,4 +1060,4 @@ export function assertNoBroadcastTools(tools = TOOLS) {
   }
 }
 
-export { ERRORS, authorizationIdOf, findIntent, namedError };
+export { ERRORS, authorizationIdOf, findIntent, namedError, refusedByForSubmission };

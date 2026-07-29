@@ -55,6 +55,9 @@ describe("parseRelaySubmission", () => {
     const s = parseRelaySubmission(recurring);
     expect(s.kind).toBe("recurring");
     expect(s.intent.interval).toBe("86400");
+    expect(s.intent.zap).toBe(recurring.intent.zap.toLowerCase());
+    expect(s.intent.outAsset).toBe(recurring.intent.outAsset.toLowerCase());
+    expect(s.intent.policyHash).toBe(recurring.intent.policyHash.toLowerCase());
     expect(s.signature).toBe(SIG);
     expect(Object.keys(s.intent)).toHaveLength(14);
   });
@@ -67,6 +70,28 @@ describe("parseRelaySubmission", () => {
 
   it("rejects a uint field sent as a JSON number (precision loss)", () => {
     expect(() => parseRelaySubmission({ ...recurring, intent: { ...recurring.intent, seriesId: 1 } })).toThrow(/seriesId/);
+  });
+
+  it("canonicalizes every uint string so leading zeros cannot split one on-chain nonce", () => {
+    const s = parseRelaySubmission({
+      ...trigger,
+      intent: {
+        ...trigger.intent,
+        chainId: "0004663",
+        nonce: "0007",
+        validAfter: "000",
+        maxGas: "003000000",
+        baselinePriceX96: "079228162514264337593543950336",
+      },
+    });
+    expect(s.intent).toMatchObject({
+      chainId: "4663",
+      nonce: "7",
+      validAfter: "0",
+      maxGas: "3000000",
+      baselinePriceX96: "79228162514264337593543950336",
+    });
+    expect(relayIntentNonce(s)).toBe("7");
   });
 
   it("rejects an unknown kind", () => {
@@ -114,7 +139,7 @@ describe("recurring-relative kind", () => {
   it("accepts a well-formed relative submission and rejects a missing floor field", () => {
     const s = parseRelaySubmission(recurringRelative);
     expect(s.kind).toBe("recurring-relative");
-    expect(s.intent.priceSource).toBe("0xB4f66bFa00D2496513a5fD43ff47912A3fe0Bb5F");
+    expect(s.intent.priceSource).toBe("0xb4f66bfa00d2496513a5fd43ff47912a3fe0bb5f");
     expect(s.intent.maxSlippageBps).toBe("500");
     expect("minOutPerRun" in s.intent).toBe(false);
     const noSlip = { ...recurringRelative, intent: { ...recurringRelative.intent } } as { intent: Record<string, unknown> };

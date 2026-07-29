@@ -35,7 +35,7 @@ import {
   type AutomationChainState,
   type AutomationLifecycleView,
 } from "@/lib/automation-status";
-import { consumeIntent, fetchOwnerIntents, type RelayRecord } from "@/lib/relay";
+import { consumeIntent, fetchOwnerIntentPage, type RelayRecord } from "@/lib/relay";
 import type { WalletActivityEntry, WalletProfilePayload, WalletZapSummary } from "@/lib/profile";
 import type { WalletPortfolioPayload } from "@/lib/profile-portfolio";
 import { resolveRouteById } from "@/lib/routes";
@@ -133,6 +133,7 @@ export function ProfileDashboard(): React.JSX.Element {
   const [portfolioError, setPortfolioError] = useState<string | null>(null);
   const [relayRecords, setRelayRecords] = useState<RelayRecord[]>([]);
   const [relayStatus, setRelayStatus] = useState<"idle" | "live" | "unavailable">("idle");
+  const [relayHasOlder, setRelayHasOlder] = useState(false);
   // Keep the storage owner attached to the rows. accountsChanged renders the
   // new wallet before its async refresh completes; an unscoped array would
   // briefly expose the previous wallet's signed intents in the new profile.
@@ -171,7 +172,7 @@ export function ProfileDashboard(): React.JSX.Element {
         }
         return response.json() as Promise<WalletProfilePayload>;
       }),
-      fetchOwnerIntents(requestedAccount),
+      fetchOwnerIntentPage(requestedAccount),
     ]);
     if (!accountRef.current || !isAddressEqual(accountRef.current, requestedAccount)) return;
     if (profileResult.status === "fulfilled") {
@@ -181,10 +182,12 @@ export function ProfileDashboard(): React.JSX.Element {
       setError(profileResult.reason instanceof Error ? profileResult.reason.message : "Wallet activity is unavailable.");
     }
     if (relayResult.status === "fulfilled") {
-      setRelayRecords(relayResult.value);
+      setRelayRecords(relayResult.value.intents);
+      setRelayHasOlder(relayResult.value.nextCursor !== null);
       setRelayStatus("live");
     } else {
       setRelayRecords([]);
+      setRelayHasOlder(false);
       setRelayStatus("unavailable");
     }
     setLoading(false);
@@ -549,7 +552,10 @@ export function ProfileDashboard(): React.JSX.Element {
       <section className={styles.metrics} aria-label="Wallet zap metrics">
         <Metric value={profile ? String(profile.stats.zapsCreated) : "—"} label="Zaps created" />
         <Metric value={profile ? String(totalRuns) : "—"} label="Zaps executed" />
-        <Metric value={String(activeAutomations)} label="Live authorizations" />
+        <Metric
+          value={relayHasOlder ? `${activeAutomations}+` : String(activeAutomations)}
+          label={relayHasOlder ? "Live shown · newest 50" : "Live authorizations"}
+        />
         <Metric value={profile ? String(profile.stats.authorizationsRevoked) : "—"} label="Revocations" />
       </section>
 
@@ -563,7 +569,11 @@ export function ProfileDashboard(): React.JSX.Element {
       <section aria-labelledby="automation-heading">
         <div className={styles.sectionHead}>
           <h2 className={styles.sectionTitle} id="automation-heading">Signed authorizations</h2>
-          <span className={styles.sectionLede}>Every authorization this wallet signed — live, spent, expired, or revoked.</span>
+          <span className={styles.sectionLede}>
+            {relayHasOlder
+              ? "Newest relay authorizations, plus this browser’s local records."
+              : "Every authorization found for this wallet — live, spent, expired, or revoked."}
+          </span>
           <span className={styles.relayBadge} data-status={relayStatus}>
             relay {relayStatus === "live" ? "connected" : relayStatus === "unavailable" ? "unavailable" : "idle"}
           </span>
@@ -571,6 +581,9 @@ export function ProfileDashboard(): React.JSX.Element {
         <p className={styles.sectionNote}>
           Relay records make signed automations visible across browsers. Onchain nonce, series, and log reads decide
           each state. Editing is replacement: revoke the old immutable authorization, then sign new terms.
+          {relayHasOlder
+            ? " Showing the newest 50 relay authorizations; older records remain available through the paginated relay API."
+            : ""}
         </p>
 
         {automationViews.length === 0 ? (

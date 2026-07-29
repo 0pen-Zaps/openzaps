@@ -1,4 +1,12 @@
-import { getAddress, isAddressEqual, zeroAddress, type Address, type Hex } from "viem";
+import {
+  getAddress,
+  isAddressEqual,
+  keccak256,
+  zeroAddress,
+  type Address,
+  type Hex,
+  type PublicClient,
+} from "viem";
 
 import { assetSymbolFor, type AutomatedRunKind, type AutomatedRunLogInput } from "@/lib/activity";
 import {
@@ -8,12 +16,22 @@ import {
   hashRobinhoodPolicy,
   type ZapDirection,
 } from "@/lib/openzap";
-import { resolveRouteFromStep, type Route } from "@/lib/routes";
+import {
+  resolveRouteFromStep,
+  type Route,
+} from "@/lib/routes";
+import {
+  encodeLivePolicyPlan,
+  resolveOnchainLivePolicy,
+  type ResolvedLivePolicy,
+} from "@/lib/live-policy";
 import {
   OPENZAP_CONTRACTS,
   OPENZAP_V3_CONTRACTS,
   OPENZAP_V3_1_CONTRACTS,
   ROBINHOOD_ASSETS,
+  openZapAbi,
+  openZapFactoryAbi,
 } from "@/lib/robinhood";
 
 /**
@@ -93,6 +111,10 @@ export type ZapPolicyView = {
   optimization: boolean;
   trackedAssets: Address[];
   stepCount: string;
+  /** Every step the clone exposes, in execution order. */
+  steps?: ZapStepView[];
+  /** Canonical route ids for a recognized ordered policy; empty off-manifest. */
+  routeIds?: string[];
   step: ZapStepView | null;
   policyHash: Hex;
   /** null when the input asset is outside the live aeWETH/0xZAPS route. */
@@ -106,6 +128,8 @@ export type ZapPolicyView = {
   routeKind: Route["kind"] | null;
   inputSymbol: string | null;
   outputSymbol: string | null;
+  /** The final settlement token for a recognized policy. */
+  outAsset?: Address | null;
   /** Hash of the policy the clone exposes === the policyHash it committed to. */
   hashMatches: boolean;
   /** EIP-1167 runtime matches the factory's current implementation. */
@@ -114,6 +138,23 @@ export type ZapPolicyView = {
   matchesLiveRoute: boolean;
   /** Human-readable list of every invariant that does NOT hold. */
   deviations: string[];
+};
+
+export type VerifiedLiveZap = {
+  address: Address;
+  policyHash: Hex;
+  resolved: ResolvedLivePolicy;
+  /** Deterministic route+amount token suitable for local persistence/export. */
+  policyToken: string;
+  policy: {
+    owner: Address;
+    recipient: Address;
+    maxRelayerFeeCap: bigint;
+    optimization: true;
+    trackedAssets: readonly Address[];
+    steps: readonly ZapStepRead[];
+  };
+  blockNumber: bigint;
 };
 
 /**
@@ -303,6 +344,218 @@ export interface ZapDetailInput {
   timestamps: ReadonlyMap<bigint, number>;
   headBlock: bigint;
   readAt: string;
+}
+
+const factoryPolicySurfaceAbi = [
+  {
+    type: "function",
+    name: "adapters",
+    inputs: [],
+    outputs: [{ name: "", type: "address" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "tokens",
+    inputs: [],
+    outputs: [{ name: "", type: "address" }],
+    stateMutability: "view",
+  },
+] as const;
+
+const allowlistAbi = [
+  {
+    type: "function",
+    name: "isAllowed",
+    inputs: [{ name: "", type: "address" }],
+    outputs: [{ name: "", type: "bool" }],
+    stateMutability: "view",
+  },
+] as const;
+
+/**
+ * Verify an owned one-shot capsule at one pinned block and recover its entire
+ * ordered policy. This is the signing surface's authority gate: URL/local
+ * storage metadata is never trusted, and every adapter/token is checked for
+ * current code plus current allowlist membership before funding or execution.
+ */
+export async function inspectOwnedLiveZap(
+  publicClient: PublicClient,
+  zapAddress: Address,
+  expectedOwner: Address,
+  options: { requireExecutable?: boolean } = {},
+): Promise<VerifiedLiveZap> {
+  const address = getAddress(zapAddress);
+  const ownerExpected = getAddress(expectedOwner);
+  const blockNumber = await publicClient.getBlockNumber({ cacheTime: 0 });
+  const [
+    runtime,
+    factoryCode,
+    implementation,
+    implementationCode,
+    committedImplementationHash,
+    adapterRegistry,
+    tokenAllowlist,
+    owner,
+    recipient,
+    maxRelayerFeeCap,
+    optimization,
+    trackedAssets,
+    stepCount,
+    policyHash,
+  ] = await Promise.all([
+    publicClient.getBytecode({ address, blockNumber }),
+    publicClient.getBytecode({ address: OPENZAP_CONTRACTS.factory, blockNumber }),
+    publicClient.readContract({
+      address: OPENZAP_CONTRACTS.factory,
+      abi: openZapFactoryAbi,
+      functionName: "implementation",
+      blockNumber,
+    }),
+    publicClient.getBytecode({ address: OPENZAP_CONTRACTS.implementation, blockNumber }),
+    publicClient.readContract({
+      address: OPENZAP_CONTRACTS.factory,
+      abi: openZapFactoryAbi,
+      functionName: "implCodeHash",
+      blockNumber,
+    }),
+    publicClient.readContract({
+      address: OPENZAP_CONTRACTS.factory,
+      abi: factoryPolicySurfaceAbi,
+      functionName: "adapters",
+      blockNumber,
+    }),
+    publicClient.readContract({
+      address: OPENZAP_CONTRACTS.factory,
+      abi: factoryPolicySurfaceAbi,
+      functionName: "tokens",
+      blockNumber,
+    }),
+    publicClient.readContract({ address, abi: openZapAbi, functionName: "owner", blockNumber }),
+    publicClient.readContract({ address, abi: openZapAbi, functionName: "recipient", blockNumber }),
+    publicClient.readContract({ address, abi: openZapAbi, functionName: "maxRelayerFeeCap", blockNumber }),
+    publicClient.readContract({ address, abi: openZapAbi, functionName: "optimization", blockNumber }),
+    publicClient.readContract({ address, abi: openZapAbi, functionName: "trackedAssets", blockNumber }),
+    publicClient.readContract({ address, abi: openZapAbi, functionName: "stepCount", blockNumber }),
+    publicClient.readContract({ address, abi: openZapAbi, functionName: "policyHash", blockNumber }),
+  ]);
+
+  if (!factoryCode || !implementationCode) {
+    throw new Error("The v1.1 factory or implementation has no code at the pinned block.");
+  }
+  if (
+    !isAddressEqual(implementation, OPENZAP_CONTRACTS.implementation)
+    || keccak256(implementationCode).toLowerCase() !== committedImplementationHash.toLowerCase()
+  ) {
+    throw new Error("The v1.1 implementation does not match the factory's code commitment.");
+  }
+  if (!runtime || runtime.toLowerCase() !== expectedCloneRuntime(implementation).toLowerCase()) {
+    throw new Error("Address is not a canonical clone of the current v1.1 implementation.");
+  }
+  if (!isAddressEqual(owner, ownerExpected) || !isAddressEqual(recipient, ownerExpected)) {
+    throw new Error("Zap owner and recipient must match the connected wallet.");
+  }
+  if (maxRelayerFeeCap !== 0n || !optimization) {
+    throw new Error("Zap policy is outside the zero-fee v1.1 one-shot surface.");
+  }
+  const readCount = stepsToRead(stepCount);
+  if (stepCount <= 0n || stepCount > BigInt(ZAP_STEP_READ_LIMIT) || readCount !== Number(stepCount)) {
+    throw new Error(`Zap step count must be between 1 and ${ZAP_STEP_READ_LIMIT}.`);
+  }
+
+  const steps = await Promise.all(
+    Array.from({ length: readCount }, (_, index) =>
+      publicClient.readContract({
+        address,
+        abi: openZapAbi,
+        functionName: "step",
+        args: [BigInt(index)],
+        blockNumber,
+      }),
+    ),
+  );
+  const policy = {
+    owner: getAddress(owner),
+    recipient: getAddress(recipient),
+    maxRelayerFeeCap,
+    optimization: true as const,
+    trackedAssets: trackedAssets.map((asset) => getAddress(asset)),
+    steps: steps.map((step): ZapStepRead => ({
+      adapter: getAddress(step.adapter),
+      tokenIn: getAddress(step.tokenIn),
+      spender: getAddress(step.spender),
+      amountIn: step.amountIn,
+      data: step.data,
+    })),
+  };
+  if (hashRobinhoodPolicy(policy).toLowerCase() !== policyHash.toLowerCase()) {
+    throw new Error("Zap policy hash does not match the policy exposed by the clone.");
+  }
+
+  const resolved = resolveOnchainLivePolicy(policy);
+  if (!resolved) {
+    throw new Error("Zap policy is outside the supported ordered v1.1 route manifest.");
+  }
+
+  if (options.requireExecutable !== false) {
+    const adapterAddresses = uniquePolicyAddresses(resolved.steps.map((entry) => entry.route.adapter));
+    const tokenAddresses = uniquePolicyAddresses([
+      ...resolved.trackedAssets,
+      resolved.outputRoute.tokenOut.address,
+    ]);
+    const [adapterCodes, tokenCodes, adapterAllowed, tokensAllowed] = await Promise.all([
+      Promise.all(adapterAddresses.map((adapter) => publicClient.getBytecode({ address: adapter, blockNumber }))),
+      Promise.all(tokenAddresses.map((token) => publicClient.getBytecode({ address: token, blockNumber }))),
+      Promise.all(
+        adapterAddresses.map((adapter) =>
+          publicClient.readContract({
+            address: adapterRegistry,
+            abi: allowlistAbi,
+            functionName: "isAllowed",
+            args: [adapter],
+            blockNumber,
+          }),
+        ),
+      ),
+      Promise.all(
+        tokenAddresses.map((token) =>
+          publicClient.readContract({
+            address: tokenAllowlist,
+            abi: allowlistAbi,
+            functionName: "isAllowed",
+            args: [token],
+            blockNumber,
+          }),
+        ),
+      ),
+    ]);
+    if (adapterCodes.some((code) => !code) || adapterAllowed.some((allowed) => !allowed)) {
+      throw new Error("One or more policy adapters lack code or are no longer allowlisted.");
+    }
+    if (tokenCodes.some((code) => !code) || tokensAllowed.some((allowed) => !allowed)) {
+      throw new Error("One or more policy tokens lack code or are no longer allowlisted.");
+    }
+  }
+
+  return {
+    address,
+    policyHash,
+    resolved,
+    policyToken: encodeLivePolicyPlan(resolved.plan.steps),
+    policy,
+    blockNumber,
+  };
+}
+
+function uniquePolicyAddresses(addresses: readonly Address[]): Address[] {
+  const seen = new Set<string>();
+  return addresses.flatMap((raw) => {
+    const address = getAddress(raw);
+    const key = address.toLowerCase();
+    if (seen.has(key)) return [];
+    seen.add(key);
+    return [address];
+  });
 }
 
 /** The zap holds ETH directly, so the zero address has to render as ETH. */
@@ -539,6 +792,22 @@ function buildPolicyView(
       steps: policy.steps,
     }).toLowerCase() === policy.policyHash.toLowerCase();
 
+  const orderedPolicy = stepsComplete
+    ? resolveOnchainLivePolicy({
+        trackedAssets: policy.trackedAssets,
+        steps: policy.steps,
+      })
+    : null;
+  if (orderedPolicy && policy.steps.length > 1) {
+    return recognizedOrderedPolicyView(
+      policy,
+      orderedPolicy,
+      canonicalClone,
+      stepsComplete,
+      hashMatches,
+    );
+  }
+
   // Resolve the deployed route the step implements (adapter + tokens + tracked
   // assets + data shape). When it is a recognized route — a swap, the stitched
   // multi-pool route, a vault leg, or an LP provide/withdraw — report
@@ -613,20 +882,17 @@ function buildPolicyView(
     optimization: policy.optimization,
     trackedAssets: policy.trackedAssets.map((asset) => getAddress(asset)),
     stepCount: policy.stepCount.toString(),
+    steps: policy.steps.map(stepView),
+    routeIds: [],
     step: step
-      ? {
-          adapter: getAddress(step.adapter),
-          tokenIn: getAddress(step.tokenIn),
-          spender: getAddress(step.spender),
-          amountIn: step.amountIn.toString(),
-          data: step.data,
-        }
+      ? stepView(step)
       : null,
     policyHash: policy.policyHash,
     direction,
     routeKind: null,
     inputSymbol: step ? assetSymbolForDisplay(step.tokenIn) : null,
     outputSymbol: direction ? assetsForDirection(direction).outputSymbol : null,
+    outAsset: direction ? assetsForDirection(direction).tokenOut : null,
     hashMatches,
     canonicalClone,
     matchesLiveRoute: deviations.length === 0,
@@ -687,22 +953,81 @@ function recognizedRouteView(
     optimization: policy.optimization,
     trackedAssets: policy.trackedAssets.map((asset) => getAddress(asset)),
     stepCount: policy.stepCount.toString(),
-    step: {
-      adapter: getAddress(step.adapter),
-      tokenIn: getAddress(step.tokenIn),
-      spender: getAddress(step.spender),
-      amountIn: step.amountIn.toString(),
-      data: step.data,
-    },
+    steps: policy.steps.map(stepView),
+    routeIds: [route.id],
+    step: stepView(step),
     policyHash: policy.policyHash,
     direction: route.direction,
     routeKind: route.kind,
     inputSymbol: route.tokenIn.symbol,
     outputSymbol: route.tokenOut.symbol,
+    outAsset: route.tokenOut.address,
     hashMatches,
     canonicalClone,
     matchesLiveRoute: deviations.length === 0,
     deviations,
+  };
+}
+
+function recognizedOrderedPolicyView(
+  policy: ZapPolicyRead,
+  resolved: ResolvedLivePolicy,
+  canonicalClone: boolean,
+  stepsComplete: boolean,
+  hashMatches: boolean,
+): ZapPolicyView {
+  const deviations: string[] = [];
+  if (!canonicalClone) {
+    deviations.push("Runtime bytecode is not an EIP-1167 clone of the canonical implementation.");
+  }
+  if (!isAddressEqual(policy.recipient, policy.owner)) {
+    deviations.push(`Recipient ${policy.recipient} is not the owner ${policy.owner}.`);
+  }
+  if (policy.maxRelayerFeeCap !== 0n) {
+    deviations.push(`maxRelayerFeeCap is ${policy.maxRelayerFeeCap}; the live route requires 0.`);
+  }
+  if (!policy.optimization) {
+    deviations.push("Optimization is disabled; the live route requires it enabled.");
+  }
+  if (!stepsComplete) {
+    deviations.push(
+      `Only ${policy.steps.length} of ${policy.stepCount} steps were read; the policy hash could not be recomputed.`,
+    );
+  }
+  if (stepsComplete && !hashMatches) {
+    deviations.push("Policy hash does not match the policy this zap exposes.");
+  }
+
+  return {
+    owner: getAddress(policy.owner),
+    recipient: getAddress(policy.recipient),
+    maxRelayerFeeCap: policy.maxRelayerFeeCap.toString(),
+    optimization: policy.optimization,
+    trackedAssets: policy.trackedAssets.map((asset) => getAddress(asset)),
+    stepCount: policy.stepCount.toString(),
+    steps: policy.steps.map(stepView),
+    routeIds: resolved.steps.map((entry) => entry.route.id),
+    step: policy.steps[0] ? stepView(policy.steps[0]) : null,
+    policyHash: policy.policyHash,
+    direction: null,
+    routeKind: null,
+    inputSymbol: resolved.inputRoute.tokenIn.symbol,
+    outputSymbol: resolved.outputRoute.tokenOut.symbol,
+    outAsset: resolved.outputRoute.tokenOut.address,
+    hashMatches,
+    canonicalClone,
+    matchesLiveRoute: deviations.length === 0,
+    deviations,
+  };
+}
+
+function stepView(step: ZapStepRead): ZapStepView {
+  return {
+    adapter: getAddress(step.adapter),
+    tokenIn: getAddress(step.tokenIn),
+    spender: getAddress(step.spender),
+    amountIn: step.amountIn.toString(),
+    data: step.data,
   };
 }
 

@@ -159,6 +159,24 @@ export const BLOCKS: readonly LegoBlock[] = [
     ],
   },
   {
+    id: "vault-position",
+    name: "Vault share balance",
+    kind: "source",
+    category: "source",
+    blurb: "Start from ozUSDG shares already in your wallet.",
+    detail:
+      "Pulls an exact ozUSDG ERC-4626 share amount from the owner wallet. The share count is bound into the policy hash; the redeem adapter can only burn those shares back into the USDG asset welded into the vault.",
+    accepts: null,
+    emits: "receipt",
+    glyph: "vault",
+    gas: 46_000,
+    maturity: "live",
+    params: [
+      { key: "asset", label: "Vault share", type: "select", value: "ozUSDG", options: ["ozUSDG"] },
+      { key: "amount", label: "Shares", type: "amount", value: "500", placeholder: "500" },
+    ],
+  },
+  {
     id: "recurring-stream",
     name: "Recurring deposit",
     kind: "source",
@@ -241,19 +259,25 @@ export const BLOCKS: readonly LegoBlock[] = [
   },
   {
     id: "bridge",
-    name: "Bridge",
-    kind: "action",
+    name: "Bridge in",
+    kind: "source",
     category: "bridge",
-    blurb: "Move the balance to another chain.",
+    blurb: "Fund the zap from another chain.",
     detail:
-      "Hands off to a canonical bridge with a fixed destination recipient. The zap treats the far side as untrusted until the arrival attestation lands.",
-    accepts: "token",
+      "The zap's address is deterministic, so a bridge can deliver straight into it before anything executes — arrival IS the funding. The bridge runs OUTSIDE the capsule and is not bound by the policy: a bridge is not a step, because settlement measures one token balance on THIS chain and a transfer that lands elsewhere cannot be measured at all. What the policy binds is everything after the funds arrive. Across delivers USDG from Base in about a second.",
+    accepts: null,
     emits: "token",
     glyph: "bridge",
-    gas: 168_000,
-    maturity: "review",
+    gas: 0,
+    maturity: "live",
     params: [
-      { key: "chain", label: "Destination", type: "select", value: "Base", options: ["Base", "Arbitrum", "Optimism", "Robinhood Chain"] },
+      { key: "from", label: "From chain", type: "select", value: "Base", options: ["Base"] },
+      // `asset` is what LANDS on 4663, not what leaves Base, because every block
+      // below this one seats against the arriving token. Bridging Base USDC
+      // delivers USDG; aeWETH is deliberately absent — see `src/lib/bridge.ts`,
+      // which documents why a wrapped-native delivery arrives as unroutable ETH.
+      { key: "asset", label: "Arrives as", type: "select", value: "USDG", options: ["USDG"] },
+      { key: "amount", label: "Amount", type: "amount", value: "100", placeholder: "100" },
     ],
   },
   {
@@ -291,6 +315,24 @@ export const BLOCKS: readonly LegoBlock[] = [
     params: [
       { key: "asset", label: "Borrow", type: "select", value: "USDC", options: ["USDC", "WETH", "DAI"] },
       { key: "ltv", label: "Target LTV", type: "number", value: 45, min: 5, max: 80, step: 5, suffix: "%" },
+    ],
+  },
+  {
+    id: "redeem",
+    name: "Redeem vault shares",
+    kind: "action",
+    category: "lend",
+    blurb: "Burn ozUSDG shares back into the vault's USDG asset.",
+    detail:
+      "Calls the deployed, allowlisted ZapVault redeem adapter. The adapter is welded to ozUSDG and USDG, sends the measured asset delta back to the capsule, and cannot choose another vault or recipient.",
+    accepts: "receipt",
+    emits: "token",
+    glyph: "vault",
+    gas: 132_000,
+    maturity: "live",
+    params: [
+      { key: "vault", label: "Vault", type: "select", value: "ZapVault", options: ["ZapVault"] },
+      { key: "amount", label: "Amount (later steps)", type: "amount", value: "", placeholder: "leave blank if first" },
     ],
   },
   {
@@ -1331,7 +1373,7 @@ export type ZapRecipe = {
 
 export const RECIPES: readonly ZapRecipe[] = [
   {
-    // First, and the chain the builder opens on. The first ELEVEN blueprints are
+    // First, and the chain the builder opens on. The first TWELVE blueprints are
     // the DEPLOYABLE set — each reduces to a route the live contracts carry,
     // and a test in deployable.test.ts holds every one of them to that claim,
     // because a catalog edit that quietly drops one off its route would
@@ -1481,6 +1523,21 @@ export const RECIPES: readonly ZapRecipe[] = [
     ],
   },
   {
+    // The exact inverse of vault-park. Its own source is a receipt-shaped
+    // wallet pull so the connector cannot pretend an arbitrary ERC-20 is an
+    // ozUSDG share. The signing surface applies the seeded-vault and live quote
+    // gates before it offers this route.
+    id: "vault-redeem",
+    name: "Redeem ozUSDG",
+    tagline: "Burn ozUSDG receipt shares back into USDG through the welded vault adapter.",
+    accent: "token",
+    blocks: [
+      ["vault-position", { asset: "ozUSDG", amount: "500" }],
+      ["redeem", { vault: "ZapVault" }],
+      ["send", { recipient: "owner wallet" }],
+    ],
+  },
+  {
     // The withdraw leg's other settlement currency: the same ozRANGE shares, out
     // to aeWETH instead of USDG.
     id: "exit-liquidity-weth",
@@ -1568,11 +1625,20 @@ export const RECIPES: readonly ZapRecipe[] = [
     ],
   },
   {
+    // Was "Bridge & deposit": wallet-balance → bridge → supply → hold, of which
+    // FOUR blocks could never deploy (the bridge as a step, the unenforceable
+    // window and private-submission guards, and a hold the core cannot express).
+    // What replaces it is the route that is actually live end to end.
     id: "bridge-deposit",
-    name: "Bridge & deposit",
-    tagline: "Move to another chain and park it in a market.",
-    accent: "receipt",
-    blocks: [["wallet-balance"], ["guard-window"], ["guard-private"], ["bridge"], ["supply"], ["hold"]],
+    name: "Bridge in & Zap",
+    tagline: "Fund from Base and buy 0xZAPS on arrival.",
+    accent: "token",
+    blocks: [
+      ["bridge", { from: "Base", asset: "USDG", amount: "100" }],
+      ["swap", { venue: "Uniswap v4", into: "0xZAPS" }],
+      ["guard-slippage"],
+      ["send"],
+    ],
   },
   {
     id: "exit",

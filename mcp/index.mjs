@@ -28,7 +28,12 @@ fund, revoke, or drain anything.
 Execution authority comes from exactly one thing: an EIP-712 signature the capsule owner produces in
 their own wallet. An agent is "connected" to a Zap when the owner signed an intent naming that
 agent's address in the intent's executor field — the capsule itself reverts ExecutorMismatch for
-anyone else. There is no credential to steal that would change this.
+anyone else. OPENZAPS_AGENT_ADDRESS is a public identifier, never a credential. Discovery or intake
+credentials cannot replace the owner's signature and cannot widen its terms.
+
+list_intents and list_connections return relay-listed discovery rows, not proof of chain-current
+authority. Preserve their source/chainVerified/statusBasis/stalePossible metadata, and check the
+capsule onchain before claiming an authorization is still executable.
 
 Consequences worth stating to a human who asks:
 - A compromised agent can submit a run the capsule already owes, or refuse to submit one. It cannot
@@ -73,7 +78,7 @@ async function main() {
     serverInfo: SERVER_INFO,
     instructions: INSTRUCTIONS,
     tools: TOOLS,
-    // Lazy: a missing RPC or malformed keyfile should fail one call with a
+    // Lazy: a missing RPC or malformed local config should fail one call with a
     // readable message, not prevent the server from starting at all.
     context: buildContext,
   });

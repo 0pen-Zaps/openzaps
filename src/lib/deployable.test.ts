@@ -51,6 +51,8 @@ describe("accepts the live route", () => {
     expect(mapping).toEqual({
       deployable: true,
       routeId: "robinhood-v4-weth-zaps",
+      steps: [{ routeId: "robinhood-v4-weth-zaps", amountIn: "0.05" }],
+      policyToken: "v1|robinhood-v4-weth-zaps=0.05",
       direction: "buy",
       amountIn: "0.05",
       slippageBps: 50,
@@ -624,7 +626,7 @@ describe("the Live route blueprint", () => {
     expect(mapping.deployable && mapping.direction).toBe("buy");
   });
 
-  it("badges exactly the twelve one-shot-deployable blueprints", () => {
+  it("badges exactly the fourteen one-shot-deployable blueprints", () => {
     // The blueprint row badges exactly the deployable ones. This is the list
     // the copy beside the row describes; a recipe drifting off its route (or a
     // non-deployable design quietly becoming badged) fails here first.
@@ -644,8 +646,10 @@ describe("the Live route blueprint", () => {
       "provide-liquidity-usdg",
       "usdg-weth",
       "vault-park",
+      "vault-redeem",
       "exit-liquidity-weth",
       "price-trigger",
+      "bridge-deposit",
     ]);
   });
 
@@ -677,6 +681,7 @@ describe("the Live route blueprint", () => {
       "provide-liquidity-usdg": "robinhood-range-deposit-usdg",
       "usdg-weth": "robinhood-v4-usdg-weth",
       "vault-park": "robinhood-zap-vault-deposit",
+      "vault-redeem": "robinhood-zap-vault-redeem",
       "exit-liquidity-weth": "robinhood-range-withdraw-weth",
     };
     for (const [recipeId, routeId] of Object.entries(expected)) {
@@ -705,8 +710,10 @@ describe("the Live route blueprint", () => {
       "provide-liquidity-usdg": "USDG>ozRANGE",
       "usdg-weth": "USDG>aeWETH",
       "vault-park": "USDG>ozUSDG",
+      "vault-redeem": "ozUSDG>USDG",
       "exit-liquidity-weth": "ozRANGE>aeWETH",
       "price-trigger": "aeWETH>0xZAPS",
+      "bridge-deposit": "USDG>0xZAPS",
     };
     for (const entry of RECIPES) {
       const mapping = reduceChainToLiveRoute(
@@ -725,9 +732,8 @@ describe("the Live route blueprint", () => {
     // The catalog is the only way a user reaches a route. An adapter that is
     // deployed AND has a blockId (so a chain can actually select it) but that no
     // blueprint exposes is a live route nobody can find — which is exactly how
-    // seven of them sat unused. `blockId: null` adapters are excluded on purpose:
-    // vault-redeem has no catalog block that turns a share back into tokens, so
-    // it is offered on /app only and cannot be drawn.
+    // seven of them once sat unused. Every deployed adapter is now drawable,
+    // including the receipt-shaped ozUSDG redeem leg.
     const exposed = new Set(
       RECIPES.flatMap((entry) => {
         const mapping = reduceChainToLiveRoute(
@@ -1051,7 +1057,7 @@ describe("with the real vault adapter configured", () => {
     expect(route.deployable && route.direction).toBeNull();
     // The CTA carries the seeding disclosure verbatim — deployable.ts cannot read
     // the vault, so it must not read as a promise the /app seed gate will refuse.
-    expect(route.deployable && route.unenforcedGuards[0]).toContain("deploys only while the vault is seeded");
+    expect(route.deployable && route.unenforcedGuards[0]).toContain("every required vault is seeded");
   });
 
   it("leaves the live route, and every guard disclosure on it, untouched", () => {
@@ -1061,6 +1067,8 @@ describe("with the real vault adapter configured", () => {
     expect(reduceChainToLiveRoute(buyChain())).toEqual({
       deployable: true,
       routeId: "robinhood-v4-weth-zaps",
+      steps: [{ routeId: "robinhood-v4-weth-zaps", amountIn: "0.05" }],
+      policyToken: "v1|robinhood-v4-weth-zaps=0.05",
       direction: "buy",
       amountIn: "0.05",
       slippageBps: 50,
@@ -1077,7 +1085,7 @@ describe("with the real vault adapter configured", () => {
       ).deployable,
     ).map((entry) => entry.id);
     // Overriding the vault-deposit address must not badge any blueprint beyond
-    // the standing one-shot-deployable twelve.
+    // the standing one-shot-deployable fourteen.
     expect(deployable).toEqual([
       "live-route",
       "sell-zaps",
@@ -1089,8 +1097,10 @@ describe("with the real vault adapter configured", () => {
       "provide-liquidity-usdg",
       "usdg-weth",
       "vault-park",
+      "vault-redeem",
       "exit-liquidity-weth",
       "price-trigger",
+      "bridge-deposit",
     ]);
   });
 });
@@ -1098,12 +1108,9 @@ describe("with the real vault adapter configured", () => {
 /**
  * The multi-step reduction, against a FIXTURE adapter set.
  *
- * No two adapters in the real registry chain into a policy that settles: the
- * deployed pair round-trips one pool, and the vault takes an asset nothing
- * produces. So the two-step machinery is exercised here against a set that
- * exists only in this file. It is passed in explicitly — `ROBINHOOD_ADAPTERS`
- * is never mutated — so no fictional adapter can reach the shipped registry,
- * which is the file that decides what the product claims.
+ * The fixture still exercises arbitrary adapter-set reduction independently
+ * from the shipped manifest. Real end-to-end handoff coverage lives below,
+ * against the deployed aeWETH → USDG → 0xZAPS path.
  */
 describe("multi-step, against a deployed adapter set", () => {
   const FIXTURE_VAULT_ADDRESS = "0x2222222222222222222222222222222222222222";
@@ -1282,22 +1289,40 @@ describe("multi-step, against a deployed adapter set", () => {
   });
 
   describe("the deploy handoff never offers more than the app page can sign", () => {
-    it("refuses a multi-step design and repeats the stranding notice verbatim", () => {
+    it("refuses a fixture-only multi-step design that has no canonical signing manifest", () => {
       const policy = reduceChainToLivePolicy(vaultChain(), FIXTURE_ADAPTERS);
       const route = reduceChainToLiveRoute(vaultChain(), FIXTURE_ADAPTERS);
       expect(policy.deployable).toBe(true);
-      // The capsule can carry it; `/app` builds one-step policies with
-      // `buildRobinhoodPolicy`, so the CTA must not appear. An enabled Deploy
-      // that creates a different capsule from the one on the canvas is the
-      // same broken promise as an unenforced guard.
+      // The reducer seam can carry a fictional fixture, but the signing
+      // manifest cannot resolve it to pinned calldata and a live quote path.
       expect(route.deployable).toBe(false);
       if (route.deployable || !policy.deployable) return;
 
-      expect(route.reasons[0]).toContain("2-step capsule");
-      expect(route.reasons[0]).toContain("signs single-step capsules only");
-      expect(route.reasons[0]).toContain("Step 2 (Supply)");
-      // Being rejected is not a reason to drop what the design would have done.
-      expect(route.reasons.slice(1)).toEqual(policy.notices);
+      expect(route.reasons[0]).toContain("2-step design cannot be handed to Zap now safely");
+      expect(route.reasons[0]).toContain("does not resolve to a deployed route");
+    });
+
+    it("hands off a real two-step policy in exact order", () => {
+      const design = chain(
+        ["wallet-balance", { asset: "WETH", amount: "0.05" }],
+        ["guard-slippage", { bps: 50 }],
+        ["swap", { into: "USDG", venue: "Uniswap v4" }],
+        ["swap", { into: "0xZAPS", venue: "Uniswap v4", amount: "20" }],
+        ["send", { recipient: "owner wallet" }],
+      );
+      const mapping = reduceChainToLiveRoute(design);
+      expect(mapping.deployable, mapping.deployable ? "" : mapping.reasons.join(" | ")).toBe(true);
+      if (!mapping.deployable) return;
+      expect(mapping.routeId).toBe("robinhood-v4-weth-usdg");
+      expect(mapping.steps).toEqual([
+        { routeId: "robinhood-v4-weth-usdg", amountIn: "0.05" },
+        { routeId: "robinhood-v4-route-usdg-zaps", amountIn: "20" },
+      ]);
+      expect(mapping.policyToken).toBe(
+        "v1|robinhood-v4-weth-usdg=0.05|robinhood-v4-route-usdg-zaps=20",
+      );
+      expect(mapping.direction).toBeNull();
+      expect(mapping.unenforcedGuards.some((note) => note.includes("Step 2"))).toBe(true);
     });
 
     it("carries every policy notice into the array the CTA renders word for word", () => {

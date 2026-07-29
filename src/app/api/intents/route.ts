@@ -1,35 +1,24 @@
 import { NextResponse, type NextRequest } from "next/server";
-import {
-  createPublicClient,
-  http,
-  isAddressEqual,
-  recoverTypedDataAddress,
-  type Address,
-  type Hex,
-} from "viem";
+import { createPublicClient, http, type Address } from "viem";
 import {
   parseRelaySubmission,
   relayIntentNonce,
   type RelayIntentKind,
   type RelaySubmission,
 } from "@/lib/relay";
-import {
-  RECURRING_INTENT_TYPES,
-  RECURRING_RELATIVE_INTENT_TYPES,
-  TRIGGER_INTENT_TYPES,
-  openZapV3Domain,
-  openZapV3_1Domain,
-} from "@/lib/executions";
+import { RelayAdmissionError, verifyRelaySubmissionAdmission } from "@/lib/relay-admission";
 import {
   RelayQueryError,
-  listRelayIntents,
+  insertRelayIntentImmutable,
+  listRelayIntentsPage,
   relayConfigured,
   relayHeaders,
   relayUrl,
   RELAY_TABLE,
   type RelayListQuery,
 } from "@/lib/relay-server";
-import { ROBINHOOD_CHAIN_ID, ROBINHOOD_RPC_URL, openZapV3Abi, robinhoodChain } from "@/lib/robinhood";
+import { serverRateLimited } from "@/lib/relay-rate-limit";
+import { ROBINHOOD_RPC_URL, openZapV3Abi, robinhoodChain } from "@/lib/robinhood";
 
 // The relay endpoint. POST publishes a signed standing intent to the shared pool; GET lists open
 // intents for executors to discover; PATCH garbage-collects intents that are already consumed
@@ -52,42 +41,8 @@ const sbHeaders = relayHeaders;
 // global limiter (Upstash/KV) is the production hardening; noted for follow-up.
 const RL_WINDOW_MS = 10_000;
 const RL_MAX = 20;
-const rlBucket = new Map<string, { count: number; resetAt: number }>();
 function rateLimited(req: NextRequest): boolean {
-  const ip = (req.headers.get("x-forwarded-for") ?? "unknown").split(",")[0].trim();
-  const now = Date.now();
-  const b = rlBucket.get(ip);
-  if (!b || now > b.resetAt) {
-    rlBucket.set(ip, { count: 1, resetAt: now + RL_WINDOW_MS });
-    if (rlBucket.size > 5_000) for (const [k, v] of rlBucket) if (now > v.resetAt) rlBucket.delete(k);
-    return false;
-  }
-  b.count += 1;
-  return b.count > RL_MAX;
-}
-
-const TYPES: Record<RelayIntentKind, { types: object; primaryType: string }> = {
-  recurring: { types: RECURRING_INTENT_TYPES, primaryType: "RecurringIntent" },
-  "recurring-relative": { types: RECURRING_RELATIVE_INTENT_TYPES, primaryType: "RecurringRelativeIntent" },
-  trigger: { types: TRIGGER_INTENT_TYPES, primaryType: "TriggerIntent" },
-};
-
-/** v3.1 relative-floor intents sign under domain version "3.1"; everything else under "3". */
-function domainFor(kind: RelayIntentKind, chainId: number, zap: Address) {
-  return kind === "recurring-relative" ? openZapV3_1Domain(chainId, zap) : openZapV3Domain(chainId, zap);
-}
-
-/** Convert the string/bool intent into the typed message viem needs (fields are already bounded). */
-function toTypedMessage(kind: RelayIntentKind, intent: Record<string, string | boolean>): Record<string, unknown> {
-  const fields = (TYPES[kind].types as Record<string, { name: string; type: string }[]>)[TYPES[kind].primaryType];
-  const message: Record<string, unknown> = {};
-  for (const { name, type } of fields) {
-    const v = intent[name];
-    if (type === "bool") message[name] = v === true;
-    else if (type.startsWith("uint") || type.startsWith("int")) message[name] = BigInt(v as string);
-    else message[name] = v;
-  }
-  return message;
+  return serverRateLimited(req, "intents", RL_MAX, RL_WINDOW_MS);
 }
 
 async function readBody(request: NextRequest): Promise<unknown> {
@@ -120,104 +75,77 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   }
 
   const chainId = Number(sub.intent.chainId);
-  if (chainId !== ROBINHOOD_CHAIN_ID) {
-    return NextResponse.json({ error: `Intent chainId ${chainId} != ${ROBINHOOD_CHAIN_ID}.` }, { status: 422 });
-  }
   const zap = sub.intent.zap as Address;
-
-  // ---- authority. Read the owner FIRST (one RPC); verify the signature against it BEFORE the
-  //      second read, so a junk submission (random signature, real or fake zap) costs one RPC and
-  //      short-circuits — the policyHash read only happens once the signature already checks out. ----
-  let owner: Address;
+  let owner: string;
   try {
-    owner = await publicClient.readContract({ address: zap, abi: openZapV3Abi, functionName: "owner" });
-  } catch {
-    return NextResponse.json({ error: "Zap not found on-chain (no v3 Zap contract at that address)." }, { status: 422 });
-  }
-
-  // The dynamic (per-kind) typed-data shape defeats viem's strict generics; coerce the whole arg.
-  const typedData = {
-    domain: domainFor(sub.kind, chainId, zap),
-    types: TYPES[sub.kind].types,
-    primaryType: TYPES[sub.kind].primaryType,
-    message: toTypedMessage(sub.kind, sub.intent),
-  };
-
-  let signerOk = false;
-  try {
-    // EOA: pure recovery, no RPC.
-    const recovered = await recoverTypedDataAddress({
-      ...typedData,
-      signature: sub.signature,
-    } as Parameters<typeof recoverTypedDataAddress>[0]);
-    signerOk = isAddressEqual(recovered, owner);
-  } catch {
-    // Not a plain 65-byte ECDSA sig — fall through to the contract-wallet path.
-  }
-  if (!signerOk) {
-    try {
-      // ERC-1271 (Safe / smart wallet): one more RPC, only for a non-EOA owner.
-      signerOk = await publicClient.verifyTypedData({
-        address: owner,
-        ...typedData,
-        signature: sub.signature,
-      } as Parameters<typeof publicClient.verifyTypedData>[0]);
-    } catch {
-      signerOk = false;
+    owner = (await verifyRelaySubmissionAdmission(publicClient, sub)).owner;
+  } catch (error) {
+    if (error instanceof RelayAdmissionError) {
+      return NextResponse.json({ error: error.message }, { status: error.status });
     }
-  }
-  if (!signerOk) {
-    return NextResponse.json({ error: "Signature does not recover to the zap owner." }, { status: 422 });
-  }
-
-  let onchainPolicyHash: Hex;
-  try {
-    onchainPolicyHash = await publicClient.readContract({ address: zap, abi: openZapV3Abi, functionName: "policyHash" });
-  } catch {
-    return NextResponse.json({ error: "Could not read the zap's policy." }, { status: 422 });
-  }
-  if ((sub.intent.policyHash as string).toLowerCase() !== onchainPolicyHash.toLowerCase()) {
-    return NextResponse.json({ error: "Intent policyHash does not match the on-chain zap." }, { status: 422 });
+    return NextResponse.json(
+      { error: "Canonical capsule provenance could not be established; relay admission failed closed." },
+      { status: 503 },
+    );
   }
 
-  // ---- store (idempotent: on_conflict names the unique (zap,kind,nonce) index so a re-publish
-  //      MERGES instead of erroring on the PK). ----
+  // ---- store. A signed authorization is immutable. Plain INSERT wins once;
+  //      a unique conflict is idempotent only when the existing canonical
+  //      intent + signature is identical. No upsert can overwrite terms or
+  //      reopen a consumed/expired authorization. ----
   const record = {
     zap,
     owner,
-    chain_id: chainId,
+    chainId,
     kind: sub.kind,
     nonce: relayIntentNonce(sub),
     intent: sub.intent,
     signature: sub.signature,
-    status: "open",
+    status: "open" as const,
   };
-  const res = await fetch(sb(`${TABLE}?on_conflict=zap,kind,nonce`), {
-    method: "POST",
-    headers: sbHeaders({ prefer: "return=representation,resolution=merge-duplicates" }),
-    body: JSON.stringify(record),
-  });
-  if (!res.ok) {
-    const detail = await res.text().catch(() => "");
-    return NextResponse.json({ error: `Relay storage failed (${res.status}).`, detail: detail.slice(0, 300) }, { status: 502 });
+  try {
+    const result = await insertRelayIntentImmutable(record);
+    if (result.kind === "conflict") {
+      return NextResponse.json(
+        { error: "A different signed intent already occupies this zap/kind/nonce." },
+        { status: 409 },
+      );
+    }
+    if (result.kind === "idempotent") {
+      return NextResponse.json(
+        {
+          id: result.id,
+          stored: false,
+          idempotent: true,
+          status: result.status,
+        },
+        { status: 200 },
+      );
+    }
+    return NextResponse.json({ id: result.id, stored: true }, { status: 201 });
+  } catch (cause) {
+    return NextResponse.json(
+      {
+        error: "Relay storage failed.",
+        detail: cause instanceof Error ? cause.message.slice(0, 300) : "",
+      },
+      { status: 502 },
+    );
   }
-  const rows = (await res.json()) as { id: string }[];
-  return NextResponse.json({ id: rows[0]?.id ?? relayIntentNonce(sub), stored: true }, { status: 201 });
 }
 
-/**
- * One page size for every query, unchanged from before the executor filter existed.
- *
- * Splitting this by "is the query filtered" looks reasonable and is wrong here: the busiest caller
- * is `executor/relay-source.mjs`, which fetches `?status=open` with no address filter at all. That
- * is the reference executor's ONLY discovery path, so treating it as a scrape and handing it a
- * short page would silently hide open intents past the cap — a long-deadline series would just
- * stop being submitted, with no error anywhere. Abuse is handled by the rate limiter below, which
- * is the control that actually fits the problem.
- *
- * Above 500 open intents this needs real pagination, and `fetchRelayIntents` needs to page with it.
- */
-const GET_LIMIT = 500;
+const DEFAULT_GET_LIMIT = 100;
+const MAX_GET_LIMIT = 500;
+
+function pageLimit(raw: string | null): number {
+  if (raw === null) return DEFAULT_GET_LIMIT;
+  if (!/^[0-9]{1,3}$/.test(raw)) throw new RelayQueryError("limit", `limit must be an integer from 1 to ${MAX_GET_LIMIT}.`);
+  const limit = Number(raw);
+  if (limit < 1 || limit > MAX_GET_LIMIT) {
+    throw new RelayQueryError("limit", `limit must be an integer from 1 to ${MAX_GET_LIMIT}.`);
+  }
+  return limit;
+}
 
 export async function GET(request: NextRequest): Promise<NextResponse> {
   if (!relayConfigured()) {
@@ -225,22 +153,23 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   }
   // GET was the only unauthenticated path with no limiter at all, and it is the
   // one an agent polls hardest — every executor and every MCP client discovers
-  // work through it. Same best-effort bucket as POST/PATCH.
-  if (rateLimited(request)) {
+  // work through it. Cursor consumers may legitimately need many consecutive pages.
+  if (serverRateLimited(request, "intents-get", 120, RL_WINDOW_MS)) {
     return NextResponse.json({ error: "Too many requests.", intents: [] }, { status: 429 });
   }
 
   const params = request.nextUrl.searchParams;
-  const query: RelayListQuery = {
-    status: params.get("status") as RelayListQuery["status"],
-    owner: params.get("owner"),
-    zap: params.get("zap"),
-    executor: params.get("executor"),
-    limit: GET_LIMIT,
-  };
-
   try {
-    return NextResponse.json({ intents: await listRelayIntents(query) });
+    const query: RelayListQuery = {
+      status: params.get("status") as RelayListQuery["status"],
+      owner: params.get("owner"),
+      zap: params.get("zap"),
+      executor: params.get("executor"),
+      limit: pageLimit(params.get("limit")),
+      cursor: params.get("cursor"),
+    };
+    const page = await listRelayIntentsPage(query);
+    return NextResponse.json(page);
   } catch (error) {
     if (error instanceof RelayQueryError) {
       return NextResponse.json({ error: error.message, intents: [] }, { status: 400 });
@@ -249,10 +178,8 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   }
 }
 
-// Garbage-collect an intent whose nonce is ALREADY used on-chain. Permissionless and safe: the
-// row only flips to consumed if the chain confirms the nonce is spent, so a caller can never hide a
-// still-live intent — only reap genuinely dead ones. This keeps the open-list bounded so old
-// finished intents can't crowd out live ones under the list cap.
+// Garbage-collect an intent whose nonce is used or signed deadline has passed. Permissionless and
+// safe: both conditions are read from chain/signed data, so a caller can never hide live authority.
 export async function PATCH(request: NextRequest): Promise<NextResponse> {
   if (!relayConfigured()) {
     return NextResponse.json({ error: "The intent relay is not configured on this deployment." }, { status: 503 });
@@ -269,12 +196,20 @@ export async function PATCH(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ error: `Bad request: ${(err as Error).message}` }, { status: 400 });
   }
 
-  const lookup = await fetch(sb(`${TABLE}?select=zap,kind,nonce,status&id=eq.${id}`), { headers: sbHeaders(), cache: "no-store" });
+  const lookup = await fetch(sb(`${TABLE}?select=zap,kind,nonce,status,intent&id=eq.${id}`), { headers: sbHeaders(), cache: "no-store" });
   if (!lookup.ok) return NextResponse.json({ error: "Lookup failed." }, { status: 502 });
-  const found = (await lookup.json()) as Array<{ zap: string; kind: RelayIntentKind; nonce: string; status: string }>;
+  const found = (await lookup.json()) as Array<{
+    zap: string;
+    kind: RelayIntentKind;
+    nonce: string;
+    status: string;
+    intent: Record<string, string | boolean>;
+  }>;
   const row = found[0];
   if (!row) return NextResponse.json({ error: "Not found." }, { status: 404 });
-  if (row.status === "consumed") return NextResponse.json({ consumed: true, already: true });
+  if (row.status === "consumed" || row.status === "expired") {
+    return NextResponse.json({ consumed: true, expired: row.status === "expired", already: true });
+  }
 
   let used = false;
   try {
@@ -287,13 +222,26 @@ export async function PATCH(request: NextRequest): Promise<NextResponse> {
   } catch {
     return NextResponse.json({ error: "Could not read on-chain nonce state." }, { status: 502 });
   }
-  if (!used) return NextResponse.json({ error: "Intent is still live on-chain — refusing to consume." }, { status: 409 });
+  let nextStatus: "consumed" | "expired" = "consumed";
+  if (!used) {
+    const deadline = BigInt(String(row.intent.deadline));
+    let chainNow: bigint;
+    try {
+      chainNow = (await publicClient.getBlock({ blockTag: "latest" })).timestamp;
+    } catch {
+      return NextResponse.json({ error: "Could not read chain time." }, { status: 502 });
+    }
+    if (chainNow <= deadline) {
+      return NextResponse.json({ error: "Intent is still live on-chain — refusing to consume." }, { status: 409 });
+    }
+    nextStatus = "expired";
+  }
 
   const upd = await fetch(sb(`${TABLE}?id=eq.${id}`), {
     method: "PATCH",
     headers: sbHeaders({ prefer: "return=minimal" }),
-    body: JSON.stringify({ status: "consumed" }),
+    body: JSON.stringify({ status: nextStatus }),
   });
   if (!upd.ok) return NextResponse.json({ error: "Update failed." }, { status: 502 });
-  return NextResponse.json({ consumed: true });
+  return NextResponse.json({ consumed: true, expired: nextStatus === "expired" });
 }

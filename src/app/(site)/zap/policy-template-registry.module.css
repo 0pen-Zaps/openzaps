@@ -1,0 +1,182 @@
+.shell {
+  display: grid;
+  gap: 12px;
+  padding: 18px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-card);
+  background: var(--panel);
+  box-shadow: var(--sh-1);
+}
+
+.head {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.head h2 {
+  margin: 0;
+  font-family: var(--font-serif);
+  font-size: 20px;
+  font-weight: 500;
+}
+
+.head p {
+  max-width: 72ch;
+  margin: 5px 0 0;
+  color: var(--ink-2);
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+
+.refresh,
+.publish button,
+.actions button {
+  border: 1px solid var(--line-btn);
+  border-radius: var(--r-ctl);
+  background: var(--panel-2);
+  color: var(--ink);
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.refresh {
+  height: 32px;
+  padding: 0 11px;
+}
+
+.refresh:disabled,
+.publish button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.lineage,
+.notice,
+.status {
+  margin: 0;
+  color: var(--ink-2);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.lineage {
+  padding: 9px 11px;
+  border-radius: var(--r-ctl);
+  background: var(--info-wash);
+  color: var(--info);
+}
+
+.lineage code {
+  font-family: var(--font-mono);
+}
+
+.publish {
+  display: grid;
+  grid-template-columns: minmax(150px, 0.7fr) minmax(220px, 1.3fr) auto;
+  gap: 8px;
+}
+
+.publish input {
+  min-width: 0;
+  height: 38px;
+  padding: 0 11px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-ctl);
+  background: var(--panel-2);
+  color: var(--ink);
+  font-family: inherit;
+  font-size: 12.5px;
+}
+
+.publish button {
+  height: 38px;
+  padding: 0 14px;
+  border: 0;
+  background: var(--btn);
+  color: var(--btn-ink);
+}
+
+.grid {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(230px, 1fr);
+  gap: 10px;
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+
+.card {
+  display: grid;
+  gap: 7px;
+  padding: 13px;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--r-card-sm);
+  background: var(--panel-2);
+}
+
+.card > div:first-child {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.card strong {
+  font-size: 13px;
+}
+
+.card span,
+.card small {
+  color: var(--ink-3);
+  font-size: 10.5px;
+}
+
+.card p {
+  margin: 0;
+  color: var(--ink-2);
+  font-size: 11.5px;
+  line-height: 1.45;
+}
+
+.card code {
+  overflow: hidden;
+  color: var(--ink-3);
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  text-overflow: ellipsis;
+}
+
+.actions {
+  display: flex;
+  gap: 6px;
+  margin-top: 3px;
+}
+
+.actions button {
+  min-height: 30px;
+  padding: 0 9px;
+}
+
+.actions button[data-subscribed="true"] {
+  border-color: var(--ok);
+  background: var(--ok-wash);
+  color: var(--ok);
+}
+
+.status {
+  min-height: 1.5em;
+  color: var(--ink-3);
+}
+
+@media (max-width: 800px) {
+  .publish {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .publish button {
+    width: 100%;
+  }
+}

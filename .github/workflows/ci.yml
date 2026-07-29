@@ -21,16 +21,17 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 24
           cache: npm
       - run: npm ci
+      - run: npm audit --omit=dev --audit-level=high
       - run: npm run lint
       - run: npx tsc --noEmit
       - run: npm test
       - run: npm run build
 
   contracts:
-    name: Contracts (build)
+    name: Contracts (build · unit · fuzz · invariant)
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -39,7 +40,50 @@ jobs:
       - uses: actions/checkout@v4
       - uses: foundry-rs/foundry-toolchain@v1
       - run: forge install foundry-rs/forge-std
+      - run: forge fmt --check src/v3_2 script/DeployV3_2Robinhood.s.sol test/OpenZapV3_2.stack.t.sol test/DeployV3_2Robinhood.t.sol
       - run: forge build --sizes
+      # Fixed-block fork suites depend on archive-capable Base/Robinhood RPCs and are exercised in
+      # the live-chain release matrix. Public endpoints can return pruned-state errors or 429s on a
+      # fresh runner, so the required PR gate stays hermetic.
+      - run: forge test --no-match-path 'test/*.fork.t.sol'
+
+  executor-and-agent-kit:
+    name: Executor + Agent Kit (test · package)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - name: Executor + MCP tests
+        run: node --test executor/*.test.mjs mcp/*.test.mjs packages/mcp/*.test.mjs
+      - name: SDK import smoke
+        run: node --input-type=module -e "const sdk = await import('./packages/sdk/index.js'); if (typeof sdk.buildOpenZapPolicy !== 'function') process.exit(1)"
+      - name: MCP tool manifest smoke
+        run: node packages/mcp/index.mjs tools | node -e "let body=''; process.stdin.on('data', c => body += c).on('end', () => { const tools = JSON.parse(body); if (!Array.isArray(tools) || tools.length < 5) process.exit(1) })"
+      - name: Publish manifests
+        run: |
+          npm pack --dry-run ./packages/sdk
+          npm pack --dry-run ./packages/mcp
+
+  relay-database:
+    name: Relay DB (PostgreSQL 16 replay · concurrency · privileges)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - name: Install PostgreSQL 16 client and server binaries
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes postgresql-16
+          echo "/usr/lib/postgresql/16/bin" >> "$GITHUB_PATH"
+      - run: npm run test:relay-pg16
 
   secrets:
     name: Secret scan (full history)

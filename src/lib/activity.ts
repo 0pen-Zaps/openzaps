@@ -122,7 +122,7 @@ export interface ExitLogInput {
 }
 
 /** Which standing authorization produced an automated run. */
-export type AutomatedRunKind = "recurring" | "recurring-relative" | "trigger";
+export type AutomatedRunKind = "recurring" | "recurring-relative" | "recurring-stack" | "trigger";
 
 /**
  * One automated run, normalized across the three v3/v3.1 events. `actor` is the
@@ -274,7 +274,12 @@ export function assetDecimalsFor(asset: Address): number {
 /** Human label for an automated row: "run 3 · recurring" / "price trigger". */
 export function describeAutomatedRun(kind: AutomatedRunKind, run: number | null): string {
   if (kind === "trigger") return "price trigger";
-  const label = kind === "recurring-relative" ? "recurring · spot floor" : "recurring";
+  const label =
+    kind === "recurring-stack"
+      ? "recurring · stacks 0xZAPS"
+      : kind === "recurring-relative"
+        ? "recurring · spot floor"
+        : "recurring";
   return run === null ? label : `run ${run} · ${label}`;
 }
 

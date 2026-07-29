@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useState, useId } from "react";
 
 import { BlockGlyph } from "./BlockGlyph";
+import { IntentComposer } from "./IntentComposer";
 import { readDesignLibrary, type SavedDesign } from "@/lib/designs";
 import styles from "./workspace.module.css";
 
@@ -106,6 +107,8 @@ export function ZapLauncher({ idScope }: { idScope?: string } = {}): React.JSX.E
           </Link>
         </aside>
       </div>
+
+      <IntentComposer />
 
       <section className={styles.section} aria-labelledby={reuseId}>
         <div className={styles.sectionHead}>

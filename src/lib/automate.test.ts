@@ -10,6 +10,7 @@ import {
   describeSeries,
   draftRecurringIntent,
   draftRecurringRelativeIntent,
+  draftRecurringStackIntent,
   draftTriggerIntent,
   feedConditionForZapsMove,
   fundingReadiness,
@@ -253,6 +254,59 @@ describe("intentFileName", () => {
   it("derives a stable per-capsule name", () => {
     expect(intentFileName("recurring", ZAP)).toBe("openzap-recurring-9941dd72.json");
     expect(intentFileName("trigger", ZAP)).toBe("openzap-trigger-9941dd72.json");
+  });
+});
+
+describe("draftRecurringStackIntent", () => {
+  const ZAPS = "0xDd90bFa4adC7F4401E611AbaC692D939F9F4CB07" as Address;
+  const baseStack = { ...baseRel, zaps: ZAPS, stackPriceSource: ADDR, stackBps: 500, maxSlippageBps: 500 };
+
+  it("carries the slice and conversion source on top of the relative shape", () => {
+    const it_ = draftRecurringStackIntent(baseStack);
+    expect(it_.stackBps).toBe(500);
+    expect(it_.stackPriceSource).toBe(ADDR);
+    expect(it_.priceSource).toBe(baseRel.priceSource);
+    expect(it_.maxSlippageBps).toBe(500);
+  });
+
+  it("refuses a slippage band the capsule can never clear", () => {
+    // The floor is checked NET of the 1% fee, so <=100 bps yields a series that reverts forever.
+    // Catching it HERE means the user never pays a wallet interaction for a dead authorization.
+    for (const bps of [0, 50, 100]) {
+      expect(() => draftRecurringStackIntent({ ...baseStack, maxSlippageBps: bps })).toThrow(
+        "Slippage tolerance must be above 1%",
+      );
+    }
+    expect(draftRecurringStackIntent({ ...baseStack, maxSlippageBps: 101 }).maxSlippageBps).toBe(101);
+  });
+
+  it("refuses a slice that is not a real slice", () => {
+    expect(() => draftRecurringStackIntent({ ...baseStack, stackBps: 0 })).toThrow("greater than 0%");
+    expect(() => draftRecurringStackIntent({ ...baseStack, stackBps: 10_000 })).toThrow("less than 100%");
+  });
+
+  it("requires a conversion source exactly when the output is not already 0xZAPS", () => {
+    // outAsset is not 0xZAPS → a conversion leg exists and MUST be floored.
+    expect(() => draftRecurringStackIntent({ ...baseStack, stackPriceSource: null })).toThrow(
+      "price source is required",
+    );
+    // outAsset IS 0xZAPS → no conversion leg, so a source would be carried along stale.
+    expect(() =>
+      draftRecurringStackIntent({ ...baseStack, outAsset: ZAPS, stackPriceSource: ADDR }),
+    ).toThrow("needs no conversion price source");
+    // ...and omitting it in that case is exactly right.
+    const direct = draftRecurringStackIntent({ ...baseStack, outAsset: ZAPS, stackPriceSource: null });
+    expect(direct.stackPriceSource).toBe("0x0000000000000000000000000000000000000000");
+  });
+
+  it("matches the capsule's zero-address convention case-insensitively on the token", () => {
+    // A lowercased 0xZAPS address must still be recognized as "output is already the token".
+    const lower = draftRecurringStackIntent({
+      ...baseStack,
+      outAsset: ZAPS.toLowerCase() as Address,
+      stackPriceSource: null,
+    });
+    expect(lower.stackPriceSource).toBe("0x0000000000000000000000000000000000000000");
   });
 });
 

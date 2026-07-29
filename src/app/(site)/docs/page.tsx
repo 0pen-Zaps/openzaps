@@ -1,4 +1,6 @@
 import Link from "next/link";
+
+import { mcpClientSnippet, OPENZAPS_AGENT_KIT_PUBLISHED } from "@/lib/agent-kit";
 import { CHAIN, CONTRACTS, LINKS, STATUS, TOKEN, explorer } from "@/lib/config";
 import { POLICY_TEMPLATES } from "@/lib/policy";
 import { JsonLd } from "@/components/JsonLd";
@@ -386,21 +388,21 @@ Automate handoff:
             yourself or sign new terms.
           </p>
           <p className={styles.prose}>
-            Any MCP client can read your capsules through the server in <code>mcp/</code> &mdash; it exposes policy
-            reads, run simulations, and delivery of already-signed intents, and holds no key of its own. Point your
-            client at it, ask the agent for its address, then pin that address in{" "}
+            The read-only Agent Kit can discover capsules and request exact policy simulations. It holds no key and
+            reads public chain data; it has no credential that could be mistaken for execution authority. Once its
+            scoped npm release is live, point your client at it, ask the agent for its public address, then pin that address in{" "}
             <Link href="/zap?view=connect">Connect</Link>.
           </p>
-          <div className={styles.code}>
-            <pre>{`{
-  "mcpServers": {
-    "openzaps": {
-      "command": "node",
-      "args": ["/path/to/openzaps/mcp/index.mjs"]
-    }
-  }
-}`}</pre>
-          </div>
+          {OPENZAPS_AGENT_KIT_PUBLISHED ? (
+            <div className={styles.code}>
+              <pre>{mcpClientSnippet()}</pre>
+            </div>
+          ) : (
+            <p className={styles.prose}>
+              Package source is release-ready in this repository; the install snippet remains gated until npm
+              publication is confirmed.
+            </p>
+          )}
           <p className={styles.prose}>
             Pinning is public: the executor address is inside the signed intent and in the chain&rsquo;s logs, so anyone
             can see which agent runs your Zap. To revoke, stop the agent (the series stalls, costing no transaction),
@@ -426,26 +428,28 @@ Automate handoff:
         <section className={styles.section} id="sdk">
           <h2 className={styles.h2}>SDK surface</h2>
           <p className={styles.prose}>
-            There is no published package. The import below does not resolve today; it shows the surface the local
-            functions expose: normalize policy input, simulate, prepare EIP-712 typed data, submit through an approved
-            channel, and monitor receipts.
+            The release-ready <code>@openzaps/sdk</code> source lives in <code>packages/sdk</code>. It compiles the
+            Solidity policy tuple and prepares unsigned EIP-712 data; its client exposes the exact simulation endpoint
+            and has no signing or broadcast method.
           </p>
           <div className={styles.code}>
-            <pre>{`import { buildPolicyDraft, simulatePolicy } from "@openzaps/sdk"
+            <pre>{`import { OpenZapsClient } from "@openzaps/sdk"
 
-const policy = buildPolicyDraft({
-  templateId: "recurring-dca",
-  tokenIn: "USDC",
-  tokenOut: "WETH",
-  amount: "250",
-  maxSpend: "1000",
+const openzaps = new OpenZapsClient()
+const artifact = await openzaps.simulatePolicy({
+  routeId: "robinhood-v4-weth-zaps",
+  owner: "0xYourAddress",
+  amount: "0.01",
+  slippageBps: 150,
 })
 
-const review = simulatePolicy(policy)
-if (review.status === "block") throw new Error("policy blocked")`}</pre>
+// Live allowlists + code hashes + quote + policy hash,
+// unsigned EIP-712 draft + eth_call. Never a transaction.
+if (artifact.status === "warn") reviewStressCases(artifact)`}</pre>
           </div>
           <p className={styles.prose}>
-            What actually executes is the deployed contract, not this surface. Read{" "}
+            Every chain-dependent field is pinned to one block. An RPC failure stays labelled unavailable; the client
+            never substitutes a fixed token price. What actually executes is the deployed contract, not this surface. Read{" "}
             <a href={LINKS.contractSource}>the verified source</a> before signing anything. {TOKEN.symbol} is not
             required to simulate or inspect a policy.
           </p>

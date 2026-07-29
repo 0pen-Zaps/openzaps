@@ -50,11 +50,12 @@ import {
   type SavedDesign,
 } from "@/lib/designs";
 import { edgeScrollDelta } from "@/lib/drag";
+import { quoteLivePolicy, resolveLivePolicyPlan } from "@/lib/live-policy";
 import { reducedMotionEnabled } from "@/lib/motion-preference";
 import { parseRouterAmount } from "@/lib/openzap";
 import { protocolsForAction } from "@/lib/protocols";
 import { quoteRoute } from "@/lib/route-quote";
-import { resolveRouteById } from "@/lib/routes";
+import { resolveRouteById, routeStaticHandoffReady } from "@/lib/routes";
 import {
   OPENZAP_CREATION_FEE,
   OPENZAP_CREATION_FEE_SLIPPAGE_BPS,
@@ -63,6 +64,9 @@ import {
 } from "@/lib/robinhood";
 import { ProtocolStack } from "@/components/ProtocolLogo";
 import { BlockGlyph } from "./BlockGlyph";
+import { IntentComposer } from "./IntentComposer";
+import { PolicyTemplateRegistry } from "./PolicyTemplateRegistry";
+import type { PublicPolicyTemplate } from "@/lib/policy-templates";
 import styles from "./build.module.css";
 
 const STORAGE_KEY = "openzaps:zap-builder:v1";
@@ -168,7 +172,10 @@ const DEPLOYABLE_RECIPES: ReadonlySet<string> = new Set(
   RECIPES.filter((recipe) => {
     const nodes = nodesFromRecipe(recipe);
     const automation = reduceChainToAutomation(nodes);
-    return reduceChainToLiveRoute(nodes).deployable && !(automation.deployable && automation.mode === "trigger");
+    const deployment = reduceChainToLiveRoute(nodes);
+    return deployment.deployable
+      && deployment.steps.every((step) => routeStaticHandoffReady(step.routeId))
+      && !(automation.deployable && automation.mode === "trigger");
   }).map((recipe) => recipe.id),
 );
 
@@ -334,6 +341,7 @@ export function ZapBuilder({
   const [runIndex, setRunIndex] = useState(-1);
   const [hint, setHint] = useState("");
   const [narration, setNarration] = useState("");
+  const [templateParent, setTemplateParent] = useState<PublicPolicyTemplate | null>(null);
   // Whole drafts, oldest first. Storing the design rather than a diff is what
   // keeps undo trivially correct: every entry is a state the canvas already
   // rendered once, so restoring one cannot produce a chain that never existed.
@@ -635,6 +643,7 @@ export function ZapBuilder({
   const loadRecipe = useCallback(
     (recipe: ZapRecipe): void => {
       commit(nodesFromRecipe(recipe), recipe.id);
+      setTemplateParent(null);
       setOpenUid(null);
       announce(`Loaded the ${recipe.name} blueprint: ${recipe.blocks.length} blocks.`);
       trackEvent("builder_recipe_loaded", { recipe: recipe.id });
@@ -931,6 +940,8 @@ export function ZapBuilder({
 
   /** What, if anything, of this design the live v1.1 contracts can carry. */
   const deployment = useMemo(() => reduceChainToLiveRoute(chain), [chain]);
+  const staticDeploymentReady =
+    deployment.deployable && deployment.steps.every((step) => routeStaticHandoffReady(step.routeId));
   /** A cadence or one-sided price condition the live automation stack can bind. */
   const automation = useMemo(() => reduceChainToAutomation(chain), [chain]);
   // `route` is the route identity `/app` resolves and signs; `dir` is kept only
@@ -940,7 +951,10 @@ export function ZapBuilder({
   // route/amount/bps keys stay compatible; explicit gas controls are additive.
   const oneShotHandoffAllowed = !(automation.deployable && automation.mode === "trigger");
   let deployHref: string | null = null;
-  if (deployment.deployable && oneShotHandoffAllowed) {
+  if (
+    staticDeploymentReady
+    && oneShotHandoffAllowed
+  ) {
     const params = new URLSearchParams({
       view: "sign",
       src: "build",
@@ -951,13 +965,23 @@ export function ZapBuilder({
       maxFeeGwei: String(deployment.executionPolicy.maxFeePerGasGwei),
     });
     if (deployment.direction) params.set("dir", deployment.direction);
+    if (deployment.steps.length > 1) params.set("policy", deployment.policyToken);
     deployHref = `/zap?${params.toString()}`;
   }
-  /** The resolved route the handoff would sign, for naming its tokens honestly. */
-  const deployRoute = useMemo(
-    () => (deployment.deployable ? resolveRouteById(deployment.routeId) : null),
+  /** Every exact step the handoff would sign, resolved from the shipped manifest. */
+  const deployPolicy = useMemo(
+    () => {
+      if (!deployment.deployable) return null;
+      try {
+        return resolveLivePolicyPlan({ version: 1, steps: deployment.steps });
+      } catch {
+        return null;
+      }
+    },
     [deployment],
   );
+  const deployRoute = deployPolicy?.inputRoute ?? null;
+  const deployOutputRoute = deployPolicy?.outputRoute ?? null;
   const automateHref = automation.deployable ? automationHandoff(automation) : null;
   const automationRoute = useMemo(
     () => (automation.deployable ? resolveRouteById(automation.routeId) : null),
@@ -993,12 +1017,8 @@ export function ZapBuilder({
   // the fixed native creation fee's atomic aeWETH -> 0xZAPS conversion. The
   // quote is indicative until the signing console refreshes it immediately
   // before execution, and every stale async response is epoch-discarded.
-  const quoteRouteTarget = deployRoute ?? automationRoute;
-  const quoteAmountText = deployment.deployable
-    ? deployment.amountIn
-    : automation.deployable
-      ? automation.amountIn
-      : "";
+  const quoteRouteTarget = deployOutputRoute ?? automationRoute;
+  const quoteAmountText = automation.deployable ? automation.amountIn : "";
   const quoteSlippageBps = deployment.deployable
     ? deployment.slippageBps
     : automation.deployable
@@ -1010,7 +1030,7 @@ export function ZapBuilder({
 
   useEffect(() => {
     const epoch = ++quoteEpoch.current;
-    if (!quoteRouteTarget || !quoteAmountText || !CREATION_FEE_ROUTE) {
+    if (!quoteRouteTarget || (!deployPolicy && !quoteAmountText) || !CREATION_FEE_ROUTE) {
       const timer = window.setTimeout(() => {
         if (quoteEpoch.current === epoch) setBuilderQuote({ status: "idle" });
       }, 0);
@@ -1018,15 +1038,22 @@ export function ZapBuilder({
     }
     const timer = window.setTimeout(() => {
       setBuilderQuote({ status: "loading" });
-      let amountIn: bigint;
+      let routeQuotePromise: ReturnType<typeof quoteRoute> | ReturnType<typeof quoteLivePolicy>;
       try {
-        amountIn = parseRouterAmount(quoteAmountText, quoteRouteTarget.tokenIn.decimals);
+        routeQuotePromise = deployPolicy
+          ? quoteLivePolicy(builderClient, deployPolicy, zeroAddress)
+          : quoteRoute(
+              builderClient,
+              quoteRouteTarget,
+              parseRouterAmount(quoteAmountText, quoteRouteTarget.tokenIn.decimals),
+              zeroAddress,
+            );
       } catch (cause) {
         setBuilderQuote({ status: "error", message: cause instanceof Error ? cause.message : "Invalid amount." });
         return;
       }
       void Promise.all([
-        quoteRoute(builderClient, quoteRouteTarget, amountIn, zeroAddress),
+        routeQuotePromise,
         quoteRoute(builderClient, CREATION_FEE_ROUTE, OPENZAP_CREATION_FEE, zeroAddress),
       ]).then(
         ([routeQuote, feeQuote]) => {
@@ -1048,7 +1075,7 @@ export function ZapBuilder({
       );
     }, 320);
     return () => window.clearTimeout(timer);
-  }, [quoteAmountText, quoteRefresh, quoteRouteTarget]);
+  }, [deployPolicy, quoteAmountText, quoteRefresh, quoteRouteTarget]);
 
   const quoteEconomics =
     builderQuote.status === "ready"
@@ -1116,6 +1143,7 @@ export function ZapBuilder({
     }
     advancePlacementCounter(nodes);
     commit(nodes);
+    setTemplateParent(null);
     setOpenUid(null);
     setImportText("");
     setImporting(false);
@@ -1189,6 +1217,7 @@ export function ZapBuilder({
       }
       advancePlacementCounter(nodes);
       commit(nodes);
+      setTemplateParent(null);
       setOpenUid(null);
       const message = `Loaded “${design.name}”: ${nodes.length} blocks. ⌘Z puts your previous chain back.`;
       flash(message);
@@ -1235,6 +1264,24 @@ export function ZapBuilder({
 
   const dragBlock = drag ? getBlock(drag.blockId) : undefined;
 
+  const loadPolicyTemplate = useCallback(
+    (template: PublicPolicyTemplate): void => {
+      const nodes = decodeChain(template.token);
+      if (!nodes || nodes.length === 0) {
+        flash(`Public template ${template.contentHash} no longer decodes against today's catalog.`);
+        return;
+      }
+      advancePlacementCounter(nodes);
+      commit(nodes);
+      setTemplateParent(template);
+      setOpenUid(null);
+      const message = `Loaded immutable ${template.name} v${template.version}. Edits publish as a fork of its exact content hash.`;
+      flash(message);
+      announce(message);
+    },
+    [announce, commit, flash],
+  );
+
   // ---- readout summaries ---------------------------------------------------
   // Compile validity and live-route deployability are different facts. A design
   // can compile perfectly and still have nothing on Robinhood Chain to run it,
@@ -1247,14 +1294,16 @@ export function ZapBuilder({
       ? { label: "blocked", tone: "danger" }
       : compiled.status === "warn"
         ? { label: "review", tone: "warn" }
-        : deployment.deployable
+        : staticDeploymentReady
           ? { label: "deployable", tone: "ok" }
           : { label: "compiles", tone: "ok" };
 
-  const handoffAvailable = Boolean((deployment.deployable && deployHref) || (automation.deployable && automateHref));
+  const handoffAvailable = Boolean((staticDeploymentReady && deployHref) || (automation.deployable && automateHref));
 
   return (
     <div className={styles.screen} data-dragging={drag?.active ? "true" : "false"}>
+      <IntentComposer compact />
+
       <section className={styles.reuse} aria-label="Zap blueprints">
         <div className={styles.reuseHead}>
           <div>
@@ -1396,6 +1445,13 @@ export function ZapBuilder({
         </section>
       ) : null}
 
+      <PolicyTemplateRegistry
+        chain={chain}
+        parent={templateParent}
+        onLoad={loadPolicyTemplate}
+        onPublished={setTemplateParent}
+      />
+
       <div className={styles.workspace}>
         {/* ---- palette ---- */}
         <aside className={styles.palette} aria-label="Block palette">
@@ -1518,6 +1574,7 @@ export function ZapBuilder({
                 className={styles.toolBtn}
                 onClick={() => {
                   commit([]);
+                  setTemplateParent(null);
                   setOpenUid(null);
                   announce("Canvas cleared. Undo puts it back.");
                 }}
@@ -1920,11 +1977,11 @@ export function ZapBuilder({
 
             {handoffAvailable ? (
               <>
-                {deployment.deployable ? (
+                {staticDeploymentReady ? (
                   <p className={styles.deployNote}>
                     <strong>Zap now</strong> opens with{" "}
-                    {deployRoute
-                      ? `${deployRoute.tokenIn.symbol} → ${deployRoute.tokenOut.symbol}`
+                    {deployRoute && deployOutputRoute
+                      ? `${deployRoute.tokenIn.symbol} → ${deployOutputRoute.tokenOut.symbol}${deployment.steps.length > 1 ? ` in ${deployment.steps.length} fixed steps` : ""}`
                       : "the matching route"}
                     , {deployment.amountIn} {deployRoute ? deployRoute.tokenIn.symbol : ""}, a{" "}
                     {(deployment.slippageBps / 100).toFixed(2)}% signed slippage cap, up to{" "}
@@ -1947,7 +2004,7 @@ export function ZapBuilder({
                       : `, then binds ${automation.thresholdId.startsWith("up") ? "a rise" : "a fall"} of ${automation.thresholdId.replace(/\D/g, "")}% for ${automation.validDays} days.`}
                   </p>
                 ) : null}
-                {deployment.deployable && deployment.unenforcedGuards.length > 0 ? (
+                {staticDeploymentReady && deployment.unenforcedGuards.length > 0 ? (
                   // Rendered in full, in the CTA's own line of sight. Summarising
                   // or counting these would let someone deploy believing a guard
                   // they drew is protecting funds that nothing is protecting.
@@ -1980,6 +2037,17 @@ export function ZapBuilder({
                       {deployment.reasons.map((reason) => (
                         <li key={reason}>{reason}</li>
                       ))}
+                    </ul>
+                  </div>
+                ) : null}
+                {deployment.deployable && !staticDeploymentReady ? (
+                  <div className={styles.reasons} role="note">
+                    <strong>This design is withheld from Zap now.</strong>
+                    <ul>
+                      <li>
+                        Static route metadata cannot prove the required vault is seeded (totalSupply &gt; 0), so this
+                        builder will not offer a signing handoff.
+                      </li>
                     </ul>
                   </div>
                 ) : null}
