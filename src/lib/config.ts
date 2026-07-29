@@ -82,6 +82,8 @@ export const LINKS = {
   contractSource: `${explorer(CONTRACTS.factory)}?tab=contract`,
   farcaster: "https://farcaster.xyz/nodes",
   x: "https://x.com/0xzaps",
+  discord: "https://discord.com/invite/openzaps",
+  substack: "https://defitutorials.substack.com",
   clanker: TOKEN_LAUNCH.tradeUrl,
   dexscreener: TOKEN_LAUNCH.dexscreenerUrl,
   tokenExplorer: TOKEN_LAUNCH.contractUrl,

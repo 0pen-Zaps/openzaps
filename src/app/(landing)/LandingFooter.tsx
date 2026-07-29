@@ -46,6 +46,12 @@ export function LandingFooter({ githubUrl }: { githubUrl: string }): React.JSX.E
             <a href={LINKS.farcaster} target="_blank" rel="noreferrer noopener">
               Farcaster ↗
             </a>
+            <a href={LINKS.discord} target="_blank" rel="noreferrer noopener">
+              Discord ↗
+            </a>
+            <a href={LINKS.substack} target="_blank" rel="noreferrer noopener">
+              DeFi Tutorials ↗
+            </a>
             <a href={LINKS.dexscreener} target="_blank" rel="noreferrer noopener">
               Dexscreener ↗
             </a>

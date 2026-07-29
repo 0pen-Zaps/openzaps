@@ -124,7 +124,9 @@ live before its external dependency or production control exists:
 
 Release operators should use the bounded procedures in [`docs/operations-runbook.md`](docs/operations-runbook.md);
 the scoped-package bootstrap and trusted-publishing path is documented separately in
-[`docs/npm-publishing.md`](docs/npm-publishing.md).
+[`docs/npm-publishing.md`](docs/npm-publishing.md). Marketing-agent channel setup, review gates,
+and safe rollout/recovery are in [`docs/marketing-agent.md`](docs/marketing-agent.md); the supported
+production posture is review-only and defaults to disabled dry-run.
 
 ## The 0xZAPS token
 

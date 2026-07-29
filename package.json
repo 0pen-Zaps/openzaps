@@ -18,7 +18,9 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
+    "audit:production": "node scripts/audit-production.mjs",
     "lint": "eslint",
+    "validate:workflow": "workflow validate",
     "verify:token": "node scripts/verify-token-metadata.mjs",
     "test": "vitest run",
     "test:relay-pg16": "node scripts/test-relay-admission-pg16.mjs"
@@ -26,10 +28,14 @@
   "dependencies": {
     "@anthropic-ai/sdk": "^0.115.0",
     "@vercel/analytics": "^2.0.1",
+    "ai": "^6.0.237",
+    "discord-interactions": "^4.4.0",
     "next": "^16.2.12",
     "react": "19.2.4",
     "react-dom": "19.2.4",
-    "viem": "^2.55.5"
+    "viem": "^2.55.5",
+    "workflow": "^4.7.0",
+    "zod": "~4.3.6"
   },
   "devDependencies": {
     "@types/node": "^20",
