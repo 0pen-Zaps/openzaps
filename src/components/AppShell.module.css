@@ -33,6 +33,7 @@
 
 .brand {
   display: flex;
+  flex-shrink: 0;
   align-items: center;
   gap: 10px;
   padding: 0 6px 16px;
@@ -85,6 +86,7 @@
 
 .newZap {
   display: flex;
+  flex-shrink: 0;
   align-items: center;
   gap: 9px;
   width: 100%;
@@ -127,6 +129,7 @@
    shipping browser. */
 .nav {
   display: flex;
+  flex-shrink: 0;
   flex-direction: column;
 }
 
@@ -200,6 +203,7 @@
 /* ── Pick up again ─────────────────────────────────────────────────────── */
 
 .reuse {
+  flex-shrink: 0;
   margin-top: 20px;
   padding-top: 14px;
   border-top: 1px solid var(--line-2);
@@ -273,6 +277,7 @@
 
 .sidebarFoot {
   display: flex;
+  flex-shrink: 0;
   flex-direction: column;
   gap: 8px;
   margin-top: auto;

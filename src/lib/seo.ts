@@ -64,9 +64,9 @@ export const STATIC_PAGE_SEO = {
     priority: 0.85,
   },
   roadmap: {
-    title: "DeFi Zap Protocol Roadmap",
+    title: "Executable DeFi Intelligence Roadmap",
     description:
-      "Track what OpenZaps runs today, what is release-ready, which production launches remain gated, and why protective automation is explicitly deferred.",
+      "See how OpenZaps plans to turn bounded Zaps into agent skills, funded requests, contribution rewards, reproducible competitions, and safer strategies.",
     path: "/roadmap",
     ogImage: "/og/roadmap.png",
     changeFrequency: "monthly",

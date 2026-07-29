@@ -1,58 +1,196 @@
 import Link from "next/link";
+
 import { JsonLd } from "@/components/JsonLd";
-import { STATIC_PAGE_SEO, breadcrumbJsonLd, pageMetadata, webPageJsonLd } from "@/lib/seo";
 import { Reveal } from "@/components/Reveal";
-import styles from "../docs/docs.module.css";
+import { STATIC_PAGE_SEO, breadcrumbJsonLd, pageMetadata, webPageJsonLd } from "@/lib/seo";
+
+import {
+  CONTRIBUTION_ALLOCATION,
+  FLYWHEELS,
+  FOUNDATION_STATES,
+  NON_NEGOTIABLES,
+  NORTH_STAR_METRICS,
+  ROADMAP_SYSTEMS,
+  STATUS_LEGEND,
+  type RoadmapStatus,
+  type RoadmapSystem,
+} from "./roadmap-data";
+import styles from "./roadmap.module.css";
 
 export const metadata = pageMetadata({
   ...STATIC_PAGE_SEO.roadmap,
-  keywords: ["OpenZaps roadmap", "DeFi agent roadmap"],
+  keywords: [
+    "OpenZaps roadmap",
+    "DeFi agent roadmap",
+    "Zap marketplace",
+    "agent skill registry",
+    "0xZAPS utility",
+    "DeFi agent competition",
+  ],
 });
 
-const phases = [
-  [
-    "Live",
-    "Bounded execution on Robinhood Chain",
-    "v1.1 and v3.1 enforce fixed one- to sixteen-step routes, recipients, assets, spend amounts, output floors, execution gas, gas price, cadence or price triggers, and executor access. Swaps, stitched routes, aeWETH/USDG liquidity, recurring series, and price-triggered Zaps are available in the builder.",
-  ],
-  [
-    "Shipped",
-    "Receipts, Guardian, policies, and public evidence",
-    "The operations layer persists signed intents, execution receipts, cursor-safe relay state, executor scorecards, and read-only Guardian checks. Exact policy compilation, natural-language composition, signed and forkable public templates, the source-ready Agent Kit, and the public eval surface preserve the same rule: agents can discover and submit, but they cannot widen authority.",
-  ],
-  [
-    "Release-ready · one-shot",
-    "v1.2 exact owner pull and permanent halt",
-    "The v1.2 contracts, isolated creation gateway and pot, canonical Permit2 witness builder, exact-allowance cleanup, typed irreversible halt, recovery path, public halt status, and fail-closed factory/clone provenance are source-ready. It is not live until the governance wallet broadcasts the reviewed deployment and the four independently verified addresses pass creation, execution, halt, recovery, and allowance canaries.",
-  ],
-  [
-    "Release-ready · automate",
-    "Recurring Robinhood v3.2 stack",
-    "The v3.2 contracts, stack-only creation gateway, fail-closed Automate create/sign/manage path, fork coverage, independent readback checklist, and runtime adapter-bytecode manifest are complete. It is not live until the governance wallet broadcasts the reviewed deployment, the relay migration is verified, and all seven addresses pass the post-broadcast checks.",
-  ],
-  [
-    "Gated",
-    "Credentialed production launches",
-    "Across funding, exact simulation, Guardian, wallet-bound template subscriptions, notifications, executor signing, and npm distribution remain off until their documented credentials, migrations, durable quotas, and operator checks exist. Private-relay fanout is implemented fail-closed for price-sensitive execution, but Robinhood Chain does not currently document enough independent private endpoints to activate that lane honestly.",
-  ],
-  [
-    "Deferred",
-    "Protective auto-deleverage",
-    "Automated deleveraging is a separate protocol model, not another adapter. It stays out of this release because liabilities, oracle failure, venue liquidity, liquidation ordering, and bounded recovery need an explicit v1.x design before an agent can safely trigger it.",
-  ],
+const SECTION_LINKS = [
+  { href: "#vision", label: "Vision" },
+  { href: "#foundation", label: "Foundation" },
+  { href: "#systems", label: "Eight systems" },
+  { href: "#economics", label: "Economics" },
+  { href: "#flywheels", label: "Flywheels" },
+  { href: "#guardrails", label: "Guardrails" },
+  { href: "#metrics", label: "Metrics" },
 ] as const;
 
-const principles = [
-  "ERC-20 first. Callback tokens and multi-asset accounting stay out until their failure modes are reviewed.",
-  "A registry allowlist is not bytecode identity: the reference signing executor independently pins and re-checks every adapter runtime hash.",
-  "Every execution fee is bound by the typed intent or fixed in the capsule and disclosed before signing; every creation fee is shown with its conversion floor.",
-  "Price-sensitive execution fails closed when its qualifying private-relay set is unavailable, records each dispatch result, and never silently falls back to a public endpoint.",
-  "Every automation keeps nonce invalidation, emergency asset recovery, durable receipts, and an inspectable authority boundary.",
-] as const;
+function StatusPill({ status }: { status: RoadmapStatus }): React.JSX.Element {
+  return (
+    <span className={styles.status} data-tone={status.tone}>
+      <span className={styles.statusDot} aria-hidden />
+      {status.label}
+    </span>
+  );
+}
+
+function ContributionAllocation(): React.JSX.Element {
+  return (
+    <figure className={styles.allocation}>
+      <figcaption>
+        <span>Proposed default allocation</span>
+        <strong>40 / 40 / 20</strong>
+      </figcaption>
+      <div className={styles.allocationBar} aria-hidden>
+        {CONTRIBUTION_ALLOCATION.map((item) => (
+          <span key={item.label} style={{ flex: item.percentage }} />
+        ))}
+      </div>
+      <ol className={styles.allocationLegend}>
+        {CONTRIBUTION_ALLOCATION.map((item) => (
+          <li key={item.label}>
+            <strong>{item.percentage}%</strong>
+            <span>
+              <b>{item.label}</b>
+              {item.detail}
+            </span>
+          </li>
+        ))}
+      </ol>
+    </figure>
+  );
+}
+
+function RoadmapSystemCard({ system, delay }: { system: RoadmapSystem; delay: number }): React.JSX.Element {
+  return (
+    <Reveal
+      as="article"
+      className={styles.systemCard}
+      data-roadmap-system={system.number}
+      delay={delay}
+      id={system.id}
+    >
+      <header className={styles.systemHeader}>
+        <span className={styles.systemNumber}>{system.number}</span>
+        <div>
+          <span className={styles.systemGroup}>{system.group}</span>
+          <h3>{system.title}</h3>
+        </div>
+      </header>
+
+      <div className={styles.statusRow} aria-label={`${system.title} statuses`}>
+        {system.statuses.map((status) => (
+          <StatusPill key={status.label} status={status} />
+        ))}
+      </div>
+
+      <p className={styles.systemSummary}>{system.summary}</p>
+
+      {system.paragraphs?.map((paragraph) => (
+        <p className={styles.systemBody} key={paragraph}>
+          {paragraph}
+        </p>
+      ))}
+
+      {system.formula ? (
+        <div className={styles.formula}>
+          <span>Creator compensation signal</span>
+          <strong>{system.formula}</strong>
+        </div>
+      ) : null}
+
+      {system.bullets?.length ? (
+        <div className={styles.systemListBlock}>
+          <h4>{system.bulletLabel}</h4>
+          <ul className={styles.systemList}>
+            {system.bullets.map((item) => (
+              <li key={item}>{item}</li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+
+      {system.id === "contribution-router" ? <ContributionAllocation /> : null}
+
+      {system.details?.length ? (
+        <div className={styles.detailStack}>
+          {system.details.map((detail) => (
+            <details className={styles.detail} key={detail.title}>
+              <summary>
+                <span>{detail.title}</span>
+                <span className={styles.detailMark} aria-hidden>
+                  +
+                </span>
+              </summary>
+              <div className={styles.detailBody}>
+                {detail.intro ? <p>{detail.intro}</p> : null}
+                <ul>
+                  {detail.items.map((item) => (
+                    <li key={item}>{item}</li>
+                  ))}
+                </ul>
+              </div>
+            </details>
+          ))}
+        </div>
+      ) : null}
+
+      {system.progression?.length ? (
+        <div className={styles.progression} aria-label="Strategy graduation path">
+          <span className={styles.progressionLabel}>Graduation path</span>
+          <ol>
+            {system.progression.map((step, index) => (
+              <li key={step}>
+                <span>{String(index + 1).padStart(2, "0")}</span>
+                {step}
+              </li>
+            ))}
+          </ol>
+        </div>
+      ) : null}
+
+      {system.note ? <p className={styles.systemNote}>{system.note}</p> : null}
+    </Reveal>
+  );
+}
+
+function Flywheel({ label, nodes, delay }: (typeof FLYWHEELS)[number] & { delay: number }): React.JSX.Element {
+  return (
+    <Reveal as="article" className={styles.flywheel} delay={delay}>
+      <div className={styles.flywheelHead}>
+        <span>Loop</span>
+        <h3>{label}</h3>
+      </div>
+      <ol aria-label={label}>
+        {nodes.map((node, index) => (
+          <li key={node}>
+            <span>{String(index + 1).padStart(2, "0")}</span>
+            <strong>{node}</strong>
+            {index < nodes.length - 1 ? <i aria-hidden>→</i> : <i aria-hidden>↻</i>}
+          </li>
+        ))}
+      </ol>
+    </Reveal>
+  );
+}
 
 export default function RoadmapPage(): React.JSX.Element {
   return (
-    <main className={styles.reader} id="main" data-screen-label="Roadmap">
+    <main className={styles.page} id="main" data-screen-label="Roadmap">
       <JsonLd
         data={{
           "@context": "https://schema.org",
@@ -60,48 +198,232 @@ export default function RoadmapPage(): React.JSX.Element {
         }}
       />
 
-      <h1 className={styles.title}>What is built, what is next, and what is not decided.</h1>
-      <p className={styles.lede}>
-        This page carries no dates. The order below is not a commitment: anything past the current release can be
-        reordered or dropped. The constraint that does not move is that each release has to keep execution authority
-        explicit, inspectable, and recoverable.
-      </p>
-      <div className={styles.actions}>
-        <Link className={styles.primaryBtn} href="/docs">
-          Read docs
-        </Link>
-        <Link className={styles.ghostBtn} href="/evals">
-          View evals
-        </Link>
-        <span className={styles.metaChip}>
-          <b>Current release</b>
-          Live v1.1 + v3.1
-        </span>
-      </div>
+      <section className={styles.hero} id="vision">
+        <div className={styles.heroCopy}>
+          <p className={styles.eyebrow}>
+            <span aria-hidden />
+            OpenZaps ecosystem roadmap
+          </p>
+          <h1>Executable DeFi intelligence should compound.</h1>
+          <p className={styles.heroLead}>
+            OpenZaps becomes an evolutionary market where ideas become Zaps, useful Zaps become agent skills, usage
+            buys 0xZAPS, contributors receive rewards, and competitions produce better strategies.
+          </p>
+          <div className={styles.heroActions}>
+            <Link className={styles.primaryAction} href="/zap?view=start">
+              Build a live Zap
+              <span aria-hidden>→</span>
+            </Link>
+            <Link className={styles.secondaryAction} href="/docs">
+              Read protocol docs
+            </Link>
+          </div>
+        </div>
 
-      <section className={styles.section}>
-        <h2 className={styles.h2}>Release path</h2>
-        <div className={styles.steps}>
-          {phases.map(([phase, title, body], i) => (
-            <Reveal className={`${styles.step} ${styles.stepPhased}`} delay={i * 45} key={phase}>
-              <span className={styles.stepTag}>{phase}</span>
-              <div>
-                <h3 className={styles.stepTitle}>{title}</h3>
-                <p className={styles.stepBody}>{body}</p>
-              </div>
-            </Reveal>
+        <aside className={styles.heroPosture} aria-label="Roadmap posture">
+          <span className={styles.heroPostureLabel}>Roadmap posture</span>
+          <strong>Direction, not a release promise.</strong>
+          <p>
+            The live protocol and release-ready source are identified below. Everything beyond them can be reordered,
+            narrowed, or dropped if evidence or safety requires it.
+          </p>
+          <ul>
+            <li>Core execution stays token-ungated.</li>
+            <li>Capital progression always requires explicit user signing.</li>
+            <li>New incentive contracts require independent review.</li>
+          </ul>
+        </aside>
+
+        <div className={styles.visionLoop} aria-label="OpenZaps vision loop">
+          {["Ideas", "Zaps", "Agent skills", "Usage", "0xZAPS", "Rewards", "Better strategies"].map((node, index) => (
+            <div key={node}>
+              <span>{String(index + 1).padStart(2, "0")}</span>
+              <strong>{node}</strong>
+              {index < 6 ? <i aria-hidden>→</i> : <i aria-hidden>↻</i>}
+            </div>
           ))}
         </div>
       </section>
 
-      <section className={styles.section}>
-        <h2 className={styles.h2}>Non-negotiables</h2>
-        <ul className={styles.list}>
-          {principles.map((item) => (
-            <li key={item}>{item}</li>
+      <div className={styles.roadmapLayout}>
+        <nav className={styles.sectionNav} aria-label="Roadmap sections">
+          <span className={styles.sectionNavLabel}>On this page</span>
+          {SECTION_LINKS.map((item) => (
+            <a href={item.href} key={item.href}>
+              {item.label}
+            </a>
           ))}
-        </ul>
-      </section>
+        </nav>
+
+        <div className={styles.roadmapContent}>
+          <section className={styles.section} id="foundation">
+            <header className={styles.sectionHead}>
+              <p>Current truth</p>
+              <h2>Start from what is real.</h2>
+              <span>
+                The ecosystem roadmap builds on bounded execution already in the product. Release-ready source is not
+                described as live, and hosted or credentialed systems remain off until their production gates pass.
+              </span>
+            </header>
+
+            <div className={styles.legend} aria-label="Roadmap status legend">
+              {STATUS_LEGEND.map((status) => (
+                <div key={status.label}>
+                  <StatusPill status={status} />
+                  <p>{status.description}</p>
+                </div>
+              ))}
+            </div>
+
+            <div className={styles.foundationGrid}>
+              {FOUNDATION_STATES.map((item, index) => (
+                <Reveal as="article" className={styles.foundationCard} delay={(index % 2) * 55} key={item.title}>
+                  <StatusPill status={item.status} />
+                  <h3>{item.title}</h3>
+                  <p>{item.body}</p>
+                </Reveal>
+              ))}
+            </div>
+
+            <div className={styles.auditNotice}>
+              <strong>Pre-audit software</strong>
+              <p>
+                OpenZaps is experimental infrastructure. Onchain actions are irreversible. Review the{" "}
+                <Link href="/docs#security">security model</Link>, <Link href="/evals">public evals</Link>, and{" "}
+                <Link href="/legal">risk disclosures</Link> before signing.
+              </p>
+            </div>
+          </section>
+
+          <section className={styles.section} id="systems">
+            <header className={styles.sectionHead}>
+              <p>Roadmap architecture</p>
+              <h2>Eight systems. One compounding loop.</h2>
+              <span>
+                These systems move from bounded experiments to reusable skills, transparent contribution, and
+                adversarial strategy improvement. A roadmap badge never implies a deployed contract or active reward.
+              </span>
+            </header>
+
+            <div className={styles.systemGrid}>
+              {ROADMAP_SYSTEMS.map((system, index) => (
+                <RoadmapSystemCard delay={(index % 2) * 55} key={system.id} system={system} />
+              ))}
+            </div>
+          </section>
+
+          <section className={styles.section} id="economics">
+            <header className={styles.sectionHead}>
+              <p>Economic boundary</p>
+              <h2>Reward work. Never sell authority.</h2>
+              <span>
+                The proposed market pays for verified contribution while keeping custody, recovery, and execution
+                authority outside token mechanics.
+              </span>
+            </header>
+
+            <div className={styles.economicsGrid}>
+              <article>
+                <span className={styles.economicsIndex}>Now</span>
+                <h3>Existing obligations stay intact</h3>
+                <p>
+                  The live automated-execution fee keeps its 80% executor share and current protocol-pot obligations.
+                  No existing pot balance is redirected by this roadmap.
+                </p>
+                <Link href="/pot">Inspect the live pot →</Link>
+              </article>
+              <article>
+                <span className={styles.economicsIndex}>Future</span>
+                <h3>Migration is explicit and bounded</h3>
+                <p>
+                  Only future, explicitly migrated fee flows may fund rate-limited 0xZAPS purchases and the proposed
+                  40 / 40 / 20 contribution allocation.
+                </p>
+                <Link href="/token">See current token utility →</Link>
+              </article>
+              <article className={styles.economicsNever}>
+                <span className={styles.economicsIndex}>Never</span>
+                <h3>0xZAPS does not control user Zaps</h3>
+                <p>
+                  No passive revenue right, user-fund authority, token-gated recovery, or governance over another
+                  owner&apos;s Zap is introduced. Payment may buy review; it never buys approval.
+                </p>
+                <Link href="/legal">Read risk disclosures →</Link>
+              </article>
+            </div>
+          </section>
+
+          <section className={styles.section} id="flywheels">
+            <header className={styles.sectionHead}>
+              <p>Compounding loops</p>
+              <h2>Usage improves both product and intelligence.</h2>
+              <span>
+                The product loop funds useful work. The intelligence loop makes strategy promotion harder, more
+                reproducible, and more accountable over time.
+              </span>
+            </header>
+            <div className={styles.flywheelGrid}>
+              {FLYWHEELS.map((flywheel, index) => (
+                <Flywheel delay={index * 55} key={flywheel.label} {...flywheel} />
+              ))}
+            </div>
+          </section>
+
+          <section className={styles.section} id="guardrails">
+            <header className={styles.sectionHead}>
+              <p>Non-negotiables</p>
+              <h2>Authority never compounds.</h2>
+              <span>
+                Better strategies may earn more use. They do not earn broader wallet permissions, uncapped budgets, or
+                an automatic path into live capital.
+              </span>
+            </header>
+            <ol className={styles.guardrailGrid}>
+              {NON_NEGOTIABLES.map((item, index) => (
+                <Reveal as="li" delay={(index % 2) * 45} key={item}>
+                  <span>{String(index + 1).padStart(2, "0")}</span>
+                  <p>{item}</p>
+                </Reveal>
+              ))}
+            </ol>
+          </section>
+
+          <section className={styles.section} id="metrics">
+            <header className={styles.sectionHead}>
+              <p>Measurement plan</p>
+              <h2>Measure retention, safety, and improvement—not spectacle.</h2>
+              <span>
+                These are the intended north stars once the corresponding instrumentation exists. The page does not
+                fabricate zeroes or imply that unbuilt systems already produce data.
+              </span>
+            </header>
+            <div className={styles.metricGrid}>
+              {NORTH_STAR_METRICS.map((metric, index) => (
+                <Reveal as="article" delay={(index % 3) * 40} key={metric}>
+                  <span>{String(index + 1).padStart(2, "0")}</span>
+                  <p>{metric}</p>
+                </Reveal>
+              ))}
+            </div>
+          </section>
+
+          <section className={styles.finalCta}>
+            <div>
+              <p>Build what exists. Evaluate what comes next.</p>
+              <h2>One Zap at a time.</h2>
+            </div>
+            <div>
+              <Link className={styles.primaryAction} href="/zap?view=start">
+                Start a Zap
+                <span aria-hidden>→</span>
+              </Link>
+              <Link className={styles.secondaryAction} href="/evals">
+                View evidence
+              </Link>
+            </div>
+          </section>
+        </div>
+      </div>
     </main>
   );
 }
