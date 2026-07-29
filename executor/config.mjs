@@ -88,7 +88,7 @@ function privateRelayEndpoints(value) {
 /**
  * An explicit malformed deployment override must disable that lineage instead
  * of silently falling back to a different contract. Zero is the fail-closed
- * sentinel used for the intentionally undeployed v3.2 lineage too.
+ * sentinel used for an explicitly disabled or partially configured v3.2 operator too.
  */
 function safeAddress(name, value, fallback) {
   if (value === undefined || value === null || value === "") return fallback;

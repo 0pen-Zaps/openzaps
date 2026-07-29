@@ -261,25 +261,45 @@ export function openZapV3_1Configured(): boolean {
  * lottery pot as the owner's tickets. Signs under EIP-712 domain version "3.2"; like v3.1 it needs
  * its OWN lottery pot, because `ZapLotteryPot.setFactory` is one-shot.
  *
- * NOT YET DEPLOYED. Every address defaults to the zero address on purpose: `openZapV3_2Configured()`
- * therefore returns false, and the Automate surface must gate the stacking option behind it. Offering
- * a creation path into an undeployed lineage would fail-open — the user would pay a wallet
- * interaction for a transaction that cannot succeed. The stack-only creation gateway and its
- * constructor-bound creation pot are part of this one fail-closed set; the live v1 gateway/pot remain
- * separate because their active prize round cannot be rebound. Fill these in (or set the env vars)
- * only once `docs/deployments.md` records a verified v3.2 deployment and both pot bindings.
+ * Deployed on Robinhood Chain as an unaudited candidate. The stack-only creation gateway and its
+ * constructor-bound creation pot are one all-or-nothing fail-closed set; the live v1 gateway/pot
+ * remain separate because their active prize round cannot be rebound. Environment overrides remain
+ * useful for release rehearsals, but a partial or malformed set never enables the Automate surface.
+ * Independent receipt, runtime, immutable-binding, and finality evidence is recorded in
+ * `docs/deployments.md`.
  */
 export const OPENZAP_V3_2_CONTRACTS = {
-  implementation: optionalAddress(process.env.NEXT_PUBLIC_OPENZAP_V3_2_IMPLEMENTATION, zeroAddress),
-  factory: optionalAddress(process.env.NEXT_PUBLIC_OPENZAP_V3_2_FACTORY, zeroAddress),
-  lotteryPot: optionalAddress(process.env.NEXT_PUBLIC_OPENZAP_V3_2_LOTTERY_POT, zeroAddress),
-  priceSourceRegistry: optionalAddress(process.env.NEXT_PUBLIC_OPENZAP_V3_2_PRICE_SOURCE_REGISTRY, zeroAddress),
+  implementation: optionalAddress(
+    process.env.NEXT_PUBLIC_OPENZAP_V3_2_IMPLEMENTATION,
+    "0x5882e3dC1Ca0A7162d8F80ab59BC98E2fB8da987",
+  ),
+  factory: optionalAddress(
+    process.env.NEXT_PUBLIC_OPENZAP_V3_2_FACTORY,
+    "0xd9134F778E523E9CF2fD75FFCb98499E9046457B",
+  ),
+  lotteryPot: optionalAddress(
+    process.env.NEXT_PUBLIC_OPENZAP_V3_2_LOTTERY_POT,
+    "0x7B8791e36f2e42FB80D209e340aE04aE94Fd411F",
+  ),
+  priceSourceRegistry: optionalAddress(
+    process.env.NEXT_PUBLIC_OPENZAP_V3_2_PRICE_SOURCE_REGISTRY,
+    "0xe0b5240B079896111cB9c4a36CcAfAd85a444a12",
+  ),
   /** IOrientedPriceSource for the main leg — same shape v3.1 uses. */
-  orientedPriceSource: optionalAddress(process.env.NEXT_PUBLIC_OPENZAP_V3_2_ORIENTED_PRICE_SOURCE, zeroAddress),
+  orientedPriceSource: optionalAddress(
+    process.env.NEXT_PUBLIC_OPENZAP_V3_2_ORIENTED_PRICE_SOURCE,
+    "0xc11D92bF92EeeE280a68eabe35E48c7a2e94e42e",
+  ),
   /** Stack-only exact-fee gateway. It can call only the v3.2 factory. */
-  creationGateway: optionalAddress(process.env.NEXT_PUBLIC_OPENZAP_V3_2_CREATION_GATEWAY, zeroAddress),
+  creationGateway: optionalAddress(
+    process.env.NEXT_PUBLIC_OPENZAP_V3_2_CREATION_GATEWAY,
+    "0xa4D3bE6b97b320F1C81975038EcD5e1C5d7b3291",
+  ),
   /** Dedicated no-drain creation prize pot, bound inside the gateway constructor. */
-  creationFeePot: optionalAddress(process.env.NEXT_PUBLIC_OPENZAP_V3_2_CREATION_FEE_POT, zeroAddress),
+  creationFeePot: optionalAddress(
+    process.env.NEXT_PUBLIC_OPENZAP_V3_2_CREATION_FEE_POT,
+    "0x6a1eb88408ce53C7C9e1eb460Cc68a8BD485dC12",
+  ),
 } as const;
 
 export function openZapV3_2Configured(): boolean {
@@ -301,11 +321,12 @@ export type ConfiguredCapsuleLineageId = ConfiguredCapsuleLineage["id"];
 /**
  * One canonical registry for every lineage an authoritative reader may scan.
  *
- * v1.1, v3, and v3.1 are mandatory production surfaces. v3.2 is optional while
- * undeployed, but all-or-nothing when enabled. Factories, implementations, and
- * execution pots are identity-bearing roles: silently deduping a duplicate
- * would make one lineage masquerade as another, so duplicates reject the whole
- * configuration before an RPC read can report a fabricated partial history.
+ * v1.1, v3, and v3.1 are mandatory production surfaces. Deployed optional
+ * lineages remain all-or-nothing so an explicit zero/partial environment
+ * override fails closed. Factories, implementations, and execution pots are
+ * identity-bearing roles: silently deduping a duplicate would make one lineage
+ * masquerade as another, so duplicates reject the whole configuration before
+ * an RPC read can report a fabricated partial history.
  */
 export function configuredCapsuleLineages(): readonly ConfiguredCapsuleLineage[] {
   const v1_2State = optionalContractSetState(OPENZAP_V1_2_CONTRACTS);
