@@ -11,7 +11,7 @@ vi.mock("workflow/api", () => ({
 }));
 
 vi.mock("@/workflows/marketing-agent", () => ({
-  openZapsMarketingWorkflow: workflowMock,
+  openZapsScheduledMarketingWorkflow: workflowMock,
 }));
 
 vi.mock("@/lib/marketing/ledger-server", () => ({
@@ -29,8 +29,8 @@ function request(token?: string): Request {
 beforeEach(() => {
   vi.stubEnv("CRON_SECRET", "cron-token");
   vi.stubEnv("OPENZAPS_MARKETING_ENABLED", "true");
-  vi.stubEnv("OPENZAPS_MARKETING_DRY_RUN", "true");
-  vi.stubEnv("OPENZAPS_MARKETING_AUTO_PUBLISH", "false");
+  vi.stubEnv("OPENZAPS_MARKETING_DRY_RUN", "false");
+  vi.stubEnv("OPENZAPS_MARKETING_AUTO_PUBLISH", "true");
   vi.stubEnv("OPENZAPS_X_AI_REPLY_APPROVED", "false");
   vi.stubEnv("OPENZAPS_MARKETING_DURABLE_LEDGER_CONFIGURED", "true");
   vi.stubEnv("OPENZAPS_MARKETING_SCHEDULE_ENABLED", "true");
@@ -38,6 +38,12 @@ beforeEach(() => {
   vi.stubEnv("OPENZAPS_MARKETING_SUPABASE_PROJECT_REF", "abcdefghijklmnopqrst");
   vi.stubEnv("SUPABASE_URL", "https://abcdefghijklmnopqrst.supabase.co");
   vi.stubEnv("SUPABASE_SERVICE_ROLE_KEY", "service-secret");
+  vi.stubEnv(
+    "DISCORD_MARKETING_WEBHOOK_URL",
+    "https://discord.com/api/webhooks/123/webhook-secret",
+  );
+  vi.stubEnv("OPENZAPS_DISCORD_GUILD_ID", "456");
+  vi.stubEnv("DISCORD_MARKETING_CHANNEL_ID", "789");
   scheduleClaimMock.mockResolvedValue({
     result: "claimed",
     scheduleKey: "weekday_product_update",
@@ -86,13 +92,13 @@ describe("marketing cron route", () => {
     expect(noChannel.status).toBe(200);
     expect(await noChannel.json()).toEqual({
       skipped: true,
-      reason: "No reviewed scheduled channel is configured.",
+      reason: "No requested scheduled channel has a ready publish provider.",
     });
     expect(scheduleClaimMock).not.toHaveBeenCalled();
     expect(startMock).not.toHaveBeenCalled();
   });
 
-  it("normalizes reviewed channels and starts one source-backed draft", async () => {
+  it("normalizes channels and starts only ready scheduled providers", async () => {
     vi.stubEnv("OPENZAPS_MARKETING_SCHEDULE_CHANNELS", "discord,X,discord");
 
     const response = await GET(request("cron-token"));
@@ -111,10 +117,36 @@ describe("marketing cron route", () => {
     );
     expect(startMock.mock.calls[0]?.[0]).toBe(workflowMock);
     expect(startMock.mock.calls[0]?.[1]?.[0]).toMatchObject({
-      kind: "product_update",
-      channels: ["discord", "x"],
-      sourceUrls: [],
+      channels: ["discord"],
     });
+  });
+
+  it("includes X only after its label, identity, and user credentials are ready", async () => {
+    vi.stubEnv("X_USER_ACCESS_TOKEN", "x-user-token");
+    vi.stubEnv("OPENZAPS_X_AUTOMATED_LABEL_CONFIRMED", "true");
+    vi.stubEnv("X_EXPECTED_ACCOUNT_ID", "100");
+    vi.stubEnv("X_EXPECTED_USERNAME", "0xzaps");
+
+    const response = await GET(request("cron-token"));
+
+    expect(response.status).toBe(202);
+    expect(startMock.mock.calls[0]?.[1]?.[0]).toEqual({
+      channels: ["x", "discord"],
+    });
+  });
+
+  it("does not claim a slot while bounded auto-publish is disabled", async () => {
+    vi.stubEnv("OPENZAPS_MARKETING_AUTO_PUBLISH", "false");
+
+    const response = await GET(request("cron-token"));
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({
+      skipped: true,
+      reason: "Bounded automatic publishing is not ready.",
+    });
+    expect(scheduleClaimMock).not.toHaveBeenCalled();
+    expect(startMock).not.toHaveBeenCalled();
   });
 
   it("returns a truthful non-start result for a duplicate or weekend invocation", async () => {

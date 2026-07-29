@@ -3,13 +3,16 @@ import { createHash, timingSafeEqual } from "node:crypto";
 import { NextResponse } from "next/server";
 import { start } from "workflow/api";
 
-import { readMarketingConfig } from "@/lib/marketing";
+import {
+  readMarketingConfig,
+  SCHEDULED_MARKETING_CHANNELS,
+  type MarketingConfig,
+} from "@/lib/marketing";
 import { claimMarketingScheduleSlot } from "@/lib/marketing/ledger-server";
 import {
-  DEPLOYED_MARKETING_CHANNELS,
-  type MarketingDraftRequest,
+  type MarketingScheduledRequest,
 } from "@/workflows/marketing-agent/contracts";
-import { openZapsMarketingWorkflow } from "@/workflows/marketing-agent";
+import { openZapsScheduledMarketingWorkflow } from "@/workflows/marketing-agent";
 
 export const dynamic = "force-dynamic";
 
@@ -29,14 +32,22 @@ export function isCronAuthorized(request: Pick<Request, "headers">): boolean {
   );
 }
 
-function scheduledChannels(): MarketingDraftRequest["channels"] {
+function scheduledChannels(
+  config: MarketingConfig,
+): MarketingScheduledRequest["channels"] {
   const requested = (process.env.OPENZAPS_MARKETING_SCHEDULE_CHANNELS ?? "x,discord")
     .split(",")
     .map((value) => value.trim().toLowerCase())
-    .filter((value): value is (typeof DEPLOYED_MARKETING_CHANNELS)[number] =>
-      DEPLOYED_MARKETING_CHANNELS.includes(value as (typeof DEPLOYED_MARKETING_CHANNELS)[number]),
+    .filter((value): value is (typeof SCHEDULED_MARKETING_CHANNELS)[number] =>
+      SCHEDULED_MARKETING_CHANNELS.includes(
+        value as (typeof SCHEDULED_MARKETING_CHANNELS)[number],
+      ),
     );
-  return [...new Set(requested)].slice(0, 3) as MarketingDraftRequest["channels"];
+  return [...new Set(requested)].filter((channel) =>
+    channel === "x"
+      ? config.readiness.channels.x
+      : config.readiness.channels.discordBroadcast,
+  ) as MarketingScheduledRequest["channels"];
 }
 
 export async function GET(request: Request): Promise<Response> {
@@ -48,17 +59,11 @@ export async function GET(request: Request): Promise<Response> {
   }
 
   const config = readMarketingConfig();
-  if (
-    process.env.OPENZAPS_MARKETING_SCHEDULE_ENABLED !== "true" ||
-    !config.readiness.canDraft
-  ) {
+  if (process.env.OPENZAPS_MARKETING_SCHEDULE_ENABLED !== "true") {
     return NextResponse.json(
       {
         skipped: true,
-        reason:
-          process.env.OPENZAPS_MARKETING_SCHEDULE_ENABLED !== "true"
-            ? "Scheduled drafting is disabled."
-            : "Marketing drafting is not ready.",
+        reason: "Scheduled drafting is disabled.",
       },
       { headers: { "cache-control": "private, no-store" } },
     );
@@ -69,11 +74,32 @@ export async function GET(request: Request): Promise<Response> {
       { status: 503, headers: { "cache-control": "private, no-store" } },
     );
   }
+  if (!config.readiness.canDraft) {
+    return NextResponse.json(
+      {
+        skipped: true,
+        reason: "Marketing drafting is not ready.",
+      },
+      { headers: { "cache-control": "private, no-store" } },
+    );
+  }
+  if (!config.autoPublish) {
+    return NextResponse.json(
+      {
+        skipped: true,
+        reason: "Bounded automatic publishing is not ready.",
+      },
+      { headers: { "cache-control": "private, no-store" } },
+    );
+  }
 
-  const channels = scheduledChannels();
+  const channels = scheduledChannels(config);
   if (channels.length === 0) {
     return NextResponse.json(
-      { skipped: true, reason: "No reviewed scheduled channel is configured." },
+      {
+        skipped: true,
+        reason: "No requested scheduled channel has a ready publish provider.",
+      },
       { headers: { "cache-control": "private, no-store" } },
     );
   }
@@ -114,15 +140,7 @@ export async function GET(request: Request): Promise<Response> {
   }
 
   try {
-    const run = await start(openZapsMarketingWorkflow, [
-      {
-        kind: "product_update",
-        brief:
-          "Draft today's most useful evidence-backed OpenZaps update. Prefer education or a meaningful verified change over vanity metrics. If the sources show no material change, write an evergreen explanation of bounded agent authority. Do not imply an audit, partnership, return, or launch that the evidence does not prove.",
-        channels,
-        sourceUrls: [],
-      },
-    ]);
+    const run = await start(openZapsScheduledMarketingWorkflow, [{ channels }]);
     return NextResponse.json(
       {
         runId: run.runId,

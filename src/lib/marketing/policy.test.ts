@@ -12,6 +12,9 @@ import {
   isCanonicalOutboundUrl,
 } from "@/lib/marketing/policy";
 import {
+  scheduledMarketingTemplate,
+} from "@/lib/marketing/scheduled-template";
+import {
   MarketingCandidateSchema,
   MarketingConfigSchema,
   MarketingPolicyDecisionSchema,
@@ -24,6 +27,7 @@ import type {
   MarketingPolicyContext,
   MarketingPolicyFlags,
 } from "@/lib/marketing/types";
+import { SCHEDULED_MARKETING_TEMPLATE_ID } from "@/lib/marketing/types";
 
 const NOW = "2026-07-29T12:00:00.000Z";
 const DAY = "2026-07-29";
@@ -102,6 +106,49 @@ function context(overrides: Partial<MarketingPolicyContext> = {}): MarketingPoli
     },
     humanApproved: false,
     repliedInteractionIds: [],
+    ...overrides,
+  };
+}
+
+function scheduledCandidate(
+  overrides: Partial<MarketingCandidate> = {},
+): MarketingCandidate {
+  const template = scheduledMarketingTemplate("x");
+  const draft = candidate({
+    body: template.body,
+    links: template.links,
+    topics: template.topics,
+    disclosures: template.disclosures,
+    claims: template.claims,
+    flags: template.flags,
+  });
+  return {
+    ...draft,
+    sourcePacket: {
+      ...draft.sourcePacket,
+      facts: [
+        {
+          key: "authority.execution",
+          label: "Execution authority",
+          value:
+            "The immutable Zap policy and owner-signed intent define what may execute.",
+          status: "confirmed",
+          sourceUrl:
+            "https://github.com/0pen-Zaps/openzaps/blob/main/docs/adr/0006-agent-connection-and-mcp-surface.md",
+          observedAt: NOW,
+        },
+        {
+          key: "authority.submission",
+          label: "Submission authority",
+          value:
+            "An agent may submit a due run but cannot widen its signed terms.",
+          status: "confirmed",
+          sourceUrl:
+            "https://github.com/0pen-Zaps/openzaps/blob/main/docs/adr/0006-agent-connection-and-mcp-surface.md",
+          observedAt: NOW,
+        },
+      ],
+    },
     ...overrides,
   };
 }
@@ -319,7 +366,7 @@ describe("deterministic marketing policy", () => {
     expect(evaluateMarketingPolicy(candidate(), context({ config, humanApproved: true })).disposition).toBe("allow");
   });
 
-  it("keeps auto-publish impossible even when requested with a durable ledger", () => {
+  it("auto-authorizes only the exact scheduled tier-1 template", () => {
     const config = readMarketingConfig({
       OPENZAPS_MARKETING_ENABLED: "true",
       OPENZAPS_MARKETING_DRY_RUN: "false",
@@ -335,19 +382,63 @@ describe("deterministic marketing policy", () => {
     });
 
     expect(config.autoPublishRequested).toBe(true);
-    expect(config.autoPublish).toBe(false);
-    expect(config.readiness.autoPublishReady).toBe(false);
+    expect(config.autoPublish).toBe(true);
+    expect(config.readiness.autoPublishReady).toBe(true);
     expect(MarketingConfigSchema.safeParse(config).success).toBe(true);
     expect(
       MarketingConfigSchema.safeParse({
         ...config,
-        autoPublish: true,
-        readiness: { ...config.readiness, autoPublishReady: true },
+        autoPublish: false,
+        mode: "review_only",
       }).success,
     ).toBe(false);
-    expect(
-      evaluateMarketingPolicy(candidate(), context({ config, humanApproved: true })).disposition,
-    ).toBe("allow");
+
+    const automaticContext = context({
+      config,
+      automaticAuthorization: {
+        kind: "scheduled_template",
+        templateId: SCHEDULED_MARKETING_TEMPLATE_ID,
+      },
+    });
+    const exact = evaluateMarketingPolicy(
+      scheduledCandidate(),
+      automaticContext,
+    );
+    expect(exact).toMatchObject({
+      disposition: "allow",
+      riskTier: 1,
+      approvalRequired: false,
+      approvalReasons: [],
+    });
+
+    const generated = evaluateMarketingPolicy(candidate(), automaticContext);
+    expect(generated.disposition).toBe("require_approval");
+    expect(generated.approvalReasons).toContain("every_run_human_approval");
+
+    const template = scheduledCandidate();
+    const changedBody = evaluateMarketingPolicy(
+      { ...template, body: `${template.body} Changed.` },
+      automaticContext,
+    );
+    expect(changedBody.disposition).toBe("require_approval");
+
+    const changedClaims = evaluateMarketingPolicy(
+      { ...template, claims: template.claims.slice(0, 1) },
+      automaticContext,
+    );
+    expect(changedClaims.disposition).toBe("require_approval");
+
+    const missingEvidence = evaluateMarketingPolicy(
+      {
+        ...template,
+        sourcePacket: { ...template.sourcePacket, facts: [] },
+      },
+      automaticContext,
+    );
+    expect(missingEvidence.disposition).toBe("blocked");
+    expect(missingEvidence.issues.map((issue) => issue.code)).toContain(
+      "unknown_fact",
+    );
   });
 
   it("hard-prohibits tier 4 even when a human approval bit is present", () => {

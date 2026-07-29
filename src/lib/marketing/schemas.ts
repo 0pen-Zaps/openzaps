@@ -9,6 +9,7 @@ import {
   MARKETING_POLICY_VERSION,
   MARKETING_RISK_TIERS,
   MARKETING_RUN_STATES,
+  SCHEDULED_MARKETING_TEMPLATE_ID,
   MARKETING_TOPICS,
 } from "@/lib/marketing/types";
 
@@ -139,7 +140,7 @@ export const MarketingConfigSchema = z
     enabled: z.boolean(),
     dryRun: z.boolean(),
     autoPublishRequested: z.boolean(),
-    autoPublish: z.literal(false),
+    autoPublish: z.boolean(),
     xAiReplyApproved: z.boolean(),
     xAutomatedLabelConfirmed: z.boolean(),
     mode: z.enum(["disabled", "dry_run", "review_only", "live"]),
@@ -149,7 +150,7 @@ export const MarketingConfigSchema = z
         configurationValid: z.boolean(),
         canDraft: z.boolean(),
         durableLedgerConfigured: z.boolean(),
-        autoPublishReady: z.literal(false),
+        autoPublishReady: z.boolean(),
         channels: z
           .object({
             x: z.boolean(),
@@ -166,7 +167,32 @@ export const MarketingConfigSchema = z
       })
       .strict(),
   })
-  .strict();
+  .strict()
+  .superRefine((config, context) => {
+    const scheduledChannelReady =
+      config.readiness.channels.x ||
+      config.readiness.channels.discordBroadcast;
+    const prerequisitesReady =
+      config.enabled &&
+      !config.dryRun &&
+      config.readiness.configurationValid &&
+      config.readiness.canDraft &&
+      config.readiness.durableLedgerConfigured &&
+      scheduledChannelReady;
+    if (
+      config.readiness.autoPublishReady !== prerequisitesReady ||
+      config.autoPublish !==
+        (config.autoPublishRequested && config.readiness.autoPublishReady) ||
+      (config.autoPublish && config.mode !== "live") ||
+      (!config.autoPublish && config.mode === "live")
+    ) {
+      context.addIssue({
+        code: "custom",
+        message:
+          "Auto-publish state must exactly match its bounded scheduled-template prerequisites.",
+      });
+    }
+  });
 
 export const MarketingPolicyContextSchema = z
   .object({
@@ -179,6 +205,13 @@ export const MarketingPolicyContextSchema = z
       })
       .strict(),
     humanApproved: z.boolean(),
+    automaticAuthorization: z
+      .object({
+        kind: z.literal("scheduled_template"),
+        templateId: z.literal(SCHEDULED_MARKETING_TEMPLATE_ID),
+      })
+      .strict()
+      .optional(),
     repliedInteractionIds: z.array(z.string()),
   })
   .strict();

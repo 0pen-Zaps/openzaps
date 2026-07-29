@@ -6,6 +6,7 @@ import {
   MarketingPolicyDecisionSchema,
   MarketingSourcePacketSchema,
   MarketingTopicSchema,
+  SCHEDULED_MARKETING_CHANNELS,
 } from "@/lib/marketing";
 import {
   containsCredentialLikeData,
@@ -102,6 +103,28 @@ export const MarketingDraftRequestSchema = z
   });
 
 export type MarketingDraftRequest = z.infer<typeof MarketingDraftRequestSchema>;
+
+export const MarketingScheduledRequestSchema = z
+  .object({
+    channels: z
+      .array(z.enum(SCHEDULED_MARKETING_CHANNELS))
+      .min(1)
+      .max(SCHEDULED_MARKETING_CHANNELS.length),
+  })
+  .strict()
+  .superRefine((request, context) => {
+    if (new Set(request.channels).size !== request.channels.length) {
+      context.addIssue({
+        code: "custom",
+        message: "Scheduled channels must be unique.",
+        path: ["channels"],
+      });
+    }
+  });
+
+export type MarketingScheduledRequest = z.infer<
+  typeof MarketingScheduledRequestSchema
+>;
 
 // Keep the model-facing JSON Schema provider-portable: OpenAI rejects the
 // `format: "uri"` keyword emitted by z.url(). Runtime validation still
@@ -317,7 +340,12 @@ export const MarketingRunEventSchema = z.discriminatedUnion("type", [
     .object({
       type: z.literal("draft"),
       at: z.iso.datetime(),
-      state: z.enum(["awaiting_approval", "blocked", "dry_run_complete"]),
+      state: z.enum([
+        "auto_authorized",
+        "awaiting_approval",
+        "blocked",
+        "dry_run_complete",
+      ]),
       draft: MarketingDraftBundleSchema,
     })
     .strict(),

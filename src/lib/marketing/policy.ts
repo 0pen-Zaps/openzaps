@@ -10,6 +10,7 @@ import type {
   MarketingTopic,
 } from "@/lib/marketing/types";
 import { MARKETING_POLICY_VERSION } from "@/lib/marketing/types";
+import { isScheduledMarketingTemplateCandidate } from "@/lib/marketing/scheduled-template";
 import { containsCredentialLikeData } from "@/lib/marketing/source-url";
 
 export const PRE_AUDIT_DISCLOSURE = "Pre-audit software. Verify before use.";
@@ -52,7 +53,15 @@ const PROHIBITED_FLAG_MESSAGES: ReadonlyArray<[
 const RUN_TRANSITIONS: Readonly<Record<MarketingRunState, readonly MarketingRunState[]>> = {
   queued: ["drafting", "blocked", "failed"],
   drafting: ["policy_check", "blocked", "failed"],
-  policy_check: ["awaiting_approval", "approved", "blocked", "dry_run_complete", "failed"],
+  policy_check: [
+    "auto_authorized",
+    "awaiting_approval",
+    "approved",
+    "blocked",
+    "dry_run_complete",
+    "failed",
+  ],
+  auto_authorized: ["publishing", "blocked", "failed"],
   awaiting_approval: ["approved", "rejected", "blocked", "failed"],
   approved: ["publishing", "rejected", "blocked", "failed"],
   publishing: ["published", "failed", "blocked"],
@@ -141,7 +150,12 @@ export function evaluateMarketingPolicy(
 ): MarketingPolicyDecision {
   const riskTier = classifyMarketingRisk(candidate);
   const issues: MarketingPolicyIssue[] = [];
-  const approvalReasons = approvalReasonsFor(candidate);
+  const automaticallyAuthorized = isBoundedAutoPublishAuthorized(
+    candidate,
+    context,
+    riskTier,
+  );
+  const approvalReasons = approvalReasonsFor(candidate, automaticallyAuthorized);
   const requiredDisclosures = requiredMarketingDisclosures(candidate);
   const dailyCounter = dailyCounterFor(candidate);
 
@@ -210,6 +224,27 @@ export function evaluateMarketingPolicy(
       evaluatedAt: context.now,
     };
   }
+}
+
+export function isBoundedAutoPublishAuthorized(
+  candidate: MarketingCandidate,
+  context: MarketingPolicyContext,
+  riskTier: MarketingRiskTier = classifyMarketingRisk(candidate),
+): boolean {
+  const authorization = context.automaticAuthorization;
+  return (
+    authorization?.kind === "scheduled_template" &&
+    context.config.autoPublish &&
+    context.config.readiness.autoPublishReady &&
+    !context.humanApproved &&
+    riskTier === 1 &&
+    candidate.action === "broadcast" &&
+    (candidate.channel === "x" || candidate.channel === "discord") &&
+    isScheduledMarketingTemplateCandidate(
+      candidate,
+      authorization.templateId,
+    )
+  );
 }
 
 function hasProhibitedFlag(candidate: MarketingCandidate): boolean {
@@ -464,9 +499,14 @@ function isoDay(value: string): string | null {
   return Number.isFinite(timestamp) ? new Date(timestamp).toISOString().slice(0, 10) : null;
 }
 
-function approvalReasonsFor(candidate: MarketingCandidate): string[] {
+function approvalReasonsFor(
+  candidate: MarketingCandidate,
+  automaticallyAuthorized: boolean,
+): string[] {
   const reasons = new Set<string>();
-  if (candidate.action !== "draft") reasons.add("every_run_human_approval");
+  if (candidate.action !== "draft" && !automaticallyAuthorized) {
+    reasons.add("every_run_human_approval");
+  }
   if (candidate.kind === "tutorial" || ["prepare_tutorial", "publish_tutorial"].includes(candidate.action)) {
     reasons.add("tutorial");
   }
