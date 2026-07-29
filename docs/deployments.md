@@ -285,9 +285,10 @@ runtime code hash is
 
 v3.2 adds `executeRecurringStack`: everything `executeRecurringRelative` does, plus an
 owner-signed `stackBps` slice of every run's **post-fee** output converted into 0xZAPS and staked to
-the lottery pot as the **owner's** tickets. Every run of a stacking series is a real market buy of
-the protocol token — the first execution type where buying 0xZAPS is the user's own authorized
-choice rather than the protocol's fee slice. Superset of v3.1; domain version `"3.2"`.
+the lottery pot as the **owner's** tickets. Every run acquires and stakes 0xZAPS as the user's own
+authorized policy action rather than as the protocol's fee slice. When the primary output is another
+asset, the stack slice is a real market buy; when the primary output is already 0xZAPS, it skips the
+conversion leg and stakes directly. Superset of v3.1; domain version `"3.2"`.
 
 Verified strict-superset property: `diff` of the v3.1 and v3.2 implementations removes **no logic**
 from v3.1 — only two import paths, the `DOMAIN_VERSION` literal, and the widened constructor.

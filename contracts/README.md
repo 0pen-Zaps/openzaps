@@ -12,10 +12,10 @@ verified against the invariants in [`../docs/invariant-spec.md`](../docs/invaria
 > Four generations are deployed on Robinhood Chain: **v1.1** (single-shot routes), **v3**
 > (recurring + price-triggered execution and the executor fee/lottery economy), **v3.1**
 > (per-run floors priced from live spot), and the unaudited **v3.2 candidate** (owner-signed recurring
-> 0xZAPS stacking plus a permanent owner-only policy halt). All four have passing
-> unit/fuzz/invariant coverage and exact Sourcify runtime matches; the established v1.1/v3/v3.1
-> lineages additionally have live-pool fork coverage and successful bounded mainnet smoke zaps.
-> The v3.2 production canaries remain a release gate. None has had a professional
+> 0xZAPS stacking plus a permanent owner-only policy halt). All four have passing unit coverage and
+> exact Sourcify runtime matches; the established v1.1/v3/v3.1 lineages additionally have
+> fuzz/invariant and live-pool fork coverage plus successful bounded mainnet smoke zaps. The v3.2
+> production canaries remain a release gate. None has had a professional
 > third-party audit or formal prover run. Keep deposits scoped, use narrow allowlisted adapters, and
 > preserve the owner-only `emergencyExit` path until those external gates are complete.
 >
