@@ -11,6 +11,17 @@ import {
 
 import styles from "./zappad.module.css";
 
+export function ZapPadReleaseStatus(): React.JSX.Element {
+  return (
+    <div className="notice notice-warning" role="status">
+      <strong>Source-ready, not deployed.</strong>{" "}
+      No ZapPad launcher address is approved on Robinhood Chain. Reads and
+      launches stay disabled until the external security, legal,
+      infrastructure, canary, and exact-release gates are complete.
+    </div>
+  );
+}
+
 export const metadata = pageMetadata({
   title: STATIC_PAGE_SEO.launch.title,
   description: STATIC_PAGE_SEO.launch.description,
@@ -47,6 +58,7 @@ export default function ZapPadStudioPage(): React.JSX.Element {
           </>
         }
       />
+      <ZapPadReleaseStatus />
       <ProtocolSnapshot />
       <LaunchStudio />
     </main>
