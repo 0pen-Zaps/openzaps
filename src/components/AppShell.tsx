@@ -68,6 +68,7 @@ const GROUPS: readonly NavGroup[] = [
     items: [
       { href: "/docs", label: "Docs", icon: "book" },
       { href: "/evals", label: "Evals", icon: "pulse" },
+      { href: "/roadmap", label: "Roadmap", icon: "route" },
       { href: "/token", label: TOKEN.symbol, icon: "tokenMark" },
     ],
   },
@@ -87,8 +88,9 @@ function isZapSurface(pathname: string): boolean {
 }
 
 /**
- * Content measures, per the design. The two reading surfaces are narrower
- * because a 1180px measure of 16px prose is about 130 characters a line.
+ * Content measures, per the design. Long-form reference surfaces are narrower
+ * because a 1180px measure of 16px prose is about 130 characters a line. The
+ * roadmap owns its own readable prose measures inside a wider systems grid.
  *
  * Derived from the pathname ALONE, deliberately. Compose also wants a wider
  * measure, and it is the one case that depends on `?view=`, which would mean
@@ -104,7 +106,6 @@ function measureFor(pathname: string): "read" | "default" {
     || pathname.startsWith("/token")
     || pathname.startsWith("/legal")
   ) return "read";
-  if (pathname.startsWith("/roadmap")) return "read";
   return "default";
 }
 
