@@ -11,6 +11,9 @@ Key facts:
 
 - [Home](https://www.0xzaps.com): what a Zap is, the authority model, security posture, FAQ
 - [DeFi Zap builder](https://www.0xzaps.com/zap): connect a wallet to design, quote, create, fund, execute, automate, and recover supported policy-bound routes. One route with four surfaces — Start, Compose, Zap now, Automate — selected by `?view=start|design|sign|automate` and reached from the app sidebar
+- [ZapPad token launch studio](https://www.0xzaps.com/launch): create a Robinhood Chain token, establish its canonical market, and tokenize collected LP fee rights through an OpenZaps-native, wallet-controlled launch flow
+- [Explore ZapPad launches](https://www.0xzaps.com/launch/explore): verify launched tokens, canonical markets, fee-right vaults, ownership, and onchain provenance
+- [My ZapPad fee rights](https://www.0xzaps.com/launch/portfolio): wallet-specific creator and fee-share positions; intentionally excluded from search indexing
 - [Explore](https://www.0xzaps.com/explore): the live feed of creations, executions, and recoveries read from Robinhood Chain logs, every Zap the factory deployed, and the verified contract set — one page
 - [Developer docs & security](https://www.0xzaps.com/docs): policy schema, simulation API, templates, execution lifecycle, and the security model (threat model, controls, production gates) at /docs#security
 - [Roadmap](https://www.0xzaps.com/roadmap): current live capabilities, proposed route expansion, submission tooling, and hardening gates
@@ -40,6 +43,9 @@ Every verified factory-created Zap has a canonical detail page at `https://www.0
 
 - POST https://www.0xzaps.com/api/policies/simulate — deterministic policy simulation; never broadcasts and never requests wallet authority
 - GET https://www.0xzaps.com/api/health — public protocol status
+- GET https://www.0xzaps.com/api/launch/config — ZapPad Robinhood Chain configuration and release-gate status; writes fail closed unless the runtime is explicitly enabled
+- POST https://www.0xzaps.com/api/launch/rpc — bounded, read-only Robinhood Chain RPC relay for the ZapPad launch surfaces; never signs or broadcasts
+- GET https://www.0xzaps.com/api/launch/health — ZapPad runtime and chain-read health, with unavailable dependencies reported explicitly rather than represented as zero
 - GET https://www.0xzaps.com/api/protocol/activity — live Zap creations, executions, and recoveries aggregated from Robinhood Chain logs (rows verified against the factory's ZapCreated set)
 - GET https://www.0xzaps.com/api/protocol/pot — onchain lottery-pot balances, ticket counts, and rounds; returns 503 rather than a zero when the RPC reads are unavailable
 

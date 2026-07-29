@@ -23,6 +23,9 @@ export const metadata = pageMetadata({
     "DeFi policy composer",
     "DeFi threat model",
     "smart contract security architecture",
+    "ZapPad launchpad",
+    "Robinhood Chain token launch",
+    "tokenized LP fee shares",
   ],
 });
 
@@ -92,6 +95,14 @@ const gates = [
   ["Adapter governance", "Safe plus timelock ownership, adapter bytecode manifests, and a rollback process."],
   ["Testnet soak", "Public testnet with real wallet review, alerts, receipts, and recovery drills."],
   ["Incident runbook", "Emergency-control review, disclosure process, chain-monitor alerts, and postmortem template."],
+] as const;
+
+const zappadGates = [
+  ["Exact release", "A new OpenZaps Git SHA, clean reproducible build, external review or explicit low-value canary risk acceptance, and specialist counsel approval."],
+  ["Fresh onchain identity", "A brand-new canonical 2-of-3 Safe and brand-new ZapPad bootstrap, launcher, and factories. No existing OpenZaps or standalone address is reused."],
+  ["Receipt-bound proof", "Explicit source verification, exact initcode and constructor checks, finalized receipts, runtime hashes, dependency readbacks, and immutable evidence ancestry."],
+  ["Two-asset canary", "Low-value WETH and USDG launches through two fee cycles, 80/20 → 70/30 share accounting, creator and Safe claims, locked LP NFTs, and zero approvals."],
+  ["Hosting activation", "Paid RPC, published durable firewall limits, exact-SHA Preview and Production verification with writes false, recorded go/no-go, then a fresh write-enabled deployment."],
 ] as const;
 
 /** Three states, three colours. `deferred` is muted rather than red: it is not
@@ -194,6 +205,66 @@ export default function DocsPage(): React.JSX.Element {
     "privateSubmission": true,
     "humanApproval": false
   }'`}</pre>
+          </div>
+        </section>
+
+        <section className={styles.section} id="zappad">
+          <h2 className={styles.h2}>ZapPad: token launch inside OpenZaps</h2>
+          <p className={styles.prose}>
+            ZapPad is the Robinhood Chain launch feature at <code>/launch</code>. One bounded transaction is designed
+            to create a fixed-supply ERC-20, initialize a canonical Uniswap v3 WETH or USDG market, permanently lock
+            its LP NFT in a per-launch vault, issue one transferable fee-share ERC-20 with 100 whole shares as 80
+            creator / 20 reviewed protocol Safe, and optionally execute a slippage-bounded creator first buy.
+          </p>
+          <p className={styles.prose}>
+            <strong>Current status: source-ready, not deployed, writes disabled.</strong> There is no approved ZapPad
+            bootstrap, launcher, token-factory, or fee-vault-factory address. A predicted address, local fork,
+            simulation manifest, passing test, or Preview is not a deployment. No existing OpenZaps, UniClaw,
+            CashClaw/LevyClaw, PoolFans, or standalone ZapPad address may be substituted.
+          </p>
+          <div className={styles.code}>
+            <pre>{`User wallet
+  -> exact launch simulation on chain 4663
+  -> ZapPadLaunchpad
+  -> fixed-supply ZapToken
+  -> canonical WETH or USDG Uniswap v3 pool
+  -> LP NFT permanently held by ZapFeeVault
+  -> 100 fee shares: 80 creator / 20 protocol Safe
+
+OpenZaps server
+  -> /api/launch/config: verified public config
+  -> /api/launch/health: exact launcher + dependency identity
+  -> /api/launch/rpc: bounded reads and simulation only
+  -> Production reads require relay + durable-quota gates
+  -> never broadcasts a wallet transaction`}</pre>
+          </div>
+          <p className={styles.prose}>
+            ZapPad fee-share tokens encode rights to collected LP fees from that one locked position only. They are{" "}
+            <strong>
+              not 0xZAPS, not OpenZaps equity or protocol-wide revenue rights, not guaranteed yield, and not a promise
+              of returns
+            </strong>
+            . ZapPad and OpenZaps are independent from and are not affiliated with, endorsed by, or sponsored by
+            Robinhood Markets, Inc.
+          </p>
+          <div className={styles.steps}>
+            {zappadGates.map(([name, body], index) => (
+              <Reveal className={styles.step} delay={index * 45} key={name}>
+                <span className={styles.stepTag}>Z{index + 1}</span>
+                <div>
+                  <h3 className={styles.stepTitle}>{name}</h3>
+                  <p className={styles.stepBody}>{body}</p>
+                </div>
+              </Reveal>
+            ))}
+          </div>
+          <div className={styles.actions}>
+            <Link className={styles.primaryBtn} href="/launch">
+              Inspect ZapPad
+            </Link>
+            <Link className={styles.ghostBtn} href="/legal">
+              Fee-share disclosures
+            </Link>
           </div>
         </section>
 

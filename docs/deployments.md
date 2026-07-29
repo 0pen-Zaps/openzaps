@@ -537,6 +537,46 @@ matched credits + pool + open-round fees exactly. A second run grew the pool to 
 a following two-seat round could release only 40 — the rake it pays. **Pre-external-audit, like
 everything else here.**
 
+### ZapPad — **SOURCE-READY, NOT DEPLOYED**
+
+ZapPad is now an OpenZaps feature at `/launch`, with an isolated Foundry root at
+`contracts/zappad`. It is designed to create a fixed-supply token, initialize a
+canonical Robinhood Chain Uniswap v3 WETH or USDG market, permanently lock the
+LP NFT, and issue one transferable fee-share ERC-20 with 100 whole shares as
+80 creator / 20 reviewed protocol Safe.
+
+| Contract | Authoritative Robinhood mainnet address | Status |
+|---|---|---|
+| `ZapPadBootstrap` | **none** | source-ready; not deployed |
+| `ZapPadLaunchpad` | **none** | source-ready; not deployed |
+| `ZapTokenFactory` | **none** | source-ready; not deployed |
+| `ZapFeeVaultFactory` | **none** | source-ready; not deployed |
+
+No existing OpenZaps, UniClaw, CashClaw/LevyClaw, PoolFans, or standalone
+ZapPad address is valid here. A simulation manifest, predicted address, local
+fork address, Preview configuration, or passing test is not a deployment.
+
+The OpenZaps runtime therefore has no approved values for
+`ZAPPAD_LAUNCHER_ADDRESS`, `ZAPPAD_LAUNCHER_DEPLOY_BLOCK`, or
+`ZAPPAD_LAUNCHER_CODE_HASH`. `ZAPPAD_LAUNCH_WRITES_ENABLED` must remain absent
+or `false`. Production reads also remain off unless both
+`ZAPPAD_RPC_RELAY_ENABLED=true` and
+`ZAPPAD_RPC_DURABLE_QUOTA_ENABLED=true` record an approved paid relay and
+separately configured durable edge quota.
+
+A brand-new address set may be added only after the exact OpenZaps release SHA
+completes the fresh 2-of-3 Safe ceremony, stack broadcast through the reviewed
+encrypted-keystore wrapper, explicit source verification for all four
+contracts, finalized receipt and runtime readbacks, the low-value two-asset
+canary and final Safe claims, external security review or documented canary
+risk acceptance, specialist counsel approval, paid RPC/firewall controls, and
+exact-SHA hosting verification. See [`docs/zappad/release.md`](zappad/release.md).
+
+ZapPad fee-share ERC-20s encode rights to collected LP fees from one locked
+position only. They are not 0xZAPS, OpenZaps equity, OpenZaps-wide revenue
+rights, guaranteed yield, or a promise of returns. ZapPad is independent from
+and not affiliated with, endorsed by, or sponsored by Robinhood Markets, Inc.
+
 ## Base mainnet (chainId 8453)
 
 ### Live v1.1 core (2026-07-23)

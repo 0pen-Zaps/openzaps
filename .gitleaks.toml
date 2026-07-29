@@ -14,8 +14,23 @@ title = "OpenZaps gitleaks config"
 useDefault = true
 
 [allowlist]
-description = "EVM addresses (0x + 40 hex) are public and are never private keys"
+description = "Public EVM addresses plus generated, vendored, and historical test-only paths"
 regexTarget = "match"
 regexes = [
   '''0x[a-fA-F0-9]{40}\b''',
+]
+paths = [
+  # Generated output can contain Next.js integrity material that is not a
+  # credential and is never committed.
+  '''^\.next/''',
+  '''^output/''',
+  # Exact gitlinks pin these third-party sources; their upstream test vectors
+  # contain deliberately public keys and signatures.
+  '''^contracts/.*/lib/''',
+  # A removed OAuth1 unit test carried a deterministic signature fixture. Keep
+  # the narrow historical path exception without exempting production code.
+  '''^src/lib/marketing/channels/x\.test\.ts$''',
+  # Public token metadata contains only public URLs, an IPFS CID, and onchain
+  # identifiers; the generic detector misclassifies its logo URL.
+  '''^public/\.well-known/openzaps-token\.json$''',
 ]

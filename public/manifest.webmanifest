@@ -19,6 +19,12 @@
       "url": "/zap"
     },
     {
+      "name": "Launch a Token with ZapPad",
+      "short_name": "ZapPad",
+      "description": "Launch a Robinhood Chain token with tokenized LP fee rights.",
+      "url": "/launch"
+    },
+    {
       "name": "Explore Deployed Zaps",
       "short_name": "Explore",
       "description": "Inspect verified Zaps and their onchain execution history.",

@@ -17,6 +17,10 @@ execution authority.
   recipient, amount, fee, gas caps, validity window, or nonce.
 - The public relay, policy registry, Guardian, scorecards, and notifications
   carry no execution authority.
+- ZapPad is a separate immutable launch boundary. The app and its bounded RPC
+  can simulate and submit the user's exact transaction, but no OpenZaps
+  executor, backend session, API key, or existing Zap can create a token,
+  redirect its LP fees, move its locked NFT, or act for the creator.
 - The current product posture is self-custodial software plus a reference
   courier: no pooled user balances, discretionary routing, or operator-held
   withdrawal authority. Hosted discovery/evidence services do not change that
@@ -56,8 +60,57 @@ do not copy an address from a broadcast log or an old terminal transcript.
 9. Deploy the exact reviewed Git commit. Record the deployment ID, commit,
    aliases, and build result.
 10. Exercise the canonical domain in a fresh browser session, inspect server
-   error logs, and verify the deployment marker rather than trusting an alias
-   timestamp.
+    error logs, and verify the deployment marker rather than trusting an alias
+    timestamp.
+
+## ZapPad source-ready release gate
+
+ZapPad is not part of the live address inventory yet. There is no approved
+bootstrap, launchpad, token-factory, or fee-vault-factory address. Keep
+`ZAPPAD_LAUNCH_WRITES_ENABLED=false` and do not populate placeholder launcher
+identity values.
+
+Before any ZapPad broadcast or Production write activation:
+
+1. Bind the review to the full OpenZaps Git SHA. The standalone provenance SHA
+   is not the OpenZaps deployment SHA.
+2. Complete external audit before material-value or promoted use; a restricted
+   low-value pre-audit canary requires explicit written risk acceptance.
+3. Obtain specialist counsel approval for the entity, jurisdictions,
+   sanctions, promotions, token moderation, and transferable LP fee rights.
+4. Run the isolated `contracts/zappad` unit, fuzz, invariant,
+   release-validation, paid-archive fork, static-analysis, and fresh-browser
+   suites.
+5. Deploy a fresh canonical Safe v1.4.1 with three unique reviewed owners,
+   threshold two, zero guard, no modules, and nonce zero.
+6. Review raw-byte Safe and stack simulation manifests, then broadcast only
+   through the exact-SHA encrypted-keystore wrapper. Raw
+   `forge --broadcast`, unlocked signing, `--skip-simulation`, and `--resume`
+   are prohibited.
+7. Source-verify the bootstrap, launchpad, and both factories separately.
+   Rebuild receipt evidence from the finalized RPC and pin exact code,
+   constructor inputs, deployment block, dependency hashes, factory bindings,
+   Safe state, and release SHA.
+8. Stage read-only Preview with evidence-derived identity and writes false.
+   Require health/config, bounded-RPC rejection, desktop/mobile, and degraded
+   checks.
+9. Complete the low-value WETH/USDG two-cycle canary, 80/20 → ten-share
+   transfer → 70/30 accounting, creator and two-owner Safe claims, permanent LP
+   custody, source verification for the first token/vaults, and zero
+   allowances.
+10. Publish and review durable firewall limits and paid-RPC quotas. Verify the
+    exact Production Git SHA and runtime identity with writes false. Only
+    after the external quota exists, set `ZAPPAD_RPC_RELAY_ENABLED=true` and
+    `ZAPPAD_RPC_DURABLE_QUOTA_ENABLED=true`; the latter records the control and
+    does not create it. Without both, reads remain fail closed even with an RPC
+    URL.
+11. Record final go/no-go, enable the server-only write request in a fresh
+    Production deployment, and produce a second hosting artifact.
+
+The fee-share ERC-20s cover collected LP fees from one locked position only.
+They are not 0xZAPS, OpenZaps equity or protocol-wide revenue, guaranteed
+yield, or a promise of returns. Full evidence requirements are in
+[`docs/zappad/release.md`](zappad/release.md).
 
 ## Change classes
 
@@ -67,6 +120,7 @@ do not copy an address from a broadcast log or an old terminal transcript.
 | API or storage admission | body/concurrency/quota tests, migration replay, enforced edge quota | turn off the feature gate; preserve stored evidence |
 | New adapter or token | source review, runtime hash manifest, fork coverage, registry simulation | de-allowlist the adapter/token; owners retain emergency exit |
 | New capsule lineage | full contract suites, no-broadcast rehearsal, independent post-deploy reads | keep old lineages live; remove only the new app creation path |
+| ZapPad fresh deployment | exact-SHA audit/risk and counsel approvals, fresh Safe, nested Foundry matrix, reviewed immutable manifests, source/receipt verification, two-asset canary, firewall and hosting evidence | keep `/launch` read-only or unconfigured; never substitute an old address; immutable contracts remain callable directly |
 | Executor signing | adapter manifest, private-relay set, late-block node quorum, L1-derived finality, clear nonce lane, durable outbox, funded gas | stop signer; never delete an unresolved outbox row |
 
 ## Incident decision tree
@@ -114,6 +168,20 @@ do not copy an address from a broadcast log or an old terminal transcript.
 3. Redeploy the last verified commit if the serving tree is wrong. Do not deploy
    from a stale checkout.
 4. Re-run the canonical-domain flow after aliases settle.
+
+### ZapPad launcher or dependency drift
+
+1. Keep or restore `ZAPPAD_LAUNCH_WRITES_ENABLED=false` through a deployment of
+   the exact serving SHA; do not change an expected hash to make health green.
+2. Preserve health output, provider observations, serving deployment identity,
+   and logs without recording the RPC credential.
+3. At one fixed block, compare the launcher, factories, Safe, canonical
+   position manager/factory/router, and WETH/USDG proxy implementations across
+   independently operated RPC origins.
+4. Treat any proxy implementation change or factory-binding mismatch as a new
+   security-review event. Restore reads only after evidence is reconciled.
+5. Disclose that the app write gate does not pause direct calls to immutable
+   contracts. Restore writes only through the complete activation ceremony.
 
 ## Drill record
 

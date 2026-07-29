@@ -45,6 +45,24 @@ export const STATIC_PAGE_SEO = {
     changeFrequency: "weekly",
     priority: 0.95,
   },
+  launch: {
+    title: "Launch Tokens with Tokenized LP Fees",
+    description:
+      "Create a Robinhood Chain token, seed its canonical market, and tokenize collected LP fee rights in one guided, wallet-controlled ZapPad launch.",
+    path: "/launch",
+    ogImage: "/og/app.png",
+    changeFrequency: "weekly",
+    priority: 0.9,
+  },
+  launchExplore: {
+    title: "Explore ZapPad Token Launches",
+    description:
+      "Explore ZapPad launches on Robinhood Chain, verify canonical token markets, and inspect fee-right vaults, ownership, and onchain provenance.",
+    path: "/launch/explore",
+    ogImage: "/og/app.png",
+    changeFrequency: "daily",
+    priority: 0.8,
+  },
   explore: {
     title: "Explore DeFi Zaps on Robinhood Chain",
     description:
@@ -179,6 +197,9 @@ export const SEO_KEYWORDS = [
   "bounded DeFi automation",
   "onchain intents",
   "DeFi workflow builder",
+  "ZapPad",
+  "Robinhood Chain token launchpad",
+  "tokenized LP fees",
   TOKEN.symbol,
   `${TOKEN.symbol} token`,
   "0xzaps.com",

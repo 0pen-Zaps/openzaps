@@ -2,6 +2,9 @@ import type { NextConfig } from "next";
 import { withWorkflow } from "workflow/next";
 
 const nextConfig: NextConfig = {
+  // The deterministic ZapPad browser-fork gate runs beside a normal OpenZaps
+  // checkout and must not race with, overwrite, or trust an existing `.next`.
+  distDir: process.env.ZAPPAD_NEXT_DIST_DIR ?? ".next",
   // 308s keep every inbound link — a shared URL, a search result, a bookmark, an
   // onchain-minted capsule link — landing on the page that now holds what it
   // used to, rather than on a 404. Next.js forwards the incoming query string,

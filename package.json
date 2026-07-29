@@ -19,11 +19,35 @@
     "build": "next build",
     "start": "next start",
     "audit:production": "node scripts/audit-production.mjs",
+    "typecheck": "tsc --noEmit",
     "lint": "eslint",
     "validate:workflow": "workflow validate",
     "verify:token": "node scripts/verify-token-metadata.mjs",
     "test": "vitest run",
-    "test:relay-pg16": "node scripts/test-relay-admission-pg16.mjs"
+    "test:relay-pg16": "node scripts/test-relay-admission-pg16.mjs",
+    "test:zappad:scripts": "vitest run scripts/zappad",
+    "test:zappad:contracts": "forge test --root contracts/zappad -vvv",
+    "test:zappad:contracts:fork": "forge test --root contracts/zappad --match-path 'test/fork/**' --no-storage-caching -vvv",
+    "test:zappad:e2e": "playwright test --config playwright.zappad.config.ts",
+    "test:zappad:e2e:fork": "node scripts/zappad/e2e/run-zappad-fork.mjs",
+    "zappad:check": "npm run typecheck && npm run lint && npm run test:zappad:scripts && npm run test:zappad:contracts",
+    "zappad:verify:deployment": "forge build --root contracts/zappad --force && node scripts/zappad/verify-deployment.mjs",
+    "zappad:verify:hosting": "node scripts/zappad/verify-vercel-release.mjs",
+    "zappad:deploy:safe:dry-run": "forge script --root contracts/zappad contracts/zappad/script/DeploySafeTreasury.s.sol:DeploySafeTreasury",
+    "zappad:release:deploy-safe": "node scripts/zappad/forge-release-broadcast.mjs deploy-safe --rpc-url robinhood --broadcast",
+    "zappad:release:deploy-stack": "node scripts/zappad/forge-release-broadcast.mjs deploy-stack --rpc-url robinhood --broadcast --verify --verifier blockscout --verifier-url https://robinhoodchain.blockscout.com/api/",
+    "zappad:release:prepare-canaries": "node scripts/zappad/forge-release-broadcast.mjs prepare-canaries --rpc-url robinhood --broadcast --slow",
+    "zappad:release:cleanup-canaries": "node scripts/zappad/forge-release-broadcast.mjs cleanup-canaries --rpc-url robinhood --broadcast --slow",
+    "zappad:verify:safe": "forge script --root contracts/zappad contracts/zappad/script/VerifySafeTreasury.s.sol:VerifySafeTreasury",
+    "zappad:verify:safe-deployment": "node scripts/zappad/verify-safe-deployment.mjs",
+    "zappad:canary:prepare": "forge script --root contracts/zappad contracts/zappad/script/PrepareZapPadCanaries.s.sol:PrepareZapPadCanaries",
+    "zappad:canary:approve-plan": "node scripts/zappad/create-canary-reviewed-plan.mjs",
+    "zappad:canary:cleanup": "forge script --root contracts/zappad contracts/zappad/script/CleanupCanaryAllowances.s.sol:CleanupCanaryAllowances",
+    "zappad:canary:observe": "forge script --root contracts/zappad contracts/zappad/script/ObservePreparedCanaries.s.sol:ObservePreparedCanaries",
+    "zappad:canary:verify-broadcast": "node scripts/zappad/verify-canary-broadcast.mjs",
+    "zappad:canary:pre-sign": "node scripts/zappad/verify-safe-canary-pre-sign.mjs",
+    "zappad:canary:finalize": "forge script --root contracts/zappad contracts/zappad/script/FinalizeZapPadCanaries.s.sol:FinalizeZapPadCanaries",
+    "zappad:canary:verify-safe-receipts": "node scripts/zappad/verify-safe-canary-receipts.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.115.0",
@@ -38,6 +62,8 @@
     "zod": "~4.3.6"
   },
   "devDependencies": {
+    "@axe-core/playwright": "4.12.1",
+    "@playwright/test": "1.62.0",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
@@ -47,6 +73,8 @@
     "vitest": "^4.1.10"
   },
   "overrides": {
+    "brace-expansion": "5.0.8",
+    "minimatch": "10.2.6",
     "postcss": "8.5.24",
     "sharp": "0.35.3"
   }

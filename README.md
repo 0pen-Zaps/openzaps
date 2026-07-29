@@ -20,6 +20,9 @@ Bounded Zaps for agent-triggered DeFi. A Zap — the immutable policy capsule th
 
 > [!WARNING]
 > Live on Robinhood Chain mainnet with real funds, and not externally audited. Onchain actions are irreversible — deposit only what you can afford to lose. See [SECURITY.md](./SECURITY.md).
+>
+> ZapPad is included in this repository as a **source-ready OpenZaps feature, not a deployed
+> protocol**. It has no approved mainnet launcher address and its write gate must remain disabled.
 
 ## What this is
 
@@ -42,6 +45,7 @@ The result is pre-committed, tightly bounded authority for a fixed action graph,
 | **Execution policy composition** | Three live blocks bind execution gas, gas price, and executor access. Add the whole stack in one click, edit each bound, and undo the insertion as one canvas change. Gas controls reach one-shot and standing intents; owner-only executor access is enforced by v3/v3.1. |
 | **Anyone can submit** | Each automated run pays a 1% protocol fee from output: 80% to whoever submits it, 20% to the 0xZAPS lottery pot. Owners publish signed intents to a shared pool; executors poll it for work. The pool is untrusted, so the Zap re-verifies every field onchain. |
 | **One visible creation fee** | Every Zap created by the current app pays exactly 0.00001 ETH. A gateway calls the existing lineage factory and atomically converts the fee to 0xZAPS through the pinned route; a missed conversion floor reverts creation too. Legacy factories remain directly callable. |
+| **ZapPad (source-ready, not deployed)** | `/launch` contains the Robinhood Chain token-launch feature and its fail-closed read/write gates. The isolated contracts create a fixed-supply token, a canonical WETH or USDG Uniswap v3 market, a permanently locked LP NFT, and one transferable fee-share ERC-20 with 100 whole shares. No ZapPad mainnet address is approved and writes remain off until the exact-SHA audit, deployment, verification, canary, counsel, and hosting gates complete. |
 
 The builder at [`/zap`](https://www.0xzaps.com/zap) designs a Zap from typed route and policy blocks,
 tells you which bounds the selected contract can enforce, and hands a deployable design to Zap now
@@ -50,16 +54,21 @@ Compose, Zap now, Automate, and Connect — reached from the app sidebar and car
 `?view=start|design|sign|automate|connect`; `?src=build`, `?route=`, and `?d=` share links still mean
 what they always meant.
 
+ZapPad lives at `/launch` inside the same OpenZaps shell. Its fee-share ERC-20s encode rights to
+collected LP fees from one locked position only. They are **not 0xZAPS**, **not OpenZaps equity or
+protocol-wide revenue rights**, **not guaranteed yield**, and **not a promise of returns**. See the
+[ZapPad documentation](docs/zappad/README.md).
+
 ## Repository layout
 
 This is a monorepo. The web app and the Solidity protocol live together.
 
 | Path | What |
 | --- | --- |
-| [`src/app/`](src/app) | The Next.js 16 site, in two route groups. `(landing)` is `/` alone, with its own nav, footer, and token scope; `(site)` is every interior page — `/zap`, `/explore`, `/profile`, `/pot`, `/zapdraw`, `/docs`, `/evals`, `/token`, `/roadmap`, `/legal` — wrapped in the app shell. `src/app/api/` holds the route handlers; `globals.css` holds the five-theme token layer. |
+| [`src/app/`](src/app) | The Next.js 16 site, in two route groups. `(landing)` is `/` alone, with its own nav, footer, and token scope; `(site)` is every interior page — `/zap`, `/launch`, `/explore`, `/profile`, `/pot`, `/zapdraw`, `/docs`, `/evals`, `/token`, `/roadmap`, `/legal` — wrapped in the app shell. `src/app/api/` holds the route handlers, including ZapPad's `/api/launch/*` fail-closed runtime surface; `globals.css` holds the five-theme token layer. |
 | [`src/components/`](src/components) | UI shared across routes: `AppShell` (sidebar, context bar, and the one `#zapscroll` container that owns the scroll), the theme provider and picker, the `Glyph` set, the wallet session provider, and the footer. |
 | [`src/lib/`](src/lib) | Chain definitions, protocol addresses and ABIs, the block catalog behind the visual builder, the block-pinned exact-policy compiler, the theme registry (`theme.ts`), and the `?view=` contract the sidebar and the consoles both read (`zap-view.ts`). |
-| [`contracts/`](contracts/README.md) | The Solidity protocol, bounded adapters, deploy/smoke scripts, and the Foundry unit / fuzz / invariant / fork suite. The base lineage in [`contracts/src`](contracts/src) is live as v1.1, with the source-only v1.2 owner-pull/halt candidate alongside it; [`v3`](contracts/src/v3/README.md) adds recurring + price-triggered execution and the executor fee/lottery economy; `v3_1` adds per-run floors priced from live spot; source-only `v3_2` adds an owner-signed recurring 0xZAPS stack. The live creation gateway preserves the deployed lineages, while the undeployed v1.2 and v3.2 candidates use isolated exact-fee gateways and creation pots so the active legacy prize round remains untouched. See [`docs/deployments.md`](docs/deployments.md). |
+| [`contracts/`](contracts/README.md) | The Solidity protocol, bounded adapters, deploy/smoke scripts, and the Foundry unit / fuzz / invariant / fork suite. The base lineage in [`contracts/src`](contracts/src) is live as v1.1, with the source-only v1.2 owner-pull/halt candidate alongside it; [`v3`](contracts/src/v3/README.md) adds recurring + price-triggered execution and the executor fee/lottery economy; `v3_1` adds per-run floors priced from live spot; source-only `v3_2` adds an owner-signed recurring 0xZAPS stack. The live creation gateway preserves the deployed lineages, while the undeployed v1.2 and v3.2 candidates use isolated exact-fee gateways and creation pots so the active legacy prize round remains untouched. [`contracts/zappad`](contracts/zappad) is a separate Foundry root for the source-ready, not-deployed launchpad. See [`docs/deployments.md`](docs/deployments.md). |
 | [`executor/`](executor/README.md) | The reference **Zap Executor** daemon: watches time and chain, discovers work from the shared intent pool, and submits owed recurring/triggered runs for 80% of the 1% protocol fee (20% funds the 0xZAPS lottery pot). Watch-only unless a gas key, a release-approved adapter manifest, and a healthy private-relay set are configured. |
 | [`packages/sdk`](packages/sdk) / [`packages/mcp`](packages/mcp) | Publish-ready read-only Agent Kit packages. The SDK compiles exact policy and unsigned EIP-712 artifacts; the npx MCP entrypoint discovers and simulates without signing or broadcasting. |
 | [`docs/`](docs) | Architecture Decision Records, the testable invariant catalog, and product/security research the design derives from. |
@@ -90,6 +99,10 @@ Contracts (from `contracts/`, requires [Foundry](https://book.getfoundry.sh/)):
 forge install
 forge build
 forge test               # fork tests need a Robinhood Chain RPC in your env
+
+# Isolated ZapPad root (source-ready; no broadcast)
+forge build --root contracts/zappad
+forge test --root contracts/zappad --no-match-path 'test/fork/*'
 ```
 
 ## Configuration
@@ -107,6 +120,8 @@ fails any change that introduces one.
 | `OPENZAPS_EXECUTOR_PRIVATE_KEY` *or* `OPENZAPS_EXECUTOR_KEYFILE` | Reference executor daemon | Optional. With neither set the daemon is watch-only and never broadcasts. A key alone is insufficient: signing also requires the reviewed adapter manifest and private-relay admission checks in [`executor/README.md`](executor/README.md). |
 | `ANTHROPIC_API_KEY` | `/api/agent/*`, server-side only | Optional. Without it those routes return 503, the connect surface hides its free-text composer rather than offering one that fails, and `/explore/[address]` answers questions from the capsule's own facts. `OPENZAPS_AGENT_MODEL` overrides the model id. |
 | `ACROSS_API_KEY` + `ACROSS_INTEGRATOR_ID` | Server-side Across `/swap/approval` quote proxy | Production requires the complete pair; `ACROSS_INTEGRATOR_ID` is a two-byte `0x` value. A missing or malformed pair is rejected even when the launch flags are set. |
+| `ZAPPAD_RPC_URL` or `ROBINHOOD_RPC_URL` | ZapPad `/api/launch/*`, server-side only | Production requires paid HTTPS RPC. The URL is never returned by config or health. |
+| `ZAPPAD_LAUNCHER_ADDRESS` + `ZAPPAD_LAUNCHER_DEPLOY_BLOCK` + `ZAPPAD_LAUNCHER_CODE_HASH` | ZapPad runtime identity | All three must come from one finalized exact-SHA deployment-verification artifact. They are intentionally absent while ZapPad is not deployed. |
 
 The following flags are not credentials. They prevent source-ready work from being presented as
 live before its external dependency or production control exists:
@@ -119,6 +134,8 @@ live before its external dependency or production control exists:
 | `OPENZAPS_POLICY_TEMPLATE_PUBLISHING_ENABLED=true` | Enables wallet-attributed public template publication in production after the template and security-attribution migrations are applied. Browsing remains read-only when publication is off. |
 | `OPENZAPS_POLICY_TEMPLATE_SUBSCRIPTIONS_ENABLED=true` + `OPENZAPS_POLICY_TEMPLATE_SUBSCRIPTIONS_DURABLE_QUOTA_ENABLED=true` | Enables wallet-signed, wallet-pseudonymous exact-version subscription writes after the migration and a durable request quota exist. The database additionally caps each subscriber, each template, and the global table; counts are convenience metadata, never execution authority or reputation. |
 | `NEXT_PUBLIC_OPENZAPS_AGENT_KIT_PUBLISHED=true` | Shows the npx install path only after both scoped packages actually exist in npm. Until then the packages are source-ready, not published. |
+| `ZAPPAD_RPC_RELAY_ENABLED=true` + `ZAPPAD_RPC_DURABLE_QUOTA_ENABLED=true` | Enables ZapPad runtime reads and `/api/launch/rpc` in Production only after a separate durable edge quota is configured. The second flag records that external control; it does not create one. Without both flags, the runtime and API remain fail closed even when an RPC URL exists. |
+| `ZAPPAD_LAUNCH_WRITES_ENABLED=true` | Server-only ZapPad write request. It becomes effective only when every launcher/dependency identity probe passes. Keep it false until fresh contracts, source verification, finalized canary, external security/risk approval, counsel, paid RPC, firewall, and exact-SHA hosting evidence all pass. |
 
 **Never paste a private key into a tracked file.**
 
@@ -137,6 +154,8 @@ production posture is review-only and defaults to disabled dry-run.
 - **Market:** [Clanker V4](https://www.clanker.world/clanker/0xDd90bFa4adC7F4401E611AbaC692D939F9F4CB07)
 
 Always verify the network and the full contract address on the site before trading. The token is separate from the protocol contracts.
+It is also separate from every ZapPad fee-share ERC-20: those shares concern collected LP fees for
+one locked ZapPad position only and confer no right in 0xZAPS or OpenZaps.
 
 ## Contributing
 

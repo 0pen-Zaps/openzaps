@@ -23,6 +23,7 @@ export function LandingFooter({ githubUrl }: { githubUrl: string }): React.JSX.E
           <div className={styles.footerCol}>
             <h3 className={`${styles.footerColTitle} mono`}>Product</h3>
             <Link href="/zap">Zap</Link>
+            <Link href="/launch">ZapPad</Link>
             <Link href="/explore">Explore</Link>
             <Link href="/token">{TOKEN.symbol} token</Link>
             <Link href={LINKS.buyWithOpenZaps}>Zap in with OpenZaps</Link>
