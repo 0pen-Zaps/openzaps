@@ -22,6 +22,7 @@ import { agentAliasStorageKey, parseAgentAliases, type AgentAliases } from "@/li
 import { narrateAgents, type NarrativeAuthorization } from "@/lib/agent-narrative";
 import { intentFileName } from "@/lib/automate";
 import {
+  automationIntentKind,
   automationIntentKey,
   automationRecordMatchesIntentKey,
   parseAutomationIntent,
@@ -104,6 +105,7 @@ const ACTIVITY_LABELS: Record<WalletActivityEntry["kind"], string> = {
   executed: "Zapped",
   automated: "AutoZap",
   recovered: "Recovered",
+  halted: "Policy halted",
   revoked: "Revoked",
   "series-finished": "Completed",
 };
@@ -115,6 +117,7 @@ const ACTIVITY_GLYPHS: Record<WalletActivityEntry["kind"], string> = {
   executed: "boltFill",
   automated: "repeat",
   recovered: "download",
+  halted: "shield",
   revoked: "shield",
   "series-finished": "check",
 };
@@ -334,7 +337,10 @@ export function ProfileDashboard(): React.JSX.Element {
     const url = URL.createObjectURL(blob);
     const anchor = document.createElement("a");
     anchor.href = url;
-    anchor.download = intentFileName(automation.parsed?.mode ?? automation.local?.mode ?? "recurring", automation.zap);
+    const kind = automation.parsed
+      ? automationIntentKind(automation.parsed.kind)
+      : automation.local?.intentKind ?? "recurring-relative";
+    anchor.download = intentFileName(kind, automation.zap);
     anchor.click();
     URL.revokeObjectURL(url);
   }, []);
@@ -450,7 +456,12 @@ export function ProfileDashboard(): React.JSX.Element {
         filter === "all" ||
         (filter === "executions" && (row.kind === "executed" || row.kind === "automated")) ||
         (filter === "automation" && (row.kind === "automated" || row.kind === "series-finished")) ||
-        (filter === "control" && (row.kind === "created" || row.kind === "recovered" || row.kind === "revoked"));
+        (filter === "control" && (
+          row.kind === "created"
+          || row.kind === "recovered"
+          || row.kind === "halted"
+          || row.kind === "revoked"
+        ));
       if (!inFilter) return false;
       if (!needle) return true;
       return `${row.kind} ${row.detail} ${row.zap} ${row.txHash} ${row.assetSymbol ?? ""}`.toLowerCase().includes(needle);
@@ -464,8 +475,8 @@ export function ProfileDashboard(): React.JSX.Element {
           <div>
             <h1 className={styles.connectTitle}>My zaps</h1>
             <p className={styles.connectLede}>
-              Connect a wallet to read its balances plus every confirmed Zap event across v1.1, v3, and v3.1 — then
-              inspect, revoke, replace, or recover the automations it signed.
+              Connect a wallet to read its balances plus every confirmed Zap event across every canonical lineage
+              configured in this release — then inspect, revoke, replace, or recover the automations it signed.
             </p>
             <div className={styles.connectActions}>
               <button className={styles.primaryBtn} data-busy={busy === "connect"} disabled={busy !== null} onClick={() => void connectWallet()} type="button">
@@ -542,7 +553,7 @@ export function ProfileDashboard(): React.JSX.Element {
           {profile
             ? `Read straight from Robinhood Chain logs at block ${Number(profile.headBlock).toLocaleString("en-US")}.${
               profile.sourceStatus === "degraded"
-                ? " Degraded means at least one Zap's tracked-asset read failed, so its recovery control stays disabled."
+                ? " Degraded means at least one Zap's tracked-asset or policy-halt read failed, so no live management claim is made for it."
                 : ""
             } ${profile.sourceCaveat}`
             : "The canonical RPC history could not be read, so no empty state is asserted."}
@@ -557,6 +568,7 @@ export function ProfileDashboard(): React.JSX.Element {
           label={relayHasOlder ? "Live shown · newest 50" : "Live authorizations"}
         />
         <Metric value={profile ? String(profile.stats.authorizationsRevoked) : "—"} label="Revocations" />
+        <Metric value={profile ? String(profile.stats.policiesHalted) : "—"} label="Policies halted" />
       </section>
 
       <PortfolioPanel
@@ -590,7 +602,7 @@ export function ProfileDashboard(): React.JSX.Element {
           <div className={styles.emptyCard}>
             <BlockGlyph name="repeat" />
             <h3>No signed automation found.</h3>
-            <p>Confirmed v3/v3.1 Zaps still appear in history. A standing intent appears here after it is signed locally or published to the relay.</p>
+            <p>Confirmed automation Zaps still appear in history. A standing intent appears here after it is signed locally or published to the relay.</p>
             <Link className={styles.primaryBtn} href="/zap?view=automate">Create an AutoZap</Link>
           </div>
         ) : (
@@ -617,6 +629,18 @@ export function ProfileDashboard(): React.JSX.Element {
                     <div><dt>Authorization</dt><dd>{automation.parsed ? shortId(automation.parsed.authorizationId) : "not signed"}</dd></div>
                     <div><dt>Progress</dt><dd>{automationProgress(automation)}</dd></div>
                     <div><dt>Source</dt><dd>{automation.relay ? "executor relay" : automation.local ? "this browser" : "—"}</dd></div>
+                    <div>
+                      <dt>Policy</dt>
+                      <dd>
+                        {zapSummary?.policyHaltStatus === "halted"
+                          ? "permanently halted"
+                          : zapSummary?.policyHaltStatus === "active"
+                            ? "active"
+                            : zapSummary?.policyHaltStatus === "unavailable"
+                              ? "halt state unavailable"
+                              : "one-way halt unsupported"}
+                      </dd>
+                    </div>
                   </dl>
 
                   {confirm === "revoke" ? (
@@ -863,7 +887,15 @@ async function requireWallet(account: Address) {
 }
 
 function automationEyebrow(automation: DashboardAutomation, zapSummary: WalletZapSummary | undefined): string {
-  const mode = automation.parsed?.mode === "trigger" ? "Price trigger" : automation.parsed ? "Recurring" : "Draft";
+  const mode = automation.parsed
+    ? automationIntentKind(automation.parsed.kind) === "recurring-stack"
+      ? "0xZAPS stack"
+      : automation.parsed.mode === "trigger"
+        ? "Price trigger"
+        : "Recurring"
+    : automation.local?.intentKind === "recurring-stack"
+      ? "0xZAPS stack draft"
+      : "Draft";
   return zapSummary ? `${mode} · ${zapSummary.lineage}` : mode;
 }
 
@@ -872,7 +904,11 @@ function automationTerms(automation: DashboardAutomation): string {
   const intent = automation.parsed;
   if (!intent) return "Unsigned Zap";
   if (intent.mode === "recurring") {
-    return `${formatInterval(intent.interval)} · ${intent.maxRuns ?? "?"} Zaps · expires ${formatDeadline(intent.deadline)}`;
+    const stack =
+      automationIntentKind(intent.kind) === "recurring-stack"
+        ? ` · ${Number(intent.submission.intent.stackBps) / 100}% stack`
+        : "";
+    return `${formatInterval(intent.interval)} · ${intent.maxRuns ?? "?"} Zaps${stack} · expires ${formatDeadline(intent.deadline)}`;
   }
   return `${intent.thresholdBps === null ? "?" : intent.thresholdBps / 100}% signed move · expires ${formatDeadline(intent.deadline)}`;
 }
@@ -1066,7 +1102,17 @@ function CapsuleCard({ zap }: { zap: WalletZapSummary }): React.JSX.Element {
       <span className={styles.capsuleLineage}>{zap.lineage}</span>
       <code>{shortAddress(zap.address)}</code>
       <strong>{zap.executionCount + zap.automatedRunCount} confirmed Zaps</strong>
-      <small>{zap.revocationCount} revoked · {zap.recoveryCount} recoveries</small>
+      <small>
+        {zap.policyHaltStatus === "halted"
+          ? "policy permanently halted"
+          : zap.policyHaltStatus === "active"
+            ? "policy active · halt available"
+            : zap.policyHaltStatus === "unavailable"
+              ? "policy halt state unavailable"
+              : "one-way halt unsupported"}
+        {" · "}
+        {zap.revocationCount} revoked · {zap.recoveryCount} recoveries
+      </small>
       <span className={styles.capsuleOpen}>Open →</span>
     </Link>
   );

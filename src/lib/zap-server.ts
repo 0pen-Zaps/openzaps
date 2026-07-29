@@ -7,18 +7,19 @@ import {
   decodeAutomatedRuns,
   emergencyExitEvent,
   executedEvent,
+  policyHaltedEvent,
   zapCreatedEvent,
+  type PolicyHaltedLogInput,
 } from "@/lib/activity";
 import {
-  OPENZAP_CONTRACTS,
-  OPENZAP_V3_CONTRACTS,
-  OPENZAP_V3_1_CONTRACTS,
   ROBINHOOD_ASSETS,
   ROBINHOOD_RPC_URL,
+  configuredCapsuleLineageForFactory,
+  configuredCapsuleFactories,
   erc20Abi,
   openZapAbi,
   openZapFactoryAbi,
-  openZapProtocolConfigured,
+  openZapPolicyHaltAbi,
   robinhoodChain,
 } from "@/lib/robinhood";
 import {
@@ -49,15 +50,6 @@ const TIMESTAMP_BUDGET = 60;
  * the first, unknown addresses cost a map lookup. The window is short because
  * the memo also decides 404s.
  */
-/** Every factory whose clones are canonical capsules, deduped by address. */
-const CAPSULE_FACTORIES: Address[] = [
-  ...new Map(
-    [OPENZAP_CONTRACTS.factory, OPENZAP_V3_CONTRACTS.factory, OPENZAP_V3_1_CONTRACTS.factory].map(
-      (address) => [address.toLowerCase(), address] as const,
-    ),
-  ).values(),
-];
-
 const FACTORY_SNAPSHOT_TTL_MS = 10_000;
 
 /**
@@ -153,13 +145,13 @@ function factorySnapshot(maxAgeMs: number): Promise<FactorySnapshot> {
 }
 
 async function readFactorySnapshot(): Promise<FactorySnapshot> {
-  assertConfigured();
+  const capsuleFactories = configuredCapsuleFactories();
   const head = await currentHead();
 
   const createdLogs = await client.getLogs({
-    // All capsule factories: a v3 / v3.1 automated zap is just as canonical as a
+    // All configured capsule factories: an automated zap is just as canonical as a
     // v1.1 one, and scanning only v1.1 made its detail page report "not a zap".
-    address: CAPSULE_FACTORIES,
+    address: [...capsuleFactories],
     event: zapCreatedEvent,
     fromBlock: ACTIVITY_FROM_BLOCK,
     toBlock: head,
@@ -230,14 +222,17 @@ async function requireCreation(address: Address): Promise<ZapCreatedLogInput> {
  * page is one consistent snapshot rather than a stitched one.
  *
  * "Every event query" means all five: ZapCreated, Executed, EmergencyExit, and
- * the three automated-run events. A capsule's history is whichever of those it
+ * every automated-run event. A capsule's history is whichever of those it
  * emitted, and reading a subset does not shrink the history — it misreports it.
  * Throws on RPC failure — callers decide how to fail closed.
  */
 export async function fetchZapDetail(zapAddress: Address): Promise<ZapDetailPayload> {
-  assertConfigured();
+  configuredCapsuleFactories();
   const address = getAddress(zapAddress);
   const created = await requireCreation(address);
+  const lineage = configuredCapsuleLineageForFactory(created.factory);
+  if (!lineage) throw new Error("ZapCreated factory is not a configured canonical lineage.");
+  const haltCapable = lineage.id === "v1.2" || lineage.id === "v3.2";
   const head = await currentHead();
 
   const [runtime, implementation, version, owner, recipient, maxRelayerFeeCap, optimization, trackedAssets, stepCount, policyHash] =
@@ -263,14 +258,23 @@ export async function fetchZapDetail(zapAddress: Address): Promise<ZapDetailPayl
     ),
   );
 
-  const [wethBalance, zapsBalance, nativeBalance, executedLogs, exitLogs, automatedChunks] = await Promise.all([
+  const [
+    wethBalance,
+    zapsBalance,
+    nativeBalance,
+    executedLogs,
+    exitLogs,
+    automatedChunks,
+    policyHalted,
+    haltedLogs,
+  ] = await Promise.all([
     client.readContract({ address: ROBINHOOD_ASSETS.weth, abi: erc20Abi, functionName: "balanceOf", args: [address], blockNumber: head }),
     client.readContract({ address: ROBINHOOD_ASSETS.zaps, abi: erc20Abi, functionName: "balanceOf", args: [address], blockNumber: head }),
     client.getBalance({ address, blockNumber: head }),
     client.getLogs({ address, event: executedEvent, fromBlock: ACTIVITY_FROM_BLOCK, toBlock: head, strict: true }),
     client.getLogs({ address, event: emergencyExitEvent, fromBlock: ACTIVITY_FROM_BLOCK, toBlock: head, strict: true }),
     // `Executed` is only the one-shot path. A recurring or triggered run emits
-    // one of the three automation events instead and NEVER an `Executed`, so
+    // one of the automation events instead and NEVER an `Executed`, so
     // reading only the pair above reported a capsule twenty runs deep as
     // created-and-then-silent — zero executions, no volume, no timestamps, and
     // a lifecycle stuck at "created". Same pinned head, same address scope.
@@ -291,6 +295,23 @@ export async function fetchZapDetail(zapAddress: Address): Promise<ZapDetailPayl
         ),
       ),
     ),
+    haltCapable
+      ? client.readContract({
+          address,
+          abi: openZapPolicyHaltAbi,
+          functionName: "policyHalted",
+          blockNumber: head,
+        })
+      : Promise.resolve(null),
+    haltCapable
+      ? client.getLogs({
+          address,
+          event: policyHaltedEvent,
+          fromBlock: ACTIVITY_FROM_BLOCK,
+          toBlock: head,
+          strict: true,
+        })
+      : Promise.resolve([]),
   ]);
   const automated = automatedChunks.flat();
 
@@ -327,12 +348,24 @@ export async function fetchZapDetail(zapAddress: Address): Promise<ZapDetailPayl
         }]
       : [],
   );
+  const halted = haltedLogs.flatMap((log): PolicyHaltedLogInput[] =>
+    log.args?.owner && log.args?.policyHash
+      ? [{
+          emitter: log.address,
+          owner: log.args.owner,
+          policyHash: log.args.policyHash,
+          txHash: log.transactionHash,
+          blockNumber: log.blockNumber,
+          logIndex: log.logIndex,
+        }]
+      : [],
+  );
 
   // The creation block always gets a timestamp — it anchors the provenance
   // card — and the rest of the budget goes to the newest event blocks. Automated
   // runs compete for that budget on equal terms: leaving them out would time
   // every row of an automation-only capsule as "block N" with no date.
-  const eventBlocks = newestBlocks([...executed, ...automated, ...exits], TIMESTAMP_BUDGET);
+  const eventBlocks = newestBlocks([...executed, ...automated, ...exits, ...halted], TIMESTAMP_BUDGET);
   const timestamps = await fetchTimestamps([created.blockNumber, ...eventBlocks]);
 
   return aggregateZapDetail({
@@ -345,6 +378,8 @@ export async function fetchZapDetail(zapAddress: Address): Promise<ZapDetailPayl
     executed,
     automated,
     exits,
+    policyHalted,
+    halted,
     timestamps,
     headBlock: head,
     readAt: new Date().toISOString(),
@@ -360,7 +395,7 @@ export async function fetchZapDetail(zapAddress: Address): Promise<ZapDetailPayl
  * closed.
  */
 export async function fetchZapSummaries(limit: number = ACTIVITY_FEED_LIMIT): Promise<ZapSummaryPage> {
-  assertConfigured();
+  configuredCapsuleFactories();
   // Same memoised scan the provenance gate uses, and the same pinned head, so
   // an execution can never be counted for a capsule the list does not contain.
   const snapshot = await factorySnapshot(FACTORY_SNAPSHOT_TTL_MS);
@@ -373,15 +408,38 @@ export async function fetchZapSummaries(limit: number = ACTIVITY_FEED_LIMIT): Pr
     chunks.push(zapAddresses.slice(i, i + ADDRESS_CHUNK));
   }
 
-  const executedChunks = await Promise.all(
-    chunks.map((addresses) =>
-      client.getLogs({ address: addresses, event: executedEvent, fromBlock: ACTIVITY_FROM_BLOCK, toBlock: head, strict: true }),
+  const [executedChunks, automatedEventChunks] = await Promise.all([
+    Promise.all(
+      chunks.map((addresses) =>
+        client.getLogs({
+          address: addresses,
+          event: executedEvent,
+          fromBlock: ACTIVITY_FROM_BLOCK,
+          toBlock: head,
+          strict: true,
+        }),
+      ),
     ),
-  );
+    Promise.all(
+      AUTOMATED_RUN_EVENTS.map(({ event }) =>
+        Promise.all(
+          chunks.map((addresses) =>
+            client.getLogs({
+              address: addresses,
+              event: event as never,
+              fromBlock: ACTIVITY_FROM_BLOCK,
+              toBlock: head,
+              strict: true,
+            }),
+          ),
+        ),
+      ),
+    ),
+  ]);
 
   const executionCounts = new Map<Address, number>();
   const lastExecutionBlock = new Map<Address, bigint>();
-  for (const log of executedChunks.flat()) {
+  for (const log of [...executedChunks.flat(), ...automatedEventChunks.flat(2)]) {
     const emitter = getAddress(log.address);
     executionCounts.set(emitter, (executionCounts.get(emitter) ?? 0) + 1);
     const previous = lastExecutionBlock.get(emitter);
@@ -409,12 +467,39 @@ export async function fetchZapSummaries(limit: number = ACTIVITY_FEED_LIMIT): Pr
       createdTx: log.txHash,
       createdAt: timestamps.get(log.blockNumber) ?? null,
       policyHash: log.policyHash,
+      policyHaltStatus: "unsupported",
+      policyHalted: null,
       executionCount: executionCounts.get(log.zap) ?? 0,
       lastExecutionAt: executedAt === undefined ? null : timestamps.get(executedAt) ?? null,
     };
   });
 
-  return { rows, total, truncated };
+  const haltReads = await Promise.allSettled(
+    rows.map(async (row): Promise<ZapSummary> => {
+      if (row.lineage !== "v1.2" && row.lineage !== "v3.2") return row;
+      const halted = await client.readContract({
+        address: row.address,
+        abi: openZapPolicyHaltAbi,
+        functionName: "policyHalted",
+        blockNumber: head,
+      });
+      return {
+        ...row,
+        policyHaltStatus: halted ? "halted" : "active",
+        policyHalted: halted,
+      };
+    }),
+  );
+
+  return {
+    rows: haltReads.map((result, index) =>
+      result.status === "fulfilled"
+        ? result.value
+        : { ...rows[index], policyHaltStatus: "unavailable" as const, policyHalted: null },
+    ),
+    total,
+    truncated,
+  };
 }
 
 /**
@@ -426,20 +511,10 @@ export async function fetchZapAddresses(limit = 49_000): Promise<Address[]> {
   if (!Number.isSafeInteger(limit) || limit < 1) {
     throw new RangeError("Zap address limit must be a positive safe integer.");
   }
-  assertConfigured();
+  configuredCapsuleFactories();
   const snapshot = await factorySnapshot(FACTORY_SNAPSHOT_TTL_MS);
   const { rows } = newestZapCreations(snapshot.created, limit);
   return [...new Map(rows.map((row) => [row.zap.toLowerCase(), row.zap])).values()];
-}
-
-/**
- * A malformed env override collapses a contract address to zeroAddress, which
- * would make every query return nothing and the page claim an empty history.
- */
-function assertConfigured(): void {
-  if (!openZapProtocolConfigured()) {
-    throw new Error("OpenZap contract addresses are not configured; refusing to report zap state.");
-  }
 }
 
 function newestBlocks(logs: readonly { blockNumber: bigint }[], budget: number): bigint[] {

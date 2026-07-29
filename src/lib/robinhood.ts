@@ -1,6 +1,7 @@
 import {
   defineChain,
   getAddress,
+  isAddressEqual,
   zeroAddress,
   type Address,
   type EIP1193Provider,
@@ -42,6 +43,21 @@ export const ROBINHOOD_ASSETS = {
 } as const;
 
 export type TokenInfo = { readonly symbol: string; readonly address: Address; readonly decimals: number };
+export type OptionalContractSetState = "absent" | "partial" | "configured";
+
+/**
+ * Optional future lineages are all-or-nothing. An all-zero set is deliberately
+ * absent; a fully non-zero set may be used; any partial override is a release
+ * error and must never silently shrink an authoritative factory scan.
+ */
+export function optionalContractSetState(
+  contracts: Readonly<Record<string, Address>>,
+): OptionalContractSetState {
+  const values = Object.values(contracts);
+  const configured = values.filter((address) => address !== zeroAddress).length;
+  if (configured === 0) return "absent";
+  return configured === values.length ? "configured" : "partial";
+}
 
 /**
  * The ZapRangeVault share token (ozRANGE) IS the vault contract — a full-range
@@ -145,8 +161,33 @@ export const OPENZAP_CONTRACTS = {
   ),
 } as const;
 
+export const OPENZAP_V1_1_FACTORY_VERSION = "1.1.0";
+export const OPENZAP_V1_2_FACTORY_VERSION = "1.2.0-candidate";
+
 export function openZapProtocolConfigured(): boolean {
   return Object.values(OPENZAP_CONTRACTS).every((address) => address !== zeroAddress);
+}
+
+/**
+ * The isolated v1.2 one-shot lineage. It adds the one-way policy halt and
+ * transaction-scoped Permit2 owner pull without changing the existing v1.1
+ * deployment or granting an executor standing authority.
+ *
+ * NOT YET DEPLOYED. The implementation, factory, exact-fee gateway, and its
+ * constructor-bound creation pot are one release unit. All four addresses stay
+ * zero until the final deployment is independently verified; any partial env
+ * override is rejected by `openZapV1_2Configured` and the canonical lineage
+ * registry.
+ */
+export const OPENZAP_V1_2_CONTRACTS = {
+  implementation: optionalAddress(process.env.NEXT_PUBLIC_OPENZAP_V1_2_IMPLEMENTATION, zeroAddress),
+  factory: optionalAddress(process.env.NEXT_PUBLIC_OPENZAP_V1_2_FACTORY, zeroAddress),
+  creationGateway: optionalAddress(process.env.NEXT_PUBLIC_OPENZAP_V1_2_CREATION_GATEWAY, zeroAddress),
+  creationFeePot: optionalAddress(process.env.NEXT_PUBLIC_OPENZAP_V1_2_CREATION_FEE_POT, zeroAddress),
+} as const;
+
+export function openZapV1_2Configured(): boolean {
+  return optionalContractSetState(OPENZAP_V1_2_CONTRACTS) === "configured";
 }
 
 /**
@@ -223,8 +264,10 @@ export function openZapV3_1Configured(): boolean {
  * NOT YET DEPLOYED. Every address defaults to the zero address on purpose: `openZapV3_2Configured()`
  * therefore returns false, and the Automate surface must gate the stacking option behind it. Offering
  * a creation path into an undeployed lineage would fail-open — the user would pay a wallet
- * interaction for a transaction that cannot succeed. Fill these in (or set the env vars) only once
- * `docs/deployments.md` records a verified v3.2 deployment with its own pot wired via `setFactory`.
+ * interaction for a transaction that cannot succeed. The stack-only creation gateway and its
+ * constructor-bound creation pot are part of this one fail-closed set; the live v1 gateway/pot remain
+ * separate because their active prize round cannot be rebound. Fill these in (or set the env vars)
+ * only once `docs/deployments.md` records a verified v3.2 deployment and both pot bindings.
  */
 export const OPENZAP_V3_2_CONTRACTS = {
   implementation: optionalAddress(process.env.NEXT_PUBLIC_OPENZAP_V3_2_IMPLEMENTATION, zeroAddress),
@@ -233,10 +276,158 @@ export const OPENZAP_V3_2_CONTRACTS = {
   priceSourceRegistry: optionalAddress(process.env.NEXT_PUBLIC_OPENZAP_V3_2_PRICE_SOURCE_REGISTRY, zeroAddress),
   /** IOrientedPriceSource for the main leg — same shape v3.1 uses. */
   orientedPriceSource: optionalAddress(process.env.NEXT_PUBLIC_OPENZAP_V3_2_ORIENTED_PRICE_SOURCE, zeroAddress),
+  /** Stack-only exact-fee gateway. It can call only the v3.2 factory. */
+  creationGateway: optionalAddress(process.env.NEXT_PUBLIC_OPENZAP_V3_2_CREATION_GATEWAY, zeroAddress),
+  /** Dedicated no-drain creation prize pot, bound inside the gateway constructor. */
+  creationFeePot: optionalAddress(process.env.NEXT_PUBLIC_OPENZAP_V3_2_CREATION_FEE_POT, zeroAddress),
 } as const;
 
 export function openZapV3_2Configured(): boolean {
-  return Object.values(OPENZAP_V3_2_CONTRACTS).every((address) => address !== zeroAddress);
+  return optionalContractSetState(OPENZAP_V3_2_CONTRACTS) === "configured";
+}
+
+export type ConfiguredCapsuleLineage = {
+  id: "v1.1" | "v1.2" | "v3" | "v3.1" | "v3.2";
+  factory: Address;
+  implementation: Address;
+  lotteryPot: Address | null;
+  /** Exact-fee creation infrastructure is not an execution or automation pot. */
+  creationGateway?: Address | null;
+  creationFeePot?: Address | null;
+};
+
+export type ConfiguredCapsuleLineageId = ConfiguredCapsuleLineage["id"];
+
+/**
+ * One canonical registry for every lineage an authoritative reader may scan.
+ *
+ * v1.1, v3, and v3.1 are mandatory production surfaces. v3.2 is optional while
+ * undeployed, but all-or-nothing when enabled. Factories, implementations, and
+ * execution pots are identity-bearing roles: silently deduping a duplicate
+ * would make one lineage masquerade as another, so duplicates reject the whole
+ * configuration before an RPC read can report a fabricated partial history.
+ */
+export function configuredCapsuleLineages(): readonly ConfiguredCapsuleLineage[] {
+  const v1_2State = optionalContractSetState(OPENZAP_V1_2_CONTRACTS);
+  const v3_2State = optionalContractSetState(OPENZAP_V3_2_CONTRACTS);
+  if (
+    !openZapProtocolConfigured()
+    || !openZapV3Configured()
+    || !openZapV3_1Configured()
+    || v1_2State === "partial"
+    || v3_2State === "partial"
+  ) {
+    throw new Error("Every mandatory OpenZap lineage must be configured and optional lineages must be all-or-nothing.");
+  }
+
+  const lineages: ConfiguredCapsuleLineage[] = [
+    {
+      id: "v1.1",
+      factory: OPENZAP_CONTRACTS.factory,
+      implementation: OPENZAP_CONTRACTS.implementation,
+      lotteryPot: null,
+    },
+    ...(v1_2State === "configured"
+      ? [{
+          id: "v1.2" as const,
+          factory: OPENZAP_V1_2_CONTRACTS.factory,
+          implementation: OPENZAP_V1_2_CONTRACTS.implementation,
+          lotteryPot: null,
+          creationGateway: OPENZAP_V1_2_CONTRACTS.creationGateway,
+          creationFeePot: OPENZAP_V1_2_CONTRACTS.creationFeePot,
+        }]
+      : []),
+    {
+      id: "v3",
+      factory: OPENZAP_V3_CONTRACTS.factory,
+      implementation: OPENZAP_V3_CONTRACTS.implementation,
+      lotteryPot: OPENZAP_V3_CONTRACTS.lotteryPot,
+    },
+    {
+      id: "v3.1",
+      factory: OPENZAP_V3_1_CONTRACTS.factory,
+      implementation: OPENZAP_V3_1_CONTRACTS.implementation,
+      lotteryPot: OPENZAP_V3_1_CONTRACTS.lotteryPot,
+    },
+    ...(v3_2State === "configured"
+      ? [{
+          id: "v3.2" as const,
+          factory: OPENZAP_V3_2_CONTRACTS.factory,
+          implementation: OPENZAP_V3_2_CONTRACTS.implementation,
+          lotteryPot: OPENZAP_V3_2_CONTRACTS.lotteryPot,
+          creationGateway: OPENZAP_V3_2_CONTRACTS.creationGateway,
+          creationFeePot: OPENZAP_V3_2_CONTRACTS.creationFeePot,
+        }]
+      : []),
+  ];
+
+  assertDistinctLineageRoles(lineages);
+  return lineages;
+}
+
+export function configuredCapsuleFactories(): readonly Address[] {
+  return configuredCapsuleLineages().map((lineage) => lineage.factory);
+}
+
+/** Resolve factory identity through the same all-or-nothing registry every reader scans. */
+export function configuredCapsuleLineageForFactory(
+  factory: Address,
+): ConfiguredCapsuleLineage | null {
+  return configuredCapsuleLineages().find((lineage) =>
+    isAddressEqual(factory, lineage.factory)
+  ) ?? null;
+}
+
+/**
+ * The only canonical factories whose deployed clones expose `policyHalted`.
+ * v3/v3.1 source may evolve, but their already deployed runtimes predate this
+ * selector and therefore remain deliberately unsupported.
+ */
+export function configuredPolicyHaltLineages(): readonly (
+  ConfiguredCapsuleLineage & { id: "v1.2" | "v3.2" }
+)[] {
+  return configuredCapsuleLineages().filter(
+    (lineage): lineage is ConfiguredCapsuleLineage & { id: "v1.2" | "v3.2" } =>
+      lineage.id === "v1.2" || lineage.id === "v3.2",
+  );
+}
+
+export function configuredExecutionPots(): readonly { address: Address; label: string }[] {
+  return configuredCapsuleLineages()
+    .filter(
+      (lineage): lineage is ConfiguredCapsuleLineage & { lotteryPot: Address } =>
+        lineage.lotteryPot !== null,
+    )
+    .map((lineage) => ({ address: lineage.lotteryPot, label: lineage.id }));
+}
+
+/** Exported for a pure regression test; production callers use the registry above. */
+export function assertDistinctLineageRoles(lineages: readonly ConfiguredCapsuleLineage[]): void {
+  const seen = new Map<string, string>();
+  for (const lineage of lineages) {
+    const roles = [
+      ["factory", lineage.factory],
+      ["implementation", lineage.implementation],
+      ...(lineage.lotteryPot === null ? [] : [["lottery pot", lineage.lotteryPot] as const]),
+      ...(lineage.creationGateway == null
+        ? []
+        : [["creation gateway", lineage.creationGateway] as const]),
+      ...(lineage.creationFeePot == null
+        ? []
+        : [["creation fee pot", lineage.creationFeePot] as const]),
+    ] as const;
+    for (const [role, address] of roles) {
+      if (address === zeroAddress) {
+        throw new Error(`${lineage.id} ${role} is not configured.`);
+      }
+      const key = address.toLowerCase();
+      const prior = seen.get(key);
+      if (prior) {
+        throw new Error(`${lineage.id} ${role} duplicates ${prior}.`);
+      }
+      seen.set(key, `${lineage.id} ${role}`);
+    }
+  }
 }
 
 /**
@@ -510,6 +701,21 @@ const intentComponents = [
   { name: "minOut", type: "uint256" },
 ] as const;
 
+const permit2TokenPermissionsComponents = [
+  { name: "token", type: "address" },
+  { name: "amount", type: "uint256" },
+] as const;
+
+const permit2TransferPermitComponents = [
+  {
+    name: "permitted",
+    type: "tuple",
+    components: permit2TokenPermissionsComponents,
+  },
+  { name: "nonce", type: "uint256" },
+  { name: "deadline", type: "uint256" },
+] as const;
+
 export const openZapFactoryAbi = [
   {
     type: "function",
@@ -565,6 +771,29 @@ export const openZapFactoryAbi = [
   },
 ] as const;
 
+/**
+ * v1.2 keeps the v1 factory write surface, and exposes the two immutable shared
+ * policy registries that provenance verification must pin before a wallet uses
+ * the new owner-pull path.
+ */
+export const openZapV1_2FactoryAbi = [
+  ...openZapFactoryAbi,
+  {
+    type: "function",
+    name: "adapters",
+    inputs: [],
+    outputs: [{ name: "", type: "address" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "tokens",
+    inputs: [],
+    outputs: [{ name: "", type: "address" }],
+    stateMutability: "view",
+  },
+] as const;
+
 export const openZapCreationGatewayAbi = [
   {
     type: "function",
@@ -594,6 +823,27 @@ export const openZapCreationGatewayAbi = [
   },
   {
     type: "function",
+    name: "AEWETH",
+    inputs: [],
+    outputs: [{ name: "", type: "address" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "ZAPS",
+    inputs: [],
+    outputs: [{ name: "", type: "address" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "CREATION_ADAPTER",
+    inputs: [],
+    outputs: [{ name: "", type: "address" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
     name: "lineageFactory",
     inputs: [{ name: "lineage", type: "uint8" }],
     outputs: [{ name: "", type: "address" }],
@@ -605,6 +855,154 @@ export const openZapCreationGatewayAbi = [
     inputs: [],
     outputs: [{ name: "", type: "string" }],
     stateMutability: "view",
+  },
+] as const;
+
+export const openZapStackCreationGatewayAbi = [
+  {
+    type: "function",
+    name: "createZap",
+    inputs: [
+      { name: "p", type: "tuple", components: policyComponents },
+      { name: "salt", type: "bytes32" },
+      { name: "minZapsOut", type: "uint256" },
+    ],
+    outputs: [{ name: "zap", type: "address" }],
+    stateMutability: "payable",
+  },
+  {
+    type: "function",
+    name: "CREATION_FEE",
+    inputs: [],
+    outputs: [{ name: "", type: "uint256" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "CREATION_POT",
+    inputs: [],
+    outputs: [{ name: "", type: "address" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "AEWETH",
+    inputs: [],
+    outputs: [{ name: "", type: "address" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "ZAPS",
+    inputs: [],
+    outputs: [{ name: "", type: "address" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "CREATION_ADAPTER",
+    inputs: [],
+    outputs: [{ name: "", type: "address" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "STACK_FACTORY",
+    inputs: [],
+    outputs: [{ name: "", type: "address" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "VERSION",
+    inputs: [],
+    outputs: [{ name: "", type: "string" }],
+    stateMutability: "view",
+  },
+] as const;
+
+/** Exact public surface of the constructor-bound v1.2 creation gateway. */
+export const openZapV1_2CreationGatewayAbi = [
+  {
+    type: "function",
+    name: "createZap",
+    inputs: [
+      { name: "p", type: "tuple", components: policyComponents },
+      { name: "salt", type: "bytes32" },
+      { name: "minZapsOut", type: "uint256" },
+    ],
+    outputs: [{ name: "zap", type: "address" }],
+    stateMutability: "payable",
+  },
+  {
+    type: "function",
+    name: "predict",
+    inputs: [
+      { name: "p", type: "tuple", components: policyComponents },
+      { name: "salt", type: "bytes32" },
+    ],
+    outputs: [{ name: "", type: "address" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "V1_2_FACTORY",
+    inputs: [],
+    outputs: [{ name: "", type: "address" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "AEWETH",
+    inputs: [],
+    outputs: [{ name: "", type: "address" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "ZAPS",
+    inputs: [],
+    outputs: [{ name: "", type: "address" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "CREATION_ADAPTER",
+    inputs: [],
+    outputs: [{ name: "", type: "address" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "CREATION_FEE",
+    inputs: [],
+    outputs: [{ name: "", type: "uint256" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "CREATION_POT",
+    inputs: [],
+    outputs: [{ name: "", type: "address" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "VERSION",
+    inputs: [],
+    outputs: [{ name: "", type: "string" }],
+    stateMutability: "view",
+  },
+  {
+    type: "event",
+    name: "V1_2CreationFeeConverted",
+    inputs: [
+      { name: "zap", type: "address", indexed: true },
+      { name: "owner", type: "address", indexed: true },
+      { name: "factory", type: "address", indexed: true },
+      { name: "nativeAmount", type: "uint256", indexed: false },
+      { name: "zapsOut", type: "uint256", indexed: false },
+    ],
   },
 ] as const;
 
@@ -722,6 +1120,161 @@ export const openZapAbi = [
   },
 ] as const;
 
+/**
+ * v1.2 capsule read/write surface. It deliberately extends the existing
+ * one-shot ABI instead of changing v1.1 callers.
+ */
+export const openZapV1_2Abi = [
+  ...openZapAbi,
+  {
+    type: "function",
+    name: "FACTORY",
+    inputs: [],
+    outputs: [{ name: "", type: "address" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "ADAPTERS",
+    inputs: [],
+    outputs: [{ name: "", type: "address" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "TOKENS",
+    inputs: [],
+    outputs: [{ name: "", type: "address" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "PERMIT2",
+    inputs: [],
+    outputs: [{ name: "", type: "address" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "PERMIT2_MAX_DEADLINE_WINDOW",
+    inputs: [],
+    outputs: [{ name: "", type: "uint256" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "policyHalted",
+    inputs: [],
+    outputs: [{ name: "", type: "bool" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "executeWithPermit2",
+    inputs: [
+      { name: "intent", type: "tuple", components: intentComponents },
+      { name: "permit", type: "tuple", components: permit2TransferPermitComponents },
+      { name: "intentSig", type: "bytes" },
+      { name: "permitSig", type: "bytes" },
+    ],
+    outputs: [],
+    stateMutability: "nonpayable",
+  },
+  {
+    type: "function",
+    name: "haltPolicy",
+    inputs: [],
+    outputs: [],
+    stateMutability: "nonpayable",
+  },
+  {
+    type: "event",
+    name: "PolicyHalted",
+    inputs: [
+      { name: "owner", type: "address", indexed: true },
+      { name: "policyHash", type: "bytes32", indexed: true },
+    ],
+  },
+] as const;
+
+/**
+ * Shared one-way stop surface for canonical v1.2 and v3.2 clones. Readers must
+ * still prove the clone's factory lineage before using this ABI.
+ */
+export const openZapPolicyHaltAbi = [
+  {
+    type: "function",
+    name: "FACTORY",
+    inputs: [],
+    outputs: [{ name: "", type: "address" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "owner",
+    inputs: [],
+    outputs: [{ name: "", type: "address" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "policyHash",
+    inputs: [],
+    outputs: [{ name: "", type: "bytes32" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "policyHalted",
+    inputs: [],
+    outputs: [{ name: "", type: "bool" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "haltPolicy",
+    inputs: [],
+    outputs: [],
+    stateMutability: "nonpayable",
+  },
+  {
+    type: "event",
+    name: "PolicyHalted",
+    inputs: [
+      { name: "owner", type: "address", indexed: true },
+      { name: "policyHash", type: "bytes32", indexed: true },
+    ],
+  },
+] as const;
+
+/**
+ * Canonical Permit2 unordered-nonce surface used for owner-pull readback and
+ * owner cancellation. The capsule, not the relay submitter, is the signed
+ * spender for `executeWithPermit2`.
+ */
+export const permit2NonceBitmapAbi = [
+  {
+    type: "function",
+    name: "nonceBitmap",
+    inputs: [
+      { name: "owner", type: "address" },
+      { name: "wordPos", type: "uint256" },
+    ],
+    outputs: [{ name: "", type: "uint256" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "invalidateUnorderedNonces",
+    inputs: [
+      { name: "wordPos", type: "uint256" },
+      { name: "mask", type: "uint256" },
+    ],
+    outputs: [],
+    stateMutability: "nonpayable",
+  },
+] as const;
+
 export const v4QuoterAbi = [
   {
     type: "function",
@@ -794,6 +1347,16 @@ const triggerIntentComponents = [
   { name: "minOut", type: "uint256" },
 ] as const;
 
+export const allowlistReadAbi = [
+  {
+    type: "function",
+    name: "isAllowed",
+    inputs: [{ name: "candidate", type: "address" }],
+    outputs: [{ name: "", type: "bool" }],
+    stateMutability: "view",
+  },
+] as const;
+
 export const openZapFactoryV3Abi = [
   {
     type: "function",
@@ -814,6 +1377,34 @@ export const openZapFactoryV3Abi = [
     name: "VERSION",
     inputs: [],
     outputs: [{ name: "", type: "string" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "adapters",
+    inputs: [],
+    outputs: [{ name: "", type: "address" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "tokens",
+    inputs: [],
+    outputs: [{ name: "", type: "address" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "priceSources",
+    inputs: [],
+    outputs: [{ name: "", type: "address" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "lotteryPot",
+    inputs: [],
+    outputs: [{ name: "", type: "address" }],
     stateMutability: "view",
   },
   {
@@ -850,6 +1441,41 @@ export const openZapFactoryV3Abi = [
 ] as const;
 
 export const openZapV3Abi = [
+  {
+    type: "function",
+    name: "FACTORY",
+    inputs: [],
+    outputs: [{ name: "", type: "address" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "ADAPTERS",
+    inputs: [],
+    outputs: [{ name: "", type: "address" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "TOKENS",
+    inputs: [],
+    outputs: [{ name: "", type: "address" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "PRICE_SOURCES",
+    inputs: [],
+    outputs: [{ name: "", type: "address" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "LOTTERY_POT",
+    inputs: [],
+    outputs: [{ name: "", type: "address" }],
+    stateMutability: "view",
+  },
   {
     type: "function",
     name: "owner",
@@ -971,6 +1597,25 @@ export const openZapV3_1Abi = [
     ],
     outputs: [],
     stateMutability: "nonpayable",
+  },
+] as const;
+
+/** v3.2 provenance surface in addition to the inherited v3/v3.1 reads. */
+export const openZapV3_2ProvenanceAbi = [
+  ...openZapV3Abi,
+  {
+    type: "function",
+    name: "ZAPS",
+    inputs: [],
+    outputs: [{ name: "", type: "address" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "ZAPS_ADAPTER",
+    inputs: [],
+    outputs: [{ name: "", type: "address" }],
+    stateMutability: "view",
   },
 ] as const;
 

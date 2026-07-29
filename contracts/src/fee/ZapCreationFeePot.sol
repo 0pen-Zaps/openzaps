@@ -5,8 +5,8 @@ import {IERC20} from "../interfaces/IERC20.sol";
 import {SafeApprove} from "../libraries/SafeApprove.sol";
 
 /// @title ZapCreationFeePot
-/// @notice No-drain 0xZAPS prize pot funded exclusively by creation fees that the immutable
-///         `OpenZapCreationGateway` has already converted. Every credited token buys tickets for
+/// @notice No-drain 0xZAPS prize pot funded exclusively by creation fees that its immutable
+///         creation gateway has already converted. Every credited token buys tickets for
 ///         the capsule owner in the current round.
 /// @dev The gateway binding is one-shot. Credits are balance-backed, so neither governance nor the
 ///      gateway can mint tickets without first transferring the corresponding 0xZAPS. Unsolicited

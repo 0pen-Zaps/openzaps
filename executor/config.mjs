@@ -18,6 +18,11 @@ const DEFAULT_V3_FACTORY = "0x70FCFD3615eA6651a670B6c4CD6B8bA1506717e9";
 const DEFAULT_V3_IMPLEMENTATION = "0x0309E72Ffd1c6855FF519d9E923AEFc0C52bFdb5";
 const DEFAULT_V3_1_FACTORY = "0xDA5f501052fe6F87f547bc21FCAA1F122eD2f2E1";
 const DEFAULT_V3_1_IMPLEMENTATION = "0x0fE5bC78b2bAc5f09E940C2aCcC0c3B785d91063";
+const DEFAULT_V3_1_LOTTERY_POT = "0x6ec3D07886Ea641e9d10D45A97a72E5f8ec836F1";
+const DEFAULT_POOL_PRICE_SOURCE = "0x60C310586541763D7f4dcc777F495f0627Bb098f";
+const DEFAULT_FEE_ASSET = "0x0Bd7D308f8E1639FAb988df18A8011f41EAcAD73";
+const DEFAULT_CONVERT_MIN_WEI = 1_000_000_000_000_000n;
+const DEFAULT_CONVERT_SLIPPAGE_BPS = 300;
 
 function readJsonIfPresent(path) {
   if (!existsSync(path)) return {};
@@ -92,6 +97,105 @@ function safeAddress(name, value, fallback) {
   return ZERO_ADDRESS;
 }
 
+function optionalStrictAddress(name, value) {
+  if (value === undefined || value === null || value === "") return null;
+  if (typeof value !== "string" || !ADDRESS.test(value)) {
+    throw new Error(`[config] ${name} must be an EVM address`);
+  }
+  return value.toLowerCase() === ZERO_ADDRESS ? null : value;
+}
+
+function strictPositiveBigInt(name, value, fallback) {
+  const resolved = value === undefined || value === null || value === "" ? fallback : value;
+  let parsed;
+  try {
+    parsed = BigInt(resolved);
+  } catch {
+    throw new Error(`[config] ${name} must be a positive integer wei amount`);
+  }
+  if (parsed <= 0n) throw new Error(`[config] ${name} must be greater than zero`);
+  return parsed;
+}
+
+function strictSlippageBps(name, value, fallback) {
+  const resolved = value === undefined || value === null || value === "" ? fallback : value;
+  const parsed = Number(resolved);
+  if (!Number.isInteger(parsed) || parsed < 0 || parsed > 9_999) {
+    throw new Error(`[config] ${name} must be an integer from 0 to 9999`);
+  }
+  return parsed;
+}
+
+/**
+ * v3.2 is one optional operating unit, not five independently optional addresses. Enabling only
+ * execution would strand its non-0xZAPS fee share; enabling only its pot would let the signer touch
+ * a lineage it cannot authenticate. Any partial or malformed operator input therefore stops config
+ * loading instead of silently running a degraded subset.
+ */
+export function resolveOptionalV3_2Config(
+  values = {},
+  {
+    fallbackConvertMinWei = DEFAULT_CONVERT_MIN_WEI,
+    fallbackConvertSlippageBps = DEFAULT_CONVERT_SLIPPAGE_BPS,
+  } = {},
+) {
+  const fields = [
+    ["factory", "OPENZAPS_V3_2_FACTORY", values.factory],
+    ["implementation", "OPENZAPS_V3_2_IMPLEMENTATION", values.implementation],
+    ["lotteryPot", "OPENZAPS_V3_2_LOTTERY_POT", values.lotteryPot],
+    ["poolPriceSource", "OPENZAPS_V3_2_POOL_PRICE_SOURCE", values.poolPriceSource],
+    ["feeAsset", "OPENZAPS_V3_2_FEE_ASSET", values.feeAsset],
+  ];
+  const parsed = Object.fromEntries(
+    fields.map(([key, name, value]) => [key, optionalStrictAddress(name, value)]),
+  );
+  const configured = fields.filter(([key]) => parsed[key] !== null);
+  const tuningSupplied = [values.convertMinWei, values.convertSlippageBps].some(
+    (value) => value !== undefined && value !== null && value !== "",
+  );
+  if (configured.length === 0 && !tuningSupplied) return null;
+  if (configured.length !== fields.length) {
+    const missing = fields.filter(([key]) => parsed[key] === null).map(([, name]) => name);
+    throw new Error(
+      `[config] v3.2 executor + pot conversion must be configured all-or-none; missing ${missing.join(", ")}`,
+    );
+  }
+
+  return {
+    lineage: {
+      factory: parsed.factory,
+      implementation: parsed.implementation,
+    },
+    conversionPot: {
+      id: "v3.2",
+      lotteryPot: parsed.lotteryPot,
+      poolPriceSource: parsed.poolPriceSource,
+      feeAsset: parsed.feeAsset,
+      convertMinWei: strictPositiveBigInt(
+        "OPENZAPS_V3_2_CONVERT_MIN_WEI",
+        values.convertMinWei,
+        fallbackConvertMinWei,
+      ),
+      convertSlippageBps: strictSlippageBps(
+        "OPENZAPS_V3_2_CONVERT_SLIPPAGE_BPS",
+        values.convertSlippageBps,
+        fallbackConvertSlippageBps,
+      ),
+    },
+  };
+}
+
+export function buildConversionPots(v3_1, optionalV3_2 = null) {
+  if (
+    optionalV3_2
+    && typeof v3_1?.lotteryPot === "string"
+    && optionalV3_2.lotteryPot.toLowerCase() === v3_1.lotteryPot.toLowerCase()
+  ) {
+    throw new Error("[config] v3.2 must use its own execution-fee lottery pot, not the v3.1 pot");
+  }
+  return [v3_1, ...(optionalV3_2 ? [optionalV3_2] : [])];
+}
+
 function executorSignerConfigured() {
   const inline = process.env.OPENZAPS_EXECUTOR_PRIVATE_KEY;
   if (inline && /^0x[0-9a-fA-F]{64}$/.test(inline)) return true;
@@ -101,6 +205,7 @@ function executorSignerConfigured() {
 
 export function loadConfig() {
   const fileCfg = readJsonIfPresent(join(HOME_DIR, "config.json"));
+  const fileV3_2Pot = fileCfg.conversionPots?.["v3.2"] ?? {};
 
   // Comma-separated fallback list; the first entry is the primary. A single flaky endpoint must
   // not idle the bundler, so every URL is tried in order per request (viem fallback transport).
@@ -119,6 +224,63 @@ export function loadConfig() {
     // Do not echo the raw environment value. An empty set keeps signer admission fail closed.
     console.error(`[config] ${error.message} — late-block admission disabled`);
   }
+
+  const lotteryPot =
+    process.env.OPENZAPS_LOTTERY_POT ?? fileCfg.lotteryPot ?? DEFAULT_V3_1_LOTTERY_POT;
+  const poolPriceSource =
+    process.env.OPENZAPS_POOL_PRICE_SOURCE ?? fileCfg.poolPriceSource ?? DEFAULT_POOL_PRICE_SOURCE;
+  const feeAsset = process.env.OPENZAPS_FEE_ASSET ?? fileCfg.feeAsset ?? DEFAULT_FEE_ASSET;
+  const convertMinWei = safeBigInt(
+    "OPENZAPS_CONVERT_MIN_WEI",
+    process.env.OPENZAPS_CONVERT_MIN_WEI ?? fileCfg.convertMinWei,
+    DEFAULT_CONVERT_MIN_WEI,
+  );
+  const convertSlippageBps = safeNumber(
+    "OPENZAPS_CONVERT_SLIPPAGE_BPS",
+    process.env.OPENZAPS_CONVERT_SLIPPAGE_BPS ?? fileCfg.convertSlippageBps,
+    DEFAULT_CONVERT_SLIPPAGE_BPS,
+  );
+  const optionalV3_2 = resolveOptionalV3_2Config(
+    {
+      factory:
+        process.env.OPENZAPS_V3_2_FACTORY
+        ?? process.env.NEXT_PUBLIC_OPENZAP_V3_2_FACTORY
+        ?? fileCfg.capsuleLineages?.["v3.2"]?.factory,
+      implementation:
+        process.env.OPENZAPS_V3_2_IMPLEMENTATION
+        ?? process.env.NEXT_PUBLIC_OPENZAP_V3_2_IMPLEMENTATION
+        ?? fileCfg.capsuleLineages?.["v3.2"]?.implementation,
+      lotteryPot:
+        process.env.OPENZAPS_V3_2_LOTTERY_POT
+        ?? process.env.NEXT_PUBLIC_OPENZAP_V3_2_LOTTERY_POT
+        ?? fileV3_2Pot.lotteryPot,
+      poolPriceSource:
+        process.env.OPENZAPS_V3_2_POOL_PRICE_SOURCE
+        ?? process.env.NEXT_PUBLIC_OPENZAP_V3_2_ORIENTED_PRICE_SOURCE
+        ?? fileV3_2Pot.poolPriceSource,
+      feeAsset: process.env.OPENZAPS_V3_2_FEE_ASSET ?? fileV3_2Pot.feeAsset,
+      convertMinWei:
+        process.env.OPENZAPS_V3_2_CONVERT_MIN_WEI ?? fileV3_2Pot.convertMinWei,
+      convertSlippageBps:
+        process.env.OPENZAPS_V3_2_CONVERT_SLIPPAGE_BPS
+        ?? fileV3_2Pot.convertSlippageBps,
+    },
+    {
+      fallbackConvertMinWei: convertMinWei,
+      fallbackConvertSlippageBps: convertSlippageBps,
+    },
+  );
+  const conversionPots = buildConversionPots(
+    {
+      id: "v3.1",
+      lotteryPot,
+      poolPriceSource,
+      feeAsset,
+      convertMinWei,
+      convertSlippageBps,
+    },
+    optionalV3_2?.conversionPot ?? null,
+  );
 
   const cfg = {
     rpcUrl: process.env.OPENZAPS_RPC_URL ?? fileCfg.rpcUrl ?? DEFAULT_RPC_URL,
@@ -230,20 +392,8 @@ export function loadConfig() {
         ),
       },
       "v3.2": {
-        factory: safeAddress(
-          "OPENZAPS_V3_2_FACTORY",
-          process.env.OPENZAPS_V3_2_FACTORY
-            ?? process.env.NEXT_PUBLIC_OPENZAP_V3_2_FACTORY
-            ?? fileCfg.capsuleLineages?.["v3.2"]?.factory,
-          ZERO_ADDRESS,
-        ),
-        implementation: safeAddress(
-          "OPENZAPS_V3_2_IMPLEMENTATION",
-          process.env.OPENZAPS_V3_2_IMPLEMENTATION
-            ?? process.env.NEXT_PUBLIC_OPENZAP_V3_2_IMPLEMENTATION
-            ?? fileCfg.capsuleLineages?.["v3.2"]?.implementation,
-          ZERO_ADDRESS,
-        ),
+        factory: optionalV3_2?.lineage.factory ?? ZERO_ADDRESS,
+        implementation: optionalV3_2?.lineage.implementation ?? ZERO_ADDRESS,
       },
     },
     // How often the loop re-evaluates every stored intent, in milliseconds.
@@ -258,7 +408,7 @@ export function loadConfig() {
     // (AutomateConsole creates every recurring capsule against OPENZAP_V3_1_CONTRACTS). The default
     // used to be the v3 pot, which no longer receives anything — so a sell-side run's aeWETH fee
     // would have sat in a pot no keeper was watching, and the prize loop would never have closed.
-    lotteryPot: process.env.OPENZAPS_LOTTERY_POT ?? fileCfg.lotteryPot ?? "0x6ec3D07886Ea641e9d10D45A97a72E5f8ec836F1",
+    lotteryPot,
     // The keeper re-reads the pot's immutable BUY_ADAPTER and ZAPS token at one block, then checks
     // the adapter against both this registry and the independently reviewed runtime manifest.
     adapterRegistry: safeAddress(
@@ -274,22 +424,16 @@ export function loadConfig() {
     // The keeper's price feed, used to floor buyZaps output. PAIRED KNOBS: `poolPriceSource` must
     // quote 0xZAPS per one unit of `feeAsset` — reconfigure them TOGETHER or the computed floor is
     // in the wrong units (the pinned pot adapter still fails closed, but conversions stop).
-    poolPriceSource:
-      process.env.OPENZAPS_POOL_PRICE_SOURCE ?? fileCfg.poolPriceSource ?? "0x60C310586541763D7f4dcc777F495f0627Bb098f",
+    poolPriceSource,
     // The non-0xZAPS asset the pot accrues on sell runs (aeWETH). The pinned pot adapter converts it.
-    feeAsset: process.env.OPENZAPS_FEE_ASSET ?? fileCfg.feeAsset ?? "0x0Bd7D308f8E1639FAb988df18A8011f41EAcAD73",
+    feeAsset,
     // Don't bother converting dust: minimum fee-asset balance (wei) before a buyZaps is worth the gas.
-    convertMinWei: safeBigInt(
-      "OPENZAPS_CONVERT_MIN_WEI",
-      process.env.OPENZAPS_CONVERT_MIN_WEI ?? fileCfg.convertMinWei,
-      1_000_000_000_000_000n, // 0.001 aeWETH
-    ),
+    convertMinWei,
     // Slippage tolerance on the buyZaps conversion, in bps.
-    convertSlippageBps: safeNumber(
-      "OPENZAPS_CONVERT_SLIPPAGE_BPS",
-      process.env.OPENZAPS_CONVERT_SLIPPAGE_BPS ?? fileCfg.convertSlippageBps,
-      300,
-    ),
+    convertSlippageBps,
+    // Stable identities keep each execution-fee pot and fee asset separate in receipts/accounting.
+    // The first entry mirrors the legacy top-level fields for backwards-compatible callers.
+    conversionPots,
     // Run the conversion keeper at most this often (ms). Independent of the intent poll cadence.
     convertEveryMs: safeNumber("OPENZAPS_CONVERT_EVERY_MS", process.env.OPENZAPS_CONVERT_EVERY_MS ?? fileCfg.convertEveryMs, 300_000),
     // Executor self-monitoring: conservative gas cost per run (wei) and the low-balance warning line.

@@ -8,7 +8,19 @@ import {
   type PublicClient,
 } from "viem";
 
-import { assetSymbolFor, type AutomatedRunKind, type AutomatedRunLogInput } from "@/lib/activity";
+import {
+  assetSymbolFor,
+  type AutomatedRunKind,
+  type AutomatedRunLogInput,
+  type PolicyHaltedLogInput,
+} from "@/lib/activity";
+import {
+  isHaltCapableLineage,
+  matchesPolicyHaltCreation,
+  policyHaltStatus,
+  type CapsuleLineageId,
+  type PolicyHaltStatus,
+} from "@/lib/policy-halt";
 import {
   MAX_ROUTER_AMOUNT,
   assetsForDirection,
@@ -25,13 +37,18 @@ import {
   resolveOnchainLivePolicy,
   type ResolvedLivePolicy,
 } from "@/lib/live-policy";
+import { PERMIT2_MAX_DEADLINE_WINDOW_SECONDS } from "@/lib/permit2-owner-pull";
 import {
   OPENZAP_CONTRACTS,
-  OPENZAP_V3_CONTRACTS,
-  OPENZAP_V3_1_CONTRACTS,
+  OPENZAP_V1_1_FACTORY_VERSION,
+  OPENZAP_V1_2_FACTORY_VERSION,
   ROBINHOOD_ASSETS,
+  ROBINHOOD_LIQUIDITY,
+  configuredCapsuleLineageForFactory,
+  configuredCapsuleLineages,
   openZapAbi,
-  openZapFactoryAbi,
+  openZapV1_2Abi,
+  openZapV1_2FactoryAbi,
 } from "@/lib/robinhood";
 
 /**
@@ -142,6 +159,10 @@ export type ZapPolicyView = {
 
 export type VerifiedLiveZap = {
   address: Address;
+  /** Factory lineage proven at the same block as the policy reads. */
+  lineage: "v1.1" | "v1.2";
+  /** Always false for v1.1, which predates the one-way v1.2 halt surface. */
+  policyHalted: boolean;
   policyHash: Hex;
   resolved: ResolvedLivePolicy;
   /** Deterministic route+amount token suitable for local persistence/export. */
@@ -155,11 +176,13 @@ export type VerifiedLiveZap = {
     steps: readonly ZapStepRead[];
   };
   blockNumber: bigint;
+  /** Timestamp of the same pinned block as every provenance and policy read. */
+  blockTimestamp: bigint;
 };
 
 /**
  * Which authorization produced one run. `one-shot` is the owner-signed
- * `Executed` path; the other three are the v3/v3.1 automated events, submitted
+ * `Executed` path; the other kinds are automated events, submitted
  * by an executor against a standing authorization the owner signed once.
  */
 export type ZapExecutionKind = "one-shot" | AutomatedRunKind;
@@ -178,7 +201,7 @@ export type ZapExecution = {
   run: number | null;
   outAsset: Address;
   assetSymbol: string;
-  /** Net of the fee. Gross output is amountOut + fee. */
+  /** Net amount delivered to the recipient. */
   amountOut: string;
   /**
    * Withheld from gross output: the relayer fee on a one-shot, the protocol fee
@@ -188,6 +211,10 @@ export type ZapExecution = {
    * the `maxRelayerFeeCap` the policy commits to.
    */
   fee: string;
+  /** Output diverted into the signed v3.2 stack, in `assetSymbol`; null otherwise. */
+  stackIn: string | null;
+  /** 0xZAPS credited to the owner by the stack conversion; null otherwise. */
+  stackedZaps: string | null;
   txHash: Hex;
   blockNumber: string;
   logIndex: number;
@@ -225,6 +252,10 @@ export type ZapStats = {
   /** Symbol -> summed raw wei as a decimal string. */
   amountOutByAsset: Record<string, string>;
   feeByAsset: Record<string, string>;
+  /** Signed v3.2 diversion, denominated in each run's output asset. */
+  stackedInputByAsset: Record<string, string>;
+  /** 0xZAPS actually credited by all v3.2 stack conversions. */
+  stackedZaps: string;
   firstExecutionAt: number | null;
   lastExecutionAt: number | null;
 };
@@ -233,9 +264,20 @@ export type ZapBalances = { weth: string; zaps: string; native: string };
 
 export type ZapLifecycle = "created" | "funded" | "executed" | "recovered";
 
+export type ZapPolicyHaltView = {
+  status: PolicyHaltStatus;
+  /** null means unsupported or unavailable; false is a verified active policy. */
+  policyHalted: boolean | null;
+  haltedAt: number | null;
+  haltedBlock: string | null;
+  haltedTx: Hex | null;
+};
+
 export type ZapDetailPayload = {
+  lineage: CapsuleLineageId;
   provenance: ZapProvenance;
   policy: ZapPolicyView;
+  policyHalt: ZapPolicyHaltView;
   stats: ZapStats;
   balances: ZapBalances;
   executions: ZapExecution[];
@@ -249,11 +291,13 @@ export type ZapDetailPayload = {
 export type ZapSummary = {
   address: Address;
   owner: Address;
-  lineage: "v1.1" | "v3" | "v3.1";
+  lineage: "v1.1" | "v1.2" | "v3" | "v3.1" | "v3.2" | "unknown";
   createdBlock: string;
   createdTx: Hex;
   createdAt: number | null;
   policyHash: Hex;
+  policyHaltStatus: PolicyHaltStatus;
+  policyHalted: boolean | null;
   executionCount: number;
   lastExecutionAt: number | null;
 };
@@ -276,7 +320,7 @@ export type ZapSummaryPage = {
 export interface ZapCreatedLogInput {
   zap: Address;
   owner: Address;
-  /** The factory that emitted this ZapCreated — v1.1, v3, or v3.1. A capsule must be
+  /** The factory that emitted this ZapCreated. A capsule must be
    *  verified against ITS OWN factory's implementation, not a hardcoded one. */
   factory: Address;
   policyHash: Hex;
@@ -341,27 +385,14 @@ export interface ZapDetailInput {
   /** ExecutedRecurring / ExecutedRecurringRelative / ExecutedTrigger logs. */
   automated: readonly AutomatedRunLogInput[];
   exits: readonly ZapExitLogInput[];
+  /** Pinned current-state read; null only for unsupported/unavailable. */
+  policyHalted: boolean | null;
+  /** Exact PolicyHalted logs, queried only for a halt-capable canonical zap. */
+  halted: readonly PolicyHaltedLogInput[];
   timestamps: ReadonlyMap<bigint, number>;
   headBlock: bigint;
   readAt: string;
 }
-
-const factoryPolicySurfaceAbi = [
-  {
-    type: "function",
-    name: "adapters",
-    inputs: [],
-    outputs: [{ name: "", type: "address" }],
-    stateMutability: "view",
-  },
-  {
-    type: "function",
-    name: "tokens",
-    inputs: [],
-    outputs: [{ name: "", type: "address" }],
-    stateMutability: "view",
-  },
-] as const;
 
 const allowlistAbi = [
   {
@@ -373,11 +404,132 @@ const allowlistAbi = [
   },
 ] as const;
 
+type ConfiguredOneShotLineage = {
+  id: "v1.1" | "v1.2";
+  factory: Address;
+  implementation: Address;
+  expectedFactoryVersion: string;
+};
+
 /**
- * Verify an owned one-shot capsule at one pinned block and recover its entire
- * ordered policy. This is the signing surface's authority gate: URL/local
- * storage metadata is never trusted, and every adapter/token is checked for
- * current code plus current allowlist membership before funding or execution.
+ * Derive one-shot candidates from the central lineage registry. This is
+ * intentionally not a second address list: a partial v1.2 release or duplicate
+ * identity-bearing role must fail before any wallet authority check reaches RPC.
+ */
+function configuredOneShotLineages(): readonly ConfiguredOneShotLineage[] {
+  return configuredCapsuleLineages().flatMap((lineage): ConfiguredOneShotLineage[] => {
+    if (lineage.id === "v1.1") {
+      return [{
+        id: "v1.1",
+        factory: lineage.factory,
+        implementation: lineage.implementation,
+        expectedFactoryVersion: OPENZAP_V1_1_FACTORY_VERSION,
+      }];
+    }
+    if (lineage.id === "v1.2") {
+      return [{
+        id: "v1.2",
+        factory: lineage.factory,
+        implementation: lineage.implementation,
+        expectedFactoryVersion: OPENZAP_V1_2_FACTORY_VERSION,
+      }];
+    }
+    return [];
+  });
+}
+
+function hasContractCode(code: Hex | null | undefined): code is Hex {
+  return code !== null && code !== undefined && code !== "0x";
+}
+
+async function verifyOneShotFactory(
+  publicClient: PublicClient,
+  lineage: ConfiguredOneShotLineage,
+  blockNumber: bigint,
+): Promise<{ adapterRegistry: Address; tokenAllowlist: Address }> {
+  const [
+    factoryCode,
+    implementation,
+    implementationCode,
+    committedImplementationHash,
+    version,
+    adapterRegistry,
+    tokenAllowlist,
+    adapterRegistryCode,
+    tokenAllowlistCode,
+  ] = await Promise.all([
+    publicClient.getBytecode({ address: lineage.factory, blockNumber }),
+    publicClient.readContract({
+      address: lineage.factory,
+      abi: openZapV1_2FactoryAbi,
+      functionName: "implementation",
+      blockNumber,
+    }),
+    publicClient.getBytecode({ address: lineage.implementation, blockNumber }),
+    publicClient.readContract({
+      address: lineage.factory,
+      abi: openZapV1_2FactoryAbi,
+      functionName: "implCodeHash",
+      blockNumber,
+    }),
+    publicClient.readContract({
+      address: lineage.factory,
+      abi: openZapV1_2FactoryAbi,
+      functionName: "VERSION",
+      blockNumber,
+    }),
+    publicClient.readContract({
+      address: lineage.factory,
+      abi: openZapV1_2FactoryAbi,
+      functionName: "adapters",
+      blockNumber,
+    }),
+    publicClient.readContract({
+      address: lineage.factory,
+      abi: openZapV1_2FactoryAbi,
+      functionName: "tokens",
+      blockNumber,
+    }),
+    publicClient.getBytecode({ address: OPENZAP_CONTRACTS.adapterRegistry, blockNumber }),
+    publicClient.getBytecode({ address: OPENZAP_CONTRACTS.tokenAllowlist, blockNumber }),
+  ]);
+
+  if (
+    !hasContractCode(factoryCode)
+    || !hasContractCode(implementationCode)
+    || !hasContractCode(adapterRegistryCode)
+    || !hasContractCode(tokenAllowlistCode)
+  ) {
+    throw new Error(`The ${lineage.id} factory, implementation, or shared policy registry has no code at the pinned block.`);
+  }
+  if (version !== lineage.expectedFactoryVersion) {
+    throw new Error(`The ${lineage.id} factory VERSION does not match this release.`);
+  }
+  if (
+    !isAddressEqual(implementation, lineage.implementation)
+    || keccak256(implementationCode).toLowerCase() !== committedImplementationHash.toLowerCase()
+  ) {
+    throw new Error(`The ${lineage.id} implementation does not match the factory's code commitment.`);
+  }
+  if (
+    !isAddressEqual(adapterRegistry, OPENZAP_CONTRACTS.adapterRegistry)
+    || !isAddressEqual(tokenAllowlist, OPENZAP_CONTRACTS.tokenAllowlist)
+  ) {
+    throw new Error(`The ${lineage.id} factory does not pin the shared adapter and token registries.`);
+  }
+
+  return {
+    adapterRegistry: getAddress(adapterRegistry),
+    tokenAllowlist: getAddress(tokenAllowlist),
+  };
+}
+
+/**
+ * Verify an owned v1.1 or configured v1.2 one-shot capsule at one pinned block
+ * and recover its entire ordered policy. This is the signing surface's
+ * authority gate: URL/local storage metadata is never trusted, and every
+ * adapter/token is checked for current code plus current allowlist membership
+ * before funding or execution.
  */
 export async function inspectOwnedLiveZap(
   publicClient: PublicClient,
@@ -387,15 +539,31 @@ export async function inspectOwnedLiveZap(
 ): Promise<VerifiedLiveZap> {
   const address = getAddress(zapAddress);
   const ownerExpected = getAddress(expectedOwner);
+  const oneShotLineages = configuredOneShotLineages();
   const blockNumber = await publicClient.getBlockNumber({ cacheTime: 0 });
+  const [runtime, pinnedBlock] = await Promise.all([
+    publicClient.getBytecode({ address, blockNumber }),
+    publicClient.getBlock({ blockNumber }),
+  ]);
+  if (!hasContractCode(runtime)) {
+    throw new Error("Address has no contract code at the pinned block.");
+  }
+
+  const lineage = oneShotLineages.find(
+    (candidate) =>
+      runtime.toLowerCase() === expectedCloneRuntime(candidate.implementation).toLowerCase(),
+  );
+  if (!lineage) {
+    throw new Error("Address is not a canonical clone of a configured one-shot OpenZap implementation.");
+  }
+
+  const { adapterRegistry, tokenAllowlist } = await verifyOneShotFactory(
+    publicClient,
+    lineage,
+    blockNumber,
+  );
+
   const [
-    runtime,
-    factoryCode,
-    implementation,
-    implementationCode,
-    committedImplementationHash,
-    adapterRegistry,
-    tokenAllowlist,
     owner,
     recipient,
     maxRelayerFeeCap,
@@ -404,33 +572,6 @@ export async function inspectOwnedLiveZap(
     stepCount,
     policyHash,
   ] = await Promise.all([
-    publicClient.getBytecode({ address, blockNumber }),
-    publicClient.getBytecode({ address: OPENZAP_CONTRACTS.factory, blockNumber }),
-    publicClient.readContract({
-      address: OPENZAP_CONTRACTS.factory,
-      abi: openZapFactoryAbi,
-      functionName: "implementation",
-      blockNumber,
-    }),
-    publicClient.getBytecode({ address: OPENZAP_CONTRACTS.implementation, blockNumber }),
-    publicClient.readContract({
-      address: OPENZAP_CONTRACTS.factory,
-      abi: openZapFactoryAbi,
-      functionName: "implCodeHash",
-      blockNumber,
-    }),
-    publicClient.readContract({
-      address: OPENZAP_CONTRACTS.factory,
-      abi: factoryPolicySurfaceAbi,
-      functionName: "adapters",
-      blockNumber,
-    }),
-    publicClient.readContract({
-      address: OPENZAP_CONTRACTS.factory,
-      abi: factoryPolicySurfaceAbi,
-      functionName: "tokens",
-      blockNumber,
-    }),
     publicClient.readContract({ address, abi: openZapAbi, functionName: "owner", blockNumber }),
     publicClient.readContract({ address, abi: openZapAbi, functionName: "recipient", blockNumber }),
     publicClient.readContract({ address, abi: openZapAbi, functionName: "maxRelayerFeeCap", blockNumber }),
@@ -440,23 +581,58 @@ export async function inspectOwnedLiveZap(
     publicClient.readContract({ address, abi: openZapAbi, functionName: "policyHash", blockNumber }),
   ]);
 
-  if (!factoryCode || !implementationCode) {
-    throw new Error("The v1.1 factory or implementation has no code at the pinned block.");
+  let policyHalted = false;
+  if (lineage.id === "v1.2") {
+    const [cloneFactory, permit2, permit2DeadlineWindow, halted, permit2Code] = await Promise.all([
+      publicClient.readContract({
+        address,
+        abi: openZapV1_2Abi,
+        functionName: "FACTORY",
+        blockNumber,
+      }),
+      publicClient.readContract({
+        address,
+        abi: openZapV1_2Abi,
+        functionName: "PERMIT2",
+        blockNumber,
+      }),
+      publicClient.readContract({
+        address,
+        abi: openZapV1_2Abi,
+        functionName: "PERMIT2_MAX_DEADLINE_WINDOW",
+        blockNumber,
+      }),
+      publicClient.readContract({
+        address,
+        abi: openZapV1_2Abi,
+        functionName: "policyHalted",
+        blockNumber,
+      }),
+      publicClient.getBytecode({
+        address: ROBINHOOD_LIQUIDITY.permit2,
+        blockNumber,
+      }),
+    ]);
+    if (!isAddressEqual(cloneFactory, lineage.factory)) {
+      throw new Error("The v1.2 clone does not pin the configured v1.2 factory.");
+    }
+    if (!isAddressEqual(permit2, ROBINHOOD_LIQUIDITY.permit2)) {
+      throw new Error("The v1.2 clone does not pin canonical Permit2.");
+    }
+    if (!hasContractCode(permit2Code)) {
+      throw new Error("Canonical Permit2 has no code at the pinned block.");
+    }
+    if (permit2DeadlineWindow !== PERMIT2_MAX_DEADLINE_WINDOW_SECONDS) {
+      throw new Error("The v1.2 clone does not pin the one-hour Permit2 deadline window.");
+    }
+    policyHalted = halted;
   }
-  if (
-    !isAddressEqual(implementation, OPENZAP_CONTRACTS.implementation)
-    || keccak256(implementationCode).toLowerCase() !== committedImplementationHash.toLowerCase()
-  ) {
-    throw new Error("The v1.1 implementation does not match the factory's code commitment.");
-  }
-  if (!runtime || runtime.toLowerCase() !== expectedCloneRuntime(implementation).toLowerCase()) {
-    throw new Error("Address is not a canonical clone of the current v1.1 implementation.");
-  }
+
   if (!isAddressEqual(owner, ownerExpected) || !isAddressEqual(recipient, ownerExpected)) {
     throw new Error("Zap owner and recipient must match the connected wallet.");
   }
   if (maxRelayerFeeCap !== 0n || !optimization) {
-    throw new Error("Zap policy is outside the zero-fee v1.1 one-shot surface.");
+    throw new Error(`Zap policy is outside the zero-fee ${lineage.id} one-shot surface.`);
   }
   const readCount = stepsToRead(stepCount);
   if (stepCount <= 0n || stepCount > BigInt(ZAP_STEP_READ_LIMIT) || readCount !== Number(stepCount)) {
@@ -494,7 +670,7 @@ export async function inspectOwnedLiveZap(
 
   const resolved = resolveOnchainLivePolicy(policy);
   if (!resolved) {
-    throw new Error("Zap policy is outside the supported ordered v1.1 route manifest.");
+    throw new Error(`Zap policy is outside the supported ordered ${lineage.id} route manifest.`);
   }
 
   if (options.requireExecutable !== false) {
@@ -539,11 +715,14 @@ export async function inspectOwnedLiveZap(
 
   return {
     address,
+    lineage: lineage.id,
+    policyHalted,
     policyHash,
     resolved,
     policyToken: encodeLivePolicyPlan(resolved.plan.steps),
     policy,
     blockNumber,
+    blockTimestamp: pinnedBlock.timestamp,
   };
 }
 
@@ -593,15 +772,11 @@ export function newestZapCreations(
  * Every implementation this release recognises as canonical. Pinned here rather
  * than trusted from the factory: a rogue factory reporting its own address as
  * `implementation()` would otherwise verify against itself and pass. A capsule
- * from ANY of the three live lineages is canonical — checking only v1.1 marked
- * every automated (v3 / v3.1) capsule "unverified shape" despite it being a
- * byte-correct clone.
+ * from any configured lineage is canonical — checking only v1.1 marked every
+ * automated capsule "unverified shape" despite it being a byte-correct clone.
  */
-const CANONICAL_IMPLEMENTATIONS: readonly Address[] = [
-  OPENZAP_CONTRACTS.implementation,
-  OPENZAP_V3_CONTRACTS.implementation,
-  OPENZAP_V3_1_CONTRACTS.implementation,
-];
+const CANONICAL_IMPLEMENTATIONS: readonly Address[] =
+  configuredCapsuleLineages().map((lineage) => lineage.implementation);
 
 /**
  * True when the runtime is the EIP-1167 clone of the factory's own
@@ -643,7 +818,7 @@ export function deriveLifecycle(
  * so a lookalike event from another contract can never be attributed here.
  *
  * "Execution" here means every confirmed run: the owner-signed one-shot AND the
- * three automated events. They are one list because they are one history — a
+ * automated events. They are one list because they are one history — a
  * recurring capsule emits nothing else, so a list built from `Executed` alone
  * reports it as never having run.
  */
@@ -652,6 +827,21 @@ export function aggregateZapDetail(input: ZapDetailInput): ZapDetailPayload {
   if (!isAddressEqual(input.created.zap, address)) {
     throw new Error("ZapCreated log does not belong to this zap.");
   }
+  const lineage = configuredCapsuleLineageForFactory(input.created.factory)?.id;
+  if (!lineage) throw new Error("ZapCreated factory is not a configured canonical lineage.");
+  const haltStatus = policyHaltStatus(lineage, input.policyHalted);
+  const verifiedHalted = isHaltCapableLineage(lineage)
+    ? input.halted
+      .filter((log) => matchesPolicyHaltCreation(log, input.created))
+      .sort(newestFirst)
+    : [];
+  if (
+    (haltStatus === "active" && verifiedHalted.length !== 0)
+    || (haltStatus === "halted" && verifiedHalted.length !== 1)
+  ) {
+    throw new Error("Pinned policyHalted state does not match the canonical PolicyHalted event history.");
+  }
+  const haltEvent = verifiedHalted[0] ?? null;
 
   // Neither execution array is sorted here: they are interleaved into one list
   // below, and that merged sort is the only ordering that means anything.
@@ -659,7 +849,11 @@ export function aggregateZapDetail(input: ZapDetailInput): ZapDetailPayload {
   // The same emitter gate the one-shot logs pass: any contract can emit an
   // identically-shaped ExecutedRecurring, and a spoofed one must never become a
   // run in this capsule's count, totals, or lifecycle.
-  const automatedLogs = input.automated.filter((log) => isAddressEqual(log.emitter, address));
+  const automatedLogs = input.automated.filter(
+    (log) =>
+      isAddressEqual(log.emitter, address)
+      && (log.kind !== "recurring-stack" || (log.stackIn !== null && log.zapsOut !== null)),
+  );
   const exitLogs = input.exits.filter((log) => isAddressEqual(log.emitter, address)).sort(newestFirst);
 
   const executions: ZapExecution[] = [
@@ -673,6 +867,8 @@ export function aggregateZapDetail(input: ZapDetailInput): ZapDetailPayload {
       assetSymbol: assetSymbolForDisplay(log.outAsset),
       amountOut: log.amountOut.toString(),
       fee: log.fee.toString(),
+      stackIn: null,
+      stackedZaps: null,
       txHash: log.txHash,
       blockNumber: log.blockNumber.toString(),
       logIndex: log.logIndex,
@@ -693,6 +889,8 @@ export function aggregateZapDetail(input: ZapDetailInput): ZapDetailPayload {
       assetSymbol: assetSymbolForDisplay(log.outAsset),
       amountOut: log.amountOut.toString(),
       fee: (log.executorFee + log.potFee).toString(),
+      stackIn: log.stackIn?.toString() ?? null,
+      stackedZaps: log.zapsOut?.toString() ?? null,
       txHash: log.txHash,
       blockNumber: log.blockNumber.toString(),
       logIndex: log.logIndex,
@@ -711,18 +909,27 @@ export function aggregateZapDetail(input: ZapDetailInput): ZapDetailPayload {
     timestamp: input.timestamps.get(log.blockNumber) ?? null,
   }));
 
-  // Both kinds settle the same way — gross out of the adapter, minus a fee, net
-  // to the recipient — so they sum into one pair of totals and `net + fee` stays
-  // the gross for every asset regardless of which path produced it.
+  // One-shot and non-stacking automation settle gross minus fee to the
+  // recipient. A v3.2 stack run also diverts `stackIn`, so its gross is
+  // `recipient net + protocol fee + stackIn`; keep that third leg explicit.
   const amountOutByAsset: Record<string, bigint> = {};
   const feeByAsset: Record<string, bigint> = {};
+  const stackedInputByAsset: Record<string, bigint> = {};
+  let stackedZaps = 0n;
   const addTotals = (outAsset: Address, amountOut: bigint, fee: bigint): void => {
     const symbol = assetSymbolForDisplay(outAsset);
     amountOutByAsset[symbol] = (amountOutByAsset[symbol] ?? 0n) + amountOut;
     feeByAsset[symbol] = (feeByAsset[symbol] ?? 0n) + fee;
   };
   for (const log of executedLogs) addTotals(log.outAsset, log.amountOut, log.fee);
-  for (const log of automatedLogs) addTotals(log.outAsset, log.amountOut, log.executorFee + log.potFee);
+  for (const log of automatedLogs) {
+    addTotals(log.outAsset, log.amountOut, log.executorFee + log.potFee);
+    if (log.stackIn !== null) {
+      const symbol = assetSymbolForDisplay(log.outAsset);
+      stackedInputByAsset[symbol] = (stackedInputByAsset[symbol] ?? 0n) + log.stackIn;
+    }
+    if (log.zapsOut !== null) stackedZaps += log.zapsOut;
+  }
 
   const balances: ZapBalances = {
     weth: input.balances.weth.toString(),
@@ -736,6 +943,8 @@ export function aggregateZapDetail(input: ZapDetailInput): ZapDetailPayload {
     recoveryCount: recoveries.length,
     amountOutByAsset: toDecimalStrings(amountOutByAsset),
     feeByAsset: toDecimalStrings(feeByAsset),
+    stackedInputByAsset: toDecimalStrings(stackedInputByAsset),
+    stackedZaps: stackedZaps.toString(),
     firstExecutionAt: executions.at(-1)?.timestamp ?? null,
     lastExecutionAt: executions[0]?.timestamp ?? null,
   };
@@ -752,8 +961,16 @@ export function aggregateZapDetail(input: ZapDetailInput): ZapDetailPayload {
   };
 
   return {
+    lineage,
     provenance,
     policy: buildPolicyView(input.policy, input.runtime, input.factory.implementation),
+    policyHalt: {
+      status: haltStatus,
+      policyHalted: input.policyHalted,
+      haltedAt: haltEvent ? input.timestamps.get(haltEvent.blockNumber) ?? null : null,
+      haltedBlock: haltEvent?.blockNumber.toString() ?? null,
+      haltedTx: haltEvent?.txHash ?? null,
+    },
     stats,
     balances,
     executions,

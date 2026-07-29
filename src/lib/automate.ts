@@ -1,5 +1,5 @@
 // Pure logic behind the Automate surface (/zap?view=automate): schedule presets, funding math,
-// fee-aware floors, and intent drafting for the two v3 execution types. Everything here is
+// fee-aware floors, and intent drafting for the v3/v3.1/v3.2 standing-authorization lineages. Everything here is
 // deterministic and unit-tested; the console component only wires these to the wallet and RPC.
 import type { Address, Hex } from "viem";
 
@@ -18,6 +18,18 @@ import { MAX_EXECUTION_FEE_PER_GAS, MAX_EXECUTION_GAS } from "@/lib/openzap";
 import { readExecutionPolicyParams, type ExecutionPolicy } from "@/lib/execution-policy";
 
 export type AutomationMode = "recurring" | "trigger";
+/** Exact signed lineage. Recurring-relative and recurring-stack share schedule/funding semantics. */
+export type AutomationIntentKind = "recurring-relative" | "recurring-stack" | "trigger";
+
+export function automationModeForIntentKind(kind: AutomationIntentKind): AutomationMode {
+  return kind === "trigger" ? "trigger" : "recurring";
+}
+
+export function isRecurringIntentKind(
+  kind: AutomationIntentKind,
+): kind is "recurring-relative" | "recurring-stack" {
+  return kind !== "trigger";
+}
 
 export interface IntervalPreset {
   id: string;
@@ -194,6 +206,12 @@ export function projectedRelativeFloor(input: {
   }
   if (expected === 0n) return 0n; // contract reverts FloorUnderflow rather than pass any output
   return (expected * (BPS - slip)) / BPS;
+}
+
+/** Scale a relative floor to what the recipient actually receives after a signed stack slice. */
+export function projectedStackRecipientFloor(relativeFloor: bigint, stackBps: number): bigint {
+  if (relativeFloor <= 0n || !isValidStackBps(stackBps)) return 0n;
+  return (relativeFloor * (BPS - BigInt(Math.trunc(stackBps)))) / BPS;
 }
 
 /** No executor pinned: any submitter may fire a run the capsule owes. */
@@ -464,12 +482,17 @@ export function draftTriggerIntent(input: TriggerDraftInput): TriggerIntent {
 }
 
 /** Filename for the exported intent file the executor daemon consumes. */
-export function intentFileName(mode: AutomationMode, zap: Address): string {
-  return `openzap-${mode}-${zap.slice(2, 10).toLowerCase()}.json`;
+export function intentFileName(kind: AutomationIntentKind, zap: Address): string {
+  return `openzap-${kind}-${zap.slice(2, 10).toLowerCase()}.json`;
 }
 
 /** Human line for a series' on-chain progress. */
-export function describeSeries(runs: number, lastRun: bigint, intent: RecurringIntent, nowSec: bigint): string {
+export function describeSeries(
+  runs: number,
+  lastRun: bigint,
+  intent: Pick<RecurringIntent, "maxRuns" | "interval">,
+  nowSec: bigint,
+): string {
   if (runs === 0) return `0/${intent.maxRuns} runs — first run is available now`;
   if (runs >= intent.maxRuns) return `${intent.maxRuns}/${intent.maxRuns} runs — series complete`;
   const nextAt = lastRun + intent.interval;

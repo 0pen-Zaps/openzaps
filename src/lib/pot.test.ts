@@ -54,8 +54,8 @@ describe("lifetime totals", () => {
 });
 
 describe("ticketShare", () => {
-  // The share is contribution WEIGHT, never a probability: tickets are raw fee
-  // amounts summed across assets of different decimals. These tests pin the
+  // The share is contribution WEIGHT, never a probability: tickets are raw
+  // contribution amounts summed across assets of different decimals. These tests pin the
   // arithmetic; the UI is responsible for labelling it honestly.
   it("is the wallet's fraction of the round's tickets", () => {
     expect(ticketShare(parseEther("25").toString(), parseEther("100").toString())).toBeCloseTo(0.25, 6);

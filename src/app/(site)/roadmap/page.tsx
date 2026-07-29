@@ -21,9 +21,14 @@ const phases = [
     "The operations layer persists signed intents, execution receipts, cursor-safe relay state, executor scorecards, and read-only Guardian checks. Exact policy compilation, natural-language composition, signed and forkable public templates, the source-ready Agent Kit, and the public eval surface preserve the same rule: agents can discover and submit, but they cannot widen authority.",
   ],
   [
-    "Release-ready",
+    "Release-ready · one-shot",
+    "v1.2 exact owner pull and permanent halt",
+    "The v1.2 contracts, isolated creation gateway and pot, canonical Permit2 witness builder, exact-allowance cleanup, typed irreversible halt, recovery path, public halt status, and fail-closed factory/clone provenance are source-ready. It is not live until the governance wallet broadcasts the reviewed deployment and the four independently verified addresses pass creation, execution, halt, recovery, and allowance canaries.",
+  ],
+  [
+    "Release-ready · automate",
     "Recurring Robinhood v3.2 stack",
-    "The v3.2 contracts, deployment script, application path, fork coverage, independent readback checklist, and runtime adapter-bytecode manifest are complete. It is not live until the governance wallet broadcasts the reviewed deployment and the addresses pass the post-broadcast checks.",
+    "The v3.2 contracts, stack-only creation gateway, fail-closed Automate create/sign/manage path, fork coverage, independent readback checklist, and runtime adapter-bytecode manifest are complete. It is not live until the governance wallet broadcasts the reviewed deployment, the relay migration is verified, and all seven addresses pass the post-broadcast checks.",
   ],
   [
     "Gated",

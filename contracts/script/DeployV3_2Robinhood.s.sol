@@ -7,6 +7,8 @@ import {console2} from "forge-std/console2.sol";
 import {AdapterRegistry} from "../src/AdapterRegistry.sol";
 import {TokenAllowlist} from "../src/TokenAllowlist.sol";
 import {RobinhoodV4SwapAdapter} from "../src/adapters/RobinhoodV4SwapAdapter.sol";
+import {OpenZapStackCreationGateway} from "../src/fee/OpenZapStackCreationGateway.sol";
+import {ZapCreationFeePot} from "../src/fee/ZapCreationFeePot.sol";
 import {OpenZapFactoryV3_2} from "../src/v3_2/OpenZapFactoryV3_2.sol";
 import {OpenZapV3_2} from "../src/v3_2/OpenZapV3_2.sol";
 import {ZapLotteryPot} from "../src/v3/ZapLotteryPot.sol";
@@ -18,7 +20,9 @@ import {V4PoolPriceSourceOriented} from "../src/v3_1/V4PoolPriceSourceOriented.s
 ///           1. its own price-source AdapterRegistry,
 ///           2. an oriented source for the live aeWETH/0xZAPS v4 pool,
 ///           3. its own ZapLotteryPot, and
-///           4. OpenZapFactoryV3_2 plus its immutable OpenZapV3_2 implementation.
+///           4. OpenZapFactoryV3_2 plus its immutable OpenZapV3_2 implementation, and
+///           5. a stack-only creation-fee gateway whose dedicated ZapCreationFeePot is created and
+///              bound inside the gateway constructor.
 ///
 ///         Both the stack conversion and pot conversion are pinned to the same live, allowlisted
 ///         RobinhoodV4SwapAdapter. The v3.2 factory reads those pins back from its own pot, so a
@@ -28,7 +32,8 @@ import {V4PoolPriceSourceOriented} from "../src/v3_1/V4PoolPriceSourceOriented.s
 ///         factory is the only address allowed to register capsules that can credit tickets.
 ///
 ///         This script deploys a NEW candidate lineage. It does not replace the live v1.1, v3, or
-///         v3.1 factories and it does not mutate either live v1.1 registry.
+///         v3.1 factories, it does not mutate either live v1.1 registry, and it leaves the live v1
+///         creation gateway and its active prize round untouched.
 ///
 ///         Rehearse without `--broadcast` first:
 ///
@@ -45,12 +50,17 @@ import {V4PoolPriceSourceOriented} from "../src/v3_1/V4PoolPriceSourceOriented.s
 contract DeployV3_2Robinhood is Script {
     uint256 internal constant ROBINHOOD_CHAIN_ID = 4663;
     string internal constant EXPECTED_VERSION = "3.2.0-candidate";
+    string internal constant EXPECTED_STACK_GATEWAY_VERSION = "1.0.0-candidate";
+    uint256 internal constant CREATION_FEE = 0.00001 ether;
 
     // Live v1.1 governance surface. This deployment reads and reuses it but never mutates it.
     AdapterRegistry internal constant LIVE_ADAPTERS = AdapterRegistry(0x9E56e444f490C00A6277326A47Cb462E12dF1f17);
     TokenAllowlist internal constant LIVE_TOKENS = TokenAllowlist(0x87fBb77a4328B068CADbA2eBE5dBCE0ffbd7141B);
     RobinhoodV4SwapAdapter internal constant LIVE_SWAP_ADAPTER =
         RobinhoodV4SwapAdapter(0x04f62dA4b51a010eFa32aa81569169C47AEd602C);
+    address internal constant LIVE_ONE_SHOT_FACTORY = 0xFC775017b25d2458623E2f3E735A4B750dD8b4E4;
+    address internal constant LIVE_TRIGGER_FACTORY = 0x70FCFD3615eA6651a670B6c4CD6B8bA1506717e9;
+    address internal constant LIVE_RECURRING_FACTORY = 0xDA5f501052fe6F87f547bc21FCAA1F122eD2f2E1;
 
     // Live aeWETH/0xZAPS v4 pool. Pool-key address ordering makes aeWETH currency0 and 0xZAPS
     // currency1, so priceX96 is 0xZAPS per aeWETH.
@@ -78,6 +88,8 @@ contract DeployV3_2Robinhood is Script {
         ZapLotteryPot pot;
         OpenZapFactoryV3_2 factory;
         address implementation;
+        OpenZapStackCreationGateway stackCreationGateway;
+        ZapCreationFeePot stackCreationPot;
         uint256 spotPriceX96;
     }
 
@@ -94,6 +106,10 @@ contract DeployV3_2Robinhood is Script {
         d.pot = new ZapLotteryPot(governance, ZAPS, address(LIVE_SWAP_ADAPTER));
         d.factory = new OpenZapFactoryV3_2(LIVE_ADAPTERS, LIVE_TOKENS, d.priceSources, d.pot);
         d.pot.setFactory(address(d.factory));
+        d.stackCreationGateway = new OpenZapStackCreationGateway(
+            governance, address(d.factory), AEWETH, ZAPS, address(LIVE_SWAP_ADAPTER), CREATION_FEE
+        );
+        d.stackCreationPot = d.stackCreationGateway.CREATION_POT();
 
         vm.stopBroadcast();
 
@@ -112,6 +128,9 @@ contract DeployV3_2Robinhood is Script {
         _requireCode(address(LIVE_ADAPTERS));
         _requireCode(address(LIVE_TOKENS));
         _requireCode(address(LIVE_SWAP_ADAPTER));
+        _requireCode(LIVE_ONE_SHOT_FACTORY);
+        _requireCode(LIVE_TRIGGER_FACTORY);
+        _requireCode(LIVE_RECURRING_FACTORY);
         _requireCode(POOL_MANAGER);
         _requireCode(AEWETH);
         _requireCode(ZAPS);
@@ -137,7 +156,8 @@ contract DeployV3_2Robinhood is Script {
         if (
             address(d.priceSources).code.length == 0 || address(d.priceSource).code.length == 0
                 || address(d.pot).code.length == 0 || address(d.factory).code.length == 0
-                || d.implementation.code.length == 0 || d.spotPriceX96 == 0
+                || d.implementation.code.length == 0 || address(d.stackCreationGateway).code.length == 0
+                || address(d.stackCreationPot).code.length == 0 || d.spotPriceX96 == 0
         ) revert DeploymentAssertionFailed();
 
         if (
@@ -163,6 +183,24 @@ contract DeployV3_2Robinhood is Script {
                 || address(d.factory.lotteryPot()) != address(d.pot)
                 || d.factory.implCodeHash() != d.implementation.codehash
                 || keccak256(bytes(d.factory.VERSION())) != keccak256(bytes(EXPECTED_VERSION))
+        ) revert DeploymentAssertionFailed();
+
+        if (
+            d.stackCreationGateway.STACK_FACTORY() != address(d.factory) || d.stackCreationGateway.AEWETH() != AEWETH
+                || d.stackCreationGateway.ZAPS() != ZAPS
+                || d.stackCreationGateway.CREATION_ADAPTER() != address(LIVE_SWAP_ADAPTER)
+                || d.stackCreationGateway.CREATION_FEE() != CREATION_FEE
+                || address(d.stackCreationGateway.CREATION_POT()) != address(d.stackCreationPot)
+                || keccak256(bytes(d.stackCreationGateway.VERSION()))
+                    != keccak256(bytes(EXPECTED_STACK_GATEWAY_VERSION))
+        ) revert DeploymentAssertionFailed();
+
+        if (
+            d.stackCreationPot.owner() != governance || d.stackCreationPot.pendingOwner() != address(0)
+                || d.stackCreationPot.ZAPS() != ZAPS || d.stackCreationPot.gateway() != address(d.stackCreationGateway)
+                || d.stackCreationPot.gatewayInstaller() != address(0) || d.stackCreationPot.currentRound() != 1
+                || d.stackCreationPot.accountedZaps() != 0 || d.stackCreationPot.totalTickets(1) != 0
+                || d.stackCreationPot.roundPrize(1) != 0
         ) revert DeploymentAssertionFailed();
 
         OpenZapV3_2 implementation = OpenZapV3_2(payable(d.implementation));
@@ -226,6 +264,13 @@ contract DeployV3_2Robinhood is Script {
         console2.log("implementationV3_2       ", d.implementation);
         console2.log("implementation codehash");
         console2.logBytes32(d.factory.implCodeHash());
+        console2.log("stackCreationGateway     ", address(d.stackCreationGateway));
+        console2.log("  version                ", d.stackCreationGateway.VERSION());
+        console2.log("  stack factory          ", d.stackCreationGateway.STACK_FACTORY());
+        console2.log("  creation fee           ", d.stackCreationGateway.CREATION_FEE());
+        console2.log("stackCreationFeePot      ", address(d.stackCreationPot));
+        console2.log("  gateway                ", d.stackCreationPot.gateway());
+        console2.log("  owner                  ", d.stackCreationPot.owner());
         console2.log("deployment assertions    ", "PASS");
     }
 }

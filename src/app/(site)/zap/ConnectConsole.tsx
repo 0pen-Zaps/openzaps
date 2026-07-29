@@ -26,7 +26,7 @@ import {
   type ConnectProposal,
   type ConnectSelection,
 } from "@/lib/connect-dialogue";
-import type { WalletProfilePayload } from "@/lib/profile";
+import { isStandingIntentLineage, type WalletProfilePayload } from "@/lib/profile";
 import { fetchOwnerIntentPage, type RelayRecord } from "@/lib/relay";
 import { explorerTransaction } from "@/lib/robinhood";
 import type { TranscriptChip } from "@/lib/transcript";
@@ -167,7 +167,7 @@ export default function ConnectConsole({ proposedAgent }: { proposedAgent?: stri
   const capsules = useMemo((): ConnectCapsule[] => {
     if (!profile) return [];
     return profile.zaps
-      .filter((zap) => zap.lineage !== "v1.1") // Only standing intents can pin an executor.
+      .filter((zap) => isStandingIntentLineage(zap.lineage))
       .map((zap) => ({
         address: zap.address,
         lineage: zap.lineage,

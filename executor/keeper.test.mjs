@@ -147,6 +147,64 @@ test("pot conversion enforces release-manifest provenance before market reads or
   assert.equal(simulations, 1);
 });
 
+test("an explicit pot target keeps its own identity, asset, price source, and conversion bounds", async () => {
+  const target = {
+    id: "v3.2",
+    lotteryPot: "0x0000000000000000000000000000000000000011",
+    poolPriceSource: "0x0000000000000000000000000000000000000012",
+    feeAsset: "0x0000000000000000000000000000000000000013",
+    convertMinWei: ONE,
+    convertSlippageBps: 100,
+  };
+  const reads = [];
+  let verifiedPot;
+  let simulation;
+  const result = await convertPotFees({
+    publicClient: {
+      getBlockNumber: async () => 123n,
+      readContract: async (request) => {
+        reads.push(request);
+        return request.functionName === "balanceOf" ? 2n * ONE : 3n * Q96;
+      },
+      simulateContract: async (request) => {
+        simulation = request;
+        return { request };
+      },
+    },
+    walletClient: null,
+    cfg: {
+      lotteryPot: "0x0000000000000000000000000000000000000001",
+      poolPriceSource: "0x0000000000000000000000000000000000000002",
+      feeAsset: "0x0000000000000000000000000000000000000003",
+      convertMinWei: MIN,
+      convertSlippageBps: 300,
+      maxFeePerGasWei: 2_000_000_000n,
+    },
+    pot: target,
+    verifyPotAdapter: async (_client, verifiedCfg) => {
+      verifiedPot = verifiedCfg.lotteryPot;
+      return { verified: true };
+    },
+  });
+
+  assert.equal(verifiedPot, target.lotteryPot);
+  assert.deepEqual(
+    reads.map(({ address, functionName }) => [address, functionName]),
+    [
+      [target.feeAsset, "balanceOf"],
+      [target.poolPriceSource, "priceX96"],
+    ],
+  );
+  assert.equal(simulation.address, target.lotteryPot);
+  assert.deepEqual(simulation.args, [target.feeAsset, 2n * ONE, (6n * ONE * 9_900n) / 10_000n]);
+  assert.equal(result.outcome, "watch-only");
+  assert.equal(result.potId, "v3.2");
+  assert.equal(result.potAddress, target.lotteryPot);
+  assert.equal(result.feeAsset, target.feeAsset);
+  assert.equal(result.priceSource, target.poolPriceSource);
+  assert.equal(result.amountIn, 2n * ONE);
+});
+
 test("pot conversion obeys the shared pre-broadcast nonce-lane gate", async () => {
   let broadcasts = 0;
   const result = await convertPotFees({

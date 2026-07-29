@@ -6,11 +6,14 @@ import {
   executedEvent,
   executedRecurringEvent,
   executedRecurringRelativeEvent,
+  executedRecurringStackEvent,
   executedTriggerEvent,
+  policyHaltedEvent,
   zapCreatedEvent,
   type AutomatedRunLogInput,
   type ExecutedLogInput,
   type ExitLogInput,
+  type PolicyHaltedLogInput,
 } from "@/lib/activity";
 import {
   aggregateWalletProfile,
@@ -23,26 +26,16 @@ import {
   type WalletZapRead,
 } from "@/lib/profile";
 import {
-  OPENZAP_CONTRACTS,
-  OPENZAP_V3_CONTRACTS,
-  OPENZAP_V3_1_CONTRACTS,
   ROBINHOOD_RPC_URL,
+  configuredCapsuleLineageForFactory,
+  configuredCapsuleFactories,
   openZapAbi,
-  openZapProtocolConfigured,
-  openZapV3Configured,
-  openZapV3_1Configured,
+  openZapPolicyHaltAbi,
   robinhoodChain,
 } from "@/lib/robinhood";
 
 const ADDRESS_CHUNK = 200;
 const TIMESTAMP_BUDGET = 250;
-
-const CAPSULE_FACTORIES: Address[] = [
-  ...new Map(
-    [OPENZAP_CONTRACTS.factory, OPENZAP_V3_CONTRACTS.factory, OPENZAP_V3_1_CONTRACTS.factory]
-      .map((address) => [address.toLowerCase(), address] as const),
-  ).values(),
-];
 
 const client = createPublicClient({
   chain: robinhoodChain,
@@ -50,16 +43,16 @@ const client = createPublicClient({
 });
 
 /**
- * Complete confirmed history for one owner across the v1.1, v3, and v3.1
+ * Complete confirmed history for one owner across every configured lineage
  * factories. Throws on an authoritative RPC failure so the route can return an
  * explicit unavailable response instead of a fabricated empty dashboard.
  */
 export async function fetchWalletProfile(ownerInput: Address): Promise<WalletProfilePayload> {
-  assertConfigured();
+  const capsuleFactories = configuredCapsuleFactories();
   const owner = getAddress(ownerInput);
   const head = await client.getBlockNumber({ cacheTime: 0 });
   const creationLogs = await client.getLogs({
-    address: CAPSULE_FACTORIES,
+    address: [...capsuleFactories],
     event: zapCreatedEvent,
     args: { owner },
     fromBlock: ACTIVITY_FROM_BLOCK,
@@ -81,10 +74,17 @@ export async function fetchWalletProfile(ownerInput: Address): Promise<WalletPro
       : [],
   );
   const zapAddresses = [...new Map(created.map((log) => [log.zap.toLowerCase(), getAddress(log.zap)])).values()];
+  const creationByZap = new Map(created.map((log) => [getAddress(log.zap), log]));
+  const haltCapableAddresses = zapAddresses.filter((zap) => {
+    const creation = creationByZap.get(zap);
+    const lineage = creation ? configuredCapsuleLineageForFactory(creation.factory)?.id : null;
+    return lineage === "v1.2" || lineage === "v3.2";
+  });
   const chunks = chunk(zapAddresses, ADDRESS_CHUNK);
+  const haltChunks = chunk(haltCapableAddresses, ADDRESS_CHUNK);
 
-  const logsFor = <T>(event: T): Promise<unknown[][]> => Promise.all(
-    chunks.map((addresses) => client.getLogs({
+  const logsFor = <T>(event: T, addressChunks: readonly Address[][] = chunks): Promise<unknown[][]> => Promise.all(
+    addressChunks.map((addresses) => client.getLogs({
       address: addresses,
       event: event as never,
       fromBlock: ACTIVITY_FROM_BLOCK,
@@ -93,15 +93,27 @@ export async function fetchWalletProfile(ownerInput: Address): Promise<WalletPro
     }) as Promise<unknown[]>),
   );
 
-  const [executedChunks, exitChunks, recurringChunks, relativeChunks, triggerChunks, invalidatedChunks, finishedChunks] =
+  const [
+    executedChunks,
+    exitChunks,
+    recurringChunks,
+    relativeChunks,
+    stackChunks,
+    triggerChunks,
+    invalidatedChunks,
+    finishedChunks,
+    haltedChunks,
+  ] =
     await Promise.all([
       logsFor(executedEvent),
       logsFor(emergencyExitEvent),
       logsFor(executedRecurringEvent),
       logsFor(executedRecurringRelativeEvent),
+      logsFor(executedRecurringStackEvent),
       logsFor(executedTriggerEvent),
       logsFor(nonceInvalidatedEvent),
       logsFor(seriesFinishedEvent),
+      logsFor(policyHaltedEvent, haltChunks),
     ]);
 
   const executed = decodeExecuted(executedChunks.flat() as EventLog[]);
@@ -109,26 +121,40 @@ export async function fetchWalletProfile(ownerInput: Address): Promise<WalletPro
   const automated: AutomatedRunLogInput[] = [
     ...decodeAutomated(recurringChunks.flat() as EventLog[], "recurring"),
     ...decodeAutomated(relativeChunks.flat() as EventLog[], "recurring-relative"),
+    ...decodeAutomated(stackChunks.flat() as EventLog[], "recurring-stack"),
     ...decodeAutomated(triggerChunks.flat() as EventLog[], "trigger"),
   ];
   const invalidated = decodeInvalidated(invalidatedChunks.flat() as EventLog[]);
   const finished = decodeFinished(finishedChunks.flat() as EventLog[]);
+  const halted = decodeHalted(haltedChunks.flat() as EventLog[]);
 
-  const trackedResults = await Promise.allSettled(
-    zapAddresses.map(async (zap): Promise<WalletZapRead> => ({
-      zap,
-      trackedAssets: await client.readContract({
+  const zapReads = await Promise.all(
+    zapAddresses.map(async (zap): Promise<WalletZapRead> => {
+      const creation = creationByZap.get(zap);
+      const lineage = creation ? configuredCapsuleLineageForFactory(creation.factory)?.id : null;
+      const haltCapable = lineage === "v1.2" || lineage === "v3.2";
+      const [trackedResult, haltedResult] = await Promise.allSettled([
+        client.readContract({
         address: zap,
         abi: openZapAbi,
         functionName: "trackedAssets",
         blockNumber: head,
       }),
-    })),
-  );
-  const zapReads: WalletZapRead[] = trackedResults.map((result, index) =>
-    result.status === "fulfilled"
-      ? result.value
-      : { zap: zapAddresses[index], trackedAssets: null },
+        haltCapable
+          ? client.readContract({
+              address: zap,
+              abi: openZapPolicyHaltAbi,
+              functionName: "policyHalted",
+              blockNumber: head,
+            })
+          : Promise.resolve(null),
+      ]);
+      return {
+        zap,
+        trackedAssets: trackedResult.status === "fulfilled" ? trackedResult.value : null,
+        policyHalted: haltedResult.status === "fulfilled" ? haltedResult.value : null,
+      };
+    }),
   );
 
   const allLogs: { blockNumber: bigint }[] = [
@@ -138,6 +164,7 @@ export async function fetchWalletProfile(ownerInput: Address): Promise<WalletPro
     ...automated,
     ...invalidated,
     ...finished,
+    ...halted,
   ];
   const newestBlocks = [...new Set(allLogs.map((log) => log.blockNumber))]
     .sort((a, b) => a < b ? 1 : -1)
@@ -156,6 +183,7 @@ export async function fetchWalletProfile(ownerInput: Address): Promise<WalletPro
     exits,
     invalidated,
     finished,
+    halted,
     zapReads,
     timestamps,
     fromBlock: ACTIVITY_FROM_BLOCK,
@@ -177,7 +205,10 @@ type EventArgs = {
   executor?: Address;
   executorFee?: bigint;
   potFee?: bigint;
+  stackIn?: bigint;
+  zapsOut?: bigint;
   runs?: number;
+  policyHash?: Hex;
 };
 
 type EventLog = {
@@ -229,6 +260,7 @@ function decodeAutomated(
   return logs.flatMap((log) => {
     const args = log.args;
     if (!args?.executor || !args.outAsset || args.amountOut === undefined) return [];
+    if (kind === "recurring-stack" && (args.stackIn === undefined || args.zapsOut === undefined)) return [];
     return [{
       emitter: log.address,
       kind,
@@ -237,6 +269,8 @@ function decodeAutomated(
       amountOut: args.amountOut,
       executorFee: args.executorFee ?? 0n,
       potFee: args.potFee ?? 0n,
+      stackIn: kind === "recurring-stack" ? args.stackIn ?? null : null,
+      zapsOut: kind === "recurring-stack" ? args.zapsOut ?? null : null,
       seriesId: args.seriesId ?? args.nonce ?? 0n,
       run: args.run === undefined ? null : Number(args.run),
       txHash: log.transactionHash,
@@ -273,14 +307,22 @@ function decodeFinished(logs: readonly EventLog[]): SeriesFinishedLogInput[] {
   );
 }
 
+function decodeHalted(logs: readonly EventLog[]): PolicyHaltedLogInput[] {
+  return logs.flatMap((log) => log.args?.owner && log.args.policyHash
+    ? [{
+        emitter: log.address,
+        owner: log.args.owner,
+        policyHash: log.args.policyHash,
+        txHash: log.transactionHash,
+        blockNumber: log.blockNumber,
+        logIndex: log.logIndex,
+      }]
+    : [],
+  );
+}
+
 function chunk<T>(values: readonly T[], size: number): T[][] {
   const rows: T[][] = [];
   for (let index = 0; index < values.length; index += size) rows.push(values.slice(index, index + size));
   return rows;
-}
-
-function assertConfigured(): void {
-  if (!openZapProtocolConfigured() || !openZapV3Configured() || !openZapV3_1Configured()) {
-    throw new Error("Every OpenZap lineage must be configured before reporting complete wallet activity.");
-  }
 }

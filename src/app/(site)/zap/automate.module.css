@@ -1033,6 +1033,30 @@
   border-top: 1px solid var(--line-soft);
 }
 
+.haltBox {
+  display: grid;
+  gap: 9px;
+  padding: 13px 16px;
+  border-top: 1px solid var(--danger-line);
+  background: var(--danger-wash);
+}
+
+.haltBox strong {
+  color: var(--danger-ink);
+  font-size: 12.5px;
+}
+
+.haltBox p {
+  color: var(--danger-ink);
+  font-size: 11.5px;
+  line-height: 1.5;
+}
+
+.haltBox .btnDanger {
+  justify-self: start;
+  background: var(--panel);
+}
+
 .railEmpty {
   margin: 0;
   padding: 16px;

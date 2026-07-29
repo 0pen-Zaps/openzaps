@@ -4,8 +4,10 @@ import { parseEther, type Address } from "viem";
 import {
   INTERVAL_PRESETS,
   OPEN_EXECUTOR,
+  STACK_PRESETS,
   resolveExecutor,
   THRESHOLD_PRESETS,
+  automationModeForIntentKind,
   defaultSlippageBps,
   describeSeries,
   draftRecurringIntent,
@@ -15,9 +17,11 @@ import {
   feedConditionForZapsMove,
   fundingReadiness,
   intentFileName,
+  isRecurringIntentKind,
   netFloorFromQuote,
   planWethFunding,
   projectedRelativeFloor,
+  projectedStackRecipientFloor,
   readAutomationHandoff,
   requiredFunding,
   suggestedSeriesDeadline,
@@ -84,6 +88,21 @@ describe("requiredFunding", () => {
     expect(requiredFunding(parseEther("1"), "recurring", 30)).toBe(parseEther("30"));
     expect(requiredFunding(parseEther("1"), "trigger", 30)).toBe(parseEther("1"));
     expect(requiredFunding(parseEther("1"), "recurring", 0)).toBe(0n);
+  });
+});
+
+describe("exact automation lineage", () => {
+  it("keeps both recurring lineages in the same schedule family without collapsing their identity", () => {
+    expect(automationModeForIntentKind("recurring-relative")).toBe("recurring");
+    expect(automationModeForIntentKind("recurring-stack")).toBe("recurring");
+    expect(automationModeForIntentKind("trigger")).toBe("trigger");
+    expect(isRecurringIntentKind("recurring-stack")).toBe(true);
+    expect(isRecurringIntentKind("trigger")).toBe(false);
+  });
+
+  it("offers only valid, nonzero stack slices", () => {
+    expect(STACK_PRESETS.map((preset) => preset.bps)).toEqual([100, 500, 1_000, 2_500]);
+    expect(STACK_PRESETS.every((preset) => preset.bps > 0 && preset.bps < 10_000)).toBe(true);
   });
 });
 
@@ -252,7 +271,8 @@ describe("describeSeries", () => {
 
 describe("intentFileName", () => {
   it("derives a stable per-capsule name", () => {
-    expect(intentFileName("recurring", ZAP)).toBe("openzap-recurring-9941dd72.json");
+    expect(intentFileName("recurring-relative", ZAP)).toBe("openzap-recurring-relative-9941dd72.json");
+    expect(intentFileName("recurring-stack", ZAP)).toBe("openzap-recurring-stack-9941dd72.json");
     expect(intentFileName("trigger", ZAP)).toBe("openzap-trigger-9941dd72.json");
   });
 });
@@ -400,6 +420,13 @@ describe("projectedRelativeFloor", () => {
     expect(
       projectedRelativeFloor({ amountIn, outAsset: C1, currency0: C0, currency1: C1, priceX96, maxSlippageBps: 500 }),
     ).toBe(want);
+  });
+
+  it("scales the displayed recipient floor by the exact signed stack slice", () => {
+    expect(projectedStackRecipientFloor(parseEther("950"), 500)).toBe(parseEther("902.5"));
+    expect(projectedStackRecipientFloor(parseEther("950"), 2_500)).toBe(parseEther("712.5"));
+    expect(projectedStackRecipientFloor(parseEther("950"), 0)).toBe(0n);
+    expect(projectedStackRecipientFloor(parseEther("950"), 10_000)).toBe(0n);
   });
 
   it("returns 0n (caller renders '—') for every degenerate input", () => {

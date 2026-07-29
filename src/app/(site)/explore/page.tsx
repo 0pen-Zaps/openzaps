@@ -222,7 +222,14 @@ export default async function ZapsFeedPage(): Promise<React.JSX.Element> {
                   <code className={styles.zapAddress}>{shortAddress(zap.address)}</code>
                 </Link>
                 <span className={styles.zapMeta}>
-                  owner {shortAddress(zap.owner)} · {zap.lineage} · policy {shortHex(zap.policyHash)}
+                  owner {shortAddress(zap.owner)} · {zap.lineage} · policy {shortHex(zap.policyHash)} ·{" "}
+                  {zap.policyHaltStatus === "halted"
+                    ? "permanently halted"
+                    : zap.policyHaltStatus === "active"
+                      ? "policy active"
+                      : zap.policyHaltStatus === "unavailable"
+                        ? "halt state unavailable"
+                        : "halt unsupported"}
                 </span>
                 <span className={styles.zapRuns} data-active={zap.executionCount > 0}>
                   {zap.executionCount === 1 ? "1 Zap" : `${zap.executionCount} Zaps`}
@@ -249,9 +256,9 @@ export default async function ZapsFeedPage(): Promise<React.JSX.Element> {
         )}
 
         <p className={styles.cardFoot}>
-          An address reaches this list one way: a canonical factory&apos;s own ZapCreated log names it — v1.1, v3, or
-          v3.1. What a Zap does is stored in the Zap, not here — open a row to read the policy it committed to and the
-          Executed and EmergencyExit logs it has emitted.
+          An address reaches this list one way: one of this release&apos;s configured canonical factories emitted
+          its ZapCreated log. What a Zap does is stored in the Zap, not here — open a row to
+          read the policy it committed to and the Executed and EmergencyExit logs it has emitted.
           {page?.truncated
             ? " The rest are onchain and readable from the factories. This page does not list them."
             : ""}
@@ -279,8 +286,8 @@ export default async function ZapsFeedPage(): Promise<React.JSX.Element> {
           ))}
         </div>
         <p className={styles.cardFoot}>
-          Six source-verified contracts on Robinhood Blockscout. The expansion adapters and the v3 / v3.1 automation
-          factories are deployed alongside them; their addresses are not listed on this page.
+          Six source-verified core contracts on Robinhood Blockscout. Expansion adapters and automation-lineage
+          contracts are recorded in the deployment registry; fully configured lineages feed the live lists above.
         </p>
         <p className={styles.cardFoot}>
           Depositing funds can result in total loss. Onchain actions are irreversible.{" "}

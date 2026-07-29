@@ -6,6 +6,8 @@ import {
   automationStorageKey,
   parseAutomationIntent,
   parseAutomationRecords,
+  readAutomationRecords,
+  saveAutomationRecords,
   type AutomationRecord,
 } from "@/lib/automation-records";
 
@@ -41,6 +43,32 @@ function relativeIntent(): string {
   });
 }
 
+function stackIntent(seriesId = "123456789012345678901234567890"): string {
+  return JSON.stringify({
+    kind: "recurring-stack",
+    intent: {
+      zap: ZAP,
+      chainId: "4663",
+      seriesId,
+      validAfter: "1700000000",
+      deadline: "1709999999",
+      interval: "86400",
+      maxRuns: "10",
+      recipient: OWNER,
+      executor: EXECUTOR,
+      maxGas: "2000000",
+      maxFeePerGas: "10000000000",
+      policyHash: HASH,
+      outAsset: OUT,
+      priceSource: "0xB4f66bFa00D2496513a5fD43ff47912A3fe0Bb5F",
+      maxSlippageBps: "500",
+      stackPriceSource: EXECUTOR,
+      stackBps: "500",
+    },
+    signature: SIG,
+  });
+}
+
 function triggerIntent(above: boolean, thresholdBps: string): string {
   return JSON.stringify({
     kind: "trigger",
@@ -71,6 +99,7 @@ function record(overrides: Partial<AutomationRecord> = {}): AutomationRecord {
     address: ZAP,
     routeId: "robinhood-v4-weth-zaps",
     mode: "recurring",
+    intentKind: "recurring-relative",
     amountPerRun: "1000000000000000",
     createdAt: "2026-07-25T00:00:00.000Z",
     policyHash: HASH,
@@ -84,6 +113,15 @@ describe("parseAutomationIntent", () => {
   it("preserves uint256 precision and normalizes recurring-relative to recurring management", () => {
     const parsed = parseAutomationIntent(relativeIntent());
     expect(parsed?.kind).toBe("recurring-relative");
+    expect(parsed?.mode).toBe("recurring");
+    expect(parsed?.authorizationId).toBe(123456789012345678901234567890n);
+    expect(parsed?.maxRuns).toBe(10);
+    expect(parsed?.interval).toBe(86_400n);
+  });
+
+  it("keeps a recurring-stack artifact in the recurring series family without losing its exact kind", () => {
+    const parsed = parseAutomationIntent(stackIntent());
+    expect(parsed?.kind).toBe("recurring-stack");
     expect(parsed?.mode).toBe("recurring");
     expect(parsed?.authorizationId).toBe(123456789012345678901234567890n);
     expect(parsed?.maxRuns).toBe(10);
@@ -117,6 +155,7 @@ describe("parseAutomationRecords", () => {
     ]));
     expect(parsed).toHaveLength(1);
     expect(parsed[0].address).toBe(ZAP);
+    expect(parsed[0].intentKind).toBe("recurring-relative");
     expect(parsed[0].createTx).toBe(CREATE_TX);
     expect(parsed[0].relayId).toBe("0198a941-58d8-7000-8000-000000000001");
     expect(parsed[0].revocationTx).toBe(`0x${"12".repeat(32)}`);
@@ -142,6 +181,80 @@ describe("parseAutomationRecords", () => {
     expect(parsed).toHaveLength(1);
     expect(parsed[0].terms).toBe("new");
   });
+
+  it("infers the exact recurring-stack kind from a legacy row's signed artifact", () => {
+    const legacy: Partial<AutomationRecord> = record({
+      intentKind: "recurring-stack",
+      intentFile: stackIntent(),
+    });
+    delete legacy.intentKind;
+
+    const parsed = parseAutomationRecords(JSON.stringify([legacy]));
+    expect(parsed).toHaveLength(1);
+    expect(parsed[0].mode).toBe("recurring");
+    expect(parsed[0].intentKind).toBe("recurring-stack");
+    expect(parsed[0].stackBps).toBe(500);
+  });
+
+  it("defaults an unsigned legacy recurring row to recurring-relative", () => {
+    const legacy: Partial<AutomationRecord> = record({ intentFile: undefined });
+    delete legacy.intentKind;
+
+    expect(parseAutomationRecords(JSON.stringify([legacy]))[0]?.intentKind).toBe("recurring-relative");
+  });
+
+  it("rejects a declared lineage that disagrees with the signed artifact", () => {
+    expect(parseAutomationRecords(JSON.stringify([
+      record({ intentKind: "recurring-relative", intentFile: stackIntent() }),
+    ]))).toEqual([]);
+  });
+
+  it("rejects an unknown declared lineage instead of inferring from mode", () => {
+    expect(parseAutomationRecords(JSON.stringify([
+      { ...record({ intentFile: undefined }), intentKind: "recurring-future" },
+    ]))).toEqual([]);
+  });
+
+  it("round-trips the exact unsigned stack lineage and bounded slice through browser storage", () => {
+    let stored: string | null = null;
+    const storage = {
+      getItem: () => stored,
+      setItem: (_key: string, value: string) => {
+        stored = value;
+      },
+    };
+    const stack = record({
+      intentKind: "recurring-stack",
+      intentFile: undefined,
+      stackBps: 500,
+    });
+
+    saveAutomationRecords(OWNER, [stack], storage);
+    const [restored] = readAutomationRecords(OWNER, storage);
+
+    expect(restored).toMatchObject({
+      address: ZAP,
+      mode: "recurring",
+      intentKind: "recurring-stack",
+      stackBps: 500,
+    });
+  });
+
+  it("takes a signed stack slice from the artifact and omits slices for every other lineage", () => {
+    const [signedStack] = parseAutomationRecords(JSON.stringify([
+      record({ intentKind: "recurring-stack", intentFile: stackIntent(), stackBps: 1_000 }),
+    ]));
+    const [relative] = parseAutomationRecords(JSON.stringify([
+      record({ stackBps: 500 }),
+    ]));
+    const [invalidUnsignedStack] = parseAutomationRecords(JSON.stringify([
+      record({ intentKind: "recurring-stack", intentFile: undefined, stackBps: 10_000 }),
+    ]));
+
+    expect(signedStack.stackBps).toBe(500);
+    expect(relative.stackBps).toBeUndefined();
+    expect(invalidUnsignedStack.stackBps).toBeUndefined();
+  });
 });
 
 describe("automationRecordMatchesIntentKey", () => {
@@ -155,6 +268,21 @@ describe("automationRecordMatchesIntentKey", () => {
     const other = JSON.parse(relativeIntent()) as { intent: { seriesId: string } };
     other.intent.seriesId = "987654321";
     expect(automationRecordMatchesIntentKey(record({ intentFile: JSON.stringify(other) }), key)).toBe(false);
+  });
+
+  it("uses the stack series id as the cancellation identity", () => {
+    const parsed = parseAutomationIntent(stackIntent("777"));
+    expect(parsed).not.toBeNull();
+    if (!parsed) return;
+    const key = automationIntentKey(parsed);
+    const stack = record({ intentKind: "recurring-stack", intentFile: stackIntent("777") });
+
+    expect(key).toBe(`${ZAP.toLowerCase()}:777`);
+    expect(automationRecordMatchesIntentKey(stack, key)).toBe(true);
+    expect(automationRecordMatchesIntentKey(
+      { ...stack, intentFile: stackIntent("778") },
+      key,
+    )).toBe(false);
   });
 });
 

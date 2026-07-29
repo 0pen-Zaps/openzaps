@@ -94,15 +94,33 @@ before(async () => {
           oneShotExecutions: 0,
           automatedRuns: 0,
           recoveries: 0,
+          policiesHalted: 0,
           authorizationsRevoked: 0,
           executedVolume: {},
         },
-        zaps: [],
+        zaps: [{
+          address: ZAP,
+          lineage: "v1.2",
+          policyHaltStatus: "active",
+          policyHalted: false,
+          haltedAt: null,
+          haltedTx: null,
+          executionCount: 0,
+          automatedRunCount: 0,
+          lastActivityAt: null,
+        }],
       }));
       return;
     }
     if (url.pathname.startsWith("/api/zaps/")) {
       response.end(JSON.stringify({
+        lineage: "v1.1",
+        policyHalt: {
+          status: "unsupported",
+          policyHalted: null,
+          haltedAt: null,
+          haltedTx: null,
+        },
         lifecycle: "created",
         executions: [],
         recoveries: [],
@@ -338,6 +356,26 @@ test("packaged list_intents forwards and returns its continuation cursor", async
   assert.equal(request.searchParams.get("zap"), ZAP);
   assert.equal(request.searchParams.get("limit"), "11");
   assert.equal(request.searchParams.get("cursor"), "intent_start");
+});
+
+test("packaged profile projection admits v1.2 and preserves verified halt state", async () => {
+  const response = await rpc("tools/call", {
+    name: "list_zaps",
+    arguments: { owner: AGENT },
+  });
+  assert.equal(response.result.isError, undefined);
+  const body = JSON.parse(response.result.content[0].text);
+  assert.deepEqual(body.zaps[0], {
+    address: ZAP,
+    lineage: "v1.2",
+    policyHaltStatus: "active",
+    policyHalted: false,
+    haltedAt: null,
+    haltedTx: null,
+    executionCount: 0,
+    automatedRunCount: 0,
+    lastActivityAt: null,
+  });
 });
 
 test("packaged list_intents rejects rows outside every requested filter", async () => {

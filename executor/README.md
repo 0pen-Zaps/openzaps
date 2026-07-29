@@ -66,7 +66,7 @@ codehash, immutable `FACTORY`/policy reads, and the indexed `ZapCreated` log mus
 Unknown lineages or uncertain RPC reads fail closed. Consumed, cancelled, or expired intents are
 archived to `~/.openzaps/executor/done/`, never deleted.
 
-Configuration (all optional) lives in `~/.openzaps/executor/config.json` or env:
+Configuration lives in `~/.openzaps/executor/config.json` or env:
 `OPENZAPS_RPC_URL`, `OPENZAPS_CHAIN_ID`, `OPENZAPS_POLL_MS`, `OPENZAPS_INTENTS_DIR`,
 `OPENZAPS_LOTTERY_POT`, `OPENZAPS_MAX_FEE_PER_GAS`. Defaults target Robinhood Chain (4663) via
 `https://rpc.mainnet.chain.robinhood.com`. Set `OPENZAPS_RPC_URLS` (comma-separated) to run on a
@@ -76,7 +76,12 @@ bundler. That transport is availability only; it is not signer quorum. `OPENZAPS
 pins default to the documented Robinhood deployments and may be
 overridden with `OPENZAPS_V3_FACTORY` / `OPENZAPS_V3_IMPLEMENTATION` and
 `OPENZAPS_V3_1_FACTORY` / `OPENZAPS_V3_1_IMPLEMENTATION`. The undeployed v3.2 lineage stays disabled
-until both `OPENZAPS_V3_2_FACTORY` and `OPENZAPS_V3_2_IMPLEMENTATION` are configured.
+until its executor and fee-conversion unit is configured all at once:
+`OPENZAPS_V3_2_FACTORY`, `OPENZAPS_V3_2_IMPLEMENTATION`, `OPENZAPS_V3_2_LOTTERY_POT`,
+`OPENZAPS_V3_2_POOL_PRICE_SOURCE`, and `OPENZAPS_V3_2_FEE_ASSET`. A partial set, a zero/malformed
+address, or an invalid v3.2 conversion bound fails config loading; it never enables an execution
+lineage whose non-0xZAPS fees the keeper cannot service. The v3.2 execution pot must also differ from
+v3.1's one-shot-bound pot.
 
 Signer mode also requires `OPENZAPS_ADAPTER_MANIFEST_FILE` (default
 `~/.openzaps/executor/adapter-manifest.json`) to cover every route adapter with an independently
@@ -215,6 +220,13 @@ and scorecard data are evidence only and never grant execution rights. Hosted pe
 security-attribution migrations; without them local receipt files remain the durable record and the
 hosted operations APIs fail closed.
 
+New pot-conversion outbox rows and local receipts bind the lineage id, pot address, fee asset, price
+source, input amount, and signed minimum 0xZAPS output. Successful canonical settlement advances both
+the backwards-compatible lifetime conversion count and a per-pot/per-asset input total in
+`state.json` only after the finalized transaction target and decoded `buyZaps` calldata match that
+journaled pot, asset, and both amounts. Pre-upgrade anonymous conversion receipts remain settleable
+and count toward the lifetime total, but are not guessed into a lineage bucket.
+
 The daemon permits only one unresolved signer transaction at a time. Every execution and pot
 conversion persists the same receipt-backed marker before releasing the FIFO signer lane; that
 marker survives restart and blocks all later wallet writes even if a fallback RPC has not yet
@@ -273,25 +285,39 @@ arrival, and chain-checked — a hostile or malformed payload gets a 4xx and not
 Everything the file drop enforces still applies: the capsule re-verifies every intent onchain, so
 intake spam can only waste a simulation.
 
-## Pot-conversion keeper
+## Multi-pot conversion keeper
 
-The 20% of each fee that funds the lottery pot arrives as 0xZAPS on buy runs, but as **aeWETH** on
-sell runs — and aeWETH just sits in the pot until someone calls the permissionless `buyZaps` to
-convert it. The daemon does this on a cadence (`OPENZAPS_CONVERT_EVERY_MS`, default 5 min): it reads
-the pot's fee-asset balance and the live pool price, floors the conversion output by
+The 20% of each execution fee that funds a lineage's lottery pot arrives as 0xZAPS on buy runs, but
+as **aeWETH** on sell runs — and aeWETH just sits in that pot until someone calls the permissionless
+`buyZaps` to convert it. The daemon services the live v3.1 pot and, when fully configured, the
+separate v3.2 pot on one cadence (`OPENZAPS_CONVERT_EVERY_MS`, default 5 min). It rotates the first
+pot inspected so a continuously accruing lineage cannot starve another, while every actual write
+still uses the same configured signer, FIFO mutex, nonce admission, private relay, and durable
+receipt lane as intent execution.
+
+For each pot, the keeper reads that pot's own fee-asset balance and price source, floors output by
 `OPENZAPS_CONVERT_SLIPPAGE_BPS` (default 3%), and — with a signer — submits `buyZaps`, turning the
 fee into the round's 0xZAPS prize. Below `OPENZAPS_CONVERT_MIN_WEI` (default 0.001 aeWETH) it idles
 rather than pay gas to convert dust. Watch-only mode simulates and logs what it would convert.
 
-Relevant config: `OPENZAPS_POOL_PRICE_SOURCE`, `OPENZAPS_FEE_ASSET`, `OPENZAPS_CONVERT_MIN_WEI`,
-`OPENZAPS_CONVERT_SLIPPAGE_BPS`, `OPENZAPS_CONVERT_EVERY_MS` (all default to the live deployment).
+The legacy v3.1 knobs remain backwards compatible:
+`OPENZAPS_LOTTERY_POT`, `OPENZAPS_POOL_PRICE_SOURCE`, `OPENZAPS_FEE_ASSET`,
+`OPENZAPS_CONVERT_MIN_WEI`, and `OPENZAPS_CONVERT_SLIPPAGE_BPS`. v3.2 uses the required address
+triplet named above and may independently override the inherited dust/slippage settings with
+`OPENZAPS_V3_2_CONVERT_MIN_WEI` and `OPENZAPS_V3_2_CONVERT_SLIPPAGE_BPS`.
+
+The same values can be placed in `config.json`: keep v3.2 factory/implementation under
+`capsuleLineages["v3.2"]`, and put `lotteryPot`, `poolPriceSource`, `feeAsset`, and optional
+conversion bounds under `conversionPots["v3.2"]`. Partial file-plus-environment combinations are
+evaluated as one set and fail closed.
 
 ## Gas self-monitoring
 
 An executing daemon watches its own gas wallet each pass and logs a **LOW** warning when it can
 afford fewer than `OPENZAPS_GAS_WARN_RUNS` (default 10) more runs, or an **EMPTY** error when it
 cannot fund one — so it never silently stops broadcasting. `node executor/index.mjs status` prints
-lifetime runs executed and pot conversions alongside the current gas health.
+lifetime runs and conversions, plus settled conversion counts and fee-asset input totals for each
+configured (or historically tracked) pot, alongside the current gas health.
 
 ## What an executor can and cannot do
 

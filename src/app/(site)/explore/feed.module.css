@@ -176,6 +176,11 @@
   color: var(--warn);
 }
 
+.feedGlyph[data-type="halted"] {
+  background: var(--danger-wash);
+  color: var(--danger-ink);
+}
+
 .feedGlyph svg {
   width: 15px;
   height: 15px;

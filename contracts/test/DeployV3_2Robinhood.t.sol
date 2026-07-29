@@ -18,6 +18,9 @@ contract DeployV3_2RobinhoodTest is Test {
     TokenAllowlist internal constant LIVE_TOKENS = TokenAllowlist(0x87fBb77a4328B068CADbA2eBE5dBCE0ffbd7141B);
     RobinhoodV4SwapAdapter internal constant LIVE_SWAP_ADAPTER =
         RobinhoodV4SwapAdapter(0x04f62dA4b51a010eFa32aa81569169C47AEd602C);
+    address internal constant LIVE_ONE_SHOT_FACTORY = 0xFC775017b25d2458623E2f3E735A4B750dD8b4E4;
+    address internal constant LIVE_TRIGGER_FACTORY = 0x70FCFD3615eA6651a670B6c4CD6B8bA1506717e9;
+    address internal constant LIVE_RECURRING_FACTORY = 0xDA5f501052fe6F87f547bc21FCAA1F122eD2f2E1;
 
     address internal constant POOL_MANAGER = 0x8366a39CC670B4001A1121B8F6A443A643e40951;
     bytes32 internal constant POOL_ID = 0xb040f18affd851c6ea02b896b2f846cb77edbb33cc5361f7f8c6d14b87c01573;
@@ -33,6 +36,9 @@ contract DeployV3_2RobinhoodTest is Test {
         vm.etch(address(LIVE_ADAPTERS), hex"00");
         vm.etch(address(LIVE_TOKENS), hex"00");
         vm.etch(address(LIVE_SWAP_ADAPTER), hex"00");
+        vm.etch(LIVE_ONE_SHOT_FACTORY, hex"00");
+        vm.etch(LIVE_TRIGGER_FACTORY, hex"00");
+        vm.etch(LIVE_RECURRING_FACTORY, hex"00");
         vm.etch(POOL_MANAGER, hex"00");
         vm.etch(AEWETH, hex"00");
         vm.etch(ZAPS, hex"00");

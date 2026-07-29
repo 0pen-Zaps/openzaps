@@ -497,106 +497,224 @@ async function runPass(walletClient, state) {
   return results;
 }
 
+function conversionPots() {
+  if (Array.isArray(cfg.conversionPots)) {
+    return cfg.conversionPots.filter((pot) => pot && typeof pot === "object" && pot.lotteryPot);
+  }
+  // Config files from before multi-pot support keep the original single v3.1 target.
+  return cfg.lotteryPot
+    ? [
+        {
+          id: "v3.1",
+          lotteryPot: cfg.lotteryPot,
+          poolPriceSource: cfg.poolPriceSource,
+          feeAsset: cfg.feeAsset,
+          convertMinWei: cfg.convertMinWei,
+          convertSlippageBps: cfg.convertSlippageBps,
+        },
+      ]
+    : [];
+}
+
+function logPotAccounting(state) {
+  const pots = conversionPots();
+  const trackedPots =
+    state.earnings?.pots && typeof state.earnings.pots === "object"
+      ? state.earnings.pots
+      : {};
+  const configuredAddresses = new Set();
+  for (const pot of pots) {
+    const key = String(pot.lotteryPot).toLowerCase();
+    configuredAddresses.add(key);
+    const tracked = trackedPots[key];
+    const asset = tracked?.assets?.[String(pot.feeAsset).toLowerCase()];
+    log(
+      asset?.accountingError ? "warn" : "info",
+      `pot ${pot.id}: ${Number(tracked?.conversions ?? 0)} settled conversion(s), `
+        + `${String(asset?.amountInWei ?? "0")} fee-asset wei converted; `
+        + `pot ${pot.lotteryPot}, asset ${pot.feeAsset}`
+        + `${asset?.accountingError ? `; ACCOUNTING WARNING: ${asset.accountingError}` : ""}`,
+    );
+  }
+  for (const [address, tracked] of Object.entries(trackedPots)) {
+    if (configuredAddresses.has(address)) continue;
+    const assets = Object.values(tracked?.assets ?? {});
+    const summary = assets
+      .map((asset) => `${asset.amountInWei ?? "unknown"} wei of ${asset.address ?? "unknown asset"}`)
+      .join(", ");
+    log(
+      "info",
+      `pot ${tracked?.id ?? "historical"} (historical/unconfigured): `
+        + `${Number(tracked?.conversions ?? 0)} settled conversion(s)`
+        + `${summary ? `; ${summary}` : ""}; pot ${tracked?.address ?? address}`,
+    );
+  }
+}
+
+const FAILED_CONVERSION_OUTCOMES = new Set([
+  "blocked",
+  "read-failed",
+  "simulation-reverted",
+  "broadcast-failed",
+  "broadcast-admission-unknown",
+  "confirmation-pending",
+  "fee-market-unknown",
+  "gas-above-cap",
+  "late-block-head-skew",
+  "late-block-quorum-disagrees",
+  "late-block-quorum-unavailable",
+  "late-block-simulation-failed",
+  "nonce-lane-pending",
+  "nonce-lane-unknown",
+  "private-submission-unavailable",
+  "receipt-backlog",
+  "receipt-persistence-halted",
+  "sequencer-stale",
+  "tx-reverted",
+]);
+
+const GLOBAL_CONVERSION_BLOCKS = new Set([
+  "broadcast-admission-unknown",
+  "fee-market-unknown",
+  "gas-above-cap",
+  "late-block-head-skew",
+  "late-block-quorum-disagrees",
+  "late-block-quorum-unavailable",
+  "late-block-simulation-failed",
+  "nonce-lane-pending",
+  "nonce-lane-unknown",
+  "private-submission-unavailable",
+  "receipt-backlog",
+  "receipt-persistence-halted",
+  "sequencer-stale",
+]);
+
 /**
- * One maintenance attempt: gas health + the pot-conversion keeper. Returns the delay (ms) until
- * the next attempt — shorter after a transient failure so a hiccup does not idle the keeper for
- * the full cadence, full cadence after success/idle.
+ * One maintenance attempt: gas health + every configured pot-conversion target. The start target
+ * rotates after each pass so an always-accruing v3.1 pot cannot starve v3.2. All writes still pass
+ * through the same process mutex, durable receipt admission, nonce check, and signer.
+ *
+ * Returns the delay (ms) until the next attempt — shorter after a transient failure so a hiccup
+ * does not idle the keeper for the full cadence, full cadence after success/idle.
  */
 async function runMaintenance(walletClient, state) {
   await checkGas({ publicClient, walletClient, cfg });
 
-  if (!cfg.lotteryPot) return cfg.convertEveryMs;
-  const conv = await convertPotFees({
-    publicClient,
-    walletClient,
-    cfg,
-    onBroadcast: async ({
-      hash,
-      phase,
-      serializedTransaction,
-      privateSubmission,
-    }) => {
-      try {
-        const entry = {
-          relayIntentId: null,
-          zap: cfg.lotteryPot,
-          kind: "pot-conversion",
-          nonce: hash.toLowerCase(),
-        };
-        const controller = getReceiptOutboxController(state);
-        await recordOperationSubmissionEvent(controller, state, entry, {
-          hash,
-          phase,
-          serializedTransaction,
-          privateSubmission,
-        });
-      } catch (error) {
-        log(
-          "error",
-          `CRITICAL: ${error.message}; no further wallet broadcasts will be admitted until storage is repaired and the daemon restarts`,
-        );
-        throw error;
-      }
-    },
-    canBroadcast: () => walletBroadcastAdmission(walletClient, state),
-    withBroadcastLane: withSignerLane,
-  });
-  if (conv.outcome !== "idle" && conv.outcome !== "disabled") {
-    // A reverted conversion is usually benign (another keeper drained the pot first — buyZaps is
-    // permissionless and the loser's tx reverts), so it warns rather than alarms.
-    const level = [
-      "blocked",
-      "broadcast-failed",
-      "broadcast-admission-unknown",
-      "fee-market-unknown",
-      "late-block-head-skew",
-      "late-block-quorum-disagrees",
-      "late-block-quorum-unavailable",
-      "late-block-simulation-failed",
-      "nonce-lane-unknown",
-      "private-submission-unavailable",
-      "receipt-persistence-halted",
-      "sequencer-stale",
-    ].includes(conv.outcome)
-      ? "error"
-      : [
-          "tx-reverted",
-          "confirmation-pending",
-          "gas-above-cap",
-          "nonce-lane-pending",
-          "receipt-backlog",
-        ].includes(conv.outcome)
-        ? "warn"
-        : "info";
-    const suffix = conv.outcome === "tx-reverted" ? " (possibly another keeper converted first)" : "";
-    log(level, `pot-convert: ${conv.outcome} — ${conv.detail}${suffix}`);
+  const pots = conversionPots();
+  if (pots.length === 0) return cfg.convertEveryMs;
+  const storedCursor = Number(state.potConversionCursor ?? 0);
+  const start = Number.isSafeInteger(storedCursor) && storedCursor >= 0
+    ? storedCursor % pots.length
+    : 0;
+  const ordered = Array.from({ length: pots.length }, (_, offset) => ({
+    index: (start + offset) % pots.length,
+    pot: pots[(start + offset) % pots.length],
+  }));
+  const conversions = [];
+  let nextCursor = (start + 1) % pots.length;
+
+  for (const { index, pot } of ordered) {
+    const conv = await convertPotFees({
+      publicClient,
+      walletClient,
+      cfg,
+      pot,
+      onBroadcast: async ({
+        hash,
+        potId,
+        potAddress,
+        feeAsset,
+        priceSource,
+        amountIn,
+        minZapsOut,
+        phase,
+        serializedTransaction,
+        privateSubmission,
+      }) => {
+        try {
+          const entry = {
+            relayIntentId: null,
+            zap: potAddress,
+            kind: "pot-conversion",
+            nonce: hash.toLowerCase(),
+            potId,
+            feeAsset,
+            priceSource,
+            amountInWei: amountIn.toString(),
+            minZapsOutWei: minZapsOut.toString(),
+          };
+          const controller = getReceiptOutboxController(state);
+          await recordOperationSubmissionEvent(controller, state, entry, {
+            hash,
+            phase,
+            serializedTransaction,
+            privateSubmission,
+          });
+        } catch (error) {
+          log(
+            "error",
+            `CRITICAL: ${error.message}; no further wallet broadcasts will be admitted until storage is repaired and the daemon restarts`,
+          );
+          throw error;
+        }
+      },
+      canBroadcast: () => walletBroadcastAdmission(walletClient, state),
+      withBroadcastLane: withSignerLane,
+    });
+    conversions.push(conv);
+    if (conv.outcome !== "idle" && conv.outcome !== "disabled") {
+      // A reverted conversion is usually benign (another keeper drained that pot first — buyZaps
+      // is permissionless and the loser's tx reverts), so it warns rather than alarms.
+      const level = [
+        "blocked",
+        "broadcast-failed",
+        "broadcast-admission-unknown",
+        "fee-market-unknown",
+        "late-block-head-skew",
+        "late-block-quorum-disagrees",
+        "late-block-quorum-unavailable",
+        "late-block-simulation-failed",
+        "nonce-lane-unknown",
+        "private-submission-unavailable",
+        "receipt-persistence-halted",
+        "sequencer-stale",
+      ].includes(conv.outcome)
+        ? "error"
+        : [
+            "tx-reverted",
+            "confirmation-pending",
+            "gas-above-cap",
+            "nonce-lane-pending",
+            "receipt-backlog",
+          ].includes(conv.outcome)
+          ? "warn"
+          : "info";
+      const suffix = conv.outcome === "tx-reverted"
+        ? " (possibly another keeper converted first)"
+        : "";
+      log(level, `pot-convert/${conv.potId}: ${conv.outcome} — ${conv.detail}${suffix}`);
+    }
+    if (conv.txHash) {
+      recordSubmission(state, `convert:${conv.potId}@${Date.now()}`, {
+        txHash: conv.txHash,
+        detail: conv.detail,
+        potId: conv.potId,
+        potAddress: conv.potAddress,
+        feeAsset: conv.feeAsset,
+        amountInWei: conv.amountIn?.toString() ?? null,
+        minZapsOutWei: conv.minZapsOut?.toString() ?? null,
+      });
+      nextCursor = (index + 1) % pots.length;
+      break;
+    }
+    // Admission failures apply to the shared signer lane; re-running the same check for another pot
+    // would add RPC load but cannot admit a second write.
+    if (GLOBAL_CONVERSION_BLOCKS.has(conv.outcome)) break;
   }
-  if (conv.txHash) {
-    recordSubmission(state, `convert@${Date.now()}`, { txHash: conv.txHash, detail: conv.detail });
-  }
+  state.potConversionCursor = nextCursor;
   writeState(cfg.stateFile, state);
 
-  const failed = [
-    "blocked",
-    "read-failed",
-    "simulation-reverted",
-    "broadcast-failed",
-    "broadcast-admission-unknown",
-    "confirmation-pending",
-    "fee-market-unknown",
-    "gas-above-cap",
-    "late-block-head-skew",
-    "late-block-quorum-disagrees",
-    "late-block-quorum-unavailable",
-    "late-block-simulation-failed",
-    "nonce-lane-pending",
-    "nonce-lane-unknown",
-    "private-submission-unavailable",
-    "receipt-backlog",
-    "receipt-persistence-halted",
-    "sequencer-stale",
-    "tx-reverted",
-  ].includes(conv.outcome);
+  const failed = conversions.some((conv) => FAILED_CONVERSION_OUTCOMES.has(conv.outcome));
   return failed ? Math.max(Math.floor(cfg.convertEveryMs / 4), 30_000) : cfg.convertEveryMs;
 }
 
@@ -629,12 +747,19 @@ async function main() {
   );
   log("info", `intent store: ${cfg.intentsDir}`);
   log("info", cfg.relayUrl ? `relay: polling ${cfg.relayUrl}/api/intents for shared intents` : "relay: disabled (local file store only)");
+  const configuredPots = conversionPots();
   log(
     "info",
-    cfg.lotteryPot
-      ? `pot-conversion keeper: pot ${cfg.lotteryPot}, fee asset ${cfg.feeAsset}, every ${cfg.convertEveryMs}ms`
+    configuredPots.length > 0
+      ? `pot-conversion keeper: ${configuredPots.length} pot(s), every ${cfg.convertEveryMs}ms`
       : "pot-conversion keeper: disabled (no pot configured)",
   );
+  for (const pot of configuredPots) {
+    log(
+      "info",
+      `pot-conversion/${pot.id}: pot ${pot.lotteryPot}, fee asset ${pot.feeAsset}, price source ${pot.poolPriceSource}`,
+    );
+  }
 
   if (command !== "status" && command !== "once" && command !== "start") {
     console.error(`unknown command: ${command} (use start | once | status)`);
@@ -651,15 +776,18 @@ async function main() {
   const state = readState(cfg.stateFile);
   state.submissions ??= {};
   state.earnings ??= { runs: 0, conversions: 0 };
+  state.earnings.runs ??= 0;
+  state.earnings.conversions ??= 0;
 
   if (command === "status") {
     const { ok, bad } = loadIntents(cfg.intentsDir);
     const byKind = (k) => ok.filter((i) => i.kind === k).length;
     log(
       "info",
-      `intents: ${ok.length} valid (${byKind("recurring")} recurring, ${byKind("recurring-relative")} recurring-relative, ${byKind("trigger")} trigger), ${bad.length} malformed`,
+      `intents: ${ok.length} valid (${byKind("recurring")} recurring, ${byKind("recurring-relative")} recurring-relative, ${byKind("recurring-stack")} recurring-stack, ${byKind("trigger")} trigger), ${bad.length} malformed`,
     );
     log("info", `lifetime: ${state.earnings.runs} runs executed, ${state.earnings.conversions} pot conversions`);
+    logPotAccounting(state);
     if (cfg.intakePort > 0) {
       // The browser never receives this local capability. The MCP process reads it from disk.
       loadIntakeToken(cfg.intakeTokenFile);

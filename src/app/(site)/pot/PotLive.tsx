@@ -47,7 +47,7 @@ const publicClient = createPublicClient({ chain: robinhoodChain, transport: http
 /** Slippage band on a permissionless conversion. Matches the keeper's default. */
 const CONVERT_SLIPPAGE_BPS = 100;
 
-/** Fee asset -> the registry route that prices it into 0xZAPS, for the conversion floor. */
+/** Contribution asset -> the registry route that prices it into 0xZAPS, for the conversion floor. */
 const ROUTE_TO_ZAPS: Record<string, string> = {
   [ROBINHOOD_ASSETS.weth.toLowerCase()]: "robinhood-v4-weth-zaps",
 };
@@ -125,7 +125,7 @@ export function PotLive({ initial }: { initial: PotPayload | null }): React.JSX.
   }, [switchToRobinhood]);
 
   /**
-   * Push a pending fee asset into the prize. `buyZaps` is permissionless by design —
+   * Push a pending contribution asset into the prize. `buyZaps` is permissionless by design —
    * the keeper daemon calls it on a cadence, but anyone may, and doing it from here
    * is what lets a holder close the loop themselves rather than wait for a daemon.
    * The floor is quoted first: passing 0 would accept any output at all.
@@ -209,7 +209,7 @@ export function PotLive({ initial }: { initial: PotPayload | null }): React.JSX.
             </div>
           ))}
         </div>
-        <p className={styles.skelNote}>Reading both pots from Robinhood Chain…</p>
+        <p className={styles.skelNote}>Reading configured pots from Robinhood Chain…</p>
       </section>
     );
   }
@@ -220,7 +220,7 @@ export function PotLive({ initial }: { initial: PotPayload | null }): React.JSX.
         <div className={styles.alert} role="alert">
           <BlockGlyph name="alert" className={styles.msgGlyph} />
           <p>
-            The RPC reads for both pots failed, so nothing is shown. A prize or a ticket count
+            The configured pot reads failed, so nothing is shown. A prize or a ticket count
             rendered from a failed read would be a claim about the chain that nobody verified.
           </p>
         </div>
@@ -318,17 +318,18 @@ export function PotLive({ initial }: { initial: PotPayload | null }): React.JSX.
               </div>
               <div className={styles.statCard}>
                 <dt className={styles.statLabel}>Your share of this round</dt>
-                {/* A share, never a ticket count beside a 0xZAPS figure: tickets are raw
-                    fee units summed across assets of different decimals, so rendering
-                    them at the prize asset's scale would invite "1 ticket = 1 0xZAPS". */}
+                {/* A share, never a ticket count beside a 0xZAPS figure: tickets are
+                    raw contribution units summed across assets of different decimals,
+                    so rendering them at the prize asset's scale would invite
+                    "1 ticket = 1 0xZAPS". */}
                 <dd className={styles.statValue}>
                   <strong>{share === null ? "—" : `${(share * 100).toFixed(2)}%`}</strong>
                 </dd>
                 <dd className={styles.statNote}>
                   {share !== null
-                    ? "of the fees this round collected"
+                    ? "of the contributions this round collected"
                     : noTickets
-                      ? "this round has collected no fees yet"
+                      ? "this round has collected no contributions yet"
                       : "connect a wallet to read your tickets"}
                 </dd>
               </div>
@@ -359,13 +360,13 @@ export function PotLive({ initial }: { initial: PotPayload | null }): React.JSX.
               </p>
             )}
 
-            {/* The open half of the loop. A fee that arrives as aeWETH or USDG is not
-                prize yet — someone has to convert it, and anyone may. */}
+            {/* The open half of the loop. A contribution that arrives as aeWETH or
+                USDG is not prize yet — someone has to convert it, and anyone may. */}
             <section className={styles.card}>
               <div className={styles.cardHead}>
                 <h3 className={styles.cardTitle}>
                   <BlockGlyph name="repeat" />
-                  Fees awaiting conversion
+                  Contributions awaiting conversion
                 </h3>
               </div>
               {convertible.length > 0 ? (
@@ -384,7 +385,9 @@ export function PotLive({ initial }: { initial: PotPayload | null }): React.JSX.
                         title={!account ? "Connect a wallet to submit the conversion" : !isRobinhoodChain ? "Switch to Robinhood Chain to submit the conversion" : undefined}
                       >
                         <BlockGlyph name="boltFill" className={styles.btnGlyph} />
-                        {busy === `convert:${pot.address}:${entry.asset}` ? "Zapping fees…" : "Zap fees into 0xZAPS"}
+                        {busy === `convert:${pot.address}:${entry.asset}`
+                          ? "Zapping contribution…"
+                          : "Zap contribution into 0xZAPS"}
                       </button>
                     </li>
                   ))}
@@ -411,8 +414,8 @@ export function PotLive({ initial }: { initial: PotPayload | null }): React.JSX.
                   </ul>
                   <p className={styles.strandedWhy}>
                     The pot&apos;s buy adapter is immutable and only accepts aeWETH, <code>awardRound</code> pays only
-                    0xZAPS, and there is no owner drain — so a fee that arrives in one of these assets stays where it
-                    is permanently. Nothing here will convert it later.
+                    0xZAPS, and there is no owner drain — so a contribution that arrives in one of these assets stays
+                    where it is permanently. Nothing here will convert it later.
                   </p>
                 </div>
               )}
@@ -508,17 +511,18 @@ export function PotLive({ initial }: { initial: PotPayload | null }): React.JSX.
           <article className={styles.ruleCard}>
             <h3>Where the prize comes from</h3>
             <p>
-              Every automated Zap pays 1% of its output: 80% to the executor that submitted it, 20% here. A fee that
-              arrives as 0xZAPS becomes prize immediately; a fee in any other asset waits for a conversion.
+              Every automated Zap pays 1% of its output: 80% to the executor that submitted it, 20% here. A v3.2
+              recurring-stack run also sends its separately signed stack slice here. Any contribution that arrives
+              as 0xZAPS becomes prize immediately; other supported assets wait for a conversion.
             </p>
           </article>
           <article className={styles.ruleCard}>
             <h3>What a ticket is</h3>
             <p>
-              The raw fee amount your Zap contributed, credited to the round. Counts are summed across assets of
-              different decimals, so a share is contribution <em>weight</em> — not odds, and not a probability.
-              Tickets are keyed per round: once a round is awarded they confer nothing, and you have to contribute
-              again to be eligible in the next one.
+              The raw contribution amount credited to the round — either the protocol-pot fee slice or a signed v3.2
+              stack slice. Counts are summed across assets of different decimals, so a share is contribution{" "}
+              <em>weight</em> — not odds, and not a probability. Tickets are keyed per round: once a round is awarded
+              they confer nothing, and you have to contribute again to be eligible in the next one.
             </p>
           </article>
           <article className={styles.ruleCard}>

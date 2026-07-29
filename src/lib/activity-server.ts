@@ -8,18 +8,19 @@ import {
   decodeAutomatedRuns,
   emergencyExitEvent,
   executedEvent,
+  policyHaltedEvent,
   zapCreatedEvent,
   type AutomatedRunLogInput,
   type CreatedLogInput,
   type ExecutedLogInput,
   type ExitLogInput,
+  type PolicyHaltedLogInput,
   type ProtocolActivity,
 } from "@/lib/activity";
 import {
-  OPENZAP_CONTRACTS,
-  OPENZAP_V3_CONTRACTS,
-  OPENZAP_V3_1_CONTRACTS,
   ROBINHOOD_RPC_URL,
+  configuredCapsuleFactories,
+  configuredCapsuleLineageForFactory,
   robinhoodChain,
 } from "@/lib/robinhood";
 
@@ -29,19 +30,6 @@ export interface ProtocolActivityPayload extends ProtocolActivity {
 
 const ADDRESS_CHUNK = 200;
 const TIMESTAMP_BUDGET = 60;
-
-/**
- * Every factory whose clones are protocol capsules. Deduped and lowercase-keyed
- * because v3 and v3.1 can share an address in a preview config; a duplicate here
- * would double-count creations.
- */
-const CAPSULE_FACTORIES: Address[] = [
-  ...new Map(
-    [OPENZAP_CONTRACTS.factory, OPENZAP_V3_CONTRACTS.factory, OPENZAP_V3_1_CONTRACTS.factory].map(
-      (address) => [address.toLowerCase(), address] as const,
-    ),
-  ).values(),
-];
 
 const client = createPublicClient({
   chain: robinhoodChain,
@@ -57,12 +45,13 @@ const client = createPublicClient({
  * Throws on RPC failure — callers decide how to fail closed.
  */
 export async function fetchProtocolActivity(): Promise<ProtocolActivityPayload> {
-  const head = await client.getBlockNumber();
-  // Every factory that mints capsules, not just v1.1 — otherwise an automated
-  // (v3 / v3.1) zap never appears in the explorer at all. ZapCreated is
-  // byte-identical across the three, so one event ABI decodes all of them.
+  const capsuleFactories = configuredCapsuleFactories();
+  const head = await client.getBlockNumber({ cacheTime: 0 });
+  // Every configured factory that mints capsules, not just v1.1 — otherwise an
+  // automated zap never appears in the explorer at all. ZapCreated is
+  // byte-identical across the lineages, so one event ABI decodes all of them.
   const createdLogs = await client.getLogs({
-    address: CAPSULE_FACTORIES,
+    address: [...capsuleFactories],
     event: zapCreatedEvent,
     fromBlock: ACTIVITY_FROM_BLOCK,
     toBlock: head,
@@ -70,10 +59,12 @@ export async function fetchProtocolActivity(): Promise<ProtocolActivityPayload> 
   });
 
   const created = createdLogs.flatMap((log): CreatedLogInput[] =>
-    log.args?.zap && log.args?.owner
+    log.args?.zap && log.args?.owner && log.args?.policyHash
       ? [{
           zap: log.args.zap,
           owner: log.args.owner,
+          factory: log.address,
+          policyHash: log.args.policyHash,
           txHash: log.transactionHash,
           blockNumber: log.blockNumber,
           logIndex: log.logIndex,
@@ -82,9 +73,17 @@ export async function fetchProtocolActivity(): Promise<ProtocolActivityPayload> 
   );
 
   const zapAddresses = [...new Set(created.map((log) => log.zap))];
+  const haltCapableAddresses = created.flatMap((log) => {
+    const lineage = configuredCapsuleLineageForFactory(log.factory)?.id;
+    return lineage === "v1.2" || lineage === "v3.2" ? [log.zap] : [];
+  });
   const chunks: Address[][] = [];
   for (let i = 0; i < zapAddresses.length; i += ADDRESS_CHUNK) {
     chunks.push(zapAddresses.slice(i, i + ADDRESS_CHUNK));
+  }
+  const haltChunks: Address[][] = [];
+  for (let i = 0; i < haltCapableAddresses.length; i += ADDRESS_CHUNK) {
+    haltChunks.push(haltCapableAddresses.slice(i, i + ADDRESS_CHUNK));
   }
 
   /** Same address-scoped window as the other queries, for one automation event. */
@@ -95,7 +94,7 @@ export async function fetchProtocolActivity(): Promise<ProtocolActivityPayload> 
       ),
     );
 
-  const [executedChunks, exitChunks] = await Promise.all([
+  const [executedChunks, exitChunks, haltedChunks] = await Promise.all([
     Promise.all(
       chunks.map((addresses) =>
         client.getLogs({ address: addresses, event: executedEvent, fromBlock: ACTIVITY_FROM_BLOCK, toBlock: head, strict: true }),
@@ -104,6 +103,11 @@ export async function fetchProtocolActivity(): Promise<ProtocolActivityPayload> 
     Promise.all(
       chunks.map((addresses) =>
         client.getLogs({ address: addresses, event: emergencyExitEvent, fromBlock: ACTIVITY_FROM_BLOCK, toBlock: head, strict: true }),
+      ),
+    ),
+    Promise.all(
+      haltChunks.map((addresses) =>
+        client.getLogs({ address: addresses, event: policyHaltedEvent, fromBlock: ACTIVITY_FROM_BLOCK, toBlock: head, strict: true }),
       ),
     ),
   ]);
@@ -134,6 +138,18 @@ export async function fetchProtocolActivity(): Promise<ProtocolActivityPayload> 
         }]
       : [],
   );
+  const halted = haltedChunks.flat().flatMap((log): PolicyHaltedLogInput[] =>
+    log.args?.owner && log.args?.policyHash
+      ? [{
+          emitter: log.address,
+          owner: log.args.owner,
+          policyHash: log.args.policyHash,
+          txHash: log.transactionHash,
+          blockNumber: log.blockNumber,
+          logIndex: log.logIndex,
+        }]
+      : [],
+  );
 
   // Automated runs: recurring, relative-floor recurring, and one-shot triggers.
   // Each is scoped to the same canonical zap set as Executed/EmergencyExit, and
@@ -149,7 +165,7 @@ export async function fetchProtocolActivity(): Promise<ProtocolActivityPayload> 
   // Spend the timestamp budget on the newest blocks — the rows the feed will
   // actually display — and treat every timestamp as optional: one failed
   // getBlock leaves that row's timestamp null instead of failing the payload.
-  const newestBlocks = [...new Set([...created, ...executed, ...exits, ...automated].map((log) => log.blockNumber))]
+  const newestBlocks = [...new Set([...created, ...executed, ...exits, ...automated, ...halted].map((log) => log.blockNumber))]
     .sort((a, b) => (a < b ? 1 : -1))
     .slice(0, Math.max(TIMESTAMP_BUDGET, ACTIVITY_FEED_LIMIT));
   const timestamps = new Map<bigint, number>();
@@ -160,6 +176,14 @@ export async function fetchProtocolActivity(): Promise<ProtocolActivityPayload> 
     }),
   );
 
-  const payload = aggregateActivity(created, executed, exits, automated, timestamps, new Date().toISOString());
+  const payload = aggregateActivity(
+    created,
+    executed,
+    exits,
+    automated,
+    timestamps,
+    new Date().toISOString(),
+    halted,
+  );
   return { ...payload, headBlock: head.toString() };
 }

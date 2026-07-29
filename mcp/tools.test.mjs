@@ -85,6 +85,17 @@ function tool(name) {
   return found;
 }
 
+test("intent delivery schemas advertise every validator-supported authorization kind", () => {
+  const expected = ["recurring", "recurring-relative", "recurring-stack", "trigger"];
+  for (const name of ["publish_intent", "deliver_intent_local"]) {
+    assert.deepEqual(
+      tool(name).inputSchema.properties.signedIntent.properties.kind.enum,
+      expected,
+      name,
+    );
+  }
+});
+
 test("findIntent searches bounded relay pages scoped to the requested zap", async (t) => {
   const intentsDir = mkdtempSync(join(tmpdir(), "openzaps-mcp-"));
   const originalFetch = globalThis.fetch;
@@ -509,6 +520,7 @@ test("profile and zap reads validate bounded top-level response shapes", async (
           oneShotExecutions: 0,
           automatedRuns: 0,
           recoveries: 0,
+          policiesHalted: 0,
           authorizationsRevoked: 0,
           executedVolume: {},
         },
@@ -516,6 +528,13 @@ test("profile and zap reads validate bounded top-level response shapes", async (
       });
     }
     return Response.json({
+      lineage: "v1.1",
+      policyHalt: {
+        status: "unsupported",
+        policyHalted: null,
+        haltedAt: null,
+        haltedTx: null,
+      },
       lifecycle: "created",
       executions: [],
       recoveries: [],
@@ -533,4 +552,75 @@ test("profile and zap reads validate bounded top-level response shapes", async (
     () => tool("read_zap").handler({ address: ZAP }, context(intentsDir)),
     /zap\.provenance must be an object/,
   );
+});
+
+test("profile and zap projections admit v1.2 and expose canonical halt provenance", async (t) => {
+  const intentsDir = mkdtempSync(join(tmpdir(), "openzaps-mcp-"));
+  const originalFetch = globalThis.fetch;
+  t.after(() => {
+    globalThis.fetch = originalFetch;
+    rmSync(intentsDir, { recursive: true, force: true });
+  });
+  const haltedTx = `0x${"77".repeat(32)}`;
+  globalThis.fetch = async (input) => {
+    const url = new URL(String(input));
+    if (url.pathname.startsWith("/api/profile/")) {
+      return Response.json({
+        owner: OWNER,
+        sourceStatus: "live",
+        stats: {
+          zapsCreated: 1,
+          oneShotExecutions: 0,
+          automatedRuns: 0,
+          recoveries: 0,
+          policiesHalted: 1,
+          authorizationsRevoked: 0,
+          executedVolume: {},
+        },
+        zaps: [{
+          address: ZAP,
+          lineage: "v1.2",
+          policyHaltStatus: "halted",
+          policyHalted: true,
+          haltedAt: 1_785_200_000,
+          haltedTx,
+          executionCount: 0,
+          automatedRunCount: 0,
+          lastActivityAt: 1_785_200_000,
+        }],
+      });
+    }
+    return Response.json({
+      lineage: "v1.2",
+      provenance: { address: ZAP },
+      policy: {},
+      policyHalt: {
+        status: "halted",
+        policyHalted: true,
+        haltedAt: 1_785_200_000,
+        haltedTx,
+      },
+      stats: {},
+      balances: {},
+      executions: [],
+      recoveries: [],
+      lifecycle: "created",
+      headBlock: "1",
+      readAt: "2026-07-28T00:00:00.000Z",
+      factory: {},
+    });
+  };
+
+  const profile = await tool("list_zaps").handler({ owner: OWNER }, context(intentsDir));
+  assert.equal(profile.zaps[0].lineage, "v1.2");
+  assert.equal(profile.zaps[0].policyHaltStatus, "halted");
+  assert.equal(profile.zaps[0].haltedTx, haltedTx);
+
+  const zap = await tool("read_zap").handler({ address: ZAP }, context(intentsDir));
+  assert.deepEqual(zap.policyHalt, {
+    status: "halted",
+    policyHalted: true,
+    haltedAt: 1_785_200_000,
+    haltedTx,
+  });
 });

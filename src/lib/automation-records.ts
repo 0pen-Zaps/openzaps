@@ -1,12 +1,26 @@
 import { getAddress, type Address, type Hex } from "viem";
 
-import type { AutomationMode } from "@/lib/automate";
+import {
+  automationModeForIntentKind,
+  type AutomationIntentKind,
+  type AutomationMode,
+} from "@/lib/automate";
 import {
   parseRelaySubmission,
   relayIntentNonce,
   type RelayIntentKind,
   type RelaySubmission,
 } from "@/lib/relay";
+
+/**
+ * The exact capsule authorization lineage the app manages.
+ *
+ * The relay still accepts the historical `"recurring"` wire kind, but the
+ * current app creates relative-floor recurring series. Normalize that legacy
+ * spelling at the persistence boundary so an unsigned v3.2 capsule can never
+ * be mistaken for v3.1 merely because both use `mode: "recurring"`.
+ */
+export type { AutomationIntentKind } from "@/lib/automate";
 
 /**
  * Browser-local automation metadata. The signed intent is the portable source
@@ -17,6 +31,9 @@ export interface AutomationRecord {
   address: Address;
   routeId: string;
   mode: AutomationMode;
+  intentKind: AutomationIntentKind;
+  /** Pre-sign stacking choice. Present only for recurring-stack rows; 1..9,999 bps. */
+  stackBps?: number;
   amountPerRun: string;
   createdAt: string;
   policyHash: Hex;
@@ -52,6 +69,13 @@ export interface ParsedAutomationIntent {
 export const AUTOMATION_STORAGE_KEY = "openzap:v3:automations";
 export const MAX_SAVED_AUTOMATIONS = 50;
 
+/** Normalize the relay's historical recurring spelling to the app's exact lineage model. */
+export function automationIntentKind(kind: RelayIntentKind): AutomationIntentKind {
+  if (kind === "trigger") return "trigger";
+  if (kind === "recurring-stack") return "recurring-stack";
+  return "recurring-relative";
+}
+
 /** Parse and normalize the signed executor artifact without trusting its JSON. */
 export function parseAutomationIntent(raw: string): ParsedAutomationIntent | null {
   try {
@@ -61,6 +85,7 @@ export function parseAutomationIntent(raw: string): ParsedAutomationIntent | nul
     const recurring = kind === "recurring" || kind === "recurring-relative" || kind === "recurring-stack";
     const authorizationId = BigInt(relayIntentNonce(submission));
     const maxRuns = recurring ? boundedNumber(intent.maxRuns, 1, 0xffff_ffff) : null;
+    const stackBps = kind === "recurring-stack" ? boundedNumber(intent.stackBps, 1, 9_999) : null;
     const above = kind === "trigger" ? intent.above === true : null;
     // The contracts deliberately use asymmetric bounds: an above trigger may
     // target up to +10,000%, while a below trigger must stay below -100% so
@@ -69,7 +94,11 @@ export function parseAutomationIntent(raw: string): ParsedAutomationIntent | nul
       kind === "trigger"
         ? boundedNumber(intent.thresholdBps, 1, above ? 1_000_000 : 9_999)
         : null;
-    if ((recurring && maxRuns === null) || (kind === "trigger" && thresholdBps === null)) return null;
+    if (
+      (recurring && maxRuns === null)
+      || (kind === "recurring-stack" && stackBps === null)
+      || (kind === "trigger" && thresholdBps === null)
+    ) return null;
 
     return {
       submission,
@@ -171,12 +200,31 @@ function parseRecord(value: unknown): AutomationRecord[] {
     const address = getAddress(row.address);
     const intentFile = typeof row.intentFile === "string" ? row.intentFile : undefined;
     const parsedIntent = intentFile ? parseAutomationIntent(intentFile) : null;
+    const declaredIntentKind = parseStoredIntentKind(row);
+    if (declaredIntentKind === null) return [];
+    const intentKind =
+      declaredIntentKind
+      ?? (
+        parsedIntent
+          ? automationIntentKind(parsedIntent.kind)
+          : row.mode === "trigger" ? "trigger" : "recurring-relative"
+      );
+    const stackBps =
+      intentKind === "recurring-stack"
+        ? parsedIntent
+          ? boundedOptionalNumber(parsedIntent.submission.intent.stackBps, 1, 9_999)
+          : boundedOptionalNumber(row.stackBps, 1, 9_999)
+        : undefined;
     if (
-      intentFile && (
-        !parsedIntent ||
-        parsedIntent.zap !== address ||
-        parsedIntent.mode !== row.mode ||
-        String(parsedIntent.submission.intent.policyHash).toLowerCase() !== row.policyHash.toLowerCase()
+      automationModeForIntentKind(intentKind) !== row.mode
+      || (
+        intentFile && (
+          !parsedIntent
+          || parsedIntent.zap !== address
+          || parsedIntent.mode !== row.mode
+          || automationIntentKind(parsedIntent.kind) !== intentKind
+          || String(parsedIntent.submission.intent.policyHash).toLowerCase() !== row.policyHash.toLowerCase()
+        )
       )
     ) return [];
 
@@ -184,6 +232,8 @@ function parseRecord(value: unknown): AutomationRecord[] {
       address,
       routeId: row.routeId,
       mode: row.mode,
+      intentKind,
+      stackBps,
       amountPerRun: row.amountPerRun,
       createdAt: typeof row.createdAt === "string" ? row.createdAt : new Date(0).toISOString(),
       policyHash: row.policyHash as Hex,
@@ -199,6 +249,21 @@ function parseRecord(value: unknown): AutomationRecord[] {
   } catch {
     return [];
   }
+}
+
+/**
+ * `undefined` means a legacy row and is intentionally inferable. `null` means
+ * the row declared an unknown lineage and must be rejected rather than guessed.
+ */
+function parseStoredIntentKind(row: Record<string, unknown>): AutomationIntentKind | undefined | null {
+  if (!Object.prototype.hasOwnProperty.call(row, "intentKind")) return undefined;
+  return (
+    row.intentKind === "recurring-relative"
+    || row.intentKind === "recurring-stack"
+    || row.intentKind === "trigger"
+  )
+    ? row.intentKind
+    : null;
 }
 
 function boundedNumber(value: unknown, min: number, max: number): number | null {

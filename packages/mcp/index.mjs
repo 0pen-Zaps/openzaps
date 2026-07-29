@@ -33,6 +33,8 @@ const MODEL_ARRAY_MAX_ROWS = 200;
 const MODEL_VALUE_MAX_DEPTH = 12;
 const MODEL_VALUE_MAX_NODES = 5_000;
 const MODEL_STRING_MAX_CHARS = 32_768;
+const POLICY_HALT_STATUSES = new Set(["unsupported", "active", "halted", "unavailable"]);
+const TX_HASH_PATTERN = /^0x[0-9a-fA-F]{64}$/;
 
 const TOOLS = [
   {
@@ -489,6 +491,41 @@ function nonnegativeInteger(value, label) {
   return value;
 }
 
+function projectPolicyHalt(raw, lineage, label) {
+  const halt = objectValue(raw, label);
+  if (!POLICY_HALT_STATUSES.has(halt.status)) throw new Error(`${label}.status is malformed.`);
+  if (halt.policyHalted !== null && typeof halt.policyHalted !== "boolean") {
+    throw new Error(`${label}.policyHalted is malformed.`);
+  }
+  if (
+    (halt.status === "unsupported" && (!["v1.1", "v3", "v3.1"].includes(lineage) || halt.policyHalted !== null))
+    || (halt.status === "active" && (!["v1.2", "v3.2"].includes(lineage) || halt.policyHalted !== false))
+    || (halt.status === "halted" && (!["v1.2", "v3.2"].includes(lineage) || halt.policyHalted !== true))
+    || (halt.status === "unavailable" && (!["v1.2", "v3.2"].includes(lineage) || halt.policyHalted !== null))
+  ) {
+    throw new Error(`${label} contradicts the canonical lineage.`);
+  }
+  const haltedAt = halt.haltedAt === null
+    ? null
+    : nonnegativeInteger(halt.haltedAt, `${label}.haltedAt`);
+  const haltedTx = halt.haltedTx === null
+    ? null
+    : stringValue(halt.haltedTx, `${label}.haltedTx`, 66, TX_HASH_PATTERN);
+  if (halt.status === "halted" && (haltedAt === null || haltedTx === null)) {
+    throw new Error(`${label} is missing canonical halt-event provenance.`);
+  }
+  if (
+    (halt.status === "unsupported" || halt.status === "active")
+    && (haltedAt !== null || haltedTx !== null)
+  ) {
+    throw new Error(`${label} carries halt-event provenance without a halted state.`);
+  }
+  if (halt.status === "unavailable" && (haltedAt === null) !== (haltedTx === null)) {
+    throw new Error(`${label} carries incomplete halt-event provenance.`);
+  }
+  return { status: halt.status, policyHalted: halt.policyHalted, haltedAt, haltedTx };
+}
+
 function projectIntentSummary(record, index) {
   const row = objectValue(record, `Intent row ${index}`);
   const intent = objectValue(row.intent, `Intent row ${index}.intent`);
@@ -541,6 +578,7 @@ function projectProfile(profileRaw, requestedOwner) {
       oneShotExecutions: nonnegativeInteger(stats.oneShotExecutions, "Profile oneShotExecutions"),
       automatedRuns: nonnegativeInteger(stats.automatedRuns, "Profile automatedRuns"),
       recoveries: nonnegativeInteger(stats.recoveries, "Profile recoveries"),
+      policiesHalted: nonnegativeInteger(stats.policiesHalted, "Profile policiesHalted"),
       authorizationsRevoked: nonnegativeInteger(
         stats.authorizationsRevoked,
         "Profile authorizationsRevoked",
@@ -554,12 +592,26 @@ function projectProfile(profileRaw, requestedOwner) {
     },
     zaps: profile.zaps.map((zapRaw, index) => {
       const zap = objectValue(zapRaw, `Profile zap ${index}`);
-      if (!["v1.1", "v3", "v3.1", "v3.2"].includes(zap.lineage)) {
+      if (!["v1.1", "v1.2", "v3", "v3.1", "v3.2"].includes(zap.lineage)) {
         throw new Error(`Profile zap ${index}.lineage is malformed.`);
       }
+      const policyHalt = projectPolicyHalt(
+        {
+          status: zap.policyHaltStatus,
+          policyHalted: zap.policyHalted,
+          haltedAt: zap.haltedAt,
+          haltedTx: zap.haltedTx,
+        },
+        zap.lineage,
+        `Profile zap ${index}.policyHalt`,
+      );
       return {
         address: addressArg(zap.address, `Profile zap ${index}.address`),
         lineage: zap.lineage,
+        policyHaltStatus: policyHalt.status,
+        policyHalted: policyHalt.policyHalted,
+        haltedAt: policyHalt.haltedAt,
+        haltedTx: policyHalt.haltedTx,
         executionCount: nonnegativeInteger(zap.executionCount, `Profile zap ${index}.executionCount`),
         automatedRunCount: nonnegativeInteger(
           zap.automatedRunCount,
@@ -706,6 +758,9 @@ function boundedModelValue(value, label, state = { nodes: 0 }, depth = 0) {
 
 function projectZapDetail(detailRaw) {
   const detail = objectValue(detailRaw, "Zap response");
+  if (!["v1.1", "v1.2", "v3", "v3.1", "v3.2"].includes(detail.lineage)) {
+    throw new Error("Zap lineage is malformed.");
+  }
   if (!["created", "funded", "executed", "recovered"].includes(detail.lifecycle)) {
     throw new Error("Zap lifecycle is malformed.");
   }
@@ -716,8 +771,10 @@ function projectZapDetail(detailRaw) {
     throw new Error(`Zap response must contain at most ${MODEL_ARRAY_MAX_ROWS} recoveries.`);
   }
   return {
+    lineage: detail.lineage,
     provenance: boundedModelValue(objectValue(detail.provenance, "Zap provenance"), "Zap provenance"),
     policy: boundedModelValue(objectValue(detail.policy, "Zap policy"), "Zap policy"),
+    policyHalt: projectPolicyHalt(detail.policyHalt, detail.lineage, "Zap policyHalt"),
     stats: boundedModelValue(objectValue(detail.stats, "Zap stats"), "Zap stats"),
     balances: boundedModelValue(objectValue(detail.balances, "Zap balances"), "Zap balances"),
     executions: boundedModelValue(detail.executions, "Zap executions"),

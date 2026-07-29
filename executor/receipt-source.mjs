@@ -13,7 +13,8 @@ import {
   writeFileSync,
 } from "node:fs";
 import { join } from "node:path";
-import { keccak256 } from "viem";
+import { decodeFunctionData, keccak256 } from "viem";
+import { lotteryPotAbi } from "./abi.mjs";
 import {
   checkFinalizedBlockQuorum,
   checkFinalizedReceiptQuorum,
@@ -29,6 +30,9 @@ const HOSTED_RETRY_BASE_MS = 15_000;
 const HOSTED_RETRY_MAX_MS = 60 * 60_000;
 const TX_HASH = /^0x[0-9a-fA-F]{64}$/;
 const RAW_TRANSACTION = /^0x(?:[0-9a-fA-F]{2})+$/;
+const ADDRESS = /^0x[0-9a-fA-F]{40}$/;
+const DECIMAL_INTEGER = /^(?:0|[1-9][0-9]*)$/;
+const POT_ID = /^[a-z0-9][a-z0-9._-]{0,31}$/i;
 
 function intentNonce(item) {
   return String(item.kind === "trigger" ? item.intent.nonce : item.intent.seriesId);
@@ -41,6 +45,85 @@ function receiptEntryForIntent(item) {
     kind: item.kind,
     nonce: intentNonce(item),
   };
+}
+
+function potConversionMetadata(entry) {
+  const fields = [
+    entry?.potId,
+    entry?.feeAsset,
+    entry?.priceSource,
+    entry?.amountInWei,
+    entry?.minZapsOutWei,
+  ];
+  const supplied = fields.some((value) => value !== undefined && value !== null);
+  if (entry?.kind !== "pot-conversion") {
+    if (supplied) throw new Error("pot conversion metadata is only valid for pot-conversion receipts");
+    return {};
+  }
+  // Old state files contain anonymous pot-conversion entries. Continue settling those under the
+  // legacy aggregate counter; only newly journaled conversions require the richer identity.
+  if (!supplied) return {};
+  if (
+    typeof entry.potId !== "string"
+    || !POT_ID.test(entry.potId)
+    || typeof entry.zap !== "string"
+    || !ADDRESS.test(entry.zap)
+    || typeof entry.feeAsset !== "string"
+    || !ADDRESS.test(entry.feeAsset)
+    || typeof entry.priceSource !== "string"
+    || !ADDRESS.test(entry.priceSource)
+  ) {
+    throw new Error("pot conversion address/lineage identity is malformed");
+  }
+  const amountInWei =
+    typeof entry.amountInWei === "bigint" ? entry.amountInWei.toString() : entry.amountInWei;
+  const minZapsOutWei =
+    typeof entry.minZapsOutWei === "bigint" ? entry.minZapsOutWei.toString() : entry.minZapsOutWei;
+  if (
+    typeof amountInWei !== "string"
+    || !DECIMAL_INTEGER.test(amountInWei)
+    || BigInt(amountInWei) <= 0n
+    || typeof minZapsOutWei !== "string"
+    || !DECIMAL_INTEGER.test(minZapsOutWei)
+    || BigInt(minZapsOutWei) <= 0n
+  ) {
+    throw new Error("pot conversion amounts must be positive decimal strings");
+  }
+  return {
+    potId: entry.potId,
+    feeAsset: entry.feeAsset,
+    priceSource: entry.priceSource,
+    amountInWei,
+    minZapsOutWei,
+  };
+}
+
+function verifyPotConversionTransaction(entry, transaction) {
+  if (!entry.potId) return;
+  if (
+    typeof transaction?.to !== "string"
+    || transaction.to.toLowerCase() !== entry.zap.toLowerCase()
+  ) {
+    throw new Error("settled pot conversion transaction target does not match its journaled pot");
+  }
+  let decoded;
+  try {
+    decoded = decodeFunctionData({ abi: lotteryPotAbi, data: transaction.input });
+  } catch (error) {
+    throw new Error("settled pot conversion calldata is not a decodable buyZaps call", {
+      cause: error,
+    });
+  }
+  const [assetIn, amountIn, minZapsOut] = decoded.args ?? [];
+  if (
+    decoded.functionName !== "buyZaps"
+    || typeof assetIn !== "string"
+    || assetIn.toLowerCase() !== entry.feeAsset.toLowerCase()
+    || BigInt(amountIn ?? -1) !== BigInt(entry.amountInWei)
+    || BigInt(minZapsOut ?? -1) !== BigInt(entry.minZapsOutWei)
+  ) {
+    throw new Error("settled pot conversion calldata conflicts with its journaled asset or amounts");
+  }
 }
 
 function recordMap(state, key) {
@@ -153,10 +236,71 @@ export function receiptOutboxHasCapacity(state) {
 /** Account only canonically settled successes; observation-time receipts never reach this helper. */
 export function accountSettledReceipts(state, settled) {
   state.earnings ??= { runs: 0, conversions: 0 };
+  state.earnings.runs ??= 0;
+  state.earnings.conversions ??= 0;
   for (const receipt of settled) {
     if (receipt.outcome !== "finalized") continue;
-    if (receipt.kind === "pot-conversion") state.earnings.conversions += 1;
-    else state.earnings.runs += 1;
+    if (receipt.kind !== "pot-conversion") {
+      state.earnings.runs += 1;
+      continue;
+    }
+    state.earnings.conversions += 1;
+    if (
+      typeof receipt.potId !== "string"
+      || typeof receipt.potAddress !== "string"
+      || !ADDRESS.test(receipt.potAddress)
+      || typeof receipt.feeAsset !== "string"
+      || !ADDRESS.test(receipt.feeAsset)
+      || typeof receipt.amountInWei !== "string"
+      || !DECIMAL_INTEGER.test(receipt.amountInWei)
+      || typeof receipt.minZapsOutWei !== "string"
+      || !DECIMAL_INTEGER.test(receipt.minZapsOutWei)
+    ) {
+      // Backwards compatibility: anonymous pre-upgrade receipts still advance the lifetime total,
+      // but are never guessed into a pot or asset bucket.
+      continue;
+    }
+
+    const pots = recordMap(state.earnings, "pots");
+    const potKey = receipt.potAddress.toLowerCase();
+    const assetKey = receipt.feeAsset.toLowerCase();
+    const existingPot = pots[potKey];
+    const pot =
+      existingPot && typeof existingPot === "object" && !Array.isArray(existingPot)
+        ? existingPot
+        : {
+            id: receipt.potId,
+            address: receipt.potAddress,
+            conversions: 0,
+            assets: {},
+          };
+    pot.conversions = Number(pot.conversions ?? 0) + 1;
+    if (!pot.assets || typeof pot.assets !== "object" || Array.isArray(pot.assets)) pot.assets = {};
+    const existingAsset = pot.assets[assetKey];
+    const asset =
+      existingAsset && typeof existingAsset === "object" && !Array.isArray(existingAsset)
+        ? existingAsset
+        : {
+            address: receipt.feeAsset,
+            conversions: 0,
+            amountInWei: "0",
+            minimumZapsOutWei: "0",
+          };
+    asset.conversions = Number(asset.conversions ?? 0) + 1;
+    const priorAmount = String(asset.amountInWei ?? "0");
+    const priorMinimum = String(asset.minimumZapsOutWei ?? "0");
+    if (DECIMAL_INTEGER.test(priorAmount) && DECIMAL_INTEGER.test(priorMinimum)) {
+      asset.amountInWei = (BigInt(priorAmount) + BigInt(receipt.amountInWei)).toString();
+      asset.minimumZapsOutWei = (
+        BigInt(priorMinimum) + BigInt(receipt.minZapsOutWei)
+      ).toString();
+    } else {
+      // Preserve malformed historical evidence instead of resetting it to zero and claiming a
+      // precise total. The aggregate + per-asset counts still remain useful to the operator.
+      asset.accountingError = "prior amount total is not a decimal integer";
+    }
+    pot.assets[assetKey] = asset;
+    pots[potKey] = pot;
   }
   return state.earnings;
 }
@@ -215,10 +359,24 @@ export function queueTransactionReceipt(state, entry, txHash, options = {}) {
   ) {
     throw new Error("receipt outbox transaction identity is malformed");
   }
+  const conversionMetadata = potConversionMetadata(entry);
   const serializedTransaction = validatedRawTransaction(options.serializedTransaction, txHash);
   const outbox = recordMap(state, "receiptOutbox");
   if (outbox[txHash]) {
     const existing = outbox[txHash];
+    for (const [field, expected] of Object.entries({
+      zap: entry.zap,
+      kind: entry.kind,
+      nonce: entry.nonce,
+      ...conversionMetadata,
+    })) {
+      const actual = existing[field];
+      const normalizedActual = typeof actual === "string" ? actual.toLowerCase() : actual;
+      const normalizedExpected = typeof expected === "string" ? expected.toLowerCase() : expected;
+      if (normalizedActual !== normalizedExpected) {
+        throw new Error(`receipt outbox already contains a conflicting ${field} for this hash`);
+      }
+    }
     if (
       serializedTransaction
       && existing.serializedTransaction
@@ -248,6 +406,7 @@ export function queueTransactionReceipt(state, entry, txHash, options = {}) {
     serializedTransaction,
     lastPrivateDispatchAt: null,
     privateSubmission: null,
+    ...conversionMetadata,
   };
   return outbox[txHash];
 }
@@ -369,6 +528,7 @@ export async function recordExecutionSubmissionEvent(controller, state, event) {
     throw new Error(`unknown execution submission phase ${String(phase)}`);
   }
   if (state.receiptOutbox?.[hash]?.serializedTransaction) {
+    queueTransactionReceipt(state, receiptEntryForIntent(item), hash);
     return controller.markSubmitted(hash, privateSubmission);
   }
   return controller.record(item, hash);
@@ -384,6 +544,7 @@ export async function recordOperationSubmissionEvent(controller, state, entry, e
     throw new Error(`unknown operation submission phase ${String(phase)}`);
   }
   if (state.receiptOutbox?.[hash]?.serializedTransaction) {
+    queueTransactionReceipt(state, entry, hash);
     return controller.markSubmitted(hash, privateSubmission);
   }
   return controller.recordOperation(entry, hash);
@@ -399,22 +560,33 @@ export function persistReceiptDocument(receiptsDir, document) {
     Date.now(),
   );
   if (!created) {
+    const immutableFields = [
+      "receiptVersion",
+      "source",
+      "chainId",
+      "txHash",
+      "relayIntentId",
+      "zap",
+      "kind",
+      "nonce",
+      "outcome",
+      "blockNumber",
+      "blockHash",
+      ...(document.kind === "pot-conversion" && document.potId
+        ? [
+            "potId",
+            "potAddress",
+            "feeAsset",
+            "priceSource",
+            "amountInWei",
+            "minZapsOutWei",
+          ]
+        : []),
+    ];
     const existing = existingDocument(
       target,
       document,
-      [
-        "receiptVersion",
-        "source",
-        "chainId",
-        "txHash",
-        "relayIntentId",
-        "zap",
-        "kind",
-        "nonce",
-        "outcome",
-        "blockNumber",
-        "blockHash",
-      ],
+      immutableFields,
       "receipt document",
     );
     return { path: target, created: false, document: existing };
@@ -488,6 +660,16 @@ function persistDeadLetterDocument(receiptsDir, chainId, entry, reason, nowMs) {
     zap: entry.zap,
     kind: entry.kind,
     nonce: entry.nonce,
+    ...(entry.potId
+      ? {
+          potId: entry.potId,
+          potAddress: entry.zap,
+          feeAsset: entry.feeAsset,
+          priceSource: entry.priceSource,
+          amountInWei: entry.amountInWei,
+          minZapsOutWei: entry.minZapsOutWei,
+        }
+      : {}),
     evidencePath: entry.evidencePath ?? null,
     attempts: entry.attempts,
     lastStatus: entry.lastStatus ?? null,
@@ -504,10 +686,30 @@ function persistDeadLetterDocument(receiptsDir, chainId, entry, reason, nowMs) {
     nowMs,
   );
   if (!created) {
+    const immutableFields = [
+      "receiptVersion",
+      "source",
+      "chainId",
+      "txHash",
+      "relayIntentId",
+      "zap",
+      "kind",
+      "nonce",
+      ...(document.potId
+        ? [
+            "potId",
+            "potAddress",
+            "feeAsset",
+            "priceSource",
+            "amountInWei",
+            "minZapsOutWei",
+          ]
+        : []),
+    ];
     existingDocument(
       target,
       document,
-      ["receiptVersion", "source", "chainId", "txHash", "relayIntentId", "zap", "kind", "nonce"],
+      immutableFields,
       "dead-letter document",
     );
   }
@@ -528,6 +730,16 @@ function moveToReceiptDeadLetter(state, cfg, entry, reason, nowMs) {
     zap: entry.zap,
     kind: entry.kind,
     nonce: entry.nonce,
+    ...(entry.potId
+      ? {
+          potId: entry.potId,
+          potAddress: entry.zap,
+          feeAsset: entry.feeAsset,
+          priceSource: entry.priceSource,
+          amountInWei: entry.amountInWei,
+          minZapsOutWei: entry.minZapsOutWei,
+        }
+      : {}),
     attempts: entry.attempts,
     lastStatus: entry.lastStatus ?? null,
     lastError: entry.lastError ?? reason,
@@ -551,6 +763,15 @@ function enqueueHostedRetry(state, cfg, entry, failure, attempts, nowMs) {
     zap: entry.zap,
     kind: entry.kind,
     nonce: entry.nonce,
+    ...(entry.potId
+      ? {
+          potId: entry.potId,
+          feeAsset: entry.feeAsset,
+          priceSource: entry.priceSource,
+          amountInWei: entry.amountInWei,
+          minZapsOutWei: entry.minZapsOutWei,
+        }
+      : {}),
     evidencePath: entry.evidencePath ?? null,
     attempts,
     lastStatus: failure.status,
@@ -703,6 +924,7 @@ export async function settleReceiptOutbox({
         publicClient.getTransaction({ hash }),
         publicClient.getBlock({ blockNumber: receipt.blockNumber }),
       ]);
+      verifyPotConversionTransaction(entry, transaction);
       if (
         typeof block?.hash !== "string"
         || typeof receipt.blockHash !== "string"
@@ -723,6 +945,16 @@ export async function settleReceiptOutbox({
         executor: transaction.from,
         kind: entry.kind,
         nonce: entry.nonce,
+        ...(entry.potId
+          ? {
+              potId: entry.potId,
+              potAddress: entry.zap,
+              feeAsset: entry.feeAsset,
+              priceSource: entry.priceSource,
+              amountInWei: entry.amountInWei,
+              minZapsOutWei: entry.minZapsOutWei,
+            }
+          : {}),
         outcome: receipt.status === "success" ? "finalized" : "reverted",
         blockNumber: receipt.blockNumber.toString(),
         blockHash: receipt.blockHash,
