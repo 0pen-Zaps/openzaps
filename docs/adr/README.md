@@ -15,6 +15,7 @@ Later records preserve equally consequential production decisions without rewrit
 | [0004](0004-protective-vs-optimization-zaps.md) | Protective vs Optimization Zaps & Trigger Model | Accepted | Single-submitter liveness SPOF; L2 finality |
 | [0005](0005-universal-creation-fee-gateway.md) | Universal app-creation fee gateway | Accepted | Visible fee conversion without replacing live capsule lineages |
 | [0006](0006-agent-connection-and-mcp-surface.md) | An agent connection is an executor pin, not a credential | Accepted | How an AI agent is given a Zap without being given authority |
+| [0007](0007-irreversible-owner-policy-halt.md) | Irreversible owner-scoped policy halt | Accepted | Permanent per-policy revocation without shared or reversible admin authority |
 
 Testable invariants derived from these decisions live in
 [`../invariant-spec.md`](../invariant-spec.md).

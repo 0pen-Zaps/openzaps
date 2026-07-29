@@ -45,6 +45,40 @@ the legal posture rewards self-custody, no operator discretion, and **no pooled 
 4. **Authority split is fixed:** create = user wallet/Safe; execute = immutable zap; submit =
    Hermes/relayer, bounded by policy.
 
+### Permit2 one-shot owner pull
+
+The source-only base-lineage `1.2.0-candidate` implements Decision 2 through
+`executeWithPermit2`. Existing immutable v1.1 deployments are unchanged and remain pre-funded only.
+
+- The capsule calls Permit2 **SignatureTransfer with a typed witness**, never Permit2's standing
+  allowance-transfer path. The witness is `OpenZapIntentWitness(bytes32 intentDigest)`, binding the
+  Permit2 authorization to the exact EIP-712 intent the capsule verifies.
+- The OpenZap EIP-712 domain intentionally remains version `"1"`: the base intent schema is
+  unchanged, while `chainId`, `verifyingContract`, and `intent.zap` already bind a signature to one
+  clone. The `1.2.0-candidate` factory version identifies new runtime bytecode and deployment
+  lineage; changing the signing-domain version would add migration surface without adding replay
+  separation. The Permit2 witness adds a second protocol-specific domain around the same digest.
+- The frozen first step defines the only permitted funding leg. The submitted Permit2 token and
+  amount must equal that step's `tokenIn` and `amountIn` exactly.
+- Permit2 binds `msg.sender` as spender, so the capsule is the spender. The capsule constructs the
+  destination as itself and the requested amount as the exact frozen amount. Hermes/executors can
+  relay the two signatures but never gain pull rights or redirect funds.
+- The Permit2 deadline may not exceed the OpenZap intent deadline or one hour from submission. The
+  Permit2 unordered nonce remains owner-selected because it is global to that owner, unlike an
+  OpenZap nonce, which is local to one capsule.
+- The capsule consumes and verifies its owner intent before the Permit2 call, measures the exact
+  owner-to-capsule balance delta, and requires the pulled input to be fully consumed by the frozen
+  graph. Any permit, adapter, postcondition, or settlement failure atomically rolls back the
+  OpenZap nonce, Permit2 nonce, and token transfer.
+- The pull token cannot also be the declared output asset in this deliberately narrow candidate;
+  that would make the pre-output snapshot ambiguous. Such a policy remains available through the
+  existing pre-funded `execute` path.
+
+SignatureTransfer still requires an ERC-20 allowance from the owner to the canonical Permit2
+contract. This path makes the authorization one-shot and capsule-bound; it does **not** eliminate
+Permit2 concentration risk and does not justify an allowance to an executor, relayer, adapter, or
+OpenZap capsule.
+
 ## Options Considered
 
 ### Option A: Deposit-based immutable per-zap *(recommended)*
@@ -118,6 +152,6 @@ long-lived agents; EIP-7702 once wallet support matures.
 
 1. [ ] Make `POLICY_HASH` a constructor immutable; assert `intent.policyHash == POLICY_HASH` on the signed-intent path (invariant **I-AUTH-3**).
 2. [ ] Specify the deposit lifecycle: fund → per-zap isolated balance → unconditional owner withdraw (links to ADR-0002 and invariant **I-REC-1**).
-3. [ ] Define the Permit2 one-shot pull path for the signed-intent mode; bind exact amount, exact spender, short expiry.
+3. [x] Define the Permit2 one-shot pull path for the signed-intent mode; bind exact amount, exact spender, short expiry. Implemented in the source-only base-lineage `1.2.0-candidate`; live v1.1 remains unchanged.
 4. [ ] Assert no shared/pooled balance exists anywhere in the system (security + legal — invariant **I-ISO-4**).
 5. [ ] Get sign-off to defer smart-account-native and EIP-7702 from v1 core.

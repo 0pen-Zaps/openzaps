@@ -41,6 +41,7 @@ properties that actually carry risk live *across* the adapter call-loop, which S
 | **I-AUTH-4** | Every optionality-granting field is bound: `recipient`, `maxRelayerFee`, `maxGas`/`maxFeePerGas`, `validAfter`, `deadline`, route hash | ADR-0003; EIP-7702 binding principle | Halmos + EIP-712 struct test matrix |
 | **I-AUTH-5** | Domain separator binds `chainId` + verifying contract and is **recomputed when `chainId` changes** (no stale cached separator post-fork) | replay/fork open question | Chain-fork test |
 | **I-AUTH-6** | Intents with `block.timestamp > deadline` or `< validAfter` revert | replay row | Unit |
+| **I-AUTH-7** | Permit2 SignatureTransfer witnesses the exact OpenZap intent digest; the capsule is the implicit spender and fixed destination, owner is the source, token/amount equal the first frozen step, and the permit expires no later than both the intent and one hour from submission. The executor receives no pull authority | ADR-0001 signed-intent mode | Unit with canonical EIP-712 witness shape + fixed-block Permit2 fork |
 
 **Rule sketch (I-AUTH-1, Certora):**
 ```
@@ -81,6 +82,7 @@ moves no assets.
 | **I-FLOW-2** | On success, `recipientDelta ≥ minOut` measured **net of relayer fee** | ADR-0003 | Unit + fuzz |
 | **I-FLOW-3** | `relayerFeePaid ≤ maxRelayerFee` | report fee model | Unit + Certora |
 | **I-FLOW-4** | Unsolicited/dust assets are never counted in core accounting; the rescue path cannot divert intended outputs | report "unexpected receipts" row | Foundry fuzz (inject dust mid-flow) |
+| **I-FLOW-5** | A Permit2 owner pull produces the exact measured capsule balance delta and the frozen graph fully consumes it; partial, fee-on-transfer, redirected, same-input/output, or failed downstream paths revert atomically with both nonces and the transfer rolled back | ADR-0001 signed-intent mode | Unit + revert/retry + token-adversary fuzz |
 
 **Rule sketch (I-FLOW-1, Certora ghost):**
 ```
@@ -118,6 +120,7 @@ invariant onlyApprovedExits()
 | **I-REC-1** | An **owner-only, unconditional** emergency exit always succeeds and drains all tracked assets to the owner — **regardless of** adapter state, Hermes liveness, postcondition state, or a paused/compromised integrated protocol | eval Gap 2 | Foundry invariant from arbitrary reachable state + fork test vs paused adapter |
 | **I-REC-2** | The emergency exit does **not** route through any adapter | eval Gap 2 | Static + unit |
 | **I-REC-3** | The user can always revoke/invalidate a pending intent (nonce) without the normal fast path | report revocation | Unit |
+| **I-REC-4** | The owner can permanently halt **only its own clone's frozen policy**. Every execution entry point then reverts before consuming a nonce, advancing a series, reading a price source, or calling an adapter; `emergencyExit` and nonce/series invalidation remain available. There is no unhalt that can reactivate held signatures | report revocation | Unit across v1/v2/v3/v3.1/v3.2 execution surfaces + static review |
 
 **Rule sketch (I-REC-1, Foundry invariant):** after an unbounded sequence of arbitrary public calls
 (reaching any state), assert `zap.emergencyExit()` called by `owner` succeeds and
@@ -154,27 +157,34 @@ lending pool **paused**.
 |---|---|---|---|
 | **I-SUB-1** | A `priceSensitive` step cannot be executed via a path flagged public/permissionless | ADR-0003 | Executor admission + private-relay tests |
 | **I-SUB-2** | The factory admits **only optimization-class** policies in v1 | ADR-0004 | Unit |
+| **I-SUB-3** | After acquiring the signer lane and immediately before a write, at least two independently configured RPC origins agree on one recent canonical `(blockNumber, blockHash)` and return the same successful execution simulation at that exact block | report late-block simulation + ADR-0004 | Executor quorum, conflicting-head, conflicting-result, and signer-lane tests |
+| **I-SUB-4** | Wrong-chain, stale/future-skewed, excessively lagging, unavailable, or disagreeing node views fail closed; ordered RPC fallback alone never authorizes a signer | report late-block simulation + ADR-0004 | Executor admission and stale-sequencer tests |
+| **I-SUB-5** | Receipt observation and L2 confirmations do not release the signer outbox until the same independent-node quorum agrees on an L1-derived `finalized` L2 block at or beyond the receipt and attests the exact transaction hash, block number/hash, and status | ADR-0004 | Receipt-outbox finality quorum, conflicting-primary fork, missing-transaction, missing-evidence, and reorg tests |
 
-*(Protective-zap triggering and L2 finality/sequencer-outage invariants are deferred to the v1.x
-protective-zap ADR.)*
+*(Permissionless protective-zap triggering and an L1 force-inclusion escape hatch remain deferred
+to the v1.x protective-zap ADR. Optimization-zap late-block and finality admission are implemented
+in the executor source but remain operationally off until an independent RPC set is configured.)*
 
 ---
 
 ## Production-readiness gate
 
 Sharpened from the report's adversarial checklist. **Every answer must be "no"**, and each maps to
-the invariants that enforce it. Ship to mainnet only when all hold *and* each invariant has a passing
-Certora proof or a fuzz campaign meeting its state/run budget.
+the invariants that enforce it. Ship to mainnet only when all hold and the repository's applicable
+unit, fuzz, invariant, fork, integration, and operational tests pass. External audit and formal
+verification are explicitly outside this release's scope and must not be represented as completed.
 
 | Adversarial question | Must be "no" via |
 |---|---|
 | Can any zap call an unapproved target or selector? | I-SURF-1, I-SURF-2 |
 | Can any authorization replay across chains, versions, or factories? | I-AUTH-2, I-AUTH-5 |
 | Can any approval remain after success or failure? | I-APPR-1 |
+| Can a relayer redirect, resize, replay, or directly spend a Permit2 owner-pull authorization? | I-AUTH-2, I-AUTH-7, I-FLOW-5 |
 | Can Hermes improve its authority relative to the signed policy? | I-AUTH-3, I-AUTH-4, I-FLOW-2, I-FLOW-3 |
 | Can a malicious triggerer worsen price/timing without violating a postcondition? | I-FLOW-2, I-SUB-1 (+ ADR-0004 scope) |
-| Can the user always revoke, invalidate, or withdraw off the fast path? | I-REC-1, I-REC-2, I-REC-3 |
+| Can the user always revoke, halt its frozen policy, or withdraw off the fast path? | I-REC-1, I-REC-2, I-REC-3, I-REC-4 |
 | Can a shared-implementation bug brick or drain all zaps at once? | I-ISO-1, I-ISO-2, I-ISO-3 |
+| Can one stale, disagreeing, or non-final node view authorize or settle a signer write? | I-SUB-3, I-SUB-4, I-SUB-5 |
 | Can a fee-on-transfer / rebasing token corrupt accounting? | I-TOK-1, I-TOK-2, I-FLOW-1 |
 | Can app creation succeed without the exact visible fee becoming floor-bounded 0xZAPS? | I-FEE-1, I-FEE-2, I-FEE-3, I-FEE-5, I-FEE-8 |
 | Can the fee gateway change capsule runtime, domain, or factory lineage? | I-FEE-4 |

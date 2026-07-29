@@ -36,13 +36,18 @@ function chain(head = 20n, blockNumber = 10n) {
     getTransactionReceipt: async () => ({
       blockNumber,
       blockHash: `0x${"34".repeat(32)}`,
+      transactionHash: HASH,
       status: "success",
       transactionIndex: 1,
       gasUsed: 123n,
       effectiveGasPrice: 2n,
     }),
     getTransaction: async () => ({ from: "0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC" }),
-    getBlock: async () => ({ hash: `0x${"34".repeat(32)}`, timestamp: 1_785_000_000n }),
+    getBlock: async ({ blockNumber: requestedBlock } = {}) => ({
+      number: requestedBlock ?? blockNumber,
+      hash: `0x${"34".repeat(32)}`,
+      timestamp: 1_785_000_000n,
+    }),
   };
 }
 
@@ -89,6 +94,182 @@ test("a non-final receipt remains queued and never calls the hosted API", async 
   });
   assert.equal(result.pending.length, 1);
   assert.equal(posts, 0);
+  assert.ok(state.receiptOutbox[HASH]);
+});
+
+test("production finality policy retains a canonically confirmed receipt until the finalized L2 tag crosses it", async () => {
+  const receiptsDir = mkdtempSync(join(tmpdir(), "openzaps-receipts-l1-finality-"));
+  const state = {};
+  queueExecutionReceipt(state, ITEM, HASH);
+  let finalizedNumber = 9n;
+  const finalityChain = {
+    ...chain(20n, 10n),
+    getChainId: async () => 4663,
+    getBlock: async ({ blockTag, blockNumber } = {}) => {
+      if (blockTag === "finalized") {
+        return {
+          number: finalizedNumber,
+          hash: `0x${"55".repeat(32)}`,
+          timestamp: 1_785_000_000n,
+        };
+      }
+      return {
+        number: blockNumber ?? 10n,
+        hash: `0x${"34".repeat(32)}`,
+        timestamp: 1_785_000_000n,
+      };
+    },
+  };
+  const cfg = {
+    confirmations: 3,
+    finalityBlockTag: "finalized",
+    lateBlock: { minimumAgreement: 2, maxFutureSkewSeconds: 30 },
+    receiptsDir,
+    relayUrl: "",
+    chainId: 4663,
+  };
+  const finalityClients = [{ client: finalityChain }, { client: finalityChain }];
+
+  const pending = await settleReceiptOutbox({
+    publicClient: finalityChain,
+    finalityClients,
+    state,
+    cfg,
+    now: () => 1_785_000_100_000,
+  });
+  assert.equal(pending.settled.length, 0);
+  assert.equal(pending.pending.length, 1);
+  assert.match(state.receiptOutbox[HASH].lastError, /newer than L1-derived finalized/);
+
+  finalizedNumber = 10n;
+  const settled = await settleReceiptOutbox({
+    publicClient: finalityChain,
+    finalityClients,
+    state,
+    cfg,
+    now: () => 1_785_000_100_000,
+  });
+  assert.equal(settled.settled.length, 1);
+  assert.equal(settled.settled[0].finalityPolicy, "canonical-confirmations+l1-derived-finalized-quorum");
+  assert.equal(settled.settled[0].finalizedHeadNumber, "10");
+  assert.equal(settled.settled[0].finalizedHeadAgreement, 2);
+  assert.deepEqual(state.receiptOutbox, {});
+});
+
+test("missing finalized-tag evidence leaves every receipt in the durable outbox", async () => {
+  const receiptsDir = mkdtempSync(join(tmpdir(), "openzaps-receipts-finality-unavailable-"));
+  const state = {};
+  queueExecutionReceipt(state, ITEM, HASH);
+  const publicClient = {
+    ...chain(),
+    getChainId: async () => 4663,
+    getBlock: async ({ blockTag } = {}) => {
+      if (blockTag === "finalized") throw new Error("provider does not expose finality");
+      return { number: 10n, hash: `0x${"34".repeat(32)}`, timestamp: 1_785_000_000n };
+    },
+  };
+
+  const result = await settleReceiptOutbox({
+    publicClient,
+    state,
+    cfg: {
+      confirmations: 3,
+      finalityBlockTag: "finalized",
+      lateBlock: { minimumAgreement: 2, maxFutureSkewSeconds: 30 },
+      receiptsDir,
+      relayUrl: "",
+      chainId: 4663,
+    },
+    finalityClients: [{ client: publicClient }, { client: publicClient }],
+    now: () => 1_785_000_100_000,
+  });
+  assert.equal(result.settled.length, 0);
+  assert.equal(result.pending.length, 1);
+  assert.match(state.receiptOutbox[HASH].lastError, /finalized block evidence is unavailable/);
+  assert.ok(state.receiptOutbox[HASH]);
+});
+
+test("finality quorum rejects a primary receipt from a different block hash", async () => {
+  const receiptsDir = mkdtempSync(join(tmpdir(), "openzaps-receipts-finality-fork-"));
+  const state = {};
+  queueExecutionReceipt(state, ITEM, HASH);
+  const canonicalReceiptHash = `0x${"99".repeat(32)}`;
+  const finalizedHash = `0x${"55".repeat(32)}`;
+  const finalityClient = {
+    getChainId: async () => 4663,
+    getBlock: async ({ blockTag, blockNumber } = {}) =>
+      blockTag === "finalized"
+        ? { number: 20n, hash: finalizedHash, timestamp: 1_785_000_000n }
+        : { number: blockNumber, hash: canonicalReceiptHash, timestamp: 1_785_000_000n },
+    getTransactionReceipt: async () => ({
+      blockNumber: 10n,
+      blockHash: canonicalReceiptHash,
+      transactionHash: HASH,
+      status: "success",
+    }),
+  };
+
+  const result = await settleReceiptOutbox({
+    publicClient: chain(),
+    finalityClients: [
+      { origin: "https://rpc-a.example", client: finalityClient },
+      { origin: "https://rpc-b.example", client: finalityClient },
+    ],
+    state,
+    cfg: {
+      confirmations: 3,
+      finalityBlockTag: "finalized",
+      lateBlock: { minimumAgreement: 2, maxFutureSkewSeconds: 30 },
+      receiptsDir,
+      relayUrl: "",
+      chainId: 4663,
+    },
+    now: () => 1_785_000_100_000,
+  });
+
+  assert.equal(result.settled.length, 0);
+  assert.equal(result.pending.length, 1);
+  assert.match(state.receiptOutbox[HASH].lastError, /only 0\/2 finalized RPC origins/);
+  assert.ok(state.receiptOutbox[HASH]);
+});
+
+test("finality quorum requires the queued transaction to exist in the agreed block", async () => {
+  const receiptsDir = mkdtempSync(join(tmpdir(), "openzaps-receipts-finality-inclusion-"));
+  const state = {};
+  queueExecutionReceipt(state, ITEM, HASH);
+  const finalizedHash = `0x${"55".repeat(32)}`;
+  const finalityClient = {
+    getChainId: async () => 4663,
+    getBlock: async ({ blockTag, blockNumber } = {}) =>
+      blockTag === "finalized"
+        ? { number: 20n, hash: finalizedHash, timestamp: 1_785_000_000n }
+        : { number: blockNumber, hash: `0x${"34".repeat(32)}`, timestamp: 1_785_000_000n },
+    getTransactionReceipt: async () => {
+      throw new Error("transaction not found");
+    },
+  };
+
+  const result = await settleReceiptOutbox({
+    publicClient: chain(),
+    finalityClients: [
+      { origin: "https://rpc-a.example", client: finalityClient },
+      { origin: "https://rpc-b.example", client: finalityClient },
+    ],
+    state,
+    cfg: {
+      confirmations: 3,
+      finalityBlockTag: "finalized",
+      lateBlock: { minimumAgreement: 2, maxFutureSkewSeconds: 30 },
+      receiptsDir,
+      relayUrl: "",
+      chainId: 4663,
+    },
+    now: () => 1_785_000_100_000,
+  });
+
+  assert.equal(result.settled.length, 0);
+  assert.equal(result.pending.length, 1);
+  assert.match(state.receiptOutbox[HASH].lastError, /only 0\/2 finalized RPC origins/);
   assert.ok(state.receiptOutbox[HASH]);
 });
 

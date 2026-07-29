@@ -7,10 +7,11 @@ import {Vm} from "forge-std/Vm.sol";
 import {OpenZapV3_1} from "../src/v3_1/OpenZapV3_1.sol";
 import {OpenZapFactoryV3_1} from "../src/v3_1/OpenZapFactoryV3_1.sol";
 import {RecurringRelativeIntent} from "../src/v3_1/libraries/OpenZapV3_1Types.sol";
+import {RecurringIntent, TriggerIntent} from "../src/v3/libraries/OpenZapV3Types.sol";
 import {ZapLotteryPot} from "../src/v3/ZapLotteryPot.sol";
 import {AdapterRegistry} from "../src/AdapterRegistry.sol";
 import {TokenAllowlist} from "../src/TokenAllowlist.sol";
-import {Step, Policy} from "../src/libraries/OpenZapTypes.sol";
+import {Step, Policy, OpenZapIntent} from "../src/libraries/OpenZapTypes.sol";
 
 import {MockERC20} from "./mocks/MockERC20.sol";
 import {MockSwapAdapter} from "./mocks/MockSwapAdapter.sol";
@@ -194,6 +195,30 @@ contract OpenZapV3_1RelativeTest is Test {
     }
 
     // ============================ tests ============================ //
+
+    function test_haltPolicy_blocksEveryV3_1ExecutionSurface_beforeSeriesStateChanges() public {
+        RecurringRelativeIntent memory relative = _rel(zapFwd, address(assetB), BAND);
+        OpenZapIntent memory oneShot;
+        RecurringIntent memory recurring;
+        TriggerIntent memory trigger;
+
+        vm.prank(owner);
+        zapFwd.haltPolicy();
+
+        vm.expectRevert(OpenZapV3_1.PolicyExecutionHalted.selector);
+        zapFwd.execute(oneShot, "");
+        vm.expectRevert(OpenZapV3_1.PolicyExecutionHalted.selector);
+        zapFwd.executeRecurring(recurring, "");
+        vm.expectRevert(OpenZapV3_1.PolicyExecutionHalted.selector);
+        zapFwd.executeRecurringRelative(relative, "");
+        vm.expectRevert(OpenZapV3_1.PolicyExecutionHalted.selector);
+        zapFwd.executeTrigger(trigger, "");
+
+        (uint32 runs, uint64 lastRun) = zapFwd.series(relative.seriesId);
+        assertEq(runs, 0, "halted relative attempt must not advance the series");
+        assertEq(lastRun, 0, "halted relative attempt must not set cadence state");
+        assertFalse(zapFwd.nonceUsed(relative.seriesId));
+    }
 
     // ---- happy path: floor from live spot passes ----
 

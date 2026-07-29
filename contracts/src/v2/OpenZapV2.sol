@@ -54,6 +54,7 @@ contract OpenZapV2 {
     uint256 public maxRelayerFeeCap;
     bool public optimization;
     bytes32 public policyHash;
+    bool public policyHalted;
     address[] private _trackedAssets;
     Step[] private _steps;
     mapping(uint256 => bool) public nonceUsed;
@@ -84,10 +85,12 @@ contract OpenZapV2 {
     event Executed(uint256 indexed nonce, address indexed recipient, address outAsset, uint256 amountOut, uint256 fee);
     event EmergencyExit(address indexed owner, address indexed asset, uint256 amount);
     event NonceInvalidated(uint256 indexed nonce);
+    event PolicyHalted(address indexed owner, bytes32 indexed policyHash);
 
     error NotFactory();
     error AlreadyInitialized();
     error NotOwner();
+    error PolicyExecutionHalted();
     error NotOptimization();
     error ZeroRecipient();
     error ZeroOwner();
@@ -125,6 +128,11 @@ contract OpenZapV2 {
 
     modifier onlyOwner() {
         if (msg.sender != owner) revert NotOwner();
+        _;
+    }
+
+    modifier whenPolicyActive() {
+        if (policyHalted) revert PolicyExecutionHalted();
         _;
     }
 
@@ -200,7 +208,7 @@ contract OpenZapV2 {
     /// @notice Execute the frozen action graph under an owner-signed intent. Submitted by Hermes/a
     ///         relayer, which has zero discretion: every authority-bearing field is checked against
     ///         the frozen policy and the signature before any external call.
-    function execute(OpenZapIntent calldata intent, bytes calldata sig) external nonReentrant {
+    function execute(OpenZapIntent calldata intent, bytes calldata sig) external whenPolicyActive nonReentrant {
         // ---- verify & consume authorization BEFORE any external call (I-AUTH-1) ----
         if (intent.zap != address(this)) revert WrongZap();
         if (intent.chainId != block.chainid) revert WrongChain();
@@ -277,6 +285,15 @@ contract OpenZapV2 {
     // --------------------------------------------------------------------- //
     // Recovery & revocation (always available to the owner)                  //
     // --------------------------------------------------------------------- //
+
+    /// @notice Permanently halt this clone's frozen policy (I-REC-4).
+    /// @dev One-way by design: signed intents can never be silently reactivated. Recovery and
+    ///      nonce invalidation remain available; resuming execution requires a new clone/policy.
+    function haltPolicy() external onlyOwner {
+        if (policyHalted) revert PolicyExecutionHalted();
+        policyHalted = true;
+        emit PolicyHalted(owner, policyHash);
+    }
 
     /// @notice Unconditional, owner-only drain of arbitrary assets to the owner (invariant I-REC-1).
     /// @dev Routes through NO adapter (I-REC-2). Works regardless of adapter health, Hermes liveness,

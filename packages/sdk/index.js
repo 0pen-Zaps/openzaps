@@ -1,12 +1,15 @@
 import {
   encodeAbiParameters,
   getAddress,
+  hashTypedData,
   keccak256,
 } from "viem";
 
 const MAX_UINT64 = (1n << 64n) - 1n;
 const MAX_UINT256 = (1n << 256n) - 1n;
 const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000";
+export const PERMIT2_ADDRESS = "0x000000000022D473030F116dDEE9F6B43aC78BA3";
+export const PERMIT2_MAX_DEADLINE_WINDOW_SECONDS = 3_600n;
 
 /**
  * Field order is signature-bearing. This mirrors
@@ -44,6 +47,26 @@ export const OPENZAP_INTENT_TYPES = {
     { name: "policyHash", type: "bytes32" },
     { name: "outAsset", type: "address" },
     { name: "minOut", type: "uint256" },
+  ],
+};
+const OPENZAP_INTENT_SCHEMA = OPENZAP_INTENT_TYPES.OpenZapIntent.map(
+  ({ name, type }) => `${name}:${type}`,
+);
+
+export const OPENZAP_PERMIT2_WITNESS_TYPES = {
+  TokenPermissions: [
+    { name: "token", type: "address" },
+    { name: "amount", type: "uint256" },
+  ],
+  OpenZapIntentWitness: [
+    { name: "intentDigest", type: "bytes32" },
+  ],
+  PermitWitnessTransferFrom: [
+    { name: "permitted", type: "TokenPermissions" },
+    { name: "spender", type: "address" },
+    { name: "nonce", type: "uint256" },
+    { name: "deadline", type: "uint256" },
+    { name: "witness", type: "OpenZapIntentWitness" },
   ],
 };
 
@@ -156,6 +179,84 @@ export function buildUnsignedOpenZapIntent(input) {
 }
 
 /**
+ * Build the second, Permit2 SignatureTransfer typed-data request for v1.2 candidate owner-pull
+ * execution. The returned data binds the existing OpenZap intent digest as its witness, the
+ * capsule as implicit spender/destination, and the frozen policy's exact first funding leg.
+ *
+ * This is still unsigned data. It grants nothing and has no submission method.
+ */
+export function buildUnsignedPermit2OwnerPull(input) {
+  if (Object.prototype.hasOwnProperty.call(input, "permit2Address")) {
+    throw new Error("permit2Address is fixed to the canonical OpenZap Permit2 deployment.");
+  }
+  const intent = input.intent;
+  if (
+    !intent
+    || intent.primaryType !== "OpenZapIntent"
+    || intent.domain?.name !== "OpenZap"
+    || intent.domain?.version !== "1"
+  ) {
+    throw new Error("intent must be wallet-ready OpenZap v1 typed data.");
+  }
+  if (!hasExactOpenZapIntentTypes(intent.types)) {
+    throw new Error("intent types must exactly match OPENZAP_INTENT_TYPES.");
+  }
+  const domainChainId = asUint(intent.domain.chainId, "intent.domain.chainId");
+  const messageChainId = asUint(intent.message?.chainId, "intent.message.chainId");
+  if (domainChainId !== messageChainId) {
+    throw new Error("intent domain chainId must equal intent.message.chainId.");
+  }
+  const zap = nonzeroAddress(intent.message?.zap, "intent.message.zap");
+  if (getAddress(intent.domain.verifyingContract) !== zap) {
+    throw new Error("intent verifyingContract must equal intent.message.zap.");
+  }
+  const policy = input.policy;
+  if (!policy || !Array.isArray(policy.steps) || policy.steps.length === 0) {
+    throw new Error("policy must contain the frozen first funding step.");
+  }
+  const policyHash = hashOpenZapPolicy(policy);
+  if (policyHash.toLowerCase() !== String(intent.message.policyHash).toLowerCase()) {
+    throw new Error("policy does not match the intent policyHash.");
+  }
+  const fundingStep = policy.steps[0];
+  const token = nonzeroAddress(fundingStep.tokenIn, "policy.steps[0].tokenIn");
+  if (token === getAddress(intent.message.outAsset)) {
+    throw new Error("Permit2 funding token cannot equal the intent output asset.");
+  }
+
+  const nowSeconds = asUint(input.nowSeconds, "nowSeconds", MAX_UINT64);
+  const deadline = asPositiveUint(input.deadline, "deadline");
+  if (deadline < nowSeconds) throw new Error("Permit2 deadline has already passed.");
+  if (deadline > BigInt(intent.message.deadline)) {
+    throw new Error("Permit2 deadline cannot exceed the OpenZap intent deadline.");
+  }
+  if (deadline > nowSeconds + PERMIT2_MAX_DEADLINE_WINDOW_SECONDS) {
+    throw new Error("Permit2 deadline must be no more than one hour from now.");
+  }
+
+  const intentDigest = hashTypedData(intent);
+  return {
+    domain: {
+      name: "Permit2",
+      chainId: intent.domain.chainId,
+      verifyingContract: PERMIT2_ADDRESS,
+    },
+    types: OPENZAP_PERMIT2_WITNESS_TYPES,
+    primaryType: "PermitWitnessTransferFrom",
+    message: {
+      permitted: {
+        token,
+        amount: asPositiveUint(fundingStep.amountIn, "policy.steps[0].amountIn"),
+      },
+      spender: zap,
+      nonce: asUint(input.nonce, "nonce"),
+      deadline,
+      witness: { intentDigest },
+    },
+  };
+}
+
+/**
  * Minimal read-only API client for the public OpenZaps discovery surface. This
  * package has no signing or transaction-broadcast method.
  */
@@ -207,4 +308,19 @@ function nonzeroAddress(value, field) {
   const address = getAddress(value);
   if (address.toLowerCase() === ZERO_ADDRESS) throw new Error(`${field} cannot be the zero address.`);
   return address;
+}
+
+function hasExactOpenZapIntentTypes(types) {
+  if (
+    !types
+    || Object.keys(types).length !== 1
+    || !Array.isArray(types.OpenZapIntent)
+    || types.OpenZapIntent.length !== OPENZAP_INTENT_SCHEMA.length
+  ) {
+    return false;
+  }
+  return types.OpenZapIntent.every((field, index) =>
+    field
+    && Object.keys(field).length === 2
+    && `${field.name}:${field.type}` === OPENZAP_INTENT_SCHEMA[index]);
 }

@@ -9,6 +9,8 @@ import {TokenAllowlist} from "../src/TokenAllowlist.sol";
 import {OpenZapFactory} from "../src/OpenZapFactory.sol";
 import {RobinhoodV4SwapAdapter} from "../src/adapters/RobinhoodV4SwapAdapter.sol";
 
+/// @notice Deploys a fresh source-only v1.2.0-candidate core. It does not upgrade or alter the live
+///         immutable v1.1 factory; record and independently verify every new address before use.
 contract DeployRobinhood is Script {
     uint256 internal constant ROBINHOOD_CHAIN_ID = 4663;
 

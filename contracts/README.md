@@ -18,13 +18,20 @@ verified against the invariants in [`../docs/invariant-spec.md`](../docs/invaria
 > preserve the owner-only `emergencyExit` path until those external gates are complete.
 >
 > Addresses and broadcast records: [`../docs/deployments.md`](../docs/deployments.md).
+>
+> **Source/live boundary:** the base-lineage source now identifies as `1.2.0-candidate` and includes
+> one-way owner halt plus a Permit2 SignatureTransfer owner-pull entry point. The live v1.1
+> implementations listed in `docs/deployments.md` predate both additions and do not gain them
+> retroactively. This candidate requires a new deployment, independent bytecode verification, and
+> a separate release decision.
 
 ## Architecture
 
 ```
 User EOA / Safe ──deploy policy──▶ OpenZapFactory ──CREATE2 clone──▶ OpenZap (immutable, holds funds)
         │                                                                  ▲
-        └──deposit assets + sign EIP-712 intent───────────────────────────┤
+        ├──deposit assets + sign EIP-712 intent──────────────────────────┤
+        └──or approve Permit2 + sign witnessed one-shot pull─────────────┤
                                                                            │ owner-signed intent
 Hermes / relayer ──simulate / private submit / monitor────────────────────┘
                                                                            │ fixed adapter calls only
@@ -34,7 +41,7 @@ Hermes / relayer ──simulate / private submit / monitor───────�
 
 | Contract | Role |
 |---|---|
-| [`OpenZap.sol`](src/OpenZap.sol) | The immutable per-zap instance (clone target). `initialize`, `execute(intent,sig)`, `emergencyExit`, `invalidateNonce`; EIP-712 + ERC-1271 verification. |
+| [`OpenZap.sol`](src/OpenZap.sol) | The immutable per-zap instance (clone target). `initialize`, pre-funded `execute`, witnessed `executeWithPermit2`, one-way `haltPolicy`, `emergencyExit`, and `invalidateNonce`; EIP-712 + ERC-1271 verification. |
 | [`OpenZapFactory.sol`](src/OpenZapFactory.sol) | Versioned factory; deploys the hardened implementation in its constructor, then atomically deploys + initializes EIP-1167 clones; publishes `implCodeHash` for Hermes manifest checks. |
 | [`OpenZapCreationGateway.sol`](src/fee/OpenZapCreationGateway.sol) | Fee-enforcing app gateway in front of the existing v1.1/v3/v3.1 factories. Charges exactly 0.00001 native ETH, wraps and atomically converts it through the pinned aeWETH → 0xZAPS adapter, and reverts the underlying factory creation if conversion misses the caller-reviewed floor. |
 | [`ZapCreationFeePot.sol`](src/fee/ZapCreationFeePot.sol) | No-drain, balance-backed 0xZAPS pot for converted creation fees. Credits tickets to the policy owner; governance can only award the accounted round prize to an address with tickets. |
@@ -52,6 +59,11 @@ Hermes / relayer ──simulate / private submit / monitor───────�
   route output, min-out — is bound in the owner-signed EIP-712 intent; `policyHash` is checked against
   the frozen policy. (ADR-0001/0003; I-AUTH-3/4)
 - **Authorization consumed before any external call;** `nonReentrant`. (I-AUTH-1)
+- **Permit2 owner pull is one-shot and capsule-bound.** SignatureTransfer witnesses the exact
+  OpenZap intent digest; the first frozen step supplies the only token/amount; the capsule is both
+  implicit spender and fixed destination; the deadline is capped at one hour and at the intent
+  deadline. The executor receives no allowance. Exact received and consumed deltas are enforced.
+  The owner still needs an ERC-20 allowance to canonical Permit2. (ADR-0001; I-AUTH-7/I-FLOW-5)
 - **Exact approvals, reset to zero** after every step on success and every revert path. (I-APPR-1/2)
 - **Unconditional owner emergency exit**, routing through no adapter, independent of adapter/Hermes
   state. (eval Gap 2; I-REC-1/2)

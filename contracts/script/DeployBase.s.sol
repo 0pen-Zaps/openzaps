@@ -12,15 +12,16 @@ import {BaseV3SwapAdapter} from "../src/adapters/BaseV3SwapAdapter.sol";
 import {AaveV3SupplyAdapter} from "../src/adapters/AaveV3SupplyAdapter.sol";
 
 /// @title DeployBase
-/// @notice Deploys a COMPLETE, FRESH OpenZap v1.1 set to Base mainnet (8453): registry, allowlist,
-///         factory (which deploys the implementation in its own constructor), and every adapter that
-///         actually shipped — then allowlists those adapters and the tokens they move.
+/// @notice Deploys a COMPLETE, FRESH OpenZap v1.2.0-candidate set to Base mainnet (8453): registry,
+///         allowlist, factory (which deploys the implementation in its own constructor), and every
+///         adapter that actually shipped — then allowlists those adapters and the tokens they move.
 ///
 /// @dev THE EXISTING BASE ADDRESSES ARE STALE. There is an older deployment on Base whose factory is
 ///      0xc7C5897e4738a157731c2F93b1d73Db9926E926C and whose `VERSION()` reads "1.0.0". This script
 ///      does NOT touch, reuse, or upgrade it — OpenZap has no upgrade path by design (I-ISO-2), so a
 ///      new core version is always a new deployment. Anything produced by this script is a brand new
-///      v1.1.0 set with new addresses, and the 1.0.0 addresses must not be quoted as current.
+///      v1.2.0-candidate set with new addresses, and neither older deployment should be quoted as
+///      containing the candidate's halt or Permit2 owner-pull surfaces.
 ///
 ///      NOT IDEMPOTENT, on purpose. Every run deploys a new registry, a new allowlist, a new factory
 ///      and new adapters. Running it twice does not converge on one deployment; it gives you two,
@@ -68,8 +69,9 @@ contract DeployBase is Script {
     /// @dev The pool the swap adapter must resolve to, from the router's own factory.
     address internal constant EXPECTED_WETH_USDC_500_POOL = 0xd0b53D9277642d899DF5C87A3966A349A798F224;
 
-    /// @dev Guards against deploying a stale artifact: this script is only correct for the v1.1 core.
-    string internal constant EXPECTED_VERSION = "1.1.0";
+    /// @dev Guards against deploying a stale artifact: this script targets the source-only
+    ///      halt + Permit2 candidate, not any existing immutable v1.1 deployment.
+    string internal constant EXPECTED_VERSION = "1.2.0-candidate";
 
     error WrongChain(uint256 actual);
     error MissingCode(address target);

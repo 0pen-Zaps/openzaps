@@ -1,14 +1,17 @@
 # Capability matrix — Base 8453 and Robinhood Chain 4663
 
-What the 25 blocks in `src/lib/blocks.ts` can and cannot do against the **v1.1 OpenZap core**, on both
-chains this repo targets. Every verdict below is grounded in a line of `src/OpenZap.sol`, an adapter
-that exists in `src/adapters/`, a fork test in `test/`, or a read-only `cast` call against live chain
-state. Nothing here is aspirational.
+This began as a constraint audit of the **original 25 blocks** against the v1.1 OpenZap core. The
+catalogue, deployed adapter set, and automation lineages have since grown. The original-row matrix is
+kept because its core reasoning remains useful, but it is no longer a complete product inventory.
+Current addresses and deployment gates live in [`../docs/deployments.md`](../docs/deployments.md);
+the app's actual route registry lives in [`../src/lib/chains.ts`](../src/lib/chains.ts).
 
 *(The filename is historical — this document covered Base only until Robinhood Chain turned out to
 have an ecosystem of its own. See §2.)*
 
-Live state in this document was read at **Robinhood Chain block 16,768,172**.
+Robinhood core ownership, allowlists, pins, and code were re-read at finalized block
+**22,115,084 on 2026-07-28**. Fixed historical pool counts below retain their original observation
+block and should not be treated as current market metrics.
 
 ---
 
@@ -123,8 +126,9 @@ Per-chain, because the same block can be live on one chain and impossible on the
 
 | Verdict | Meaning |
 | --- | --- |
-| **LIVE** | Deployed **and** allowlisted on that chain right now. Verified by `cast` at the block named above. |
+| **LIVE** | Deployed **and** allowlisted on that chain at the verified block. Product availability may still have an additional fail-closed liquidity or configuration gate. |
 | **SHIPPED** | Adapter code and tests exist in this repo and a deploy script covers it. **Not yet broadcast** on that chain. |
+| **SOURCE-ONLY** | Implemented and tested, but absent from every live immutable implementation. |
 | **POSSIBLE** | The chain has the venue and the settlement model admits it. The adapter is not written. |
 | **BLOCKED (core)** | Cannot work under the v1.1 core. The reason is stated exactly and is not a matter of effort. |
 | **BLOCKED (chain)** | The core would admit it; **that chain has no venue for it.** A different blocker, and an honest one to keep separate. |
@@ -147,21 +151,18 @@ been broadcast protects nobody and moves no money.
 | `AdapterRegistry` | `0x9E56e444f490C00A6277326A47Cb462E12dF1f17` | live |
 | `TokenAllowlist` | `0x87fBb77a4328B068CADbA2eBE5dBCE0ffbd7141B` | live |
 | `RobinhoodV4SwapAdapter` (aeWETH/0xZAPS, hardcoded) | `0x04f62dA4b51a010eFa32aa81569169C47AEd602C` | **live and allowlisted** |
-| `RobinhoodV4PoolAdapter` (any ERC-20 pool) | — | code + 15 fork tests, **not broadcast** |
-| `ZapVault` (ERC-4626 primitive) | — | code + 40 tests, **not broadcast** |
-| `ZapVaultDepositAdapter` (asset → shares) | — | code + tests, **not broadcast** |
-| `ZapVaultRedeemAdapter` (shares → asset) | — | code + tests, **not broadcast** |
+| `RobinhoodV4PoolAdapter` (aeWETH/USDG, pinned pool) | `0x714E48930d1d9a53149AA7B92cD88C9E172d1942` | **live and allowlisted** |
+| `ZapVault` / ozUSDG (ERC-4626 receipt wrapper) | `0xeAD10C998c59745a030FfAc9209b294C14C7D325` | live, **unseeded** |
+| `ZapVaultDepositAdapter` (USDG → ozUSDG) | `0x1b289fD37Ff4497531a953aa922ab258F5e81164` | live and allowlisted; app-gated while vault is unseeded |
+| `ZapVaultRedeemAdapter` (ozUSDG → USDG) | `0x16eD4f04657c7a965aef333F5Cf0c9d745e0c8cE` | live and allowlisted; app-gated while vault is unseeded |
 
-All four are deployed and allowlisted together by `script/DeployRobinhoodExpansion.s.sol`. Full repo
-suite after the vault adapters landed: **176 passed, 0 failed, 3 skipped** (18 suites).
+The later route adapters and seeded ozRANGE full-range vault are also live; their complete addresses,
+seed transaction, and allowlist evidence are recorded in `docs/deployments.md`. The allowlisted token
+set now includes **aeWETH, 0xZAPS, USDG, ozUSDG, and ozRANGE**.
 
-Allowlist state, read live: **aeWETH allowed, 0xZAPS allowed, USDG NOT allowed.** A USDG-legged zap
-needs `setToken(USDG, true)` before it can settle, regardless of which adapter runs.
-
-Governance, read live: both `AdapterRegistry.owner()` and `TokenAllowlist.owner()` are
-`0xe17f5150A2954889988e63C49d41cc321c35B986`; both `pendingOwner()` are
-`0x5a52D4B820Ae7F02880d270562950918ACb14aA2`, **and the handoff has not been accepted.** Both are
-EOAs, not Safes. That is a governance gap independent of any row below.
+Both live core registries are owned by
+`0x5a52D4B820Ae7F02880d270562950918ACb14aA2`; both `pendingOwner()` values are zero. No ownership
+change is part of this release.
 
 ---
 
@@ -171,22 +172,22 @@ EOAs, not Safes. That is a governance gap independent of any row below.
 
 | # | Block (`id`) | Base 8453 | Robinhood 4663 | Why |
 | --- | --- | --- | --- | --- |
-| 1 | Wallet balance (`wallet-balance`) | **LIVE** | **LIVE** | Core-level, so identical on both chains. The amount is frozen into the policy (`Step.amountIn`) and bound into `policyHash`, so no executor can draw more. One correction to the block copy: v1.1 never pulls from the owner's wallet. There is no `transferFrom(owner, …)` anywhere in `OpenZap.sol`. The owner funds the capsule by transferring tokens to it (predict-then-fund via `factory.predict`), and steps spend the capsule's own balance. |
-| 2 | Recurring deposit (`recurring-stream`) | **LIVE** | **LIVE** | Core-level. A capsule executes many times: one owner-signed intent per run, each with a fresh nonce (`nonceUsed`). The money movement is real today. **The cadence is not.** The policy has no schedule field, so "weekly" lives entirely in the off-chain trigger, and the capsule must be re-funded before each run. Nothing on-chain stops a run from happening early, late, or a hundred times — only the per-run `amountIn` is bounded. |
+| 1 | Wallet balance (`wallet-balance`) | **LIVE** | **LIVE** | Core-level, so identical on both chains. The amount is frozen into the policy (`Step.amountIn`) and bound into `policyHash`, so no executor can draw more. One correction to the block copy: the **live v1.1 bytecode** never pulls from the owner's wallet; the owner funds that capsule by transferring tokens to it (predict-then-fund via `factory.predict`). The source-only `1.2.0-candidate` adds a separate witnessed Permit2 SignatureTransfer mode for the exact first-step amount, but it is not deployed and must not be described as a live v1.1 capability. |
+| 2 | Recurring deposit (`recurring-stream`) | **LIVE** | **LIVE** | In the v1.1 one-shot lineage, repetition still means separately signed nonces and an offchain cadence. Robinhood's live v3/v3.1 automation lineages add an owner-signed interval, maximum run count, deadline, executor scope, and replay state onchain; production execution evidence is recorded in `docs/deployments.md`. |
 | 3 | Pending rewards (`pending-rewards`) | **BLOCKED (core)** | **BLOCKED (core)** | Rule 1, consequence 3. A step that starts from "whatever has accrued" consumes no token, and `initialize` rejects `amountIn == 0`. It also emits the `yield` shape, whose only consumer (`harvest`) is blocked for the same reason. `ZapVault` does not change this on Robinhood and could not: it earns nothing, so there is no accrual to claim. |
 
 ### Actions
 
 | # | Block (`id`) | Base 8453 | Robinhood 4663 | Why |
 | --- | --- | --- | --- | --- |
-| 4 | Swap (`swap`) | **LIVE** | **LIVE** | **Base:** `BaseV3SwapAdapter`, exact-input single-hop, welded to WETH/USDC 0.05% (`0xd0b53D9277642d899DF5C87A3966A349A798F224`), 13 fork tests at a pinned block. **Robinhood:** `RobinhoodV4SwapAdapter` at `0x04f62dA4…` is deployed and allowlisted for aeWETH/0xZAPS — that one pair is live today. `RobinhoodV4PoolAdapter` generalises this to **any ERC-20/ERC-20 v4 pool** with the PoolKey as constructor immutables (15 fork tests, pool selection read off-chain by comparing live `liquidity` across all 28 aeWETH/USDG pools); it is **SHIPPED, not broadcast**. Scope on both chains: **one instance == one pool.** Another pair or fee tier is another deployment of the same contract, no new code. Aerodrome and Uniswap v4 on Base remain POSSIBLE, not written. A multi-hop route is two steps and two adapters, and every hop must land as an ERC-20 the capsule actually holds. |
+| 4 | Swap (`swap`) | **LIVE** | **LIVE** | **Base:** `BaseV3SwapAdapter`, exact-input single-hop, welded to WETH/USDC 0.05% (`0xd0b53D9277642d899DF5C87A3966A349A798F224`), with pinned-block fork coverage. **Robinhood:** the aeWETH/0xZAPS and aeWETH/USDG pool adapters are live and allowlisted; two additional live route adapters compose the pinned pools for USDG↔0xZAPS. Scope remains constructor-welded: one adapter instance names one pool or one fixed route. |
 | 5 | Split (`split`) | **BLOCKED (core)** | **BLOCKED (core)** | Rule 1, consequence 1. Settlement measures exactly one `intent.outAsset`. A 2–4 leg fan-out can settle at most one leg; the others accumulate in the capsule, invisible to `minOut`, recoverable only through `emergencyExit`. The signed slippage floor would cover one leg and silently not the rest. This needs multi-asset settlement in a v2 core, not an adapter. |
 | 6 | Bridge (`bridge`) | **BLOCKED (core)** | **BLOCKED (core)** | Rule 1, consequence 1, plus asynchrony. The output lands on another chain, so the capsule's `outAsset` balance does not rise, `out = balanceOf - preOut` underflows and the whole chain reverts. Even if it were tolerated, arrival is a later event on a different chain that a single `execute()` cannot observe or bound. |
-| 7 | Supply (`supply`) | **LIVE** | **SHIPPED** *(see §4a)* | **Base:** `AaveV3SupplyAdapter`, welded to the Aave v3 Pool `0xA238Dd80…d1c5` and one reserve. `script/DeployBase.s.sol` deploys the WETH instance and allowlists its aToken `0xD4a0e0b9149BCee3C920d2E00b5dE09138fd8bb7`. `onBehalfOf` is always `msg.sender`, so the **capsule** is the Aave account and holds the aToken; the adapter returns the *measured* aToken delta. One adapter per reserve. Morpho Blue and Compound v3 USDC both have code on Base and are POSSIBLE. Caveat inherent to Aave: aTokens rebase, so the measured delta is principal plus interest accrued in the same transaction; never assume `amountOut == amountIn`. **Robinhood:** the chain has no lending market at all, which is why `ZapVault` was built — see §4a for the current, honest status. |
+| 7 | Supply (`supply`) | **LIVE** | **LIVE contracts; APP-GATED** *(see §4a)* | **Base:** `AaveV3SupplyAdapter` is welded to one Aave v3 reserve and settles the measured aToken delta. **Robinhood:** `ZapVault`, its deposit/redeem adapters, USDG, and ozUSDG are deployed and allowlisted. The wrapper earns no yield, and the app deliberately refuses both routes while `totalSupply == 0`; the vault was still unseeded at the verified block. |
 | 8 | Borrow (`borrow`) | **BLOCKED (core)** | **BLOCKED (core + chain)** | Three independent blockers on Base, all fork-proven in `test/AaveV3Adapters.fork.t.sol`. (a) Aave requires `borrowAllowance[capsule][adapter]`, settable only by `approveDelegation` called by the debtor. OpenZap's entire outbound surface is: `isAllowed`/`balanceOf` staticcalls, `approve(spender==adapter)`, `IAdapter.execute`, `transfer`, an ERC-1271 staticcall, and an empty-calldata native send to the owner. There is no delegatecall, no arbitrary target, no arbitrary calldata — a capsule can never emit `approveDelegation`, and the one smuggling route (pointing a step's `tokenIn` at the variable-debt token) dies inside Aave, whose debt tokens revert `OperationNotSupported()` on the whole approval surface. (b) The escape hatch — adapter borrows as itself — makes one registry-shared adapter the Aave account for every capsule, so one user's borrow is secured by another's collateral, and it puts the position beyond `emergencyExit` (breaking I-REC-1). (c) A debt leg has no accounting counterpart: balance-delta settlement can see the borrowed asset arriving but not the liability opened against it, and once a capsule carries debt, `emergencyExit` **reverts** on the collateral leg (health factor would fall below 1). A borrow needs liability-aware v2 settlement. On Robinhood every one of those still applies **and** there is no lending market to borrow from. `ZapVault` does not lend and has no debt surface. |
 | 9 | Draw to wallet (`draw-debt`) | **BLOCKED (core)** | **BLOCKED (core + chain)** | It consumes the `debt` shape, which nothing on either chain can produce under this core (row 8). Independently, a "realise the loan" step consumes no token of its own — Rule 1, consequence 3. |
-| 10 | Add liquidity (`add-liquidity`) | **BLOCKED (core)** | **BLOCKED (core)** | As drawn, this is a *ranged* position: Uniswap v3 mints an ERC-721 and Uniswap v4 records a position inside the PoolManager. Neither is an ERC-20, so `IERC20(outAsset).balanceOf` cannot measure it, `TokenAllowlist.setToken` cannot admit it (v1 admits vetted ERC-20s only), and the step-return check rejects it. Second, independent blocker: a step carries exactly one `(tokenIn, amountIn)`, so two-sided provisioning cannot be expressed at all without an adapter that swaps internally. On Robinhood the v4 position is PoolManager-internal, so the same two blockers apply with no ERC-721 even minted. What *would* be possible on Base is a different block: a single-sided deposit into an Aerodrome vAMM pool whose LP token is a real ERC-20 (`vAMM-WETH/USDC` at `0xcDAC0d6c6C59727a65F871236188350531885C43`, verified `symbol()`/`totalSupply()`). That block has no range parameter, so it is not this one. Robinhood has no such venue at all. |
-| 11 | Remove liquidity (`remove-liquidity`) | **POSSIBLE** | **BLOCKED (chain)** | **Base:** possible only for an ERC-20 LP token (Aerodrome-style), which the capsule can hold and a step can consume. **Read this caveat before building it:** burning an LP returns *both* sides, and settlement measures one. The second asset lands in the capsule, is not covered by `minOut`, is not sent to the recipient, and comes back only through `emergencyExit`. For a Uniswap v3/v4 ERC-721 position this is BLOCKED for the same reason as row 10. **Robinhood:** blocked by the chain, not the core — there is no ERC-20 LP token anywhere on 4663 to burn. Note explicitly: **`ZapVault` redeem is not this block.** This block `accepts: "lp"`; a vault share is a `receipt`. See §4b. |
+| 10 | Add liquidity (`add-liquidity`) | **BLOCKED for direct concentrated positions** | **LIVE through ozRANGE wrapper** | A direct v3/v4 position still cannot settle as the single ERC-20 output required by v1.1. Robinhood's live `ZapRangeVault` deliberately changes the shape: its welded deposit adapter accepts one side, performs the bounded internal balancing, deposits a full-range position, and returns measurable ERC-20 ozRANGE shares. This does not make arbitrary ranges or arbitrary pools executable. |
+| 11 | Remove liquidity (`remove-liquidity`) | **POSSIBLE** | **LIVE through ozRANGE wrapper** | A direct two-asset LP withdrawal still conflicts with single-asset settlement. Robinhood's live withdrawal adapters burn a fixed ozRANGE share amount inside the welded vault and settle one owner-selected, constructor-pinned asset (USDG or aeWETH); the other-side conversion is handled inside that bounded adapter. |
 | 12 | Stake position (`stake`) | **BLOCKED (core)** | **BLOCKED (core + chain)** | This block `accepts: "lp"` and an Aerodrome gauge deposit is not a token. Probed live on Base: the WETH/USDC gauge `0x519BBD1Dd8C6A94C46080E24f316c14Ee758C025` answers `totalSupply()` but **reverts on `symbol()` and on `transfer()`** — it is an internal ledger, not a transferable ERC-20. As the last step it therefore produces no measurable, transferable gain and settlement reverts; mid-chain it leads only to `accrue`/`harvest`, which are blocked in their own right. Wrapping it in an allowlisted pseudo-token would be a fake gain, which is exactly what the step-return check and the settlement subtraction exist to refuse. **`ZapVault` does not unblock this row and it would be wrong to claim otherwise:** the vault takes a plain token, not an LP, so it cannot satisfy this block's input shape, and Robinhood has no gauge or farm to stake into regardless. |
 | 13 | Accrue rewards (`accrue`) | **BLOCKED (core)** | **BLOCKED (core)** | The block's own detail text says it: "a no-op onchain". A no-op cannot be a step — `initialize` requires `amountIn != 0` and `execute` requires a nonzero allowlisted `tokenOut` from every step. Waiting is not a transaction. It can only ever be an annotation on the canvas. |
 | 14 | Harvest (`harvest`) | **BLOCKED (core)** | **BLOCKED (core)** | Rule 1, consequence 3 again, and it is the sharpest case: a claim consumes nothing, so there is no legal `(tokenIn, amountIn)` for the step. Passing a dust amount of the reward token to satisfy the check would be manufacturing the shape of a step that is not one, and it is not done here. Compounding the problem, the positions that accrue rewards on Base are gauge stakes (row 12) and v3/v4 LPs (row 10), neither of which a capsule can hold; on Robinhood nothing accrues at all. The claim *mechanics* fit the model perfectly — claim to `msg.sender`, return the measured delta — so this becomes POSSIBLE the moment a v2 core admits a zero-input step. |
@@ -216,17 +217,23 @@ EOAs, not Safes. That is a governance gap independent of any row below.
 
 ## 4a. Row 7 on Robinhood — the vault, stated exactly
 
-*(This section is the one the vault work changes. It is kept separate so the claim is precise rather
-than a word swapped in a table cell.)*
-
-**Status: SHIPPED in code, NOT broadcast. Nothing is live on chain 4663 yet.**
+**Status: contracts deployed and allowlisted; app route intentionally closed while unseeded.**
 
 `src/primitives/ZapVault.sol` is a minimal, admin-less ERC-4626 vault. It exists because the OpenZap
 settlement model needs a venue that takes **one ERC-20 in** and returns **one ERC-20 out**, and
 Robinhood Chain has no such contract (§2).
 
-Two adapters now make it reachable from a frozen policy, closing the gap that the previous version of
-this document recorded as open:
+The canonical deployment is:
+
+| Artifact | Address | Verified state |
+| --- | --- | --- |
+| ZapVault / ozUSDG | `0xeAD10C998c59745a030FfAc9209b294C14C7D325` | deployed; `totalSupply == 0` |
+| Deposit adapter | `0x1b289fD37Ff4497531a953aa922ab258F5e81164` | deployed and allowlisted |
+| Redeem adapter | `0x16eD4f04657c7a965aef333F5Cf0c9d745e0c8cE` | deployed and allowlisted |
+| USDG | `0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168` | allowlisted |
+| ozUSDG | vault address above | allowlisted |
+
+The two adapters make the wrapper reachable from a frozen policy:
 
 - **`ZapVaultDepositAdapter`** — `tokenIn` = the vault's underlying asset, `tokenOut` = the vault
   share. `receiver` is hardcoded to `msg.sender`, so the shares land on the zap that paid for them and
@@ -243,28 +250,15 @@ this document recorded as open:
   `withdraw` is denominated in assets and burns a rounded-*up* share count nobody can compute at
   signing time, which would exceed the frozen allowance whenever the price moved by a wei.
 
-Three things must all be true before this row can read **LIVE** on Robinhood. None has happened:
-
-1. The four contracts are broadcast. `script/DeployRobinhoodExpansion.s.sol` deploys them; it has been
-   dry-run on both governance branches and **never broadcast**.
-2. `AdapterRegistry.setAdapter(…, true)` has landed for **both** vault adapters.
-3. `TokenAllowlist.setToken(vaultShare, true)` **and** `setToken(vaultAsset, true)` have landed. The
-   share token is the deposit step's `tokenOut` *and* the redeem step's `tokenIn`, so without it a
-   deposit step reverts `InvalidAdapterResult` at execution and a redeem step reverts
-   `TokenNotAllowed` at `initialize`. **USDG is not allowlisted today** (read live), so this is real
-   outstanding work, not a formality.
-
-Three caveats that remain true even once all three land, and none of which should be softened: 
+Three caveats remain and must not be softened:
 
 - **`ZapVault` earns nothing.** `totalAssets()` is literally `asset.balanceOf(this)`. There is no
-  strategy, no lending, no staking. The `supply` block's own detail text says *"Interest accrues to
-  the share, so the receipt is what the rest of the chain moves"* — **that sentence is false for
-  `ZapVault`.** The receipt moves; no interest accrues to it. Presenting this as a yield product
-  would be a lie, and the UI copy needs changing before this block is offered on 4663.
-- **`ZapVault` is unaudited and would custody real user funds.** It has been unit-tested by the same
-  agent that wrote it, which is not a review. See `ROBINHOOD_EXPANSION.md` §3 for the full risk
-  statement, including the measured finding that every deep asset on the chain is an upgradeable
-  proxy whose controller can freeze or seize the vault's balance.
+  strategy, lending, or staking. The current `supply` block explicitly distinguishes an
+  interest-bearing lending receipt from this plain wrapper.
+- **The empty vault is not safe to advertise.** An unseeded ERC-4626 can be donation-manipulated.
+  `deployedRoutes()` and the signing surface therefore require `totalSupply > 0`; an unavailable RPC
+  or zero supply keeps deposit and redeem closed. Seeding is an explicit owner-wallet operation, not
+  an app or executor action.
 - **Deposit and redeem cannot be combined in one capsule.** Settlement measures
   `balanceOf(outAsset)` after minus before. A run that deposits the asset and redeems it back nets to
   zero at best, and underflow-reverts as soon as rounding bites. Redeem is only useful in a capsule
@@ -273,10 +267,7 @@ Three caveats that remain true even once all three land, and none of which shoul
 
 ---
 
-## 4b. The gap the vault work does *not* close: the builder cannot draw a `supply` chain
-
-This applies to **both chains** and it is the sharpest thing in this document, so it gets its own
-section rather than a footnote.
+## 4b. The builder gap is closed, but live-state gates remain
 
 `compileChain` in `src/lib/blocks.ts` matches shapes by strict equality:
 
@@ -284,87 +275,56 @@ section rather than a footnote.
 const fits = block.accepts === shape;
 ```
 
-Now read the shape graph:
+The catalogue now carries the missing shapes explicitly:
 
-- `supply` **emits** `receipt`.
-- `send` — the only SHIPPED sink — **accepts** `token`. A `receipt` reaching it is a hard
-  block-level `mismatch` error, not a warning.
-- `hold` is the only block that **accepts** `receipt`, and `hold` is **BLOCKED (core)** (row 23).
+- `supply` emits `receipt`;
+- `send` accepts both `token` and `receipt`;
+- `vault-position` opens a chain from an exact ozUSDG share amount; and
+- `redeem` consumes `receipt` and emits the welded USDG asset.
 
-So: **a chain ending in `supply` is expressible by the contracts and rejected by the builder.** At the
-contract layer the vault share (or the aToken) is just an allowlisted ERC-20 and settles fine — that
-is exactly what the Base runbook's `supply → send` chain does. At the product layer, the user cannot
-draw it.
+`src/lib/deployable.ts` now reduces the visual chain through the deployed-adapter registry in
+`src/lib/chains.ts`, rather than recognizing only the original aeWETH/0xZAPS route. That closes the
+old product/compiler gap.
 
-Two consequences worth stating plainly:
-
-1. **Shipping the deposit adapter does not by itself make `supply` usable from the product surface.**
-   Either `send` must accept `receipt`, or a `receipt → token` block must exist.
-2. **There is no block in the catalogue for redeeming a receipt back to its underlying.**
-   `ZapVaultRedeemAdapter` has now shipped, so this is no longer hypothetical: it is a real, tested
-   on-chain capability with **no block in the 25 that can express it.** The nearest candidate,
-   `remove-liquidity`, `accepts: "lp"`, not `receipt`. **This capability is therefore counted nowhere
-   in the scoreboard below**, and that is the honest treatment — it should not be added to the
-   product's capability count until a block exists that a user can actually draw.
-
-So the vault work moves exactly **one** row (7, on Robinhood, and only to SHIPPED). It moves `stake`
-nowhere, because that block takes an `lp`. It moves `remove-liquidity` nowhere, for the same reason.
-Anyone reporting this work as unblocking a category of the catalogue would be overstating it.
-
-Separately, `src/lib/deployable.ts` is the narrowest gate in the whole system — narrower than both the
-contracts and this matrix. As committed, it reduces **only** the single-step aeWETH ⇄ 0xZAPS swap to a
-deployable policy; every other design, including a `supply` chain and including a swap through
-`RobinhoodV4PoolAdapter`, is rejected by name at the handoff. A front-end track is actively reworking
-this into a two-layer reduction backed by a new `src/lib/chains.ts` adapter registry, keyed off which
-adapters are *actually deployed and allowlisted*. That is the right shape, and it does not change any
-verdict here: with no adapter addresses configured, the offered set is still the one bounded swap, and
-the shape mismatch above lives in `src/lib/blocks.ts`, which that work does not touch.
+It does **not** make static source configuration sufficient. The app still performs RPC-backed
+checks for code, registry membership, immutable route pins, quotes, and vault seeding. Missing or
+unprovable live state fails closed. In particular, the ozUSDG deposit/redeem routes remain hidden
+while the canonical vault is unseeded.
 
 ---
 
 ## 5. Scoreboard
 
-Counted per chain, at **current** status — code that has never been broadcast is counted as SHIPPED,
-never as LIVE.
-
-| Verdict | Base 8453 | Robinhood 4663 |
-| --- | --- | --- |
-| **LIVE** | 7 — `wallet-balance`, `recurring-stream`, `swap`, `supply`, `guard-slippage`, `guard-approval`, `send` | 6 — the same, **minus `supply`** |
-| **SHIPPED** (written, tested, not broadcast) | 0 | 1 — `supply`, via `ZapVault` + its two adapters (§4a) |
-| **POSSIBLE** | 1 — `remove-liquidity` (ERC-20 LP only, one asset stranded) | 0 |
-| **BLOCKED** | 17 | 18 |
-| **Total** | 25 | 25 |
-
-Base moves **nothing** as a result of the vault work — it is a Robinhood-only capability. Robinhood
-goes from 19 BLOCKED to 18, and gains its first SHIPPED-but-not-live row. **Robinhood's LIVE count is
-unchanged at 6**, and stays there until someone broadcasts and governance allowlists.
-
-One capability shipped that this table cannot count at all: **redeeming a vault share back to the
-underlying**. It works, it is tested, and no block in the 25 can express it (§4b).
-
-The chains that are fully deployable today, end to end:
+The old 25-row count is retired: the catalogue now includes additional sources, actions, guards,
+and automation templates, so preserving the old total would manufacture a misleading denominator.
+Current status is reported by exact route and lineage:
 
 ```
 Base 8453
   wallet balance (WETH) → swap (Uniswap v3, WETH→USDC, 0.05%) → slippage cap → human gate → send
   wallet balance (WETH) → supply (Aave v3 WETH) → slippage cap → human gate → send
-      ^ settles the aToken at the contract layer; the builder rejects it (§4b)
 
 Robinhood 4663
   wallet balance (aeWETH) → swap (Uniswap v4, aeWETH→0xZAPS) → slippage cap → human gate → send
-      ^ the only one of these that today's deployed adapter set and deployable.ts both accept
+  wallet balance (aeWETH) → swap (Uniswap v4, aeWETH→USDG) → slippage cap → send
+  wallet balance (USDG) → fixed route (USDG→aeWETH→0xZAPS) → slippage cap → send
+  wallet balance (0xZAPS) → fixed route (0xZAPS→aeWETH→USDG) → slippage cap → send
+  wallet balance (aeWETH or USDG) → full-range ozRANGE vault → send
+  ozRANGE balance → welded withdraw (settle aeWETH or USDG) → send
+  recurring / relative-floor recurring / price-triggered automation through live v3/v3.1
 
-Robinhood 4663 — AFTER broadcasting DeployRobinhoodExpansion.s.sol, not before:
-  wallet balance (USDG)  → supply (ZapVault)  → slippage cap → human gate → send   [settles ozUSDG]
-  wallet balance (ozUSDG) → «redeem»          → slippage cap → human gate → send   [settles USDG]
-      ^ the first is contract-expressible but undrawable in the builder (§4b)
-      ^ the second has no block at all; it exists only as an adapter
-      ^ the two CANNOT be combined in one capsule — the round trip nets to zero and reverts (§4a)
+Robinhood 4663 — deployed but app-gated while ozUSDG totalSupply == 0:
+  wallet balance (USDG) → ZapVault receipt → send
+  ozUSDG balance → redeem → USDG → send
+
+Source-only, absent from live immutable implementations:
+  base v1.2.0-candidate → irreversible owner halt + witnessed Permit2 first-step owner pull
+  all future lineage sources → irreversible per-policy owner halt
+  v3.2 → recurring output stacking into owner tickets
 ```
 
-Everything else in the catalogue is either a second deployment of an adapter that already exists (a
-different pool, a different reserve), a POSSIBLE adapter someone still has to write, or a BLOCKED row
-above that needs a different core — not a cleverer adapter.
+`docs/deployments.md` is the authority for live addresses and gates. A configured address alone is
+never a live claim; the app rechecks route pins and registry state before signing.
 
 ---
 
@@ -397,26 +357,24 @@ Listed once, so the BLOCKED rows above do not have to repeat it.
 None of these is reachable by writing another adapter, which is the whole point of listing them
 separately.
 
-Three further items are **not** core changes and should not be filed as such — they are catalogue and
-front-end work (§4b):
-
-- `send` accepting a `receipt`, so a `supply` chain can be drawn at all.
-- A block that expresses `receipt → token`, so `ZapVaultRedeemAdapter` becomes reachable from the
-  builder instead of being a capability only a hand-written policy can use.
-- Correcting the `supply` block's detail copy before it is offered on 4663. It currently reads
-  *"Interest accrues to the share"*. For `ZapVault` that is false — it earns nothing.
+The former catalogue/front-end gaps for receipt settlement, vault redemption, and no-yield copy are
+closed. They remain useful regression cases: a future block-shape or copy change must not
+reintroduce them.
 
 ---
 
 ## 7. Runbooks
 
-Nothing in this repo broadcasts anything, and no key is read, written or requested anywhere in it.
+Scripts do not broadcast unless an operator explicitly supplies Forge's `--broadcast` and a local
+signer. No private key belongs in source, arguments, environment transcripts, or documentation.
 
 - **Base 8453** — `script/DeployBase.s.sol`. See §8 below.
-- **Robinhood Chain 4663** — `script/DeployRobinhoodExpansion.s.sol`, documented in full in
-  `ROBINHOOD_EXPANSION.md` §6. It **adds to** the live deployment; do not re-run
-  `DeployRobinhood.s.sol`, which stands up a new, disconnected core and would orphan every capsule the
-  live factory has already produced.
+- **Robinhood Chain 4663 live suites** — do not re-run historical expansion scripts. Follow
+  `docs/deployments.md` and the independent post-broadcast acceptance checklist for a new lineage.
+- **Robinhood testnet 46630 soak** — use
+  `script/DeployRobinhoodTestnetSoak.s.sol` and
+  `docs/soaks/2026-07-28-robinhood-testnet-executor-soak-template.md`. The template is explicitly
+  `NOT STARTED`; local tests are not a 24-hour soak.
 
 ---
 
@@ -427,15 +385,15 @@ The owner runs these, in this order, with their own signer.
 ```bash
 cd contracts
 
-# 0. Gates. Both must be clean before anything else.
+# 0. Gates. All must be clean before anything else.
 forge fmt --check
 forge build --force
-forge test                                        # 176 passed, 3 skipped
-forge test --fork-url https://mainnet.base.org    # 176 passed, 3 skipped
+forge test
+forge test --fork-url https://mainnet.base.org
 
 # 1. Dry run. No --broadcast: this only simulates and prints the addresses and gas.
-#    GOVERNANCE is the Safe that will own the registry and the allowlist. It is an ADDRESS.
-export GOVERNANCE=0xYourSafe
+#    GOVERNANCE is the reviewed address that will own the new registry and allowlist.
+export GOVERNANCE=0xYourGovernanceAddress
 forge script script/DeployBase.s.sol \
   --fork-url https://mainnet.base.org \
   --sender 0xYourDeployerAddress
@@ -453,17 +411,16 @@ forge script script/DeployBase.s.sol \
 #    The pre-existing v1.0.0 factory 0xc7C5897e4738a157731c2F93b1d73Db9926E926C is superseded and
 #    must not be quoted anywhere as current.
 
-# 4. Complete governance. From the Safe, on BOTH contracts — the transfer is two-step and until this
-#    lands the deployer is still the kill-switch holder:
-cast send <AdapterRegistry> "acceptOwnership()" --rpc-url ... # from the Safe
-cast send <TokenAllowlist>  "acceptOwnership()" --rpc-url ... # from the Safe
+# 4. Complete the script's two-step ownership handoff from the reviewed governance address.
+cast send <AdapterRegistry> "acceptOwnership()" --rpc-url ...
+cast send <TokenAllowlist>  "acceptOwnership()" --rpc-url ...
 
 # 5. Verify the live wiring before pointing any money at it.
-cast call <OpenZapFactory> "VERSION()(string)"        --rpc-url https://mainnet.base.org  # "1.1.0"
+cast call <OpenZapFactory> "VERSION()(string)"        --rpc-url https://mainnet.base.org  # "1.2.0-candidate"
 cast call <AdapterRegistry> "isAllowed(address)(bool)" <swapAdapter>   --rpc-url ...      # true
 cast call <AdapterRegistry> "isAllowed(address)(bool)" <supplyAdapter> --rpc-url ...      # true
-cast call <AdapterRegistry> "owner()(address)"        --rpc-url ...                       # the Safe
-cast call <TokenAllowlist>  "owner()(address)"        --rpc-url ...                       # the Safe
+cast call <AdapterRegistry> "owner()(address)"        --rpc-url ...                       # reviewed governance
+cast call <TokenAllowlist>  "owner()(address)"        --rpc-url ...                       # reviewed governance
 
 # 6. Point the front end at the new factory, and only then fund a capsule.
 ```

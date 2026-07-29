@@ -71,8 +71,9 @@ Configuration (all optional) lives in `~/.openzaps/executor/config.json` or env:
 `OPENZAPS_LOTTERY_POT`, `OPENZAPS_MAX_FEE_PER_GAS`. Defaults target Robinhood Chain (4663) via
 `https://rpc.mainnet.chain.robinhood.com`. Set `OPENZAPS_RPC_URLS` (comma-separated) to run on a
 fallback transport — every request tries the endpoints in order, so one flaky RPC never idles the
-bundler. `OPENZAPS_CONFIRMATIONS` (default 12) and `OPENZAPS_RECEIPT_TIMEOUT_MS` control the
-finality wait. Canonical v3/v3.1 pins default to the documented Robinhood deployments and may be
+bundler. That transport is availability only; it is not signer quorum. `OPENZAPS_CONFIRMATIONS`
+(default 12) and `OPENZAPS_RECEIPT_TIMEOUT_MS` control the initial receipt wait. Canonical v3/v3.1
+pins default to the documented Robinhood deployments and may be
 overridden with `OPENZAPS_V3_FACTORY` / `OPENZAPS_V3_IMPLEMENTATION` and
 `OPENZAPS_V3_1_FACTORY` / `OPENZAPS_V3_1_IMPLEMENTATION`. The undeployed v3.2 lineage stays disabled
 until both `OPENZAPS_V3_2_FACTORY` and `OPENZAPS_V3_2_IMPLEMENTATION` are configured.
@@ -89,6 +90,37 @@ The pot keeper additionally re-reads the pot's immutable `BUY_ADAPTER` and `ZAPS
 `OPENZAPS_ZAPS_TOKEN`. Missing pins, changed bytecode, retired adapters, and unreadable dependencies
 block before simulation or signing. Watch-only may report a missing pin, but never promotes the
 observed onchain hash into approval.
+
+## Late-block admission and L1-derived finality
+
+Signer admission requires `OPENZAPS_LATE_BLOCK_RPC_URLS`, an environment-only JSON array containing
+at least two HTTPS RPC URLs on distinct origins. Provider URLs often contain credentials, so this
+list is never accepted from `config.json` and endpoint text is never logged. Distinct origins are
+only a mechanical floor: the operator must verify that the endpoints are run by independent node
+operators.
+
+Immediately before any wallet write, inside the single signer-lane mutex, the executor:
+
+1. queries every declared node independently instead of using viem's ordered fallback;
+2. rejects wrong-chain, malformed, stale, future-skewed, or excessively lagging heads;
+3. requires at least `OPENZAPS_LATE_BLOCK_MIN_AGREEMENT` nodes (default 2) to agree on one recent
+   canonical `(blockNumber, blockHash)`; and
+4. for a capsule execution, repeats the exact `eth_call` through the agreeing nodes at that block.
+
+The earlier simulation remains useful in watch-only mode but never authorizes a signer. A stale
+head (default maximum age 60 seconds), hash disagreement, split simulation, or unavailable quorum
+returns a typed fail-closed outcome and sends no transaction. Tune only the bounded
+`OPENZAPS_LATE_BLOCK_MAX_HEAD_SKEW`, `OPENZAPS_SEQUENCER_MAX_BLOCK_AGE_SECONDS`, and
+`OPENZAPS_MAX_CLOCK_SKEW_SECONDS` controls after recording evidence from the actual providers.
+
+Receipt observation is also not settlement. The same independent-node set must agree on one recent
+L2 `finalized` block at or beyond the receipt, in addition to the configured confirmation depth and
+a canonical block-hash match. `OPENZAPS_FINALITY_MAX_HEAD_SKEW` and
+`OPENZAPS_FINALITY_MAX_BLOCK_AGE_SECONDS` bound disagreement and stale evidence. Robinhood Chain's
+documented Nitro node consumes Ethereum execution and beacon endpoints because chain data settles
+through L1. Operators must verify their providers' `finalized` semantics and retain the outbox if
+that quorum evidence is missing. L1 force-inclusion is not implemented here; it remains part of the
+explicitly deferred protective-zap model.
 
 ## Private submission on Robinhood Chain
 
@@ -188,9 +220,10 @@ conversion persists the same receipt-backed marker before releasing the FIFO sig
 marker survives restart and blocks all later wallet writes even if a fallback RPC has not yet
 propagated the pending nonce. Admission also requires the account's `latest` and `pending`
 transaction counts to match, so a pending nonce or an uncertain RPC view fails closed. The marker
-clears only after the receipt has enough confirmations and its block hash matches the canonical
-block at that height, closing both the check-to-send and stale-RPC races. The pending block must
-also expose an EIP-1559 base fee no higher than the signed/configured fee cap; an
+clears only after the receipt has enough confirmations, an independent quorum agrees that the
+L1-derived `finalized` L2 boundary has crossed it, and its block hash matches the canonical block
+at that height, closing both the check-to-send and stale-RPC races. The pending block must also
+expose an EIP-1559 base fee no higher than the signed/configured fee cap; an
 absent/unreadable fee or a cap below base fee defers without a write. The signer receipt outbox is
 capped at 256 and settled in batches of 32. A mined receipt is only settled when its `blockHash`
 still matches the canonical block at its height, so a reorg leaves the hash queued for a later

@@ -4,6 +4,9 @@
 > and factory in `src/v2/`. Nothing about the live v1.1 deployment changes. **This code MUST NOT
 > replace the live factory, and Hermes MUST NOT submit to a v2 clone, without external security
 > review.** It exists to prove out one capability and to be reviewed, not to be shipped as-is.
+> The current source also carries the common one-way, owner-only `haltPolicy()` containment control
+> added across all OpenZap lineages; that is not a balance-relative v2 semantic and is not present in
+> the existing live v1.1 implementation.
 
 ## What this is
 
@@ -57,7 +60,7 @@ Every invariant the v1 core holds still holds. Re-derived from `src/OpenZap.sol`
 | I-SURF-1 | adapter allowlist + single fixed `IAdapter.execute` selector; frozen `data`; re-checked at execute | **Unchanged.** Balance-relative changes only the *amount* passed; the adapter, the `spender`, the selector, and the frozen `data` are identical. |
 | I-APPR-1/2 | exact approval set then reset to zero every path (success and revert) | **Unchanged.** The reset to zero is unconditional and same-call; a reverting balance-relative step rolls back the whole tx, leaving no residual approval. |
 | I-FLOW-1/2/4 | settlement measures the outAsset **delta** (`balanceOf - preOut`), never the absolute balance; underflow-reverts if no gain; min-out enforced net of a bounded relayer fee | **Unchanged.** This is the load-bearing part of the safety argument (below). |
-| I-REC-1/2/3 | unconditional owner-only `emergencyExit` routing through no adapter; `invalidateNonce` | **Unchanged.** |
+| I-REC-1/2/3/4 | unconditional owner-only `emergencyExit` routing through no adapter; `invalidateNonce`; one-way owner-only `haltPolicy()` scoped to this clone | **Common current-source containment.** Balance-relative execution does not change it. |
 | I-ISO-1/2/3 | implementation bricked at construction; no `selfdestruct`/`delegatecall`/upgrade; atomic factory-only init once; policy-bound CREATE2 address | **Unchanged.** |
 | I-TOK-1/2 | curated token allowlist; balance-delta accounting assumes honest, non-fee-on-transfer, non-rebasing tokens | **Unchanged** (and see the note on leaning harder on honest `balanceOf`). |
 

@@ -14,6 +14,10 @@ import {
 } from "node:fs";
 import { join } from "node:path";
 import { keccak256 } from "viem";
+import {
+  checkFinalizedBlockQuorum,
+  checkFinalizedReceiptQuorum,
+} from "./late-block.mjs";
 
 export const RECEIPT_OUTBOX_LIMIT = 256;
 export const RECEIPT_DELIVERY_OUTBOX_LIMIT = 256;
@@ -605,7 +609,14 @@ async function settleHostedDeliveries(state, cfg, fetchImpl, nowMs) {
  * then retries from its own bounded, backed-off queue; permanent failures become durable dead
  * letters.
  */
-export async function settleReceiptOutbox({ publicClient, state, cfg, fetchImpl = fetch, now = Date.now }) {
+export async function settleReceiptOutbox({
+  publicClient,
+  finalityClients = [],
+  state,
+  cfg,
+  fetchImpl = fetch,
+  now = Date.now,
+}) {
   const receiptOutbox = recordMap(state, "receiptOutbox");
   const settled = [];
   const pending = [];
@@ -616,6 +627,36 @@ export async function settleReceiptOutbox({ publicClient, state, cfg, fetchImpl 
   if (Object.keys(receiptOutbox).length === 0) return { settled, pending, hosted };
   const head = await publicClient.getBlockNumber();
   const requiredConfirmations = Number.isInteger(cfg.confirmations) ? cfg.confirmations : 1;
+  let finalizedHead = null;
+  let finalityAgreement = null;
+  let finalityAgreementClients = [];
+  if (cfg.finalityBlockTag) {
+    try {
+      const proof = await checkFinalizedBlockQuorum({
+        clients: finalityClients,
+        chainId: cfg.chainId,
+        minimumAgreement: cfg.lateBlock?.minimumAgreement ?? 2,
+        maxHeadSkewBlocks: cfg.finalityMaxHeadSkewBlocks ?? 128,
+        maxBlockAgeSeconds: cfg.finalityMaxBlockAgeSeconds ?? 3_600,
+        maxFutureSkewSeconds: cfg.lateBlock?.maxFutureSkewSeconds ?? 30,
+        nowSeconds: Math.floor(nowMs / 1_000),
+        blockTag: cfg.finalityBlockTag,
+      });
+      if (!proof.allowed) throw new Error(proof.outcome);
+      finalizedHead = proof.block;
+      finalityAgreement = proof.agreeingOrigins;
+      finalityAgreementClients = proof.agreeingClients;
+    } catch {
+      // A receipt is not final merely because the latest L2 head advanced. Preserve every outbox
+      // row until the node can prove its parent-chain-derived finalized boundary.
+      for (const entry of Object.values(receiptOutbox).slice(0, RECEIPT_SETTLE_BATCH_LIMIT)) {
+        entry.attempts = Number(entry.attempts ?? 0) + 1;
+        entry.lastError = "L1-derived finalized block evidence is unavailable";
+        pending.push(entry);
+      }
+      return { settled, pending, hosted };
+    }
+  }
 
   for (const [hash, entry] of Object.entries(receiptOutbox).slice(0, RECEIPT_SETTLE_BATCH_LIMIT)) {
     entry.attempts = Number(entry.attempts ?? 0) + 1;
@@ -632,6 +673,29 @@ export async function settleReceiptOutbox({ publicClient, state, cfg, fetchImpl 
       entry.lastError = `${confirmations}/${requiredConfirmations} confirmations`;
       pending.push(entry);
       continue;
+    }
+    if (finalizedHead && receipt.blockNumber > finalizedHead.number) {
+      entry.lastError =
+        `receipt block ${receipt.blockNumber} is newer than L1-derived finalized `
+        + `L2 head ${finalizedHead.number}`;
+      pending.push(entry);
+      continue;
+    }
+    if (finalizedHead) {
+      const receiptProof = await checkFinalizedReceiptQuorum({
+        clients: finalityAgreementClients,
+        chainId: cfg.chainId,
+        minimumAgreement: cfg.lateBlock?.minimumAgreement ?? 2,
+        transactionHash: hash,
+        blockNumber: receipt.blockNumber,
+        blockHash: receipt.blockHash,
+        status: receipt.status,
+      });
+      if (!receiptProof.allowed) {
+        entry.lastError = receiptProof.detail;
+        pending.push(entry);
+        continue;
+      }
     }
 
     try {
@@ -667,6 +731,12 @@ export async function settleReceiptOutbox({ publicClient, state, cfg, fetchImpl 
         gasUsed: receipt.gasUsed.toString(),
         effectiveGasPrice: receipt.effectiveGasPrice?.toString() ?? null,
         confirmations,
+        finalityPolicy: finalizedHead
+          ? "canonical-confirmations+l1-derived-finalized-quorum"
+          : "canonical-confirmations",
+        finalizedHeadNumber: finalizedHead?.number?.toString() ?? null,
+        finalizedHeadHash: finalizedHead?.hash ?? null,
+        finalizedHeadAgreement: finalityAgreement,
         recordedAt: new Date().toISOString(),
         authorityScope: "none",
         privateSubmission: entry.privateSubmission

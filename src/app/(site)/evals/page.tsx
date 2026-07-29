@@ -17,16 +17,16 @@ const releaseChecks = [
     "872 Vitest checks passed; lint, TypeScript, and the production Next.js build completed.",
   ],
   [
-    "Executor + MCP",
-    "131 Node checks passed across execution, receipts, relay intake, private submission, adapter provenance, notifications, MCP protocol, and package safety.",
+    "Executor + SDK + MCP",
+    "148 Node checks passed across execution, receipts, relay intake, private submission, adapter provenance, notifications, SDK typed-data safety, MCP protocol, and package safety.",
   ],
   [
     "Contracts",
-    "397 Foundry checks passed with four explicitly opt-in skips; the hermetic CI partition passed 310 with four skips.",
+    "422 Foundry checks passed with five explicitly opt-in skips; the hermetic CI partition passed 335 with four skips.",
   ],
   [
     "Live forks",
-    "87 fixed-block Base and Robinhood fork checks passed, plus three explicitly enabled Robinhood end-to-end gates.",
+    "87 fixed-block Base and Robinhood fork checks passed, plus four explicitly enabled Robinhood end-to-end gates.",
   ],
   [
     "Storage + supply chain",

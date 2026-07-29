@@ -258,7 +258,9 @@ AUTHORIZED DOMAINS OF ACTION
    - Detect nonce desynchronization, abnormal adapter behavior, and unusual protocol-side events.
 
 6. Revocation and Containment
-   - If policy allows revocation, submit nonce invalidation or zap pause/revoke pathway as configured.
+   - The owner may invalidate a nonce/series or permanently call `haltPolicy()` on its own capsule.
+     The halt is scoped to that capsule's one frozen policy, cannot be undone, and does not block
+     `emergencyExit`; Hermes has no authority to invoke it unless Hermes is itself the owner.
    - If zap is deposit-based and policy breach is detected, prioritize withdrawal / emergency exit if authorized.
    - If repeated simulation-to-chain divergence occurs, mark zap as degraded and halt autonomous submission.
    - If a protocol adapter, token, oracle source, relayer endpoint, or private submission endpoint is compromised or degraded,
@@ -353,11 +355,12 @@ The fastest path to a credible prototype is to reduce scope hard enough that the
 | P0 | Build postcondition engine | Balance-delta checks (net-of-fee), min-out, allowed-recipient assertions | Converts “route intent” into enforceable safety |
 | P0 | Guarantee an unconditional emergency exit | Owner-only withdraw independent of adapters, Hermes, and postconditions (promoted from P1) | Immutable zaps call mutable protocols; this is the only recovery path |
 | P1 | Add ERC-1271 | Smart-wallet compatibility test suite | Required for Safe / contract-wallet users |
+| P1 | Add signed-intent owner pull (**current base-lineage source complete; redeploy required**) | Permit2 SignatureTransfer witnesses the exact OpenZap intent; capsule is spender/destination, first frozen token/amount is exact, deadline is short, and measured receipt/consumption fails closed. Existing live v1.1 remains pre-funded | Removes executor pull authority without pretending the owner's ERC-20 approval to Permit2 disappears |
 | P1 | Resolve submission privacy vs censorship | **ADR-0003**: per-step sensitivity — private-only multi-builder for price-sensitive, public-after-T only for non-sensitive | The two goals are mutually exclusive on one route |
-| P1 | Add revocation paths | Nonce invalidation, halt per policy | Containment matters as much as execution |
-| P1 | Build late-block simulation | Re-sim near submission with multi-node quorum; L2 reorg/finality policy | Reduces simulation-to-chain divergence |
-| P2 | Formalize invariants | Foundry/Echidna invariant fuzzing + Certora/Halmos rules (SMTChecker for arithmetic/nonce only) | SMTChecker is blind across the adapter call-loop; see `invariant-spec.md` |
-| P2 | External audit after feature freeze | Audit of factory, **shared implementation**, adapters, intent verification, postconditions | Auditing moving targets is low leverage |
+| P1 | Add revocation paths (**current source complete; redeploy required**) | Nonce/series invalidation plus one-way, owner-only `haltPolicy()` per frozen policy; existing live implementations are unchanged | Containment matters as much as execution |
+| P1 | Build late-block simulation (**current source complete; independent nodes required before signing**) | Re-sim inside the signer lane at one multi-node-agreed canonical block; reject stale/sequencer-unknown views; retain receipts until an independent quorum crosses the L1-derived `finalized` boundary | Reduces simulation-to-chain divergence without mistaking fallback, inclusion, or one provider's assertion for consensus |
+| Out of current scope | External formal verification | Not a gate or deliverable for this release; executable unit, fuzz, invariant, fork, and operational tests remain required | Explicit release-scope decision; do not represent this as completed formal verification |
+| Out of current scope | External audit | Not a gate or deliverable for this release; retain the public pre-audit warning | Explicit release-scope decision; do not represent the contracts as audited |
 | P2 | Operational compliance design | Per-zap isolated balances (never pooled); decide software vs managed-service posture | Pooled balances are both a blast-radius and a CASP/money-transmitter flag |
 
 ### Cross-cutting v1 invariants

@@ -3,6 +3,7 @@ pragma solidity 0.8.34;
 
 import {BaseTest} from "./Base.t.sol";
 import {OpenZap} from "../src/OpenZap.sol";
+import {OpenZapIntent} from "../src/libraries/OpenZapTypes.sol";
 
 /// @notice REC invariants: unconditional owner-only emergency exit, independent of adapter/Hermes state.
 contract RecoveryTest is BaseTest {
@@ -37,6 +38,39 @@ contract RecoveryTest is BaseTest {
     function test_emergencyExit_onlyOwner() public {
         vm.expectRevert(OpenZap.NotOwner.selector);
         zap.emergencyExit(_inAssets());
+    }
+
+    function test_haltPolicy_onlyOwnerAndOneWay() public {
+        vm.expectRevert(OpenZap.NotOwner.selector);
+        zap.haltPolicy();
+
+        vm.prank(owner);
+        zap.haltPolicy();
+        assertTrue(zap.policyHalted());
+
+        vm.prank(owner);
+        vm.expectRevert(OpenZap.PolicyExecutionHalted.selector);
+        zap.haltPolicy();
+    }
+
+    function test_haltPolicy_blocksExecutionBeforeNonceConsumption_butLeavesRecoveryAvailable() public {
+        OpenZapIntent memory intent = _defaultIntent();
+        bytes memory sig = _signIntent(OWNER_PK, intent);
+
+        vm.prank(owner);
+        zap.haltPolicy();
+
+        vm.expectRevert(OpenZap.PolicyExecutionHalted.selector);
+        zap.execute(intent, sig);
+        assertFalse(zap.nonceUsed(intent.nonce), "halted attempt must not consume authorization");
+
+        vm.prank(owner);
+        zap.invalidateNonce(intent.nonce);
+        assertTrue(zap.nonceUsed(intent.nonce), "granular revocation remains available");
+
+        vm.prank(owner);
+        zap.emergencyExit(_inAssets());
+        assertEq(tokenIn.balanceOf(owner), AMOUNT_IN, "recovery remains available");
     }
 
     function testFuzz_emergencyExit_fromArbitraryDeposits(uint96 a, uint96 b) public {

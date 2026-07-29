@@ -7,6 +7,11 @@ and broadcast records: [`docs/deployments.md`](../../../docs/deployments.md). De
 [`script/DeployV3Robinhood.s.sol`](../../script/DeployV3Robinhood.s.sol),
 [`script/DeployV3_1Robinhood.s.sol`](../../script/DeployV3_1Robinhood.s.sol).
 
+> **Source/live boundary (2026-07-28).** This source now includes one-way, owner-only
+> `haltPolicy()` for future deployments. The live v3 and v3.1 implementation addresses above predate
+> that addition and do not expose it; existing live capsules still use `invalidateNonce` and
+> `emergencyExit`. A new verified implementation/factory is required to activate policy halting.
+
 ## What v3 adds
 
 v1/v2 capsules hold ONE owner-signed step graph that executes ONCE. v3 keeps that path
@@ -23,8 +28,10 @@ submission** — any executor can fire a run that is owed; no executor can fire 
 The executor chooses *when* (within the owner's bounds) and nothing else: route, amounts,
 recipient, out-asset, and floors stay frozen/signed exactly as in v1/v2.
 
-A recurring series is cancelled with the existing `invalidateNonce(seriesId)`; a held trigger the
-same way. `emergencyExit` is unchanged and unconditional.
+A recurring series is cancelled with `invalidateNonce(seriesId)`; a held trigger the same way. In
+the current source, `haltPolicy()` permanently stops all execution types for that one clone without
+blocking granular invalidation or the unchanged, unconditional `emergencyExit`. There is no unhalt:
+resuming requires a new capsule and policy, so held signatures cannot be silently reactivated.
 
 ## Executor economy (the fee loop)
 

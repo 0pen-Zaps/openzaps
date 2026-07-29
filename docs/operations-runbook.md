@@ -17,6 +17,11 @@ execution authority.
   recipient, amount, fee, gas caps, validity window, or nonce.
 - The public relay, policy registry, Guardian, scorecards, and notifications
   carry no execution authority.
+- The current product posture is self-custodial software plus a reference
+  courier: no pooled user balances, discretionary routing, or operator-held
+  withdrawal authority. Hosted discovery/evidence services do not change that
+  technical boundary. This is a product-design decision, not a legal
+  classification; changing the operating model requires a fresh review.
 - The live adapter and token registries are currently owned by
   `0x5a52D4B820Ae7F02880d270562950918ACb14aA2`, with `pendingOwner()` equal to
   zero as last verified on 28 July 2026. Moving that ownership is intentionally
@@ -40,13 +45,17 @@ do not copy an address from a broadcast log or an old terminal transcript.
    `executor/manifests/robinhood-mainnet-v1.json` at the operator path named by
    `OPENZAPS_ADAPTER_MANIFEST_FILE`; re-read every runtime and registry bit at
    one block. Never generate approval pins from the same runtime check.
-6. Broadcast only with the named local keystore or hardware signer. Never put a
+6. Configure at least two independently operated late-block RPC origins. Prove
+   they agree on a recent canonical block, exact execution simulation, and the
+   L2 `finalized` tag derived from L1 before enabling a signer. Ordered fallback
+   URLs are availability, not quorum.
+7. Broadcast only with the named local keystore or hardware signer. Never put a
    private key in a command, environment transcript, issue, or chat.
-7. Independently read deployed code, constructor pins, ownership, pending
+8. Independently read deployed code, constructor pins, ownership, pending
    ownership, registry state, and one user-facing route from chain.
-8. Deploy the exact reviewed Git commit. Record the deployment ID, commit,
+9. Deploy the exact reviewed Git commit. Record the deployment ID, commit,
    aliases, and build result.
-9. Exercise the canonical domain in a fresh browser session, inspect server
+10. Exercise the canonical domain in a fresh browser session, inspect server
    error logs, and verify the deployment marker rather than trusting an alias
    timestamp.
 
@@ -58,7 +67,7 @@ do not copy an address from a broadcast log or an old terminal transcript.
 | API or storage admission | body/concurrency/quota tests, migration replay, enforced edge quota | turn off the feature gate; preserve stored evidence |
 | New adapter or token | source review, runtime hash manifest, fork coverage, registry simulation | de-allowlist the adapter/token; owners retain emergency exit |
 | New capsule lineage | full contract suites, no-broadcast rehearsal, independent post-deploy reads | keep old lineages live; remove only the new app creation path |
-| Executor signing | adapter manifest, private-relay set, clear nonce lane, durable outbox, funded gas | stop signer; never delete an unresolved outbox row |
+| Executor signing | adapter manifest, private-relay set, late-block node quorum, L1-derived finality, clear nonce lane, durable outbox, funded gas | stop signer; never delete an unresolved outbox row |
 
 ## Incident decision tree
 
@@ -127,7 +136,16 @@ performed.
 
 ## Testnet soak
 
-A real testnet soak starts only after a testnet lineage is deployed and funded.
+A chain-46630-only bootstrap, executor intent template, and dated evidence worksheet are now source
+ready:
+
+- `contracts/script/DeployRobinhoodTestnetSoak.s.sol`
+- `executor/intents.sample/robinhood-testnet-soak.recurring.template.json`
+- `docs/soaks/2026-07-28-robinhood-testnet-executor-soak-template.md`
+
+They deploy fresh test-only registries, tokens, adapter, price source, v3 lineage, and a capsule
+funded for exactly 24 fixed runs. Every support contract and script entrypoint rejects non-46630
+chains. A real testnet soak still starts only after that isolated lineage is deployed and funded.
 Record at least:
 
 - deployment addresses, runtime hashes, signer, and testnet block;

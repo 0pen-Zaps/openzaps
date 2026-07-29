@@ -3,7 +3,8 @@ pragma solidity 0.8.34;
 
 import {BaseV3Test} from "./BaseV3.t.sol";
 import {OpenZapV3} from "../src/v3/OpenZapV3.sol";
-import {RecurringIntent} from "../src/v3/libraries/OpenZapV3Types.sol";
+import {OpenZapIntent} from "../src/libraries/OpenZapTypes.sol";
+import {RecurringIntent, TriggerIntent} from "../src/v3/libraries/OpenZapV3Types.sol";
 
 /// @dev The recurring path: one signature, many runs, cadence enforced ON-CHAIN, 1% fee split
 ///      80/20 executor/pot, `minOutPerRun` net of fee, owner cancel via `invalidateNonce`.
@@ -139,6 +140,32 @@ contract OpenZapV3RecurringTest is BaseV3Test {
         vm.prank(executor);
         vm.expectRevert(OpenZapV3.NonceReplay.selector);
         zap.executeRecurring(it, sig);
+    }
+
+    function test_haltPolicy_blocksEveryV3ExecutionSurface_beforeAuthorizationStateChanges() public {
+        RecurringIntent memory recurring = _defaultRecurring();
+        TriggerIntent memory trigger = _defaultTrigger();
+        OpenZapIntent memory oneShot;
+
+        vm.prank(owner);
+        zap.haltPolicy();
+
+        vm.expectRevert(OpenZapV3.PolicyExecutionHalted.selector);
+        zap.execute(oneShot, "");
+        vm.expectRevert(OpenZapV3.PolicyExecutionHalted.selector);
+        zap.executeRecurring(recurring, "");
+        vm.expectRevert(OpenZapV3.PolicyExecutionHalted.selector);
+        zap.executeTrigger(trigger, "");
+
+        (uint32 runs, uint64 lastRun) = zap.series(recurring.seriesId);
+        assertEq(runs, 0, "halted recurring attempt must not advance the series");
+        assertEq(lastRun, 0, "halted recurring attempt must not set cadence state");
+        assertFalse(zap.nonceUsed(recurring.seriesId));
+        assertFalse(zap.nonceUsed(trigger.nonce));
+
+        vm.prank(owner);
+        zap.invalidateNonce(recurring.seriesId);
+        assertTrue(zap.nonceUsed(recurring.seriesId), "series revocation remains available");
     }
 
     function test_tamperedField_failsSignature() public {

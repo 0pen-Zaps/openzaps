@@ -9,6 +9,14 @@ but its route is deliberately not yet advertised in the app, that is stated.
 > below). Keep user deposits scoped and recoverable with `emergencyExit` until external review is
 > complete.
 
+> **Source/live boundary (2026-07-28).** The base-lineage source is now
+> `1.2.0-candidate`; it adds one-way, owner-only `haltPolicy()` containment and a witnessed Permit2
+> SignatureTransfer owner-pull path. The v2, v3, v3.1, and v3.2 sources also include the halt. The
+> live Robinhood v1.1, v3, and v3.1 implementation addresses below predate these changes and **do
+> not gain them retroactively**: v1.1 remains pre-funded, and existing recovery controls remain
+> `invalidateNonce`/series cancellation and `emergencyExit`. Both candidate features require a newly
+> deployed and independently verified implementation/factory.
+
 ---
 
 ## Robinhood Chain mainnet (chainId 4663) — live
@@ -198,6 +206,9 @@ from v3.1 — only two import paths, the `DOMAIN_VERSION` literal, and the widen
 
 What it adds over v3.1, all enforced on-chain:
 
+- **Owner-scoped containment.** `haltPolicy()` permanently stops every execution type on one clone
+  before nonce or series state changes, while leaving `invalidateNonce` and `emergencyExit`
+  available. It cannot pause other users or be reversed to reactivate held signatures.
 - **Two spot-derived floors.** `priceSource`/`maxSlippageBps` floor the recipient's leg as in v3.1;
   `stackPriceSource` floors the 0xZAPS conversion leg. Without the second, a manipulated pool turns a
   real slice of the owner's output into dust tickets.
@@ -287,6 +298,9 @@ hashes, and every deployed address in this file as the checklist is completed.
 - [ ] Sign and execute one bounded `RecurringStackIntent`. Verify the `ExecutedRecurringStack` log,
   consumed run/series state, recipient output, executor and pot fee split, owner's ticket increase,
   and exact `stackIn`/`zapsOut` accounting from chain state rather than UI copy.
+- [ ] On a separate disposable capsule, sign but do not submit an intent, call owner-only
+  `haltPolicy()`, and verify every relevant execution surface reverts without consuming its nonce or
+  advancing series state. Then verify `invalidateNonce` and `emergencyExit` still succeed.
 - [ ] Confirm the capsule finishes with no stranded input and no transient adapter allowance. Confirm
   `/explore`, the durable execution receipt, Guardian, and executor scorecard all classify the run as
   `recurring-stack` before advertising the lineage.
