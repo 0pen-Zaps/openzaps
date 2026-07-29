@@ -4,6 +4,7 @@ import { JsonLd } from "@/components/JsonLd";
 import { STATIC_PAGE_SEO, breadcrumbJsonLd, pageMetadata, webPageJsonLd } from "@/lib/seo";
 import { ExecutorScorecardLookup } from "./ExecutorScorecardLookup";
 import styles from "../docs/docs.module.css";
+import evalStyles from "./evals.module.css";
 
 export const metadata = pageMetadata({
   ...STATIC_PAGE_SEO.evals,
@@ -68,8 +69,8 @@ export default function EvalsPage(): React.JSX.Element {
         </p>
         <div className={styles.steps}>
           {releaseChecks.map(([label, body]) => (
-            <div className={`${styles.step} ${styles.stepPhased}`} key={label}>
-              <span className={styles.stepTag}>Pass · {label}</span>
+            <div className={`${styles.step} ${styles.stepPhased} ${evalStyles.releaseStep}`} key={label}>
+              <span className={`${styles.stepTag} ${evalStyles.releaseTag}`}>Pass · {label}</span>
               <p className={styles.stepBody}>{body}</p>
             </div>
           ))}

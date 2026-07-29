@@ -70,6 +70,7 @@ describe("policy template subscription route", () => {
     ));
 
     expect(response.status).toBe(503);
+    expect(response.headers.get("cache-control")).toBe("private, no-store, max-age=0");
     expect(await response.json()).toMatchObject({
       code: "SUBSCRIPTIONS_DISABLED",
     });
@@ -183,6 +184,7 @@ describe("policy template subscription route", () => {
       expiresAt: 1_800_000_120,
     }));
     expect(expired.status).toBe(422);
+    expect(expired.headers.get("cache-control")).toBe("private, no-store, max-age=0");
     expect(await expired.json()).toMatchObject({ code: "SIGNATURE_EXPIRED" });
 
     serverMocks.getPolicyTemplate.mockRejectedValueOnce(new Error("database unavailable"));
