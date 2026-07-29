@@ -1,5 +1,5 @@
 .releaseStep.releaseStep {
-  grid-template-columns: 140px minmax(0, 1fr);
+  grid-template-columns: max-content minmax(0, 1fr);
 }
 
 .releaseTag {
