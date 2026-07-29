@@ -257,26 +257,21 @@ export const ROBINHOOD_ADAPTERS: readonly AdapterSpec[] = [
       "Refuses any vault or asset but the ones welded into its constructor, refuses to hold shares between calls, and refuses to report anything but the measured share delta.",
   },
   {
-    // No catalog block turns a vault share back into tokens — nothing accepts
-    // a receipt and emits a token — so this entry can never be selected by a
-    // drawn chain, which is why `blockId` is null rather than a guess. It is
-    // listed because the registry answers "what is deployed", not "what is
-    // drawable": leaving it out would make a deployed redeem adapter invisible
-    // to the next person reading this file.
+    // Reachable only through the receipt-shaped `vault-position → redeem`
+    // catalog chain. `routes.ts` still has to resolve the exact ERC-4626 quote
+    // path, and the RPC-holding signing surface still requires totalSupply > 0.
     id: "robinhood-zap-vault-redeem",
     chainId: ROBINHOOD_CHAIN_ID,
     kind: "vault-redeem",
     label: "OpenZap USDG Vault redeem",
-    blockId: null,
-    weldedParams: {},
+    blockId: "redeem",
+    weldedParams: { vault: "ZapVault" },
     tokenIn: "ozUSDG",
     tokenOut: "USDG",
     direction: null,
     envVar: "NEXT_PUBLIC_OPENZAP_ZAP_VAULT_REDEEM_ADAPTER",
-    // Deployed and allowlisted (ZapVaultRedeemAdapter). `blockId` stays null: no
-    // catalog block turns a share back into tokens, so a drawn chain can never
-    // select this — it is offered on /app only, and only while the vault holds
-    // shares to redeem (totalSupply > 0).
+    // Deployed and allowlisted (ZapVaultRedeemAdapter). The builder can name it,
+    // but /app offers it only while the vault holds shares to redeem.
     deployedAddress: "0x16eD4f04657c7a965aef333F5Cf0c9d745e0c8cE",
     refuses:
       "Refuses any vault or asset but the ones welded into its constructor, and refuses to redeem to anyone but its caller.",

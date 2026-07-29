@@ -12,6 +12,8 @@ import {
   resolveOfferedRoutes,
   resolveRouteById,
   resolveRouteFromStep,
+  routeCatalogReady,
+  routeStaticHandoffReady,
   stepDataFitsRoute,
   type Route,
 } from "@/lib/routes";
@@ -115,6 +117,24 @@ describe("resolveRoute — the deployed route set", () => {
     expect(redeem.trackedAssets).toEqual([ROBINHOOD_ASSETS.usdg, ROBINHOOD_ASSETS.ozusdg]);
     expect(redeem.quote).toEqual({ source: "erc4626-redeem", vault: ROBINHOOD_ASSETS.ozusdg });
     expect(redeem.requiresSeededVault).toBe(true);
+  });
+
+  it("keeps ozUSDG structurally resolvable but never statically handoff-ready without totalSupply", () => {
+    const key = "NEXT_PUBLIC_OPENZAP_ZAP_VAULT_REDEEM_ADAPTER" as const;
+    const previous = process.env[key];
+    try {
+      expect(routeCatalogReady("robinhood-zap-vault-redeem")).toBe(true);
+      // A structurally complete route is still not an offered creation route:
+      // this pure helper has no RPC and cannot prove the vault is seeded.
+      expect(routeStaticHandoffReady("robinhood-zap-vault-redeem")).toBe(false);
+      // An explicit malformed override wins over the baked deployment and must
+      // narrow the catalog, never fall back open to the baked address.
+      process.env[key] = "not-an-address";
+      expect(routeCatalogReady("robinhood-zap-vault-redeem")).toBe(false);
+    } finally {
+      if (previous === undefined) delete process.env[key];
+      else process.env[key] = previous;
+    }
   });
 });
 

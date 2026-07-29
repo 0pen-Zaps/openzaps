@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   createPublicClient,
   createWalletClient,
@@ -8,13 +8,15 @@ import {
   formatUnits,
   getAddress,
   http,
-  parseUnits,
+  isAddress,
   type Address,
   type Hex,
 } from "viem";
 
 import {
+  BRIDGE_SUBMISSION_RUNWAY_SECONDS,
   BRIDGE_ROUTES,
+  bridgeApprovalAmounts,
   bridgeFeeBps,
   buildBridgeDeposit,
   baseChain,
@@ -24,20 +26,7 @@ import {
   quoteIsStale,
   type BridgeQuote,
 } from "@/lib/bridge";
-import { getInjectedProvider } from "@/lib/robinhood";
-
-/**
- * Fund a capsule from Base.
- *
- * Self-contained: it takes a capsule address and never touches the sign-and-run
- * console's state. The bridge is not part of the policy, so it must not look
- * like part of the policy — this panel is about getting an ERC-20 into an
- * address, and everything the capsule enforces happens afterwards.
- *
- * The lifecycle is modelled honestly rather than collapsed into a spinner:
- * submitted-with-hash, confirmed-on-Base, and arrived-on-4663 are three
- * different facts and only the first two are observable from here.
- */
+import { getInjectedProvider, robinhoodChain } from "@/lib/robinhood";
 
 type Phase =
   | { kind: "idle" }
@@ -46,72 +35,171 @@ type Phase =
   | { kind: "submitting"; quote: BridgeQuote }
   | { kind: "submitted"; quote: BridgeQuote; hash: Hex }
   | { kind: "confirmed"; quote: BridgeQuote; hash: Hex }
+  | { kind: "arrived"; quote: BridgeQuote; hash: Hex; balance: bigint }
   | { kind: "reverted"; quote: BridgeQuote; hash: Hex }
   | { kind: "error"; message: string };
 
+type AllowanceCleanup = {
+  account: Address;
+  quote: BridgeQuote;
+  allowance: bigint;
+  status: "needed" | "revoking" | "error";
+  message?: string;
+};
+
 const ROUTE = BRIDGE_ROUTES[0];
+const destinationClient = createPublicClient({ chain: robinhoodChain, transport: http() });
 
-export function BridgeFundPanel({ capsule, fundingAsset }: { capsule: Address; fundingAsset: Address }) {
-  const [amount, setAmount] = useState("100");
+function formatAmount(value: bigint, decimals: number): string {
+  return new Intl.NumberFormat("en-US", { maximumFractionDigits: decimals }).format(
+    Number(formatUnits(value, decimals)),
+  );
+}
+
+async function readDestinationBalance(capsule: Address): Promise<bigint> {
+  return destinationClient.readContract({
+    address: ROUTE.outputToken,
+    abi: erc20AllowanceAbi,
+    functionName: "balanceOf",
+    args: [capsule],
+  });
+}
+
+/**
+ * Quote only the capsule's remaining funding requirement. Across's raw deposit
+ * calldata is validated on the server and again in the browser before this
+ * component offers it to the wallet. Arrival is proven from the destination
+ * ERC-20 balance, not inferred from an origin transaction hash.
+ */
+export function BridgeFundPanel({
+  capsule,
+  fundingAsset,
+  requiredAmount,
+}: {
+  capsule: Address;
+  fundingAsset: Address;
+  requiredAmount: bigint;
+}) {
   const [phase, setPhase] = useState<Phase>({ kind: "idle" });
-  /**
-   * Guards against an in-flight quote landing after the amount moved on. Each
-   * quote captures the epoch it started in; a response from a stale epoch is
-   * dropped rather than shown against a figure the user has since changed.
-   */
-  const epoch = useRef(0);
+  const [allowanceCleanup, setAllowanceCleanup] = useState<AllowanceCleanup | null>(null);
+  const [destinationBalance, setDestinationBalance] = useState<bigint | null>(null);
+  const [balanceError, setBalanceError] = useState("");
+  const quoteEpoch = useRef(0);
+  const arrivalEpoch = useRef(0);
 
-  const parsedAmount = useMemo(() => {
-    const raw = amount.trim();
-    if (!/^\d+(?:\.\d*)?$/.test(raw)) return null;
-    try {
-      const value = parseUnits(raw, ROUTE.inputDecimals);
-      return value > 0n ? value : null;
-    } catch {
-      return null;
-    }
-  }, [amount]);
-
-  /**
-   * A capsule spends exactly the asset its frozen policy names. Bridging any
-   * OTHER token into it does not fund it: the tokens land, no step can consume
-   * them, and because they are absent from the policy's `trackedAssets` the
-   * product's own recover button — which passes that list to `emergencyExit` —
-   * will not return them either. Retrieving them means hand-crafting a call
-   * outside the app.
-   *
-   * So the funding asset is a REQUIRED prop and a mismatch renders a refusal.
-   * The caller cannot forget the check, because there is no way to mount this
-   * component without stating what the capsule actually spends.
-   */
   const fundable = getAddress(fundingAsset) === ROUTE.outputToken;
+  const remainingAmount = useMemo(
+    () =>
+      destinationBalance === null
+        ? null
+        : destinationBalance >= requiredAmount
+          ? 0n
+          : requiredAmount - destinationBalance,
+    [destinationBalance, requiredAmount],
+  );
+
+  const refreshDestinationBalance = useCallback(async (): Promise<bigint> => {
+    try {
+      const balance = await readDestinationBalance(capsule);
+      setDestinationBalance(balance);
+      setBalanceError("");
+      return balance;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      setBalanceError(`Could not read the capsule's ${ROUTE.outputSymbol} balance: ${message}`);
+      throw error;
+    }
+  }, [capsule]);
+
+  useEffect(() => {
+    const mine = ++arrivalEpoch.current;
+    void readDestinationBalance(capsule).then(
+      (balance) => {
+        if (arrivalEpoch.current !== mine) return;
+        setDestinationBalance(balance);
+        setBalanceError("");
+      },
+      (error: unknown) => {
+        if (arrivalEpoch.current !== mine) return;
+        const message = error instanceof Error ? error.message : String(error);
+        setBalanceError(`Could not read the capsule's ${ROUTE.outputSymbol} balance: ${message}`);
+      },
+    );
+    return () => {
+      if (arrivalEpoch.current === mine) arrivalEpoch.current += 1;
+    };
+  }, [capsule]);
 
   const quote = useCallback(async () => {
-    if (!parsedAmount) {
-      setPhase({
-        kind: "error",
-        message: `Enter a ${ROUTE.inputSymbol} amount with at most ${ROUTE.inputDecimals} decimals.`,
-      });
+    const needed = remainingAmount;
+    if (needed === null) {
+      setPhase({ kind: "error", message: "Refresh the destination balance before requesting a bridge quote." });
       return;
     }
-    const mine = ++epoch.current;
+    if (needed <= 0n) {
+      setPhase({ kind: "idle" });
+      return;
+    }
+
+    const provider = getInjectedProvider();
+    if (!provider) {
+      setPhase({ kind: "error", message: "No wallet is available in this browser." });
+      return;
+    }
+
+    const mine = ++quoteEpoch.current;
     setPhase({ kind: "quoting" });
     try {
-      const next = await fetchBridgeQuote(ROUTE, parsedAmount);
-      if (mine !== epoch.current) return; // the amount changed under us
+      const accounts = await provider.request({ method: "eth_requestAccounts" });
+      const rawAccount = Array.isArray(accounts) ? accounts[0] : null;
+      if (typeof rawAccount !== "string" || !isAddress(rawAccount)) {
+        throw new Error("The wallet returned no usable account.");
+      }
+      const next = await fetchBridgeQuote(ROUTE, needed, getAddress(rawAccount), capsule);
+      if (mine !== quoteEpoch.current) return;
       setPhase({ kind: "quoted", quote: next });
     } catch (error) {
-      if (mine !== epoch.current) return;
+      if (mine !== quoteEpoch.current) return;
       setPhase({ kind: "error", message: error instanceof Error ? error.message : String(error) });
     }
-  }, [parsedAmount]);
+  }, [capsule, remainingAmount]);
+
+  const waitForArrival = useCallback(
+    async (current: BridgeQuote, hash: Hex): Promise<void> => {
+      const mine = ++arrivalEpoch.current;
+      const waitMs = Math.min(10 * 60_000, Math.max(2 * 60_000, current.estimatedFillSeconds * 30_000));
+      const stopAt = Date.now() + waitMs;
+
+      while (arrivalEpoch.current === mine && Date.now() < stopAt) {
+        try {
+          const balance = await refreshDestinationBalance();
+          if (balance >= requiredAmount) {
+            setPhase({ kind: "arrived", quote: current, hash, balance });
+            return;
+          }
+        } catch {
+          // The visible balance error carries the RPC failure. Keep polling
+          // because a transient read failure says nothing about fill status.
+        }
+        await new Promise((resolve) => window.setTimeout(resolve, 5_000));
+      }
+    },
+    [refreshDestinationBalance, requiredAmount],
+  );
 
   const deposit = useCallback(
     async (current: BridgeQuote) => {
-      // Across prices a quote at a block and the relayer will not honour an
-      // expired one. Re-quoting is free; depositing against a dead quote is not.
-      if (quoteIsStale(current)) {
-        setPhase({ kind: "error", message: "That bridge quote has expired. Quote again before depositing." });
+      if (
+        quoteIsStale(
+          current,
+          Math.floor(Date.now() / 1_000),
+          BRIDGE_SUBMISSION_RUNWAY_SECONDS,
+        )
+      ) {
+        setPhase({
+          kind: "error",
+          message: "That bridge quote has too little time left. Quote again before depositing.",
+        });
         return;
       }
       const provider = getInjectedProvider();
@@ -119,131 +207,305 @@ export function BridgeFundPanel({ capsule, fundingAsset }: { capsule: Address; f
         setPhase({ kind: "error", message: "No wallet is available in this browser." });
         return;
       }
+
       setPhase({ kind: "submitting", quote: current });
       try {
         await ensureBaseChain(provider);
         const wallet = createWalletClient({ chain: baseChain, transport: custom(provider) });
         const [account] = await wallet.requestAddresses();
         if (!account) throw new Error("The wallet returned no account to deposit from.");
+        if (getAddress(account) !== current.depositor) {
+          throw new Error("The connected account changed after quoting. Quote again for this account.");
+        }
 
-        const publicClient = createPublicClient({ chain: baseChain, transport: http() });
+        const baseClient = createPublicClient({ chain: baseChain, transport: http() });
+        const balance = await baseClient.readContract({
+          address: current.route.inputToken,
+          abi: erc20AllowanceAbi,
+          functionName: "balanceOf",
+          args: [account],
+        });
+        if (balance < current.inputAmount) {
+          throw new Error(
+            `This account has ${formatAmount(balance, current.route.inputDecimals)} ${current.route.inputSymbol}; ` +
+              `${formatAmount(current.inputAmount, current.route.inputDecimals)} is required.`,
+          );
+        }
 
-        // Across pulls the input token, so it needs an allowance. Only the
-        // shortfall is requested, and only when there is one.
-        const allowance = await publicClient.readContract({
+        const allowance = await baseClient.readContract({
           address: current.route.inputToken,
           abi: erc20AllowanceAbi,
           functionName: "allowance",
           args: [account, current.spokePool],
         });
-        if (allowance < current.inputAmount) {
+        // Never inherit a stale, wider approval. The Across calldata is bound
+        // to one exact input amount, so its ERC-20 authority should be exact
+        // too. Reset a non-zero mismatch first for tokens that require the
+        // zero-before-change pattern, then approve only this quote's amount.
+        const approvalAmounts = bridgeApprovalAmounts(allowance, current.inputAmount);
+        for (const approvalAmount of approvalAmounts) {
+          if (approvalAmount === 0n) {
+            setAllowanceCleanup({
+              account: getAddress(account),
+              quote: current,
+              allowance,
+              status: "needed",
+              message: "A previous Across allowance must be cleared before this exact quote can be approved.",
+            });
+            const reset = await wallet.writeContract({
+              account,
+              chain: baseChain,
+              address: current.route.inputToken,
+              abi: erc20AllowanceAbi,
+              functionName: "approve",
+              args: [current.spokePool, 0n],
+            });
+            const resetReceipt = await baseClient.waitForTransactionReceipt({ hash: reset });
+            if (resetReceipt.status !== "success") {
+              throw new Error("The stale Across allowance could not be reset to zero.");
+            }
+            setAllowanceCleanup(null);
+            continue;
+          }
           const approval = await wallet.writeContract({
             account,
             chain: baseChain,
             address: current.route.inputToken,
             abi: erc20AllowanceAbi,
             functionName: "approve",
-            args: [current.spokePool, current.inputAmount],
+            args: [current.spokePool, approvalAmount],
           });
-          await publicClient.waitForTransactionReceipt({ hash: approval });
+          setAllowanceCleanup({
+            account: getAddress(account),
+            quote: current,
+            allowance: approvalAmount,
+            status: "needed",
+            message: "The exact Across approval was submitted; its onchain allowance still needs to be consumed or revoked.",
+          });
+          const approvalReceipt = await baseClient.waitForTransactionReceipt({ hash: approval });
+          if (approvalReceipt.status !== "success") {
+            setAllowanceCleanup(null);
+            throw new Error("The exact USDC approval reverted.");
+          }
         }
 
-        const call = buildBridgeDeposit(current, account, capsule);
-        // Simulate first: a deposit that would revert should fail here, with the
-        // contract's own reason, rather than after the user has paid gas.
-        await publicClient.simulateContract({
-          account,
-          address: call.address,
-          abi: call.abi,
-          functionName: call.functionName,
-          args: call.args,
+        // From this point until the SpokePool consumes the deposit, a real
+        // allowance exists independently of the deposit transaction. Keep an
+        // explicit cleanup affordance alive across every later failure.
+        setAllowanceCleanup({
+          account: getAddress(account),
+          quote: current,
+          allowance: current.inputAmount,
+          status: "needed",
         });
-        const hash = await wallet.writeContract({
+
+        if (
+          quoteIsStale(
+            current,
+            Math.floor(Date.now() / 1_000),
+            BRIDGE_SUBMISSION_RUNWAY_SECONDS,
+          )
+        ) {
+          setPhase({
+            kind: "error",
+            message:
+              "The bridge quote became stale while approvals were confirming. Quote again, or revoke the visible exact allowance.",
+          });
+          return;
+        }
+        const call = buildBridgeDeposit(current, account, capsule);
+        await baseClient.call({ account, to: call.address, data: call.data, value: call.value });
+        if (
+          quoteIsStale(
+            current,
+            Math.floor(Date.now() / 1_000),
+            BRIDGE_SUBMISSION_RUNWAY_SECONDS,
+          )
+        ) {
+          setPhase({
+            kind: "error",
+            message:
+              "The bridge quote became stale before wallet submission. Quote again, or revoke the visible exact allowance.",
+          });
+          return;
+        }
+        const hash = await wallet.sendTransaction({
           account,
           chain: baseChain,
-          address: call.address,
-          abi: call.abi,
-          functionName: call.functionName,
-          args: call.args,
+          to: call.address,
+          data: call.data,
+          value: call.value,
         });
         setPhase({ kind: "submitted", quote: current, hash });
 
-        // A hash is proof of submission, never of success. Resolve it.
-        const receipt = await publicClient.waitForTransactionReceipt({ hash });
-        setPhase(
-          receipt.status === "success"
-            ? { kind: "confirmed", quote: current, hash }
-            : { kind: "reverted", quote: current, hash },
-        );
+        const receipt = await baseClient.waitForTransactionReceipt({ hash });
+        if (receipt.status !== "success") {
+          setPhase({ kind: "reverted", quote: current, hash });
+          return;
+        }
+        try {
+          const remainingAllowance = await baseClient.readContract({
+            address: current.route.inputToken,
+            abi: erc20AllowanceAbi,
+            functionName: "allowance",
+            args: [account, current.spokePool],
+          });
+          if (remainingAllowance === 0n) {
+            setAllowanceCleanup(null);
+          } else {
+            setAllowanceCleanup({
+              account: getAddress(account),
+              quote: current,
+              allowance: remainingAllowance,
+              status: "needed",
+              message: "The deposit confirmed, but a residual Across allowance remains.",
+            });
+          }
+        } catch {
+          setAllowanceCleanup((existing) =>
+            existing
+              ? {
+                  ...existing,
+                  message: "The deposit confirmed, but the remaining Across allowance could not be verified.",
+                }
+              : existing,
+          );
+        }
+        setPhase({ kind: "confirmed", quote: current, hash });
+        await waitForArrival(current, hash);
       } catch (error) {
         setPhase({ kind: "error", message: error instanceof Error ? error.message : String(error) });
       }
     },
-    [capsule],
+    [capsule, waitForArrival],
   );
+
+  const revokeBridgeAllowance = useCallback(async () => {
+    const cleanup = allowanceCleanup;
+    if (!cleanup || cleanup.status === "revoking") return;
+    const provider = getInjectedProvider();
+    if (!provider) {
+      setAllowanceCleanup({ ...cleanup, status: "error", message: "No wallet is available to revoke the allowance." });
+      return;
+    }
+
+    setAllowanceCleanup({ ...cleanup, status: "revoking" });
+    try {
+      await ensureBaseChain(provider);
+      const wallet = createWalletClient({ chain: baseChain, transport: custom(provider) });
+      const [account] = await wallet.requestAddresses();
+      if (!account || getAddress(account) !== cleanup.account) {
+        throw new Error(`Connect ${cleanup.account} on Base to revoke this allowance.`);
+      }
+      const baseClient = createPublicClient({ chain: baseChain, transport: http() });
+      const hash = await wallet.writeContract({
+        account,
+        chain: baseChain,
+        address: cleanup.quote.route.inputToken,
+        abi: erc20AllowanceAbi,
+        functionName: "approve",
+        args: [cleanup.quote.spokePool, 0n],
+      });
+      const receipt = await baseClient.waitForTransactionReceipt({ hash });
+      if (receipt.status !== "success") throw new Error("The allowance revocation reverted.");
+      setAllowanceCleanup(null);
+    } catch (error) {
+      setAllowanceCleanup({
+        ...cleanup,
+        status: "error",
+        message: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }, [allowanceCleanup]);
 
   if (!fundable) {
     return (
       <section aria-label="Fund from Base">
         <h3>Fund from Base</h3>
         <p role="note">
-          This bridge delivers {ROUTE.outputSymbol}, and this capsule&rsquo;s policy spends a different asset. Bridging{" "}
-          {ROUTE.outputSymbol} here would not fund it — no step could spend the arriving tokens, and because they are
-          not among the policy&rsquo;s tracked assets, the recover button would not return them either. Fund this
-          capsule with the asset its own route names.
+          This bridge delivers {ROUTE.outputSymbol}, but this capsule spends a different asset. Bridging it here would
+          not fund the signed route, so this action is disabled.
         </p>
       </section>
     );
   }
 
-  const inFlight = phase.kind === "quoting" || phase.kind === "submitting" || phase.kind === "submitted";
   const active =
     phase.kind === "quoted" ||
     phase.kind === "submitting" ||
     phase.kind === "submitted" ||
     phase.kind === "confirmed" ||
+    phase.kind === "arrived" ||
     phase.kind === "reverted"
       ? phase.quote
       : null;
+  const inFlight =
+    phase.kind === "quoting" ||
+    phase.kind === "submitting" ||
+    phase.kind === "submitted" ||
+    phase.kind === "confirmed";
+  const fullyFunded = remainingAmount === 0n;
 
   return (
     <section aria-label="Fund from Base">
       <h3>Fund from Base</h3>
       <p>
-        Bridges {ROUTE.inputSymbol} on Base into <strong>{ROUTE.outputSymbol}</strong> at this capsule&rsquo;s address
-        over Across, usually in a few seconds. The bridge runs outside the capsule and is not bound by the signed policy
-        — what the policy binds begins once the {ROUTE.outputSymbol} arrives.
+        Deliver Base {ROUTE.inputSymbol} as <strong>{ROUTE.outputSymbol}</strong> directly to this capsule over Across.
+        The bridge stays outside the policy; the policy takes over only after the destination balance proves arrival.
       </p>
 
-      <label htmlFor="bridge-amount">Amount ({ROUTE.inputSymbol} on Base)</label>
-      <input
-        disabled={inFlight}
-        id="bridge-amount"
-        inputMode="decimal"
-        onChange={(event) => {
-          setAmount(event.target.value);
-          epoch.current += 1; // invalidate any quote still in flight
-          setPhase({ kind: "idle" });
-        }}
-        placeholder="100"
-        value={amount}
-      />
+      <dl>
+        <dt>Capsule needs</dt>
+        <dd>
+          {formatAmount(requiredAmount, ROUTE.outputDecimals)} {ROUTE.outputSymbol}
+        </dd>
+        <dt>Already on Robinhood Chain</dt>
+        <dd>
+          {destinationBalance === null
+            ? "Checking…"
+            : `${formatAmount(destinationBalance, ROUTE.outputDecimals)} ${ROUTE.outputSymbol}`}
+        </dd>
+        <dt>Still needed</dt>
+        <dd>
+          {remainingAmount === null
+            ? "Checking…"
+            : `${formatAmount(remainingAmount, ROUTE.outputDecimals)} ${ROUTE.outputSymbol}`}
+        </dd>
+        <dt>Destination</dt>
+        <dd>
+          <code>{capsule}</code>
+        </dd>
+      </dl>
 
-      <p>
-        Destination: <code>{capsule}</code>
-      </p>
+      {balanceError ? <p role="alert">{balanceError}</p> : null}
+      {fullyFunded ? (
+        <p role="status">
+          This capsule already has enough {ROUTE.outputSymbol} for its frozen input. No bridge deposit is needed.
+        </p>
+      ) : null}
 
       {active ? (
         <dl>
-          <dt>Arrives</dt>
+          <dt>Spend on Base</dt>
           <dd>
-            {formatUnits(active.outputAmount, active.route.outputDecimals)} {active.route.outputSymbol}
+            {formatAmount(active.inputAmount, active.route.inputDecimals)} {active.route.inputSymbol}
           </dd>
-          <dt>Bridge fee</dt>
+          <dt>Minimum arrival</dt>
+          <dd>
+            {formatAmount(active.outputAmount, active.route.outputDecimals)} {active.route.outputSymbol}
+          </dd>
+          <dt>Quoted spread</dt>
           <dd>{bridgeFeeBps(active)} bps</dd>
           <dt>Estimated fill</dt>
           <dd>{active.estimatedFillSeconds > 0 ? `~${active.estimatedFillSeconds}s` : "under a second"}</dd>
         </dl>
+      ) : null}
+
+      {active && !active.providerAuthenticated ? (
+        <p role="note">
+          Across accepted this quote without production API credentials. It is still validated end to end, but the
+          provider may rate-limit new quotes until credentials are configured.
+        </p>
       ) : null}
 
       {phase.kind === "submitted" ? (
@@ -252,47 +514,77 @@ export function BridgeFundPanel({ capsule, fundingAsset }: { capsule: Address; f
           <a href={`${baseChain.blockExplorers.default.url}/tx/${phase.hash}`} rel="noreferrer" target="_blank">
             view transaction
           </a>
-          . Waiting for confirmation; a hash is proof of submission, not of success.
+          . Waiting for its origin-chain receipt.
         </p>
       ) : null}
-
       {phase.kind === "confirmed" ? (
         <p role="status">
-          Deposit confirmed on Base —{" "}
-          <a href={`${baseChain.blockExplorers.default.url}/tx/${phase.hash}`} rel="noreferrer" target="_blank">
-            view transaction
-          </a>
-          . The relayer still has to fill it on Robinhood Chain; the capsule can only run once the{" "}
-          {phase.quote.route.outputSymbol} is actually in it.
+          Deposit confirmed on Base. Waiting for the Robinhood Chain {phase.quote.route.outputSymbol} balance to prove
+          arrival.
         </p>
       ) : null}
-
+      {phase.kind === "arrived" ? (
+        <p role="status">
+          Arrived: the capsule now holds {formatAmount(phase.balance, phase.quote.route.outputDecimals)}{" "}
+          {phase.quote.route.outputSymbol}. Its signed execution can proceed.
+        </p>
+      ) : null}
       {phase.kind === "reverted" ? (
         <p role="alert">
-          The deposit reverted on Base —{" "}
+          The Base deposit reverted. Nothing was bridged; quote again before retrying.{" "}
           <a href={`${baseChain.blockExplorers.default.url}/tx/${phase.hash}`} rel="noreferrer" target="_blank">
-            view transaction
+            View transaction
           </a>
-          . Nothing was bridged. Quote again before retrying.
+          .
         </p>
       ) : null}
-
       {phase.kind === "error" ? <p role="alert">{phase.message}</p> : null}
 
-      {phase.kind === "quoted" || phase.kind === "submitting" ? (
+      {allowanceCleanup ? (
+        <div role="alert">
+          <p>
+            {allowanceCleanup.message ??
+              `An exact ${formatAmount(
+                allowanceCleanup.allowance,
+                allowanceCleanup.quote.route.inputDecimals,
+              )} ${allowanceCleanup.quote.route.inputSymbol} allowance to Across is still present on Base.`}{" "}
+            If the deposit is still pending, revoking now will make it fail instead of spending the token.
+          </p>
+          <button
+            className="btn"
+            disabled={allowanceCleanup.status === "revoking"}
+            onClick={() => void revokeBridgeAllowance()}
+            type="button"
+          >
+            {allowanceCleanup.status === "revoking" ? "Revoking allowance…" : "Revoke Across allowance"}
+          </button>
+        </div>
+      ) : null}
+
+      {!fullyFunded && phase.kind === "quoted" ? (
+        <button className="btn btnPrimary" onClick={() => void deposit(phase.quote)} type="button">
+          Bridge {formatAmount(phase.quote.inputAmount, phase.quote.route.inputDecimals)}{" "}
+          {phase.quote.route.inputSymbol}
+        </button>
+      ) : !fullyFunded ? (
         <button
           className="btn btnPrimary"
-          disabled={phase.kind === "submitting"}
-          onClick={() => void deposit(phase.quote)}
+          disabled={inFlight || remainingAmount === null}
+          onClick={() => void quote()}
           type="button"
         >
-          {phase.kind === "submitting" ? "Confirm in wallet…" : `Bridge ${amount} ${ROUTE.inputSymbol}`}
+          {phase.kind === "quoting" ? "Quoting exact funding…" : "Quote remaining funding"}
         </button>
-      ) : (
-        <button className="btn btnPrimary" disabled={inFlight || !parsedAmount} onClick={() => void quote()} type="button">
-          {phase.kind === "quoting" ? "Quoting…" : "Quote bridge"}
-        </button>
-      )}
+      ) : null}
+
+      <button
+        className="btn"
+        disabled={inFlight}
+        onClick={() => void refreshDestinationBalance().catch(() => undefined)}
+        type="button"
+      >
+        Refresh destination balance
+      </button>
     </section>
   );
 }

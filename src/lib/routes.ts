@@ -253,6 +253,51 @@ export function resolveRouteById(id: string, adapters: AdapterSet = ROBINHOOD_AD
 }
 
 /**
+ * Whether a registry route has the exact quote path its adapter kind requires.
+ *
+ * The adapter registry alone is not enough to put a "deployable" badge in the
+ * builder: a configured address with no matching pool/vault quote would send a
+ * user to a signing screen that cannot derive a floor. This second gate is
+ * intentionally exhaustive and fails closed for every unknown pairing.
+ */
+export function routeCatalogReady(id: string, adapters: AdapterSet = ROBINHOOD_ADAPTERS): boolean {
+  const route = resolveRouteById(id, adapters);
+  if (!route) return false;
+  switch (route.kind) {
+    case "swap":
+      return route.quote.source === "v4";
+    case "swap-route":
+      return route.quote.source === "v4-route" && route.quote.hops.length > 0;
+    case "vault-deposit":
+      return route.quote.source === "erc4626-deposit"
+        && isAddressEqual(route.quote.vault, route.tokenOut.address);
+    case "vault-redeem":
+      return route.quote.source === "erc4626-redeem"
+        && isAddressEqual(route.quote.vault, route.tokenIn.address)
+        && route.tokenIn.symbol === "ozUSDG"
+        && route.tokenOut.symbol === "USDG";
+    case "lp-deposit":
+      return route.quote.source === "range-deposit";
+    case "lp-withdraw":
+      return route.quote.source === "range-withdraw";
+  }
+}
+
+/**
+ * Static create/handoff readiness. Structural catalog readiness is necessary
+ * but not sufficient for a vault-backed route: without an RPC, this code cannot
+ * prove totalSupply > 0 at one pinned block. Such routes stay reconstructible
+ * as designs while builder badges and handoffs fail closed.
+ */
+export function routeStaticHandoffReady(
+  id: string,
+  adapters: AdapterSet = ROBINHOOD_ADAPTERS,
+): boolean {
+  const route = resolveRouteById(id, adapters);
+  return Boolean(route && !route.requiresSeededVault && routeCatalogReady(id, adapters));
+}
+
+/**
  * Every deployable route on the chain, in registry order — WITHOUT the vault
  * seeding gate. This is the set an EXISTING capsule's implemented route is
  * matched against (verify/recover must keep working even if a vault later

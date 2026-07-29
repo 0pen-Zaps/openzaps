@@ -43,7 +43,12 @@ The result is pre-committed, tightly bounded authority for a fixed action graph,
 | **Anyone can submit** | Each automated run pays a 1% protocol fee from output: 80% to whoever submits it, 20% to the 0xZAPS lottery pot. Owners publish signed intents to a shared pool; executors poll it for work. The pool is untrusted, so the Zap re-verifies every field onchain. |
 | **One visible creation fee** | Every Zap created by the current app pays exactly 0.00001 ETH. A gateway calls the existing lineage factory and atomically converts the fee to 0xZAPS through the pinned route; a missed conversion floor reverts creation too. Legacy factories remain directly callable. |
 
-The builder at [`/zap`](https://www.0xzaps.com/zap) designs a Zap from typed route and policy blocks, tells you which bounds the selected contract can enforce, and hands a deployable design to Zap now or Automate with its resolved settings intact. `/zap` is one route with four surfaces — Start, Compose, Zap now, Automate — reached from the app sidebar and carried in `?view=start|design|sign|automate`; `?src=build`, `?route=`, and `?d=` share links still mean what they always meant.
+The builder at [`/zap`](https://www.0xzaps.com/zap) designs a Zap from typed route and policy blocks,
+tells you which bounds the selected contract can enforce, and hands a deployable design to Zap now
+or Automate with its resolved settings intact. `/zap` is one route with five surfaces — Start,
+Compose, Zap now, Automate, and Connect — reached from the app sidebar and carried in
+`?view=start|design|sign|automate|connect`; `?src=build`, `?route=`, and `?d=` share links still mean
+what they always meant.
 
 ## Repository layout
 
@@ -53,16 +58,17 @@ This is a monorepo. The web app and the Solidity protocol live together.
 | --- | --- |
 | [`src/app/`](src/app) | The Next.js 16 site, in two route groups. `(landing)` is `/` alone, with its own nav, footer, and token scope; `(site)` is every interior page — `/zap`, `/explore`, `/profile`, `/pot`, `/zapdraw`, `/docs`, `/token`, `/roadmap`, `/legal` — wrapped in the app shell. `src/app/api/` holds the route handlers; `globals.css` holds the five-theme token layer. |
 | [`src/components/`](src/components) | UI shared across routes: `AppShell` (sidebar, context bar, and the one `#zapscroll` container that owns the scroll), the theme provider and picker, the `Glyph` set, the wallet session provider, and the footer. |
-| [`src/lib/`](src/lib) | Chain definitions, protocol addresses and ABIs, the block catalog behind the visual builder, the deterministic policy simulator, the theme registry (`theme.ts`), and the `?view=` contract the sidebar and the consoles both read (`zap-view.ts`). |
+| [`src/lib/`](src/lib) | Chain definitions, protocol addresses and ABIs, the block catalog behind the visual builder, the block-pinned exact-policy compiler, the theme registry (`theme.ts`), and the `?view=` contract the sidebar and the consoles both read (`zap-view.ts`). |
 | [`contracts/`](contracts/README.md) | The Solidity protocol, bounded adapters, deploy/smoke scripts, and the Foundry unit / fuzz / invariant / fork suite. [`v1.1`](contracts/src) carries the single-shot routes; [`v3`](contracts/src/v3/README.md) adds recurring + price-triggered execution and the executor fee/lottery economy; `v3_1` adds per-run floors priced from live spot. The creation gateway preserves all three lineages while enforcing the current app's separate 0xZAPS-converted creation fee. See [`docs/deployments.md`](docs/deployments.md). |
 | [`executor/`](executor/README.md) | The reference **Zap Executor** daemon: watches time and chain, discovers work from the shared intent pool, and submits owed recurring/triggered runs for 80% of the 1% protocol fee (20% funds the 0xZAPS lottery pot). Watch-only unless a gas key is configured. |
+| [`packages/sdk`](packages/sdk) / [`packages/mcp`](packages/mcp) | Publish-ready read-only Agent Kit packages. The SDK compiles exact policy and unsigned EIP-712 artifacts; the npx MCP entrypoint discovers and simulates without signing or broadcasting. |
 | [`docs/`](docs) | Architecture Decision Records, the testable invariant catalog, and product/security research the design derives from. |
 
 Two structural rules the app depends on. Every interior page renders **content only**: the shell in `src/components/AppShell.tsx` owns the viewport, the scroll container, and the content measure, so pages add no nav, no footer, and no page-level scroll. And every colour, shadow, and radius resolves from one of the five theme blocks in `src/app/globals.css`, selected by `data-oz-theme` on `<html>` and resolved before first paint by the guard in `src/lib/theme.ts` — `voltage` is the identity the app shipped with, preserved exactly. `/` is deliberately outside both: it keeps its own nav and footer, and pins its own copies of the tokens in `src/app/(landing)/landing.module.css`.
 
 ## Quickstart
 
-Requires **Node 20+**.
+Requires **Node 20.9+**. CI and production run Node 24.
 
 ```bash
 npm ci
@@ -90,14 +96,29 @@ forge test               # fork tests need a Robinhood Chain RPC in your env
 
 Everything the **browser** needs is public `NEXT_PUBLIC_*` configuration — chain id, contract addresses, the public RPC URL, the site URL — and the live Robinhood Chain addresses ship as hardcoded defaults in [`src/lib/robinhood.ts`](src/lib/robinhood.ts) and [`src/lib/chains.ts`](src/lib/chains.ts). Set any of them in `.env.local` to point a preview somewhere else; a malformed override fails closed by dropping that route rather than widening what the app offers.
 
-Four secrets exist. None is read by the browser bundle, and none is ever committed — `.env*` and keystores are gitignored, and CI fails any change that introduces one.
+Server-only credentials, release flags, and signing material are separate on purpose. None is read
+by the browser bundle, and none is ever committed — `.env*` and keystores are gitignored, and CI
+fails any change that introduces one.
 
-| Secret | Used by | Notes |
+| Configuration | Used by | Fail-closed posture |
 | --- | --- | --- |
-| `DEPLOYER_PRIVATE_KEY` | Foundry deploy scripts | Read from your shell, or use a `--ledger` hardware wallet. |
-| `SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY` | The intent relay route, server-side only | Without them `/api/intents` degrades to 503 rather than storing anything. |
-| `OPENZAPS_EXECUTOR_PRIVATE_KEY` *or* `OPENZAPS_EXECUTOR_KEYFILE` | The reference executor daemon | Optional. With neither set the daemon is watch-only and never broadcasts. |
+| `DEPLOYER_PRIVATE_KEY` | Foundry deploy scripts | Read from the shell, or use a named keystore or hardware wallet. Never expose it to the web app. |
+| `SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY` | Intent relay, public policy registry, receipts, Guardian, and executor scorecards | Server-side only. The affected APIs return an unconfigured response until storage exists. Apply the reviewed migrations in `supabase/migrations/` before enabling the new operations and registry surfaces; follow the shared-project history rules in [`supabase/README.md`](supabase/README.md). |
+| `OPENZAPS_EXECUTOR_PRIVATE_KEY` *or* `OPENZAPS_EXECUTOR_KEYFILE` | Reference executor daemon | Optional. With neither set the daemon is watch-only and never broadcasts. See [`executor/README.md`](executor/README.md) for receipt and notification configuration. |
 | `ANTHROPIC_API_KEY` | `/api/agent/*`, server-side only | Optional. Without it those routes return 503, the connect surface hides its free-text composer rather than offering one that fails, and `/explore/[address]` answers questions from the capsule's own facts. `OPENZAPS_AGENT_MODEL` overrides the model id. |
+| `ACROSS_API_KEY` + `ACROSS_INTEGRATOR_ID` | Server-side Across `/swap/approval` quote proxy | Production requires the complete pair; `ACROSS_INTEGRATOR_ID` is a two-byte `0x` value. A half-configured pair is rejected. `ACROSS_ALLOW_UNAUTHENTICATED=true` is an explicit diagnostic override, not the release posture. |
+
+The following flags are not credentials. They prevent source-ready work from being presented as
+live before its external dependency or production control exists:
+
+| Flag | Production requirement |
+| --- | --- |
+| `NEXT_PUBLIC_ACROSS_BRIDGE_ENABLED=true` + `OPENZAPS_ACROSS_DURABLE_QUOTA_ENABLED=true` | Enables Base → Robinhood USDG funding only after the authenticated Across pair and a durable edge quota are configured. The server checks both flags, so hiding the browser surface cannot leave a credential-consuming quote API exposed. |
+| `OPENZAPS_EXACT_POLICY_API_ENABLED=true` | Enables `/api/policies/simulate` in production. Set it only after a durable WAF/request quota exists; the in-process limiter is burst hygiene, not that quota. |
+| `OPENZAPS_GUARDIAN_ENABLED=true` + `OPENZAPS_GUARDIAN_DURABLE_QUOTA_ENABLED=true` | Enables the read-only Guardian in production after durable quota and Supabase-backed operations storage are in place. The second flag records that the external quota exists; it does not create one. |
+| `OPENZAPS_POLICY_TEMPLATE_PUBLISHING_ENABLED=true` | Enables wallet-attributed public template publication in production after the template and security-attribution migrations are applied. Browsing remains read-only when publication is off. |
+| `OPENZAPS_POLICY_TEMPLATE_SUBSCRIPTIONS_ENABLED=true` | Enables anonymous exact-version subscription writes in production only after a durable request quota exists. The database still caps rows globally and per template; counts are convenience metadata, never identity or reputation. |
+| `NEXT_PUBLIC_OPENZAPS_AGENT_KIT_PUBLISHED=true` | Shows the npx install path only after both scoped packages actually exist in npm. Until then the packages are source-ready, not published. |
 
 **Never paste a private key into a tracked file.**
 

@@ -17,17 +17,27 @@ export interface RateLimit {
 /** A limiter allowing `max` requests per `windowMs`, keyed by caller identity. */
 export function createRateLimit(max: number, windowMs: number): RateLimit {
   const buckets = new Map<string, { count: number; resetAt: number }>();
+  const maxBuckets = 5_000;
 
   return (identifier: string): boolean => {
     const now = Date.now();
     const bucket = buckets.get(identifier);
 
     if (!bucket || now > bucket.resetAt) {
-      buckets.set(identifier, { count: 1, resetAt: now + windowMs });
-      // Opportunistic sweep so a long-lived instance cannot grow unbounded.
-      if (buckets.size > 5_000) {
-        for (const [key, value] of buckets) if (now > value.resetAt) buckets.delete(key);
+      if (!bucket && buckets.size >= maxBuckets) {
+        for (const [key, value] of buckets) {
+          if (now > value.resetAt) buckets.delete(key);
+        }
+        // A burst of distinct caller keys may leave no expired entries. Evict
+        // oldest bookkeeping rather than letting a best-effort limiter become
+        // its own memory-exhaustion vector.
+        while (buckets.size >= maxBuckets) {
+          const oldest = buckets.keys().next().value as string | undefined;
+          if (oldest === undefined) break;
+          buckets.delete(oldest);
+        }
       }
+      buckets.set(identifier, { count: 1, resetAt: now + windowMs });
       return false;
     }
 
@@ -43,5 +53,9 @@ export function createRateLimit(max: number, windowMs: number): RateLimit {
  * cost of casual abuse and does nothing against a determined one.
  */
 export function callerKey(request: { headers: { get(name: string): string | null } }): string {
-  return (request.headers.get("x-forwarded-for") ?? "unknown").split(",")[0].trim();
+  return (
+    request.headers.get("x-vercel-forwarded-for")
+    ?? request.headers.get("x-forwarded-for")
+    ?? "unknown"
+  ).split(",")[0].trim().slice(0, 128);
 }

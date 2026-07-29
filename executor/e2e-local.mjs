@@ -243,7 +243,7 @@ async function main() {
   await write(priceSource, "setPrice", [parseEther("1050")]); // +5%, below the +10% bound
   let results = await pass();
   const byLabel = (rs, frag) => rs.find((r) => r.label.includes(frag));
-  assertEq(byLabel(results, "recurring")?.outcome, "executed", "recurring run 1 executes when owed");
+  assertEq(byLabel(results, "recurring")?.outcome, "confirmation-observed", "recurring run 1 receipt is observed when owed");
   assertEq(byLabel(results, "trigger")?.status, "waiting", "trigger stays armed while below +10%");
 
   // ---- pass 2: nothing owed — the cadence gate holds ----
@@ -254,13 +254,13 @@ async function main() {
   await testClient.increaseTime({ seconds: 3600 });
   await testClient.mine({ blocks: 1 });
   results = await pass();
-  assertEq(byLabel(results, "recurring")?.outcome, "executed", "recurring run 2 executes after the interval");
+  assertEq(byLabel(results, "recurring")?.outcome, "confirmation-observed", "recurring run 2 receipt is observed after the interval");
 
   // ---- pass 4: exhausted series is archived; +10% move arms and fires the trigger ----
   await write(priceSource, "setPrice", [parseEther("1100")]); // exactly the +10% bound
   results = await pass();
   assertEq(byLabel(results, "recurring")?.status, "finished", "exhausted series archived");
-  assertEq(byLabel(results, "trigger")?.outcome, "executed", "trigger fires at the +10% bound");
+  assertEq(byLabel(results, "trigger")?.outcome, "confirmation-observed", "trigger receipt is observed at the +10% bound");
 
   // ---- economics: 3 runs of 100 => fee 1 each => executor 0.8*3, pot 0.2*3, owner 99*3 ----
   const zapsBal = (a) => publicClient.readContract({ address: zapsToken.address, abi: zapsToken.abi, functionName: "balanceOf", args: [a] });
@@ -291,7 +291,7 @@ async function main() {
 
   const prizeBefore = await read(pot, "roundPrize", [1n]);
   const conv = await convertPotFees({ publicClient, walletClient: executorWallet, cfg: keeperCfg });
-  assertEq(conv.outcome, "converted", "keeper converts accrued fee asset to 0xZAPS via buyZaps");
+  assertEq(conv.outcome, "confirmation-observed", "keeper observes the buyZaps receipt");
   assertEq(await read(pot, "roundPrize", [1n]), prizeBefore + parseEther("1"), "converted 0xZAPS added to the round prize");
 
   const feeBalAfter = await publicClient.readContract({ address: feeAsset.address, abi: feeAsset.abi, functionName: "balanceOf", args: [pot.address] });

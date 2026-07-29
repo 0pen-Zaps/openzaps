@@ -533,8 +533,7 @@ contract OpenZapV3_2 {
         if (amountInSpent == 0) revert NoInputSpent();
 
         uint256 floor = _relativeFloor(intent.outAsset, c1, priceX96, amountInSpent, intent.maxSlippageBps);
-        (uint256 net, uint256 executorFee, uint256 potFee) =
-            _settleWithExecutorFee(intent.outAsset, preOut, floor);
+        (uint256 net, uint256 executorFee, uint256 potFee) = _settleWithExecutorFee(intent.outAsset, preOut, floor);
         emit ExecutedRecurringRelative(
             intent.seriesId,
             run,
@@ -728,6 +727,11 @@ contract OpenZapV3_2 {
         private
         returns (uint256 zapsOut)
     {
+        // The immutable pin removes routing discretion; the live registry remains the emergency
+        // kill switch. Deallowlisting halts both the conversion and direct-0xZAPS paths so operators
+        // never have to reason about which signed series still touches a retired adapter lineage.
+        if (!ADAPTERS.isAllowed(ZAPS_ADAPTER)) revert AdapterNotAllowed(ZAPS_ADAPTER);
+
         if (outAsset == ZAPS) {
             zapsOut = stackIn; // already the protocol token — nothing to buy, nothing to floor
         } else {

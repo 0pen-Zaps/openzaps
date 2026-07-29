@@ -58,6 +58,7 @@ export type SimulationCheck = {
 
 export type SimulationResult = {
   status: "pass" | "warn" | "block";
+  mode: "structural-only";
   policyHash: string;
   estimatedOut: string;
   relayerFee: string;
@@ -212,6 +213,13 @@ export function simulatePolicy(policy: PolicyDraft, previous?: PolicyDraft): Sim
   });
 
   checks.push({
+    label: "Chain evidence required",
+    detail:
+      "This helper checks draft structure only. Use POST /api/policies/simulate for live allowlists, runtime code hashes, a block-pinned quote, the Solidity policy hash, unsigned EIP-712 data, and eth_call.",
+    status: "warn",
+  });
+
+  checks.push({
     label: "Authority model",
     detail:
       policy.authorityModel === "session"
@@ -286,10 +294,13 @@ export function simulatePolicy(policy: PolicyDraft, previous?: PolicyDraft): Sim
 
   return {
     status,
+    mode: "structural-only",
+    // This remains the builder's stable local design fingerprint. It is not
+    // keccak256(abi.encode(policy)); only the exact endpoint returns that hash.
     policyHash: policyHash(policy),
-    estimatedOut: estimateOut(policy),
-    relayerFee: estimateRelayerFee(amount, policy.tokenIn),
-    gasEstimate: policy.authorityModel === "safe" ? "185k - 235k gas" : "145k - 210k gas",
+    estimatedOut: "unavailable without a block-pinned chain quote",
+    relayerFee: "unavailable without an exact compiled policy",
+    gasEstimate: "unavailable without eth_call",
     checks,
     diff: previous ? diffPolicy(previous, policy) : [],
   };
@@ -316,32 +327,6 @@ export function diffPolicy(before: PolicyDraft, after: PolicyDraft): Array<{ fie
     const right = stringifyField(after[field]);
     return left === right ? [] : [{ field, before: left, after: right }];
   });
-}
-
-function estimateOut(policy: PolicyDraft): string {
-  const amount = Number.parseFloat(policy.amount || "0");
-  if (!Number.isFinite(amount) || amount <= 0) return `0 ${policy.tokenOut}`;
-  const usd = toUsd(amount, policy.tokenIn);
-  const out = fromUsd(usd * (1 - policy.slippageBps / 10_000), policy.tokenOut);
-  const decimals = policy.tokenOut === "USDC" || policy.tokenOut === "DAI" ? 2 : policy.tokenOut === "WETH" ? 5 : 6;
-  return `${out.toLocaleString("en-US", { maximumFractionDigits: decimals })} ${policy.tokenOut}`;
-}
-
-function estimateRelayerFee(amount: number, token: string): string {
-  if (!Number.isFinite(amount) || amount <= 0) return "0 USDC";
-  const usd = toUsd(amount, token);
-  const fee = Math.max(0.08, Math.min(4.5, usd * 0.0008));
-  return `${fee.toFixed(2)} USDC cap`;
-}
-
-function toUsd(amount: number, token: string): number {
-  const rates: Record<string, number> = { USDC: 1, DAI: 1, WETH: 3500, cbBTC: 65000 };
-  return amount * (rates[token] ?? 1);
-}
-
-function fromUsd(usd: number, token: string): number {
-  const rates: Record<string, number> = { USDC: 1, DAI: 1, WETH: 3500, cbBTC: 65000 };
-  return usd / (rates[token] ?? 1);
 }
 
 function stableStringify(value: unknown): string {

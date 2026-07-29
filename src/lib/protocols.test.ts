@@ -19,18 +19,19 @@ describe("protocolsForAction", () => {
     }
   });
 
-  it("badges nothing that is not an action, except the two sources that start inside a protocol", () => {
+  it("badges nothing that is not an action, except sources that start inside a protocol", () => {
     // Guards constrain, sinks settle, and plain sources draw from the wallet —
-    // none of them touch a protocol. Two sources do. `lp-position`'s ozRANGE
-    // shares are OpenZaps vault shares, and `bridge` is funded by Across, whose
-    // badge is the honest disclosure that a third party moved the money before
-    // the policy ever bound anything.
-    const startsInsideAProtocol = new Set(["lp-position", "bridge"]);
+    // none of them touch a protocol. `lp-position` and `vault-position` are
+    // OpenZaps vault shares, while `bridge` is funded by Across, whose badge is
+    // the honest disclosure that a third party moved the money before the
+    // policy ever bound anything.
+    const startsInsideAProtocol = new Set(["lp-position", "vault-position", "bridge"]);
     for (const block of BLOCKS.filter((entry) => entry.kind !== "action")) {
       if (startsInsideAProtocol.has(block.id)) continue;
       expect(ids(block.id), block.id).toEqual([]);
     }
     expect(ids("lp-position")).toEqual(["openzaps-vault"]);
+    expect(ids("vault-position")).toEqual(["openzaps-vault"]);
     expect(ids("bridge")).toEqual(["across"]);
   });
 
@@ -70,6 +71,7 @@ describe("protocolsForAction", () => {
     expect(ids("stake")).toEqual(["uniswap-v4"]);
     expect(ids("accrue")).toEqual(["uniswap-v4"]);
     expect(ids("harvest")).toEqual(["uniswap-v4"]);
+    expect(ids("redeem")).toEqual(["openzaps-vault"]);
   });
 
   it("returns nothing for ids the catalog has never heard of", () => {

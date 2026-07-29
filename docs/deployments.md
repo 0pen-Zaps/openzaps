@@ -74,8 +74,8 @@ but its route is deliberately not yet advertised in the app, that is stated.
 - Registry + Allowlist owner: **`0x5a52D4B820Ae7F02880d270562950918ACb14aA2`** (nodar.eth) — ownership
   handoff **accepted** on both contracts; `pendingOwner` is zero on both. (This supersedes the earlier
   record showing `0xe17f5150…` as owner with a pending transfer.)
-- **Recommended next step:** move ownership to a Safe multisig behind a TimelockController. A single
-  EOA holding the kill switch for a live deployment is not a production posture.
+- No registry or allowlist ownership change is part of this release. Re-read `owner()` and
+  `pendingOwner()` from chain before any future governance action.
 
 ### Verification and live smoke
 
@@ -182,8 +182,12 @@ are automated, 1 recovery, `319,932,354.4393` 0xZAPS of executed volume.
 
 ### The v3.2 stacking stack — built, NOT deployed
 
-UNAUDITED CANDIDATE. Source is in [`contracts/src/v3_2`](../contracts/src/v3_2); no addresses exist
-yet, on any chain. Adds `executeRecurringStack`: everything `executeRecurringRelative` does, plus an
+UNAUDITED CANDIDATE. Source is in [`contracts/src/v3_2`](../contracts/src/v3_2), and the guarded
+Robinhood deployment script is
+[`contracts/script/DeployV3_2Robinhood.s.sol`](../contracts/script/DeployV3_2Robinhood.s.sol).
+Local build, tests, and a no-broadcast script simulation do not create a deployment: no v3.2
+addresses exist yet, on any chain. Adds `executeRecurringStack`: everything
+`executeRecurringRelative` does, plus an
 owner-signed `stackBps` slice of every run's **post-fee** output converted into 0xZAPS and staked to
 the lottery pot as the **owner's** tickets. Every run of a stacking series is a real market buy of
 the protocol token — the first execution type where buying 0xZAPS is the user's own authorized
@@ -205,6 +209,9 @@ What it adds over v3.1, all enforced on-chain:
 - **`ZAPS` and `ZAPS_ADAPTER` are read from the pot** by the factory, not passed in, so a clone can
   never stake a different token than the pot pays out or convert through a different adapter than
   the pot's own `buyZaps`.
+- **Adapter de-allowlisting remains the kill switch.** Every stacking run rechecks the pot-pinned
+  `ZAPS_ADAPTER`, including runs whose output is already 0xZAPS, so retiring that adapter halts the
+  entire stack leg rather than leaving a partial route live.
 - **No pot changes required.** `ZapLotteryPot.notifyContribution` already credits both tickets and
   `roundPrize` when the contributed asset is 0xZAPS, which is exactly what a stack contribution is.
 
@@ -214,10 +221,12 @@ Deployment prerequisites, in order:
 2. `OpenZapFactoryV3_2(adapters, tokens, priceSources, pot)`, then `pot.setFactory(factory)`.
 3. Allowlist an oriented price source for the main leg, and one pricing `outAsset → 0xZAPS` for the
    conversion leg (only needed for zaps whose output is not already 0xZAPS).
-4. Fill `OPENZAP_V3_2_CONTRACTS` in `src/lib/robinhood.ts` (or the `NEXT_PUBLIC_OPENZAP_V3_2_*` env
+4. Broadcast only from the current owner of both reused live registries, with both `pendingOwner`
+   values zero. The deployment script enforces this before and after its six transactions.
+5. Fill `OPENZAP_V3_2_CONTRACTS` in `src/lib/robinhood.ts` (or the `NEXT_PUBLIC_OPENZAP_V3_2_*` env
    vars). Until then `openZapV3_2Configured()` is `false` and the Automate surface must keep the
    stacking option hidden — offering a creation path into an undeployed lineage would fail open.
-5. Apply `supabase/migrations/20260726000000_allow_recurring_stack_kind.sql`, or every publish of a
+6. Apply `supabase/migrations/20260726000000_allow_recurring_stack_kind.sql`, or every publish of a
    stacking intent returns an opaque `Relay storage failed (400)` from the `kind` CHECK constraint.
 
 The app-side mirror (EIP-712 types, settlement math, drafting guards, relay/activity plumbing) and

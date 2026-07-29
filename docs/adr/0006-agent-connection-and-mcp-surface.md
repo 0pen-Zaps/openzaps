@@ -50,7 +50,9 @@ Four consequences follow, and each is implemented as stated:
    `submitExecution(publicClient, null, item, cfg)` — the `null` signer makes the broadcast branch
    structurally unreachable rather than merely unvisited. An agent that submits runs does so by
    *being* `executor/index.mjs` with its own gas key: a separate process the user starts
-   deliberately.
+   deliberately. The publishable `@openzaps/mcp` surface is stricter still: discovery and
+   block-pinned simulation only. Discovery reads public chain data, and `OPENZAPS_AGENT_ADDRESS` is
+   an optional public identifier; neither process reads an executor key to derive identity.
 
 3. **The intake token never crosses an origin boundary.** The local MCP server reads it off its
    chmod-600 file in-process, so it is never returned in a tool result and never enters a model's

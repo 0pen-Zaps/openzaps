@@ -12,6 +12,7 @@ import type { ZapDetailPayload, ZapExecution, ZapPolicyView } from "@/lib/zap";
 import { BlockGlyph } from "@/app/(site)/zap/BlockGlyph";
 import { ProtocolStack } from "@/components/ProtocolLogo";
 import { protocolsForRouteKind, type ProtocolInfo } from "@/lib/protocols";
+import { forkHrefFromVerifiedPolicy } from "@/lib/zap-fork";
 import styles from "../explore.module.css";
 
 type LiveState =
@@ -124,6 +125,7 @@ export function ZapLive({
   const { data, staleSince } = state;
   const { policy, provenance, stats, balances, executions, recoveries } = data;
   const verified = policy.canonicalClone && policy.hashMatches;
+  const forkHref = forkHrefFromVerifiedPolicy(policy);
   const chain = policyChain(policy);
   // A one-shot's fee is the RELAYER fee, bounded by maxRelayerFeeCap; an
   // automated run's is the protocol fee, which that cap does not govern at all.
@@ -140,6 +142,15 @@ export function ZapLive({
           <h2 className={styles.cardTitle}>Verification</h2>
           <span className={styles.cardSub}>read at one pinned block</span>
           <span className={styles.cardHeadEnd}>
+            {forkHref ? (
+              <Link
+                href={forkHref}
+                className={styles.ghostBtn}
+                title="Copy the verified route and exact input into a new owner-neutral design"
+              >
+                Fork in Composer
+              </Link>
+            ) : null}
             <span className={styles.stateChip} data-verified={verified}>
               {verified ? "✓ Verified onchain" : "⚠ Unverified shape"}
             </span>
@@ -299,8 +310,9 @@ export function ZapLive({
         </dl>
 
         <p className={styles.cardFoot}>
-          The same block vocabulary the <Link href="/zap">builder</Link> uses. Connectors are coloured by the shape
-          of value moving along them.
+          The same block vocabulary the <Link href="/zap">builder</Link> uses. A fork copies only the verified
+          route, exact input and reproducible safety defaults; owner, recipient, nonce, executor and prior
+          signatures never travel. Connectors are coloured by the shape of value moving along them.
         </p>
       </section>
 

@@ -19,6 +19,7 @@ const PARSE_ERROR = -32700;
 const INVALID_REQUEST = -32600;
 const METHOD_NOT_FOUND = -32601;
 const INTERNAL_ERROR = -32603;
+const MAX_RPC_LINE_CHARS = 1_000_000;
 
 export function logStderr(message) {
   process.stderr.write(`[openzaps-mcp] ${message}\n`);
@@ -82,8 +83,13 @@ export async function serve({ serverInfo, instructions, tools, context }) {
         const tool = byName.get(params?.name);
         if (!tool) return fail(id, METHOD_NOT_FOUND, `Unknown tool: ${params?.name}`);
         try {
+          const args =
+            params && Object.prototype.hasOwnProperty.call(params, "arguments")
+              ? params.arguments
+              : {};
+          validateToolArguments(tool.inputSchema, args);
           const ctx = await context();
-          const result = await tool.handler(params?.arguments ?? {}, ctx);
+          const result = await tool.handler(args, ctx);
           return reply(id, {
             content: [{ type: "text", text: typeof result === "string" ? result : stringify(result) }],
           });
@@ -108,6 +114,10 @@ export async function serve({ serverInfo, instructions, tools, context }) {
   for await (const line of lines) {
     const trimmed = line.trim();
     if (!trimmed) continue;
+    if (trimmed.length > MAX_RPC_LINE_CHARS) {
+      fail(null, INVALID_REQUEST, "JSON-RPC request exceeded the input limit.");
+      continue;
+    }
 
     let message;
     try {
@@ -135,4 +145,63 @@ export async function serve({ serverInfo, instructions, tools, context }) {
 /** BigInts are pervasive in this domain and JSON.stringify throws on them. */
 export function stringify(value) {
   return JSON.stringify(value, (_key, v) => (typeof v === "bigint" ? v.toString() : v), 2);
+}
+
+/**
+ * The stdio transport advertises JSON Schema but MCP clients are not required to enforce it.
+ * Validate the small schema subset used by this server before building context or touching HTTP.
+ */
+export function validateToolArguments(schema, value, path = "arguments") {
+  if (!schema || typeof schema !== "object") throw new Error("tool input schema is invalid");
+  if (schema.type === "object") {
+    if (!value || typeof value !== "object" || Array.isArray(value)) {
+      throw new Error(`${path} must be an object`);
+    }
+    const properties = schema.properties ?? {};
+    for (const required of schema.required ?? []) {
+      if (!Object.prototype.hasOwnProperty.call(value, required)) {
+        throw new Error(`${path}.${required} is required`);
+      }
+    }
+    if (schema.additionalProperties === false) {
+      for (const key of Object.keys(value)) {
+        if (!Object.prototype.hasOwnProperty.call(properties, key)) {
+          throw new Error(`${path}.${key} is not allowed`);
+        }
+      }
+    }
+    for (const [key, child] of Object.entries(properties)) {
+      if (Object.prototype.hasOwnProperty.call(value, key)) {
+        validateToolArguments(child, value[key], `${path}.${key}`);
+      }
+    }
+    return value;
+  }
+  if (schema.type === "string") {
+    if (typeof value !== "string") throw new Error(`${path} must be a string`);
+    if (Number.isInteger(schema.minLength) && value.length < schema.minLength) {
+      throw new Error(`${path} is shorter than ${schema.minLength} characters`);
+    }
+    if (Number.isInteger(schema.maxLength) && value.length > schema.maxLength) {
+      throw new Error(`${path} exceeds ${schema.maxLength} characters`);
+    }
+    if (Array.isArray(schema.enum) && !schema.enum.includes(value)) {
+      throw new Error(`${path} is not an allowed value`);
+    }
+    if (typeof schema.pattern === "string" && !new RegExp(schema.pattern, "u").test(value)) {
+      throw new Error(`${path} has an invalid format`);
+    }
+    return value;
+  }
+  if (schema.type === "integer") {
+    if (!Number.isInteger(value)) throw new Error(`${path} must be an integer`);
+    if (Number.isFinite(schema.minimum) && value < schema.minimum) {
+      throw new Error(`${path} must be at least ${schema.minimum}`);
+    }
+    if (Number.isFinite(schema.maximum) && value > schema.maximum) {
+      throw new Error(`${path} must be at most ${schema.maximum}`);
+    }
+    return value;
+  }
+  throw new Error(`${path} uses an unsupported input schema`);
 }

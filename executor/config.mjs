@@ -10,6 +10,12 @@ export const ROBINHOOD_CHAIN_ID = 4663;
 export const DEFAULT_RPC_URL = "https://rpc.mainnet.chain.robinhood.com";
 
 const HOME_DIR = join(homedir(), ".openzaps", "executor");
+const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000";
+const ADDRESS = /^0x[0-9a-fA-F]{40}$/;
+const DEFAULT_V3_FACTORY = "0x70FCFD3615eA6651a670B6c4CD6B8bA1506717e9";
+const DEFAULT_V3_IMPLEMENTATION = "0x0309E72Ffd1c6855FF519d9E923AEFc0C52bFdb5";
+const DEFAULT_V3_1_FACTORY = "0xDA5f501052fe6F87f547bc21FCAA1F122eD2f2E1";
+const DEFAULT_V3_1_IMPLEMENTATION = "0x0fE5bC78b2bAc5f09E940C2aCcC0c3B785d91063";
 
 function readJsonIfPresent(path) {
   if (!existsSync(path)) return {};
@@ -46,6 +52,27 @@ function safeNumber(name, value, fallback) {
   return n;
 }
 
+function boundedInteger(name, value, fallback, min, max) {
+  const parsed = safeNumber(name, value, fallback);
+  if (!Number.isInteger(parsed) || parsed < min || parsed > max) {
+    console.error(`[config] ${name}=${JSON.stringify(value)} must be an integer from ${min} to ${max} — using default ${fallback}`);
+    return fallback;
+  }
+  return parsed;
+}
+
+/**
+ * An explicit malformed deployment override must disable that lineage instead
+ * of silently falling back to a different contract. Zero is the fail-closed
+ * sentinel used for the intentionally undeployed v3.2 lineage too.
+ */
+function safeAddress(name, value, fallback) {
+  if (value === undefined || value === null || value === "") return fallback;
+  if (typeof value === "string" && ADDRESS.test(value)) return value;
+  console.error(`[config] ${name}=${JSON.stringify(value)} is not an EVM address — disabling that capsule lineage`);
+  return ZERO_ADDRESS;
+}
+
 export function loadConfig() {
   const fileCfg = readJsonIfPresent(join(HOME_DIR, "config.json"));
 
@@ -62,6 +89,59 @@ export function loadConfig() {
     rpcUrl: process.env.OPENZAPS_RPC_URL ?? fileCfg.rpcUrl ?? DEFAULT_RPC_URL,
     rpcUrls, // empty => single-URL mode on rpcUrl
     chainId: safeNumber("OPENZAPS_CHAIN_ID", process.env.OPENZAPS_CHAIN_ID ?? fileCfg.chainId, ROBINHOOD_CHAIN_ID),
+    // Exact factory + implementation pins used before any untrusted relay item
+    // reaches simulation or broadcast. The public app env names are accepted as
+    // a fallback so one deployment manifest can configure both processes.
+    capsuleLineages: {
+      v3: {
+        factory: safeAddress(
+          "OPENZAPS_V3_FACTORY",
+          process.env.OPENZAPS_V3_FACTORY
+            ?? process.env.NEXT_PUBLIC_OPENZAP_V3_FACTORY
+            ?? fileCfg.capsuleLineages?.v3?.factory,
+          DEFAULT_V3_FACTORY,
+        ),
+        implementation: safeAddress(
+          "OPENZAPS_V3_IMPLEMENTATION",
+          process.env.OPENZAPS_V3_IMPLEMENTATION
+            ?? process.env.NEXT_PUBLIC_OPENZAP_V3_IMPLEMENTATION
+            ?? fileCfg.capsuleLineages?.v3?.implementation,
+          DEFAULT_V3_IMPLEMENTATION,
+        ),
+      },
+      "v3.1": {
+        factory: safeAddress(
+          "OPENZAPS_V3_1_FACTORY",
+          process.env.OPENZAPS_V3_1_FACTORY
+            ?? process.env.NEXT_PUBLIC_OPENZAP_V3_1_FACTORY
+            ?? fileCfg.capsuleLineages?.["v3.1"]?.factory,
+          DEFAULT_V3_1_FACTORY,
+        ),
+        implementation: safeAddress(
+          "OPENZAPS_V3_1_IMPLEMENTATION",
+          process.env.OPENZAPS_V3_1_IMPLEMENTATION
+            ?? process.env.NEXT_PUBLIC_OPENZAP_V3_1_IMPLEMENTATION
+            ?? fileCfg.capsuleLineages?.["v3.1"]?.implementation,
+          DEFAULT_V3_1_IMPLEMENTATION,
+        ),
+      },
+      "v3.2": {
+        factory: safeAddress(
+          "OPENZAPS_V3_2_FACTORY",
+          process.env.OPENZAPS_V3_2_FACTORY
+            ?? process.env.NEXT_PUBLIC_OPENZAP_V3_2_FACTORY
+            ?? fileCfg.capsuleLineages?.["v3.2"]?.factory,
+          ZERO_ADDRESS,
+        ),
+        implementation: safeAddress(
+          "OPENZAPS_V3_2_IMPLEMENTATION",
+          process.env.OPENZAPS_V3_2_IMPLEMENTATION
+            ?? process.env.NEXT_PUBLIC_OPENZAP_V3_2_IMPLEMENTATION
+            ?? fileCfg.capsuleLineages?.["v3.2"]?.implementation,
+          ZERO_ADDRESS,
+        ),
+      },
+    },
     // How often the loop re-evaluates every stored intent, in milliseconds.
     pollMs: safeNumber("OPENZAPS_POLL_MS", process.env.OPENZAPS_POLL_MS ?? fileCfg.pollMs, 15_000),
     intentsDir: process.env.OPENZAPS_INTENTS_DIR ?? fileCfg.intentsDir ?? join(HOME_DIR, "intents"),
@@ -111,9 +191,77 @@ export function loadConfig() {
     // The hosted relay to poll for shared intents. Empty string disables relay polling (local
     // file store only). Defaults to the live site so the daemon discovers intents published there.
     relayUrl: (process.env.OPENZAPS_RELAY_URL ?? fileCfg.relayUrl ?? "https://www.0xzaps.com").replace(/\/$/, ""),
+    // Relay discovery is a durable, bounded sweep. A pass never materializes the full open set;
+    // state.json retains the next keyset cursor and the following pass resumes there.
+    relayPageSize: boundedInteger(
+      "OPENZAPS_RELAY_PAGE_SIZE",
+      process.env.OPENZAPS_RELAY_PAGE_SIZE ?? fileCfg.relayPageSize,
+      50,
+      1,
+      100,
+    ),
+    relayMaxPagesPerPass: boundedInteger(
+      "OPENZAPS_RELAY_MAX_PAGES_PER_PASS",
+      process.env.OPENZAPS_RELAY_MAX_PAGES_PER_PASS ?? fileCfg.relayMaxPagesPerPass,
+      2,
+      1,
+      8,
+    ),
+    relayMaxRowsPerPass: boundedInteger(
+      "OPENZAPS_RELAY_MAX_ROWS_PER_PASS",
+      process.env.OPENZAPS_RELAY_MAX_ROWS_PER_PASS ?? fileCfg.relayMaxRowsPerPass,
+      100,
+      1,
+      500,
+    ),
+    relayMaxBytesPerPass: boundedInteger(
+      "OPENZAPS_RELAY_MAX_BYTES_PER_PASS",
+      process.env.OPENZAPS_RELAY_MAX_BYTES_PER_PASS ?? fileCfg.relayMaxBytesPerPass,
+      512 * 1024,
+      16 * 1024,
+      4 * 1024 * 1024,
+    ),
+    evaluationConcurrency: boundedInteger(
+      "OPENZAPS_EVALUATION_CONCURRENCY",
+      process.env.OPENZAPS_EVALUATION_CONCURRENCY ?? fileCfg.evaluationConcurrency,
+      4,
+      1,
+      16,
+    ),
+    // A transaction is not an execution receipt until this many canonical blocks include it.
+    confirmations: boundedInteger(
+      "OPENZAPS_CONFIRMATIONS",
+      process.env.OPENZAPS_CONFIRMATIONS ?? fileCfg.confirmations,
+      12,
+      1,
+      128,
+    ),
+    receiptTimeoutMs: boundedInteger(
+      "OPENZAPS_RECEIPT_TIMEOUT_MS",
+      process.env.OPENZAPS_RECEIPT_TIMEOUT_MS ?? fileCfg.receiptTimeoutMs,
+      300_000,
+      10_000,
+      3_600_000,
+    ),
+    receiptsDir: process.env.OPENZAPS_RECEIPTS_DIR ?? fileCfg.receiptsDir ?? join(HOME_DIR, "receipts"),
+    // Notification destinations are secrets/capabilities, so they are accepted from env only and
+    // never echoed. Delivery additionally requires NODE_ENV=production and the explicit send flag.
+    notificationsEnabled:
+      process.env.NODE_ENV === "production" && process.env.OPENZAPS_NOTIFICATIONS_ENABLED === "true",
+    notificationWebhookUrl: process.env.OPENZAPS_NOTIFICATION_WEBHOOK_URL ?? "",
+    discordWebhookUrl: process.env.OPENZAPS_DISCORD_WEBHOOK_URL ?? "",
+    telegramBotToken: process.env.OPENZAPS_TELEGRAM_BOT_TOKEN ?? "",
+    telegramChatId: process.env.OPENZAPS_TELEGRAM_CHAT_ID ?? "",
+    notificationTimeoutMs: boundedInteger(
+      "OPENZAPS_NOTIFICATION_TIMEOUT_MS",
+      process.env.OPENZAPS_NOTIFICATION_TIMEOUT_MS,
+      8_000,
+      1_000,
+      60_000,
+    ),
   };
 
-  for (const dir of [HOME_DIR, cfg.intentsDir, cfg.doneDir]) {
+  for (const dir of [HOME_DIR, cfg.intentsDir, cfg.doneDir, cfg.receiptsDir]) {
     mkdirSync(dir, { recursive: true });
   }
   return cfg;

@@ -36,6 +36,12 @@ export const recurringRelativeIntentComponents = [
   { name: "maxSlippageBps", type: "uint32" },
 ];
 
+export const recurringStackIntentComponents = [
+  ...recurringRelativeIntentComponents,
+  { name: "stackPriceSource", type: "address" },
+  { name: "stackBps", type: "uint32" },
+];
+
 export const triggerIntentComponents = [
   { name: "zap", type: "address" },
   { name: "chainId", type: "uint256" },
@@ -78,6 +84,7 @@ const openZapV3Errors = [
   { type: "error", name: "AdapterNotAllowed", inputs: [{ name: "adapter", type: "address" }] },
   { type: "error", name: "ZeroBalanceRelativeStep", inputs: [{ name: "index", type: "uint256" }] },
   { type: "error", name: "InvalidAdapterResult", inputs: [{ name: "index", type: "uint256" }, { name: "tokenOut", type: "address" }, { name: "amountOut", type: "uint256" }] },
+  { type: "error", name: "SlippageBelowFee", inputs: [] },
   { type: "error", name: "Reentrancy", inputs: [] },
 ];
 
@@ -89,6 +96,17 @@ export const openZapV3Abi = [
     stateMutability: "nonpayable",
     inputs: [
       { name: "intent", type: "tuple", components: recurringIntentComponents },
+      { name: "sig", type: "bytes" },
+    ],
+    outputs: [],
+  },
+  {
+    // v3.2 stack path. The extra fields are signature-bearing and the selector is lineage-specific.
+    type: "function",
+    name: "executeRecurringStack",
+    stateMutability: "nonpayable",
+    inputs: [
+      { name: "intent", type: "tuple", components: recurringStackIntentComponents },
       { name: "sig", type: "bytes" },
     ],
     outputs: [],
@@ -138,7 +156,50 @@ export const openZapV3Abi = [
     inputs: [],
     outputs: [{ name: "", type: "bytes32" }],
   },
+  {
+    type: "function",
+    name: "owner",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [{ name: "", type: "address" }],
+  },
+  {
+    type: "function",
+    name: "FACTORY",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [{ name: "", type: "address" }],
+  },
 ];
+
+export const openZapFactoryV3Abi = [
+  {
+    type: "function",
+    name: "implementation",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [{ name: "", type: "address" }],
+  },
+  {
+    type: "function",
+    name: "implCodeHash",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [{ name: "", type: "bytes32" }],
+  },
+];
+
+export const zapCreatedEvent = {
+  type: "event",
+  name: "ZapCreated",
+  inputs: [
+    { name: "zap", type: "address", indexed: true },
+    { name: "owner", type: "address", indexed: true },
+    { name: "policyHash", type: "bytes32", indexed: false },
+    { name: "implCodeHash", type: "bytes32", indexed: false },
+    { name: "salt", type: "bytes32", indexed: false },
+  ],
+};
 
 export const priceSourceAbi = [
   {

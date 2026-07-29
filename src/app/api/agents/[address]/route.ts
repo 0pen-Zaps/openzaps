@@ -2,18 +2,24 @@ import { getAddress, isAddressEqual, type Address } from "viem";
 import { NextResponse, type NextRequest } from "next/server";
 
 import { resolveAgentConnection, type AgentConnection } from "@/lib/agent-connection";
+import { agentConnectionsPageLimit } from "@/lib/agent-connections-server";
 import { parseAutomationIntent, type ParsedAutomationIntent } from "@/lib/automation-records";
 import type { RelayRecord } from "@/lib/relay";
-import { listRelayIntents, relayConfigured } from "@/lib/relay-server";
+import {
+  listRelayIntentsPage,
+  relayConfigured,
+  RelayQueryError,
+} from "@/lib/relay-server";
+import { serverRateLimit } from "@/lib/relay-rate-limit";
 
 /**
  * "What is this agent connected to?"
  *
- * The answer is derived, never stored: an agent is connected to a capsule iff a
- * standing intent the owner signed names it in `executor`, and the capsule
- * enforces that field itself (`ExecutorMismatch`). This route is therefore a
- * projection of signatures, not a registry — there is no write side, and no way
- * for it to disagree with the chain.
+ * This is a bounded relay-discovery projection, not current chain state. The
+ * signed artifact is re-parsed and the capsule enforces its executor field at
+ * execution, but a relay row still marked `open` may be stale after an onchain
+ * cancellation, deadline, nonce use, or reorg. Callers must verify the capsule
+ * at a pinned canonical block before treating a row as executable.
  *
  * It is public for the same reason the relay's list is public: an executor must
  * be able to discover the work it is allowed to do. The pin is already in the
@@ -45,31 +51,73 @@ export interface AgentZapConnection {
 
 export interface AgentConnectionsPayload {
   agent: Address;
-  /** Capsules whose open authorizations name this agent, newest first. */
+  /** Capsules in this bounded relay page whose open rows name this agent, newest first. */
   connections: AgentZapConnection[];
-  /** Distinct owners who pinned this agent. */
+  /** Distinct owners represented in this page. */
   owners: Address[];
+  nextCursor: string | null;
   readAt: string;
+  source: "relay";
+  chainVerified: false;
+  statusBasis: "relay-open-row";
+  stalePossible: true;
+  disclaimer: string;
 }
+
+export const AGENT_CONNECTIONS_PROVENANCE = {
+  source: "relay",
+  chainVerified: false,
+  statusBasis: "relay-open-row",
+  stalePossible: true,
+  disclaimer:
+    "Relay-discovered signed authorizations only. Open is not current chain status; verify the capsule at a pinned canonical block before execution.",
+} as const;
+
+const MAX_URL_CHARS = 2_048;
+const RATE_WINDOW_MS = 10_000;
 
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ address: string }> },
 ): Promise<NextResponse> {
   const { address } = await params;
-  if (!HEX_ADDRESS.test(address)) {
-    return NextResponse.json({ error: `${address} is not a 20-byte hex address.` }, { status: 400 });
-  }
-  const agent = getAddress(address.toLowerCase());
-
   if (!relayConfigured()) {
     return NextResponse.json({ error: "The intent relay is not configured on this deployment." }, { status: 503 });
   }
+  const declaredBodyBytes = Number(request.headers.get("content-length") ?? "0");
+  if (
+    request.url.length > MAX_URL_CHARS
+    || (Number.isFinite(declaredBodyBytes) && declaredBodyBytes > 0)
+  ) {
+    return NextResponse.json({ error: "Request is too large." }, { status: 413 });
+  }
+  const quota = serverRateLimit(request, "agent-connections", 30, RATE_WINDOW_MS);
+  if (quota.limited) {
+    return NextResponse.json(
+      { error: "Too many requests." },
+      { status: 429, headers: { "retry-after": String(quota.retryAfterSeconds) } },
+    );
+  }
+  if (!HEX_ADDRESS.test(address)) {
+    return NextResponse.json({ error: "address is not a 20-byte hex address." }, { status: 400 });
+  }
+  const agent = getAddress(address.toLowerCase());
 
   let records: RelayRecord[];
+  let nextCursor: string | null;
   try {
-    records = await listRelayIntents({ status: "open", executor: agent, limit: 500 });
-  } catch {
+    const page = await listRelayIntentsPage({
+      status: "open",
+      executor: agent,
+      limit: agentConnectionsPageLimit(request.nextUrl.searchParams.get("limit")),
+      cursor: request.nextUrl.searchParams.get("cursor"),
+    });
+    records = page.intents;
+    nextCursor = page.nextCursor;
+  } catch (error) {
+    if (error instanceof RelayQueryError) {
+      return NextResponse.json({ error: error.message }, { status: 400 });
+    }
     // Fail closed: an empty connections list would read as "this agent is
     // connected to nothing", which is a claim, not an absence of data.
     return NextResponse.json({ error: "The intent relay could not be read right now." }, { status: 502 });
@@ -112,7 +160,9 @@ export async function GET(
     agent,
     connections,
     owners,
+    nextCursor,
     readAt: new Date().toISOString(),
+    ...AGENT_CONNECTIONS_PROVENANCE,
   };
   return NextResponse.json(payload, { headers: { "cache-control": "no-store" } });
 }

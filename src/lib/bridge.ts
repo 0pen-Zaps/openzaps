@@ -1,4 +1,13 @@
-import { defineChain, getAddress, isAddress, type Address, type EIP1193Provider, type Hex } from "viem";
+import {
+  decodeFunctionData,
+  defineChain,
+  getAddress,
+  isAddress,
+  zeroAddress,
+  type Address,
+  type EIP1193Provider,
+  type Hex,
+} from "viem";
 
 import { ROBINHOOD_ASSETS, ROBINHOOD_CHAIN_ID } from "@/lib/robinhood";
 
@@ -6,47 +15,17 @@ import { ROBINHOOD_ASSETS, ROBINHOOD_CHAIN_ID } from "@/lib/robinhood";
  * Funding a Robinhood Chain capsule from Base, over Across.
  *
  * A bridge is NOT a step. `OpenZap.execute()` settles by measuring one ERC-20
- * balance delta on ONE chain (`out = balanceOf(outAsset) - preOut`), so a step
- * whose output lands on a different chain makes that subtraction underflow and
- * reverts the whole run. No adapter can fix that; it is the settlement model.
+ * balance delta on ONE chain, so a step whose output lands on another chain
+ * cannot be settled by the capsule. The bridge therefore sits outside the
+ * policy and delivers an ERC-20 directly to the deterministic capsule address.
  *
- * So the bridge sits OUTSIDE the capsule, and its only job is to deliver an
- * ERC-20 into an address the capsule already owns. The capsule address is
- * `CREATE2` over the policy, so it is knowable — and fundable — before anything
- * executes. Arrival IS the funding; the executor then submits the signed run.
- *
- * ---------------------------------------------------------------------------
- * WHY THERE IS NO WETH ROUTE HERE. READ THIS BEFORE ADDING ONE.
- *
- * Across offers Base WETH → Robinhood aeWETH, and it looks like the obvious
- * route because aeWETH is exactly what the bounded swap adapter consumes. It
- * cannot be used to fund a capsule, and the failure is silent and expensive.
- *
- * The destination SpokePool's `_transferTokensToRecipient` reads:
- *
- *     if (outputToken == address(wrappedNativeToken)) {
- *         ...
- *         _unwrapwrappedNativeTokenTo(payable(recipientToSend), amountToSend);
- *     } else { ...transfer the ERC-20... }
- *
- * There is NO `recipient.code.length == 0` check — contracts are unwrapped to
- * just like EOAs. And on chain 4663 `wrappedNativeToken()` IS aeWETH
- * (`0x0Bd7D308…AD73`, read from the live SpokePool at
- * `0xD29C85F15DF544bA632C9E25829fd29d767d7978`).
- *
- * So a WETH bridge to a capsule delivers NATIVE ETH. A capsule can receive ETH
- * but can never route it: `TokenAllowlist.setToken(address(0))` reverts
- * `ZeroAddress`, adapters are non-payable, and the only `call{value:}` in the
- * core is `emergencyExit` → owner. The funds would arrive, be unspendable, and
- * come back only through the owner's manual exit.
- *
- * USDG is not the wrapped native token, so it takes the `else` branch and lands
- * as a real ERC-20 the capsule can actually spend. That is the whole reason
- * this module ships a stablecoin route and not the "obvious" one.
- * ---------------------------------------------------------------------------
+ * There is deliberately no Base WETH -> Robinhood aeWETH route. The destination
+ * SpokePool unwraps its configured wrapped-native token even when the recipient
+ * is a contract. A capsule would receive native ETH, which its token-only
+ * adapters cannot route. USDG is delivered as an ERC-20 and can be consumed by
+ * the policy's verified USDG routes.
  */
 
-/** Where funds come FROM. Across supports ~25 origins into 4663; we ship one. */
 export const BRIDGE_ORIGIN_CHAIN_ID = 8453;
 
 export const baseChain = defineChain({
@@ -58,14 +37,9 @@ export const baseChain = defineChain({
 });
 
 /**
- * Across SpokePools, pinned. Verified live 2026-07-27 against
- * `app.across.to/api/chains` and, for Base, against the deployed implementation
- * (`OP_SpokePool` at `0x77aa19d4…72d8`) which exposes the `depositV3` overload
- * encoded below.
- *
- * These are pinned rather than read from the quote response so that a changed
- * or compromised API cannot redirect a deposit: the quote's own spoke pool is
- * compared against these and a mismatch fails the quote closed.
+ * Pinned Across SpokePools. The origin address is also checked against the
+ * transaction returned by the Swap API; an API response cannot redirect funds
+ * to a newly supplied contract.
  */
 export const ACROSS_SPOKE_POOL = {
   origin: getAddress("0x09aea4b2242abC8bb4BB78D537A67a245A7bEC64"),
@@ -73,17 +47,19 @@ export const ACROSS_SPOKE_POOL = {
 } as const;
 
 export const ACROSS_API_BASE = "https://app.across.to/api";
-
-/**
- * The widest spread this route will accept between what leaves Base and what
- * lands on 4663, in basis points. A live USDC → USDG quote keeps single-digit
- * bps; 300 leaves a wide margin for congestion while still refusing anything
- * that would quietly eat a material share of the deposit. See the check in
- * `fetchBridgeQuote` for why an upper bound alone is not enough.
- */
 export const MAX_BRIDGE_SPREAD_BPS = 300;
+/** Product-level freshness cap, stricter than the SpokePool's live quote buffer. */
+export const MAX_BRIDGE_QUOTE_AGE_SECONDS = 10 * 60;
+/** Product-level cap on how long one nominated relayer may exclude the wider network. */
+export const MAX_BRIDGE_EXCLUSIVITY_SECONDS = 10 * 60;
+/** Leave enough quote life for the final eth_call and wallet hand-off. */
+export const BRIDGE_SUBMISSION_RUNWAY_SECONDS = 30;
+/** A fill deadline shorter than this is too fragile for an interactive wallet flow. */
+export const MIN_BRIDGE_FILL_RUNWAY_SECONDS = 10 * 60;
+/** Keep the production control hidden until authenticated Across credentials are installed. */
+export const BRIDGE_FUNDING_ENABLED =
+  process.env.NEXT_PUBLIC_ACROSS_BRIDGE_ENABLED === "true";
 
-/** A bridge leg we are willing to offer, with both ends pinned. */
 export type BridgeRoute = {
   readonly id: string;
   readonly originChainId: number;
@@ -94,19 +70,9 @@ export type BridgeRoute = {
   readonly outputToken: Address;
   readonly outputSymbol: string;
   readonly outputDecimals: number;
-  /** The catalog symbol `chains.ts` speaks, so a funded capsule can be matched to a route. */
   readonly catalogSymbol: string;
 };
 
-/**
- * The shipped legs. Exactly one today.
- *
- * Base USDC → Robinhood USDG, which then reaches 0xZAPS through the live
- * `RobinhoodV4RouteAdapter` (USDG → aeWETH → 0xZAPS,
- * `0x132e65D4A28ec1687D3B2b2a6e2DfD75afCf4900`, allowlisted, verified
- * 2026-07-27). Both tokens are 6-decimal; USDG's six decimals are a load-bearing
- * money fact and are stated here rather than assumed.
- */
 export const BRIDGE_ROUTES: readonly BridgeRoute[] = [
   {
     id: "across-base-usdc-robinhood-usdg",
@@ -127,24 +93,87 @@ export function findBridgeRoute(id: string): BridgeRoute | null {
 }
 
 /**
- * A validated Across quote.
+ * ERC-20 approval sequence for one bound bridge quote.
  *
- * `outputAmount` is the exact quantity the relayer must deliver — Across V3
- * fills are exact-output, not best-effort — which is what lets a capsule freeze
- * `Step.amountIn` at signing time instead of guessing at what will arrive.
+ * A mismatched non-zero allowance is reset before the exact amount is granted;
+ * accepting a larger historical allowance would silently preserve wider
+ * authority than the quote needs.
+ */
+export function bridgeApprovalAmounts(currentAllowance: bigint, requiredAmount: bigint): readonly bigint[] {
+  if (currentAllowance < 0n || requiredAmount <= 0n) {
+    throw new BridgeQuoteError("Bridge allowances must be non-negative and the required amount must be positive.");
+  }
+  if (currentAllowance === requiredAmount) return [];
+  return currentAllowance === 0n ? [requiredAmount] : [0n, requiredAmount];
+}
+
+export type BridgeTransaction = {
+  readonly chainId: number;
+  readonly to: Address;
+  readonly data: Hex;
+  readonly value: bigint;
+};
+
+export type BridgeProtocolEvidence = {
+  readonly blockNumber: string;
+  readonly blockHash: Hex;
+  readonly blockTimestamp: number;
+  readonly depositQuoteTimeBuffer: number;
+  readonly fillDeadlineBuffer: number;
+  readonly maxExclusivityPeriodSeconds: number;
+};
+
+/**
+ * The minimum-output quote is tied to one wallet and one capsule. It can never
+ * be reused with a different depositor or recipient without obtaining a new
+ * quote whose calldata names those addresses.
  */
 export type BridgeQuote = {
   readonly route: BridgeRoute;
+  readonly requestedOutputAmount: bigint;
   readonly inputAmount: bigint;
   readonly outputAmount: bigint;
+  readonly depositor: Address;
+  readonly recipient: Address;
   readonly spokePool: Address;
+  readonly estimatedFillSeconds: number;
+  readonly quoteExpiryTimestamp: number;
   readonly quoteTimestamp: number;
   readonly fillDeadline: number;
   readonly exclusiveRelayer: Address;
-  readonly exclusivityDeadline: number;
+  /** The raw calldata parameter; small values are interpreted as relative periods. */
+  readonly exclusivityParameter: number;
+  readonly effectiveExclusivityDeadline: number;
+  readonly protocol: BridgeProtocolEvidence;
+  readonly providerSimulationSucceeded: true;
+  readonly providerAuthenticated: boolean;
+  readonly transaction: BridgeTransaction;
+};
+
+export type BridgeQuoteWire = {
+  readonly routeId: string;
+  readonly requestedOutputAmount: string;
+  readonly inputAmount: string;
+  readonly outputAmount: string;
+  readonly depositor: string;
+  readonly recipient: string;
+  readonly spokePool: string;
   readonly estimatedFillSeconds: number;
-  readonly minDeposit: bigint;
-  readonly maxDeposit: bigint;
+  readonly quoteExpiryTimestamp: number;
+  readonly quoteTimestamp: number;
+  readonly fillDeadline: number;
+  readonly exclusiveRelayer: string;
+  readonly exclusivityParameter: number;
+  readonly effectiveExclusivityDeadline: number;
+  readonly protocol: BridgeProtocolEvidence;
+  readonly providerSimulationSucceeded: true;
+  readonly providerAuthenticated: boolean;
+  readonly transaction: {
+    readonly chainId: number;
+    readonly to: string;
+    readonly data: string;
+    readonly value: string;
+  };
 };
 
 export class BridgeQuoteError extends Error {
@@ -154,18 +183,24 @@ export class BridgeQuoteError extends Error {
   }
 }
 
-/** Read a required decimal-string field, or fail the whole quote. */
+function requireRecord(raw: unknown, field: string): Record<string, unknown> {
+  if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
+    throw new BridgeQuoteError(`The bridge quote is missing a usable "${field}".`);
+  }
+  return raw as Record<string, unknown>;
+}
+
 function requireBigInt(raw: unknown, field: string): bigint {
   if (typeof raw !== "string" || !/^\d+$/.test(raw)) {
-    throw new BridgeQuoteError(`The bridge quote is missing a usable "${field}", so it cannot be trusted.`);
+    throw new BridgeQuoteError(`The bridge quote is missing a usable "${field}".`);
   }
   return BigInt(raw);
 }
 
-function requireUint32(raw: unknown, field: string): number {
+function requireUint(raw: unknown, field: string): number {
   const value = typeof raw === "string" ? Number(raw) : typeof raw === "number" ? raw : Number.NaN;
-  if (!Number.isInteger(value) || value < 0 || value > 0xff_ff_ff_ff) {
-    throw new BridgeQuoteError(`The bridge quote's "${field}" is not a usable uint32.`);
+  if (!Number.isSafeInteger(value) || value < 0) {
+    throw new BridgeQuoteError(`The bridge quote's "${field}" is not a usable unsigned integer.`);
   }
   return value;
 }
@@ -177,153 +212,92 @@ function requireAddress(raw: unknown, field: string): Address {
   return getAddress(raw);
 }
 
-/**
- * Quote one leg, and refuse anything that does not match what we pinned.
- *
- * Every check here is a redirect defence, not a formality. The response decides
- * where a user's funds are sent and what is expected back, so a quote naming a
- * different spoke pool, a different output token, or a different chain is
- * rejected outright rather than reconciled — an unknown is never treated as the
- * value we hoped for.
- */
-export async function fetchBridgeQuote(
-  route: BridgeRoute,
-  inputAmount: bigint,
-  fetchImpl: typeof fetch = fetch,
-): Promise<BridgeQuote> {
-  if (inputAmount <= 0n) {
-    throw new BridgeQuoteError("Enter an amount greater than zero before quoting the bridge.");
+function requireHex(raw: unknown, field: string): Hex {
+  if (typeof raw !== "string" || !/^0x(?:[0-9a-fA-F]{2})+$/.test(raw)) {
+    throw new BridgeQuoteError(`The bridge quote's "${field}" is not byte-aligned calldata.`);
   }
+  return raw as Hex;
+}
 
-  const url =
-    `${ACROSS_API_BASE}/suggested-fees` +
-    `?inputToken=${route.inputToken}` +
-    `&outputToken=${route.outputToken}` +
-    `&originChainId=${route.originChainId}` +
-    `&destinationChainId=${route.destinationChainId}` +
-    `&amount=${inputAmount.toString()}`;
+function addressWord(address: Address): string {
+  return `0x${"0".repeat(24)}${address.slice(2).toLowerCase()}`;
+}
 
-  let response: Response;
-  try {
-    response = await fetchImpl(url, { headers: { accept: "application/json" } });
-  } catch (error) {
-    throw new BridgeQuoteError(
-      `The bridge quote service could not be reached: ${error instanceof Error ? error.message : String(error)}`,
-    );
+function requireAddressWord(raw: Hex, expected: Address, field: string): void {
+  if (raw.toLowerCase() !== addressWord(expected)) {
+    throw new BridgeQuoteError(`The bridge transaction's "${field}" does not match the bound ${field}.`);
   }
-  if (!response.ok) {
-    throw new BridgeQuoteError(`The bridge quote service answered ${response.status}. No quote, so no deposit.`);
-  }
+}
 
-  const body: unknown = await response.json();
-  if (typeof body !== "object" || body === null) {
-    throw new BridgeQuoteError("The bridge quote service returned something that is not a quote.");
+function addressFromWord(raw: Hex, field: string): Address {
+  if (!/^0x0{24}[0-9a-fA-F]{40}$/.test(raw)) {
+    throw new BridgeQuoteError(`The bridge transaction's "${field}" is not a canonical EVM address word.`);
   }
-  const data = body as Record<string, unknown>;
+  return getAddress(`0x${raw.slice(-40)}`);
+}
 
-  if (data.isAmountTooLow === true) {
-    throw new BridgeQuoteError("That amount is below the bridge's minimum deposit.");
+function requireUint32(raw: unknown, field: string): number {
+  const value = typeof raw === "bigint" ? Number(raw) : requireUint(raw, field);
+  if (!Number.isSafeInteger(value) || value < 0 || value > 0xffff_ffff) {
+    throw new BridgeQuoteError(`The bridge quote's "${field}" is not a usable uint32.`);
   }
+  return value;
+}
 
-  // The output side is the one that decides what the capsule receives. A quote
-  // naming any other token or chain is not this route, whatever it calls itself.
-  const outputToken = data.outputToken as Record<string, unknown> | undefined;
-  const quotedOut = requireAddress(outputToken?.address, "outputToken.address");
-  if (quotedOut !== route.outputToken) {
-    throw new BridgeQuoteError(
-      `The bridge quote names output token ${quotedOut}, not the ${route.outputSymbol} this route delivers.`,
-    );
+function requireProtocolEvidence(raw: unknown): BridgeProtocolEvidence {
+  const protocol = requireRecord(raw, "protocol");
+  if (typeof protocol.blockNumber !== "string" || !/^(?:0|[1-9]\d*)$/.test(protocol.blockNumber)) {
+    throw new BridgeQuoteError("The bridge quote's protocol block number is malformed.");
   }
-  if (Number(outputToken?.chainId) !== route.destinationChainId) {
-    throw new BridgeQuoteError("The bridge quote names a different destination chain than this route.");
+  if (
+    typeof protocol.blockHash !== "string"
+    || !/^0x[0-9a-fA-F]{64}$/.test(protocol.blockHash)
+  ) {
+    throw new BridgeQuoteError("The bridge quote's protocol block hash is malformed.");
   }
-  if (Number(outputToken?.decimals) !== route.outputDecimals) {
-    throw new BridgeQuoteError(
-      `The bridge quote reports ${String(outputToken?.decimals)} decimals for ${route.outputSymbol}; this route is pinned to ${route.outputDecimals}.`,
-    );
-  }
-
-  // Where the deposit is sent. Compared against the pinned pool so a changed
-  // API cannot point a deposit at a contract this build has never seen.
-  const spokePool = requireAddress(data.spokePoolAddress, "spokePoolAddress");
-  if (spokePool !== ACROSS_SPOKE_POOL.origin) {
-    throw new BridgeQuoteError(
-      `The bridge quote names spoke pool ${spokePool}, which is not the pinned Base spoke pool. Refusing to deposit.`,
-    );
-  }
-
-  const outputAmount = requireBigInt(data.outputAmount, "outputAmount");
-  if (outputAmount <= 0n) {
-    throw new BridgeQuoteError("The bridge quote returns zero output. Nothing would arrive.");
-  }
-  if (outputAmount > inputAmount) {
-    // A bridge charges a fee; it never mints. A quote claiming otherwise is
-    // either a unit error or a lie, and both should stop here.
-    throw new BridgeQuoteError("The bridge quote claims more output than input, which cannot be right.");
-  }
-
-  /**
-   * THE FLOOR. Without this, every value in [1, inputAmount] is accepted and
-   * copied verbatim into `depositV3` as the exact output the relayer must
-   * deliver — so a crafted `outputAmount` of 1 unit takes the entire deposit
-   * and hands back dust. The upper bound above guards the direction that costs
-   * nobody anything; this guards the direction that costs the user everything.
-   *
-   * Every other value-moving quote in this codebase is bounded by a floor
-   * before signing (the creation-fee conversion floor, the capsule's `minOut`,
-   * the 500 bps cap on `guard-slippage`). The bridge is the one hop the policy
-   * cannot re-check afterwards, which makes it the last place to leave
-   * unbounded. Both legs are 6-decimal stablecoins moving over a liquidity
-   * bridge, so a spread beyond this cap is not a market condition — it is a
-   * broken or hostile response, and it fails closed.
-   */
-  const keptBps = ((inputAmount - outputAmount) * 10_000n) / inputAmount;
-  if (keptBps > BigInt(MAX_BRIDGE_SPREAD_BPS)) {
-    throw new BridgeQuoteError(
-      `The bridge quote keeps ${keptBps} bps of the deposit, above the ${MAX_BRIDGE_SPREAD_BPS} bps this route will accept. Refusing to deposit.`,
-    );
-  }
-
-  const limits = (data.limits ?? {}) as Record<string, unknown>;
-
-  return {
-    route,
-    inputAmount,
-    outputAmount,
-    spokePool,
-    quoteTimestamp: requireUint32(data.timestamp, "timestamp"),
-    fillDeadline: requireUint32(data.fillDeadline, "fillDeadline"),
-    exclusiveRelayer: requireAddress(
-      data.exclusiveRelayer ?? "0x0000000000000000000000000000000000000000",
-      "exclusiveRelayer",
+  const evidence = {
+    blockNumber: protocol.blockNumber,
+    blockHash: protocol.blockHash.toLowerCase() as Hex,
+    blockTimestamp: requireUint32(protocol.blockTimestamp, "protocol.blockTimestamp"),
+    depositQuoteTimeBuffer: requireUint32(
+      protocol.depositQuoteTimeBuffer,
+      "protocol.depositQuoteTimeBuffer",
     ),
-    exclusivityDeadline: requireUint32(data.exclusivityDeadline ?? 0, "exclusivityDeadline"),
-    estimatedFillSeconds: Number(data.estimatedFillTimeSec ?? 0) || 0,
-    minDeposit: requireBigInt(limits.minDeposit ?? "0", "limits.minDeposit"),
-    maxDeposit: requireBigInt(limits.maxDeposit ?? "0", "limits.maxDeposit"),
+    fillDeadlineBuffer: requireUint32(protocol.fillDeadlineBuffer, "protocol.fillDeadlineBuffer"),
+    maxExclusivityPeriodSeconds: requireUint32(
+      protocol.maxExclusivityPeriodSeconds,
+      "protocol.maxExclusivityPeriodSeconds",
+    ),
   };
+  if (
+    evidence.depositQuoteTimeBuffer === 0
+    || evidence.fillDeadlineBuffer === 0
+    || evidence.maxExclusivityPeriodSeconds === 0
+  ) {
+    throw new BridgeQuoteError("The bridge quote's pinned protocol limits are unusable.");
+  }
+  return evidence;
 }
 
 /**
- * The `depositV3` overload carried by the live Base SpokePool implementation
- * (`OP_SpokePool` `0x77aa19d4…72d8`, read from the EIP-1967 slot 2026-07-27).
- * The newer `deposit(bytes32,…)` form exists too; this one is used because its
- * address-typed arguments need no left-padding dance to encode a recipient.
+ * The current Swap API emits the bytes32 `deposit` entrypoint. The final bytes
+ * after the ABI payload may carry Across's tracking delimiter/integrator ID;
+ * viem decodes the ABI payload and ignores that permitted suffix.
  */
-export const acrossSpokePoolAbi = [
+export const acrossSwapDepositAbi = [
   {
     type: "function",
-    name: "depositV3",
+    name: "deposit",
     stateMutability: "payable",
     inputs: [
-      { name: "depositor", type: "address" },
-      { name: "recipient", type: "address" },
-      { name: "inputToken", type: "address" },
-      { name: "outputToken", type: "address" },
+      { name: "depositor", type: "bytes32" },
+      { name: "recipient", type: "bytes32" },
+      { name: "inputToken", type: "bytes32" },
+      { name: "outputToken", type: "bytes32" },
       { name: "inputAmount", type: "uint256" },
       { name: "outputAmount", type: "uint256" },
       { name: "destinationChainId", type: "uint256" },
-      { name: "exclusiveRelayer", type: "address" },
+      { name: "exclusiveRelayer", type: "bytes32" },
       { name: "quoteTimestamp", type: "uint32" },
       { name: "fillDeadline", type: "uint32" },
       { name: "exclusivityDeadline", type: "uint32" },
@@ -332,6 +306,380 @@ export const acrossSpokePoolAbi = [
     outputs: [],
   },
 ] as const;
+
+type ValidatedQuoteFields = {
+  route: BridgeRoute;
+  requestedOutputAmount: bigint;
+  inputAmount: bigint;
+  outputAmount: bigint;
+  depositor: Address;
+  recipient: Address;
+  estimatedFillSeconds: number;
+  quoteExpiryTimestamp: number;
+  protocol: BridgeProtocolEvidence;
+  providerSimulationSucceeded: true;
+  providerAuthenticated: boolean;
+  transaction: BridgeTransaction;
+};
+
+function validateQuote(fields: ValidatedQuoteFields, nowSeconds?: number): BridgeQuote {
+  const {
+    route,
+    requestedOutputAmount,
+    inputAmount,
+    outputAmount,
+    depositor,
+    recipient,
+    transaction,
+    quoteExpiryTimestamp,
+    protocol,
+  } = fields;
+
+  if (requestedOutputAmount <= 0n) {
+    throw new BridgeQuoteError("The capsule needs an output amount greater than zero.");
+  }
+  if (inputAmount <= 0n || outputAmount <= 0n) {
+    throw new BridgeQuoteError("The bridge quote would move a zero amount.");
+  }
+  if (route.inputDecimals !== route.outputDecimals) {
+    throw new BridgeQuoteError("This bridge route cannot compare its input and output units safely.");
+  }
+  if (outputAmount < requestedOutputAmount) {
+    throw new BridgeQuoteError("The bridge quote would deliver less than the capsule still needs.");
+  }
+  if (outputAmount > inputAmount) {
+    throw new BridgeQuoteError("The bridge quote claims more stablecoin output than input.");
+  }
+
+  const keptBps = ((inputAmount - outputAmount) * 10_000n) / inputAmount;
+  if (keptBps > BigInt(MAX_BRIDGE_SPREAD_BPS)) {
+    throw new BridgeQuoteError(
+      `The bridge quote keeps ${keptBps} bps, above the ${MAX_BRIDGE_SPREAD_BPS} bps route limit.`,
+    );
+  }
+
+  if (transaction.chainId !== route.originChainId) {
+    throw new BridgeQuoteError("The bridge transaction is for a different origin chain.");
+  }
+  if (transaction.to !== ACROSS_SPOKE_POOL.origin) {
+    throw new BridgeQuoteError("The bridge transaction does not target the pinned Base SpokePool.");
+  }
+  if (transaction.value !== 0n) {
+    throw new BridgeQuoteError("The USDC bridge transaction unexpectedly asks for native value.");
+  }
+
+  let decoded: ReturnType<typeof decodeFunctionData<typeof acrossSwapDepositAbi>>;
+  try {
+    decoded = decodeFunctionData({ abi: acrossSwapDepositAbi, data: transaction.data });
+  } catch {
+    throw new BridgeQuoteError("The bridge transaction calldata is not the pinned Across deposit entrypoint.");
+  }
+  if (decoded.functionName !== "deposit" || !decoded.args) {
+    throw new BridgeQuoteError("The bridge transaction calldata is not an Across deposit.");
+  }
+
+  const [
+    encodedDepositor,
+    encodedRecipient,
+    encodedInputToken,
+    encodedOutputToken,
+    encodedInputAmount,
+    encodedOutputAmount,
+    encodedDestinationChainId,
+    encodedExclusiveRelayer,
+    encodedQuoteTimestamp,
+    encodedFillDeadline,
+    encodedExclusivityParameter,
+    message,
+  ] = decoded.args;
+
+  requireAddressWord(encodedDepositor, depositor, "depositor");
+  requireAddressWord(encodedRecipient, recipient, "recipient");
+  requireAddressWord(encodedInputToken, route.inputToken, "inputToken");
+  requireAddressWord(encodedOutputToken, route.outputToken, "outputToken");
+
+  if (encodedInputAmount !== inputAmount || encodedOutputAmount !== outputAmount) {
+    throw new BridgeQuoteError("The bridge transaction amounts do not match the displayed quote.");
+  }
+  if (encodedDestinationChainId !== BigInt(route.destinationChainId)) {
+    throw new BridgeQuoteError("The bridge transaction names a different destination chain.");
+  }
+  if (message !== "0x") {
+    throw new BridgeQuoteError("The bridge transaction contains a callback message the capsule cannot execute.");
+  }
+
+  const exclusiveRelayer = addressFromWord(encodedExclusiveRelayer, "exclusiveRelayer");
+  const quoteTimestamp = requireUint32(encodedQuoteTimestamp, "quoteTimestamp");
+  const fillDeadline = requireUint32(encodedFillDeadline, "fillDeadline");
+  const exclusivityParameter = requireUint32(
+    encodedExclusivityParameter,
+    "exclusivityParameter",
+  );
+  if (fillDeadline <= 0) {
+    throw new BridgeQuoteError("The bridge transaction has no usable fill deadline.");
+  }
+  if (quoteExpiryTimestamp >= fillDeadline) {
+    throw new BridgeQuoteError("The bridge quote claims to remain valid after its fill deadline.");
+  }
+  if (nowSeconds !== undefined && quoteExpiryTimestamp <= nowSeconds) {
+    throw new BridgeQuoteError("The bridge quote expired before it could be returned.");
+  }
+  if (quoteExpiryTimestamp <= quoteTimestamp) {
+    throw new BridgeQuoteError("The bridge quote expires before its onchain quote timestamp.");
+  }
+
+  const originTimestamp = protocol.blockTimestamp;
+  if (quoteTimestamp > originTimestamp) {
+    throw new BridgeQuoteError("The bridge transaction's quote timestamp is in the future at the pinned Base block.");
+  }
+  const maximumQuoteAge = Math.min(
+    protocol.depositQuoteTimeBuffer,
+    MAX_BRIDGE_QUOTE_AGE_SECONDS,
+  );
+  if (originTimestamp - quoteTimestamp > maximumQuoteAge) {
+    throw new BridgeQuoteError("The bridge transaction's quote timestamp is too old.");
+  }
+
+  const minimumFillRunway = Math.max(
+    MIN_BRIDGE_FILL_RUNWAY_SECONDS,
+    fields.estimatedFillSeconds + 300,
+  );
+  if (fillDeadline <= originTimestamp + minimumFillRunway) {
+    throw new BridgeQuoteError("The bridge transaction leaves too little time for a safe destination fill.");
+  }
+  if (fillDeadline > originTimestamp + protocol.fillDeadlineBuffer) {
+    throw new BridgeQuoteError("The bridge transaction's fill deadline exceeds the pinned SpokePool buffer.");
+  }
+
+  const effectiveExclusivityDeadline =
+    exclusivityParameter === 0
+      ? 0
+      : exclusivityParameter <= protocol.maxExclusivityPeriodSeconds
+        ? originTimestamp + exclusivityParameter
+        : exclusivityParameter;
+  const hasExclusiveRelayer = exclusiveRelayer !== zeroAddress;
+  if (hasExclusiveRelayer !== (exclusivityParameter !== 0)) {
+    throw new BridgeQuoteError("The bridge transaction has an ambiguous exclusive-relayer configuration.");
+  }
+  if (
+    hasExclusiveRelayer
+    && (
+      effectiveExclusivityDeadline <= originTimestamp
+      || effectiveExclusivityDeadline > fillDeadline
+      || effectiveExclusivityDeadline - originTimestamp > MAX_BRIDGE_EXCLUSIVITY_SECONDS
+    )
+  ) {
+    throw new BridgeQuoteError("The bridge transaction's relayer exclusivity window is unsafe.");
+  }
+
+  return {
+    ...fields,
+    depositor: getAddress(depositor),
+    recipient: getAddress(recipient),
+    spokePool: ACROSS_SPOKE_POOL.origin,
+    quoteTimestamp,
+    fillDeadline,
+    exclusiveRelayer,
+    exclusivityParameter,
+    effectiveExclusivityDeadline,
+    };
+}
+
+/**
+ * Parse and validate an upstream `/swap/approval` response. The server calls
+ * this before returning a quote, and the client validates the canonical wire
+ * quote again before offering a wallet transaction.
+ */
+export function parseAcrossSwapQuote(
+  route: BridgeRoute,
+  requestedOutputAmount: bigint,
+  depositor: Address,
+  recipient: Address,
+  raw: unknown,
+  providerAuthenticated: boolean,
+  protocol: BridgeProtocolEvidence,
+  nowSeconds: number = Math.floor(Date.now() / 1_000),
+): BridgeQuote {
+  const body = requireRecord(raw, "response");
+  const transaction = requireRecord(body.swapTx, "swapTx");
+  if (transaction.simulationSuccess !== true) {
+    throw new BridgeQuoteError("Across did not report a successful origin simulation.");
+  }
+
+  return validateQuote(
+    {
+      route,
+      requestedOutputAmount,
+      inputAmount: requireBigInt(body.inputAmount, "inputAmount"),
+      outputAmount: requireBigInt(body.minOutputAmount ?? body.expectedOutputAmount, "minOutputAmount"),
+      depositor: getAddress(depositor),
+      recipient: getAddress(recipient),
+      estimatedFillSeconds: requireUint(body.expectedFillTime ?? 0, "expectedFillTime"),
+      quoteExpiryTimestamp: requireUint(body.quoteExpiryTimestamp, "quoteExpiryTimestamp"),
+      protocol: requireProtocolEvidence(protocol),
+      providerSimulationSucceeded: true,
+      providerAuthenticated,
+      transaction: {
+        chainId: requireUint(transaction.chainId, "swapTx.chainId"),
+        to: requireAddress(transaction.to, "swapTx.to"),
+        data: requireHex(transaction.data, "swapTx.data"),
+        value: requireBigInt(transaction.value ?? "0", "swapTx.value"),
+      },
+    },
+    nowSeconds,
+  );
+}
+
+export function serializeBridgeQuote(quote: BridgeQuote): BridgeQuoteWire {
+  return {
+    routeId: quote.route.id,
+    requestedOutputAmount: quote.requestedOutputAmount.toString(),
+    inputAmount: quote.inputAmount.toString(),
+    outputAmount: quote.outputAmount.toString(),
+    depositor: quote.depositor,
+    recipient: quote.recipient,
+    spokePool: quote.spokePool,
+    estimatedFillSeconds: quote.estimatedFillSeconds,
+    quoteExpiryTimestamp: quote.quoteExpiryTimestamp,
+    quoteTimestamp: quote.quoteTimestamp,
+    fillDeadline: quote.fillDeadline,
+    exclusiveRelayer: quote.exclusiveRelayer,
+    exclusivityParameter: quote.exclusivityParameter,
+    effectiveExclusivityDeadline: quote.effectiveExclusivityDeadline,
+    protocol: quote.protocol,
+    providerSimulationSucceeded: quote.providerSimulationSucceeded,
+    providerAuthenticated: quote.providerAuthenticated,
+    transaction: {
+      chainId: quote.transaction.chainId,
+      to: quote.transaction.to,
+      data: quote.transaction.data,
+      value: quote.transaction.value.toString(),
+    },
+  };
+}
+
+export function parseBridgeQuoteWire(
+  raw: unknown,
+  expected?: {
+    readonly route: BridgeRoute;
+    readonly requestedOutputAmount: bigint;
+    readonly depositor: Address;
+    readonly recipient: Address;
+  },
+  nowSeconds: number = Math.floor(Date.now() / 1_000),
+): BridgeQuote {
+  const body = requireRecord(raw, "quote");
+  const routeId = typeof body.routeId === "string" ? body.routeId : "";
+  const route = findBridgeRoute(routeId);
+  if (!route) throw new BridgeQuoteError("The server returned an unknown bridge route.");
+  if (expected && route.id !== expected.route.id) {
+    throw new BridgeQuoteError("The server returned a different bridge route.");
+  }
+
+  const transaction = requireRecord(body.transaction, "transaction");
+  const requestedOutputAmount = requireBigInt(body.requestedOutputAmount, "requestedOutputAmount");
+  const depositor = requireAddress(body.depositor, "depositor");
+  const recipient = requireAddress(body.recipient, "recipient");
+  const spokePool = requireAddress(body.spokePool, "spokePool");
+  if (spokePool !== ACROSS_SPOKE_POOL.origin) {
+    throw new BridgeQuoteError("The server returned an unpinned bridge contract.");
+  }
+  if (
+    expected &&
+    (requestedOutputAmount !== expected.requestedOutputAmount ||
+      depositor !== getAddress(expected.depositor) ||
+      recipient !== getAddress(expected.recipient))
+  ) {
+    throw new BridgeQuoteError("The server returned a quote bound to different funding details.");
+  }
+  if (typeof body.providerAuthenticated !== "boolean") {
+    throw new BridgeQuoteError("The server did not disclose the quote provider's authentication state.");
+  }
+  if (body.providerSimulationSucceeded !== true) {
+    throw new BridgeQuoteError("The server did not prove a successful provider simulation.");
+  }
+
+  const quote = validateQuote(
+    {
+      route,
+      requestedOutputAmount,
+      inputAmount: requireBigInt(body.inputAmount, "inputAmount"),
+      outputAmount: requireBigInt(body.outputAmount, "outputAmount"),
+      depositor,
+      recipient,
+      estimatedFillSeconds: requireUint(body.estimatedFillSeconds, "estimatedFillSeconds"),
+      quoteExpiryTimestamp: requireUint(body.quoteExpiryTimestamp, "quoteExpiryTimestamp"),
+      protocol: requireProtocolEvidence(body.protocol),
+      providerSimulationSucceeded: true,
+      providerAuthenticated: body.providerAuthenticated,
+      transaction: {
+        chainId: requireUint(transaction.chainId, "transaction.chainId"),
+        to: requireAddress(transaction.to, "transaction.to"),
+        data: requireHex(transaction.data, "transaction.data"),
+        value: requireBigInt(transaction.value, "transaction.value"),
+      },
+    },
+    nowSeconds,
+  );
+  if (quote.fillDeadline !== requireUint(body.fillDeadline, "fillDeadline")) {
+    throw new BridgeQuoteError("The displayed fill deadline does not match the bridge transaction.");
+  }
+  if (
+    quote.quoteTimestamp !== requireUint32(body.quoteTimestamp, "quoteTimestamp")
+    || quote.exclusiveRelayer !== requireAddress(body.exclusiveRelayer, "exclusiveRelayer")
+    || quote.exclusivityParameter
+      !== requireUint32(body.exclusivityParameter, "exclusivityParameter")
+    || quote.effectiveExclusivityDeadline
+      !== requireUint32(body.effectiveExclusivityDeadline, "effectiveExclusivityDeadline")
+  ) {
+    throw new BridgeQuoteError("The displayed Across timing fields do not match the bridge transaction.");
+  }
+  return quote;
+}
+
+export async function fetchBridgeQuote(
+  route: BridgeRoute,
+  requestedOutputAmount: bigint,
+  depositor: Address,
+  recipient: Address,
+  fetchImpl: typeof fetch = fetch,
+): Promise<BridgeQuote> {
+  if (requestedOutputAmount <= 0n) {
+    throw new BridgeQuoteError("The capsule needs an output amount greater than zero.");
+  }
+
+  let response: Response;
+  try {
+    response = await fetchImpl("/api/bridge/quote", {
+      method: "POST",
+      headers: { "content-type": "application/json", accept: "application/json" },
+      body: JSON.stringify({
+        routeId: route.id,
+        outputAmount: requestedOutputAmount.toString(),
+        depositor,
+        recipient,
+      }),
+    });
+  } catch (error) {
+    throw new BridgeQuoteError(
+      `The bridge quote service could not be reached: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
+
+  const raw: unknown = await response.json().catch(() => null);
+  if (!response.ok) {
+    const message =
+      typeof raw === "object" && raw !== null && typeof (raw as { error?: unknown }).error === "string"
+        ? (raw as { error: string }).error
+        : `The bridge quote service answered ${response.status}.`;
+    throw new BridgeQuoteError(message);
+  }
+  const payload = requireRecord(raw, "response");
+  return parseBridgeQuoteWire(
+    payload.quote,
+    { route, requestedOutputAmount, depositor: getAddress(depositor), recipient: getAddress(recipient) },
+  );
+}
 
 export const erc20AllowanceAbi = [
   {
@@ -342,6 +690,13 @@ export const erc20AllowanceAbi = [
       { name: "owner", type: "address" },
       { name: "spender", type: "address" },
     ],
+    outputs: [{ type: "uint256" }],
+  },
+  {
+    type: "function",
+    name: "balanceOf",
+    stateMutability: "view",
+    inputs: [{ name: "owner", type: "address" }],
     outputs: [{ type: "uint256" }],
   },
   {
@@ -358,74 +713,24 @@ export const erc20AllowanceAbi = [
 
 export type BridgeDeposit = {
   readonly address: Address;
-  readonly abi: typeof acrossSpokePoolAbi;
-  readonly functionName: "depositV3";
-  readonly args: readonly [
-    Address,
-    Address,
-    Address,
-    Address,
-    bigint,
-    bigint,
-    bigint,
-    Address,
-    number,
-    number,
-    number,
-    Hex,
-  ];
+  readonly data: Hex;
+  readonly value: bigint;
 };
 
-/**
- * Turn a validated quote into the exact deposit call.
- *
- * `recipient` is the capsule, not the user. That is the entire trick: the
- * capsule's address is deterministic, so the bridge can deliver straight into
- * a contract whose policy was signed before the funds ever left Base.
- *
- * The message is empty on purpose. A non-empty message makes the SpokePool call
- * `handleV3AcrossMessage` on the recipient, and a capsule does not implement it
- * — the fill would revert. Arrival is observed by the executor instead.
- */
 export function buildBridgeDeposit(quote: BridgeQuote, depositor: Address, recipient: Address): BridgeDeposit {
+  if (getAddress(depositor) !== quote.depositor || getAddress(recipient) !== quote.recipient) {
+    throw new BridgeQuoteError("This bridge quote is bound to a different depositor or capsule.");
+  }
   if (recipient === "0x0000000000000000000000000000000000000000") {
-    throw new BridgeQuoteError("A bridge deposit needs a destination capsule; refusing to send to the zero address.");
+    throw new BridgeQuoteError("A bridge deposit needs a destination capsule.");
   }
-  if (quote.minDeposit > 0n && quote.inputAmount < quote.minDeposit) {
-    throw new BridgeQuoteError("That amount is below the bridge's minimum deposit.");
-  }
-  if (quote.maxDeposit > 0n && quote.inputAmount > quote.maxDeposit) {
-    throw new BridgeQuoteError("That amount is above what the bridge can currently fill.");
-  }
-
   return {
-    address: quote.spokePool,
-    abi: acrossSpokePoolAbi,
-    functionName: "depositV3",
-    args: [
-      getAddress(depositor),
-      getAddress(recipient),
-      quote.route.inputToken,
-      quote.route.outputToken,
-      quote.inputAmount,
-      quote.outputAmount,
-      BigInt(quote.route.destinationChainId),
-      quote.exclusiveRelayer,
-      quote.quoteTimestamp,
-      quote.fillDeadline,
-      quote.exclusivityDeadline,
-      "0x",
-    ],
+    address: quote.transaction.to,
+    data: quote.transaction.data,
+    value: quote.transaction.value,
   };
 }
 
-/**
- * Put the wallet on Base before a deposit.
- *
- * Mirrors `ensureRobinhoodChain`. Base is a well-known chain in every wallet,
- * so `wallet_addEthereumChain` is only attempted on the 4902 "unrecognised
- * chain" path rather than pre-emptively.
- */
 export async function ensureBaseChain(provider: EIP1193Provider): Promise<void> {
   const expected = `0x${BRIDGE_ORIGIN_CHAIN_ID.toString(16)}`;
   const current = await provider.request({ method: "eth_chainId" });
@@ -452,22 +757,27 @@ export async function ensureBaseChain(provider: EIP1193Provider): Promise<void> 
   }
 }
 
-/**
- * Has this quote aged out?
- *
- * Across prices a quote at a block and a relayer will not fill past
- * `fillDeadline`. A quote held on screen while the user reads is fine; one
- * deposited against after it expired is a transaction that reverts or sits
- * unfilled, so the deposit path re-checks this rather than trusting that the
- * quote was fresh when it was fetched.
- */
-export function quoteIsStale(quote: BridgeQuote, nowSeconds: number = Math.floor(Date.now() / 1000)): boolean {
-  return nowSeconds >= quote.fillDeadline;
+export function quoteIsStale(
+  quote: BridgeQuote,
+  nowSeconds: number = Math.floor(Date.now() / 1_000),
+  requiredRunwaySeconds = 0,
+): boolean {
+  if (!Number.isSafeInteger(requiredRunwaySeconds) || requiredRunwaySeconds < 0) {
+    throw new BridgeQuoteError("Bridge quote runway must be a non-negative integer.");
+  }
+  return (
+    nowSeconds + requiredRunwaySeconds >= quote.quoteExpiryTimestamp
+    || nowSeconds + requiredRunwaySeconds >= quote.fillDeadline
+    || nowSeconds + requiredRunwaySeconds
+      >= quote.quoteTimestamp
+        + Math.min(
+          quote.protocol.depositQuoteTimeBuffer,
+          MAX_BRIDGE_QUOTE_AGE_SECONDS,
+        )
+  );
 }
 
-/** The fee the bridge keeps, in basis points of the input. For disclosure only. */
 export function bridgeFeeBps(quote: BridgeQuote): number {
-  if (quote.inputAmount <= 0n) return 0;
-  const kept = quote.inputAmount - quote.outputAmount;
-  return Number((kept * 10_000n) / quote.inputAmount);
+  if (quote.inputAmount <= 0n || quote.outputAmount >= quote.inputAmount) return 0;
+  return Number(((quote.inputAmount - quote.outputAmount) * 10_000n) / quote.inputAmount);
 }

@@ -105,10 +105,14 @@ export function protocolsForAction(blockId: string, params: Readonly<Record<stri
       return [info("uniswap-v4"), info("openzaps-vault")];
 
     case "lp-position":
+    case "vault-position":
       return [info("openzaps-vault")];
 
     case "supply":
       return [info(SUPPLY_MARKET[String(params.market ?? "")] ?? "morpho")];
+
+    case "redeem":
+      return [info("openzaps-vault")];
 
     // Aave is the only borrow venue the catalog describes, and `draw-debt`
     // realises the line `borrow` opened — same protocol, second step.

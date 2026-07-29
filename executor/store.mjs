@@ -2,8 +2,18 @@
 // the owner (exported from the app after signing). The executor treats these as UNTRUSTED input —
 // every file is schema-checked here and every submission is re-verified by the zap contract
 // itself, so a malformed or malicious file can only waste a simulation, never move funds.
-import { readdirSync, readFileSync, writeFileSync, renameSync, existsSync } from "node:fs";
-import { join, basename } from "node:path";
+import {
+  closeSync,
+  existsSync,
+  fsyncSync,
+  openSync,
+  readdirSync,
+  readFileSync,
+  renameSync,
+  unlinkSync,
+  writeFileSync,
+} from "node:fs";
+import { basename, dirname, join } from "node:path";
 
 const HEX_ADDR = /^0x[0-9a-fA-F]{40}$/;
 const HEX_32 = /^0x[0-9a-fA-F]{64}$/;
@@ -33,6 +43,16 @@ const KIND_FIELDS = {
     ["maxRuns", "bigint"],
     ["priceSource", HEX_ADDR],
     ["maxSlippageBps", "bigint"],
+  ],
+  "recurring-stack": [
+    ...COMMON_FIELDS,
+    ["seriesId", "bigint"],
+    ["interval", "bigint"],
+    ["maxRuns", "bigint"],
+    ["priceSource", HEX_ADDR],
+    ["maxSlippageBps", "bigint"],
+    ["stackPriceSource", HEX_ADDR],
+    ["stackBps", "bigint"],
   ],
   trigger: [
     ...COMMON_FIELDS,
@@ -72,8 +92,8 @@ function coerce(name, rule, value) {
 export function validateIntentObject(raw) {
   if (typeof raw !== "object" || raw === null) throw new Error("intent payload must be a JSON object");
   const kind = raw.kind;
-  if (kind !== "recurring" && kind !== "recurring-relative" && kind !== "trigger") {
-    throw new Error(`kind must be "recurring", "recurring-relative", or "trigger"`);
+  if (kind !== "recurring" && kind !== "recurring-relative" && kind !== "recurring-stack" && kind !== "trigger") {
+    throw new Error(`kind must be "recurring", "recurring-relative", "recurring-stack", or "trigger"`);
   }
   if (typeof raw.signature !== "string" || !HEX_SIG.test(raw.signature)) throw new Error("signature: malformed");
   if (typeof raw.intent !== "object" || raw.intent === null) throw new Error("intent: missing");
@@ -117,19 +137,93 @@ export function archiveIntent(intent, doneDir, reason) {
 }
 
 export function readState(stateFile) {
-  if (!existsSync(stateFile)) return { submissions: {} };
+  if (existsSync(`${stateFile}.tmp`)) {
+    throw new Error(
+      `executor state ${stateFile} has an unfinished temporary file; `
+        + "inspect and repair it before restarting broadcasts",
+    );
+  }
+  let text;
   try {
-    return JSON.parse(readFileSync(stateFile, "utf8"));
-  } catch {
-    return { submissions: {} };
+    text = readFileSync(stateFile, "utf8");
+  } catch (error) {
+    if (error?.code === "ENOENT") {
+      return { submissions: {} };
+    }
+    throw new Error(`executor state ${stateFile} could not be read; repair access before restarting broadcasts`, {
+      cause: error,
+    });
+  }
+  let state;
+  try {
+    state = JSON.parse(text);
+  } catch (error) {
+    throw new Error(
+      `executor state ${stateFile} is corrupt; repair it and reconcile pending wallet transactions before restarting broadcasts`,
+      { cause: error },
+    );
+  }
+  if (!state || typeof state !== "object" || Array.isArray(state)) {
+    throw new Error(`executor state ${stateFile} must contain a JSON object; refusing to discard receipt evidence`);
+  }
+  return state;
+}
+
+const DEFAULT_STATE_FS = {
+  closeSync,
+  existsSync,
+  fsyncSync,
+  openSync,
+  renameSync,
+  unlinkSync,
+  writeFileSync,
+};
+
+function fsyncParentDirectory(stateFile, fsOps) {
+  let directoryFd;
+  try {
+    directoryFd = fsOps.openSync(dirname(stateFile), "r");
+    fsOps.fsyncSync(directoryFd);
+  } catch (error) {
+    // Windows and a few filesystems do not support fsync on directory handles. Everywhere else,
+    // an error means the rename is not proven durable and must fail closed.
+    if (!["EINVAL", "ENOTSUP", "EBADF", "EISDIR"].includes(error?.code)) throw error;
+  } finally {
+    if (directoryFd !== undefined) fsOps.closeSync(directoryFd);
   }
 }
 
-export function writeState(stateFile, state) {
-  // Atomic: write a sibling temp file then rename over the target. A crash mid-write leaves the
-  // previous good state.json intact instead of a truncated file that readState would silently
-  // reset to empty — losing lifetime earnings and the convert throttle.
+export function writeState(stateFile, state, fsOps = DEFAULT_STATE_FS) {
+  // Crash-durable replacement: fsync the completed sibling, rename it atomically, then fsync the
+  // parent directory so the new directory entry survives power loss. A failed step propagates to
+  // the broadcast circuit instead of claiming that a queued hash is durable.
   const tmp = `${stateFile}.tmp`;
-  writeFileSync(tmp, JSON.stringify(state, null, 2));
-  renameSync(tmp, stateFile);
+  let temporaryFd;
+  let renamed = false;
+  try {
+    temporaryFd = fsOps.openSync(tmp, "w", 0o600);
+    fsOps.writeFileSync(temporaryFd, `${JSON.stringify(state, null, 2)}\n`);
+    fsOps.fsyncSync(temporaryFd);
+    fsOps.closeSync(temporaryFd);
+    temporaryFd = undefined;
+    fsOps.renameSync(tmp, stateFile);
+    renamed = true;
+    fsyncParentDirectory(stateFile, fsOps);
+  } catch (error) {
+    if (temporaryFd !== undefined) {
+      try {
+        fsOps.closeSync(temporaryFd);
+      } catch {
+        // Preserve the original persistence failure.
+      }
+    }
+    if (!renamed) {
+      try {
+        if (fsOps.existsSync(tmp)) fsOps.unlinkSync(tmp);
+      } catch {
+        // Preserve the original persistence failure.
+      }
+    }
+    throw error;
+  }
 }

@@ -10,7 +10,7 @@
 // buyZaps to one pinned adapter and the 0xZAPS output asset, so the worst a wrong plan does is
 // waste one reverted simulation.
 import { erc20Abi, lotteryPotAbi, priceSourceAbi } from "./abi.mjs";
-import { log } from "./engine.mjs";
+import { checkPendingBaseFee, log } from "./engine.mjs";
 
 const BPS = 10_000n;
 const Q96 = 1n << 96n;
@@ -75,7 +75,14 @@ export function gasHealth({ balanceWei, perRunWei, warnRuns }) {
  * `buyZaps`. Watch-only without a signer: it simulates and reports what it would convert. Returns a
  * record for logging/earnings. Never throws — a keeper failure must not take down the intent loop.
  */
-export async function convertPotFees({ publicClient, walletClient, cfg }) {
+export async function convertPotFees({
+  publicClient,
+  walletClient,
+  cfg,
+  onBroadcast = async () => {},
+  canBroadcast = async () => ({ allowed: true }),
+  withBroadcastLane = async (operation) => operation(),
+}) {
   if (!cfg.lotteryPot || !cfg.poolPriceSource || !cfg.feeAsset) {
     return { outcome: "disabled", detail: "pot/price-source/fee-asset not configured" };
   }
@@ -119,22 +126,108 @@ export async function convertPotFees({ publicClient, walletClient, cfg }) {
     };
   }
 
+  const feeCap = cfg.maxFeePerGasWei;
+  let laneResult;
   try {
-    const feeCap = cfg.maxFeePerGasWei;
-    // Explicit priority fee capped by the fee cap: without it, a node-suggested priority tip above
-    // the cap makes viem reject the request and every conversion stalls.
-    const priority = feeCap < PRIORITY_FEE_WEI ? feeCap : PRIORITY_FEE_WEI;
-    const hash = await walletClient.writeContract({ ...request, maxFeePerGas: feeCap, maxPriorityFeePerGas: priority });
+    laneResult = await withBroadcastLane(async () => {
+      let admission;
+      try {
+        admission = await canBroadcast();
+      } catch (error) {
+        return {
+          deferred: {
+            outcome: "broadcast-admission-unknown",
+            detail: `pre-broadcast safety gate failed closed: ${error?.shortMessage ?? error?.message ?? String(error)}`,
+          },
+        };
+      }
+      if (
+        admission === false
+        || (admission && typeof admission === "object" && admission.allowed === false)
+      ) {
+        return {
+          deferred: {
+            outcome: admission?.outcome ?? "broadcast-deferred",
+            detail: admission?.detail ?? "pre-broadcast safety gate deferred this transaction",
+          },
+        };
+      }
+      const feeAdmission = await checkPendingBaseFee(publicClient, feeCap);
+      if (!feeAdmission.allowed) return { deferred: feeAdmission };
+      try {
+        // Explicit priority fee capped by the fee cap: without it, a node-suggested priority tip
+        // above the cap makes viem reject the request and every conversion stalls.
+        const priority = feeCap < PRIORITY_FEE_WEI ? feeCap : PRIORITY_FEE_WEI;
+        const hash = await walletClient.writeContract({
+          ...request,
+          maxFeePerGas: feeCap,
+          maxPriorityFeePerGas: priority,
+        });
+        let outboxWarning = "";
+        try {
+          // Keep the signer lane locked until the hash is durable. All executor wallet writes
+          // share this receipt-backed marker, so a stale pending-nonce RPC cannot admit another.
+          await onBroadcast({ hash, operation: "pot-conversion", amountIn: plan.amountIn });
+        } catch (error) {
+          // The transaction already exists. Preserve that truth and let the durable-state
+          // controller open its process-wide admission circuit.
+          outboxWarning = `; receipt outbox persistence failed: ${error?.shortMessage ?? error?.message}`;
+        }
+        return { hash, outboxWarning };
+      } catch (error) {
+        return {
+          deferred: {
+            outcome: "broadcast-failed",
+            detail: error?.shortMessage ?? error?.message ?? String(error),
+          },
+        };
+      }
+    });
+  } catch (error) {
+    return {
+      outcome: "broadcast-admission-unknown",
+      detail: `signer-lane safety gate failed closed: ${error?.shortMessage ?? error?.message ?? String(error)}`,
+      amountIn: plan.amountIn,
+    };
+  }
+  if (laneResult?.deferred) {
+    return {
+      outcome: laneResult.deferred.outcome,
+      detail: laneResult.deferred.detail,
+      amountIn: plan.amountIn,
+    };
+  }
+  if (!laneResult?.hash) {
+    return {
+      outcome: "broadcast-admission-unknown",
+      detail: "signer-lane safety gate returned no broadcast result",
+      amountIn: plan.amountIn,
+    };
+  }
+  const { hash, outboxWarning = "" } = laneResult;
+
+  try {
     const receipt = await publicClient.waitForTransactionReceipt({ hash, timeout: 120_000 });
     return {
-      outcome: receipt.status === "success" ? "converted" : "tx-reverted",
-      detail: `buyZaps ${hash} (${receipt.status}) — ${plan.amountIn} fee-asset → ≥${plan.minZapsOut} 0xZAPS`,
+      outcome: "confirmation-observed",
+      detail:
+        `buyZaps ${hash} receipt observed as ${receipt.status}; awaiting canonical settlement`
+        + ` — ${plan.amountIn} fee-asset → ≥${plan.minZapsOut} 0xZAPS${outboxWarning}`,
+      amountIn: plan.amountIn,
+      minZapsOut: plan.minZapsOut,
+      txHash: hash,
+      observedReceiptStatus: receipt.status,
+    };
+  } catch (err) {
+    return {
+      outcome: "confirmation-pending",
+      detail:
+        `buyZaps ${hash} broadcast; finality wait pending: ${err.shortMessage ?? err.message}`
+        + outboxWarning,
       amountIn: plan.amountIn,
       minZapsOut: plan.minZapsOut,
       txHash: hash,
     };
-  } catch (err) {
-    return { outcome: "broadcast-failed", detail: err.shortMessage ?? err.message, amountIn: plan.amountIn };
   }
 }
 

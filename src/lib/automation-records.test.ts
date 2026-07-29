@@ -41,6 +41,31 @@ function relativeIntent(): string {
   });
 }
 
+function triggerIntent(above: boolean, thresholdBps: string): string {
+  return JSON.stringify({
+    kind: "trigger",
+    intent: {
+      zap: ZAP,
+      chainId: "4663",
+      nonce: "7",
+      validAfter: "1700000000",
+      deadline: "1709999999",
+      priceSource: "0xB4f66bFa00D2496513a5fD43ff47912A3fe0Bb5F",
+      baselinePriceX96: "79228162514264337593543950336",
+      thresholdBps,
+      above,
+      recipient: OWNER,
+      executor: EXECUTOR,
+      maxGas: "2000000",
+      maxFeePerGas: "10000000000",
+      policyHash: HASH,
+      outAsset: OUT,
+      minOut: "0",
+    },
+    signature: SIG,
+  });
+}
+
 function record(overrides: Partial<AutomationRecord> = {}): AutomationRecord {
   return {
     address: ZAP,
@@ -69,6 +94,14 @@ describe("parseAutomationIntent", () => {
     const malformed = JSON.parse(relativeIntent()) as { intent: Record<string, unknown> };
     delete malformed.intent.seriesId;
     expect(parseAutomationIntent(JSON.stringify(malformed))).toBeNull();
+  });
+
+  it("mirrors the contracts' asymmetric trigger threshold bounds", () => {
+    expect(parseAutomationIntent(triggerIntent(true, "20000"))?.thresholdBps).toBe(20_000);
+    expect(parseAutomationIntent(triggerIntent(true, "1000000"))?.thresholdBps).toBe(1_000_000);
+    expect(parseAutomationIntent(triggerIntent(true, "1000001"))).toBeNull();
+    expect(parseAutomationIntent(triggerIntent(false, "9999"))?.thresholdBps).toBe(9_999);
+    expect(parseAutomationIntent(triggerIntent(false, "10000"))).toBeNull();
   });
 });
 

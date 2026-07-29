@@ -86,6 +86,7 @@ contract OpenZapV3_2StackTest is Test {
         assetB.mint(address(adapter), 1_000_000e18);
 
         buyAdapter = new MockZapsBuyAdapter(address(assetB), 1e18);
+        registry.setAdapter(address(buyAdapter), true);
         assetB.mint(address(buyAdapter), 1_000_000e18);
 
         src = new MockOrientedPriceSource(address(assetA), address(assetB));
@@ -280,6 +281,7 @@ contract OpenZapV3_2StackTest is Test {
         // A pinned adapter that pays only half the fair rate must fail the whole run closed, not
         // quietly hand the owner dust tickets in exchange for real output.
         MockZapsBuyAdapter badAdapter = new MockZapsBuyAdapter(address(assetB), 0.5e18);
+        registry.setAdapter(address(badAdapter), true);
         assetB.mint(address(badAdapter), 1_000_000e18);
         ZapLotteryPot badPot = new ZapLotteryPot(potGov, address(assetB), address(badAdapter));
         OpenZapFactoryV3_2 badFactory = new OpenZapFactoryV3_2(registry, allowlist, priceSources, badPot);
@@ -296,6 +298,18 @@ contract OpenZapV3_2StackTest is Test {
             abi.encodeWithSelector(OpenZapV3_2.StackFloorNotMet.selector, STACK_IN / 2, (STACK_IN * 9_800) / 10_000)
         );
         zap.executeRecurringStack(it, sig);
+    }
+
+    function test_deallowlistingThePinnedStackAdapterHaltsBothStackPaths() public {
+        registry.setAdapter(address(buyAdapter), false);
+
+        RecurringStackIntent memory direct = _stack(zapFwd, address(assetB), address(0), BAND, SLICE);
+        vm.expectRevert(abi.encodeWithSelector(OpenZapV3_2.AdapterNotAllowed.selector, address(buyAdapter)));
+        zapFwd.executeRecurringStack(direct, _sign(direct));
+
+        RecurringStackIntent memory converted = _stack(zapRev, address(assetA), address(src), BAND, SLICE);
+        vm.expectRevert(abi.encodeWithSelector(OpenZapV3_2.AdapterNotAllowed.selector, address(buyAdapter)));
+        zapRev.executeRecurringStack(converted, _sign(converted));
     }
 
     // ---- the authorization bounds ----

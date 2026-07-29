@@ -7,6 +7,7 @@ import { CopyButton } from "@/components/CopyButton";
 import { Transcript } from "@/components/Transcript";
 import { useWalletSession } from "@/components/WalletProvider";
 import { agentAliasStorageKey, parseAgentAliases, type AgentAliases } from "@/lib/agent-connection";
+import { mcpClientSnippet, OPENZAPS_AGENT_KIT_PUBLISHED } from "@/lib/agent-kit";
 import type { NarrativeAuthorization } from "@/lib/agent-narrative";
 import {
   automationIntentKey,
@@ -26,7 +27,7 @@ import {
   type ConnectSelection,
 } from "@/lib/connect-dialogue";
 import type { WalletProfilePayload } from "@/lib/profile";
-import { fetchOwnerIntents, type RelayRecord } from "@/lib/relay";
+import { fetchOwnerIntentPage, type RelayRecord } from "@/lib/relay";
 import { explorerTransaction } from "@/lib/robinhood";
 import type { TranscriptChip } from "@/lib/transcript";
 import styles from "./connect.module.css";
@@ -48,6 +49,7 @@ export default function ConnectConsole({ proposedAgent }: { proposedAgent?: stri
   const [selection, setSelection] = useState<ConnectSelection>({});
   const [profile, setProfile] = useState<WalletProfilePayload | null>(null);
   const [relayRecords, setRelayRecords] = useState<RelayRecord[]>([]);
+  const [relayHasOlder, setRelayHasOlder] = useState(false);
   const [aliases, setAliases] = useState<AgentAliases>({});
   const [loading, setLoading] = useState(false);
   const [loaded, setLoaded] = useState<string | null>(null);
@@ -73,7 +75,7 @@ export default function ConnectConsole({ proposedAgent }: { proposedAgent?: stri
           if (!response.ok) throw new Error(`Profile read failed (HTTP ${response.status}).`);
           return response.json() as Promise<WalletProfilePayload>;
         }),
-        fetchOwnerIntents(owner),
+        fetchOwnerIntentPage(owner),
       ]);
 
       // Drop a response for a wallet that is no longer connected. Without this,
@@ -91,7 +93,10 @@ export default function ConnectConsole({ proposedAgent }: { proposedAgent?: stri
         setProfile(null);
         setError(profileResult.reason instanceof Error ? profileResult.reason.message : "Your capsules could not be read.");
       }
-      setRelayRecords(relayResult.status === "fulfilled" ? relayResult.value : []);
+      setRelayRecords(relayResult.status === "fulfilled" ? relayResult.value.intents : []);
+      setRelayHasOlder(
+        relayResult.status === "fulfilled" && relayResult.value.nextCursor !== null,
+      );
       setAliases(readAliases(owner));
       setLoaded(owner.toLowerCase());
       setLoading(false);
@@ -312,6 +317,12 @@ export default function ConnectConsole({ proposedAgent }: { proposedAgent?: stri
             onChip={onChip}
             onSubmit={(text) => void compose(text)}
           />
+          {relayHasOlder ? (
+            <p className={styles.sideNote} role="status">
+              Showing the newest 50 relay authorizations for this wallet. Older records remain
+              available through the paginated relay API.
+            </p>
+          ) : null}
           {handoff ? (
             <a className={`btn btnPrimary ${styles.handoff}`} href={handoff}>
               Sign the authorization →
@@ -336,21 +347,33 @@ export default function ConnectConsole({ proposedAgent }: { proposedAgent?: stri
             </p>
           </section>
 
-          <section aria-labelledby="connect-mcp-heading">
-            <h2 className={styles.paneTitle} id="connect-mcp-heading">
-              Point your agent at OpenZaps
-            </h2>
-            <p className={styles.sideNote}>
-              Add this to your MCP client. It exposes read-only tools — capsules, policies,
-              authorizations, and simulations. It holds no key and cannot sign or broadcast.
-            </p>
-            <pre className={styles.snippet}>{MCP_SNIPPET}</pre>
-            <CopyButton value={MCP_SNIPPET} label="Copy MCP config" className={styles.copy} />
-            <p className={styles.sideNote}>
-              Then ask your agent for its executor address — <code className="mono">agent_identity</code> —
-              and pin that address when you sign.
-            </p>
-          </section>
+          {OPENZAPS_AGENT_KIT_PUBLISHED ? (
+            <section aria-labelledby="connect-mcp-heading">
+              <h2 className={styles.paneTitle} id="connect-mcp-heading">
+                Point your agent at OpenZaps
+              </h2>
+              <p className={styles.sideNote}>
+                Add this to your MCP client. It exposes read-only tools — capsules, policies,
+                authorizations, and simulations. It holds no key and cannot sign or broadcast.
+              </p>
+              <pre className={styles.snippet}>{MCP_SNIPPET}</pre>
+              <CopyButton value={MCP_SNIPPET} label="Copy MCP config" className={styles.copy} />
+              <p className={styles.sideNote}>
+                Then ask your agent for its executor address — <code className="mono">agent_identity</code> —
+                and pin that address when you sign.
+              </p>
+            </section>
+          ) : (
+            <section aria-labelledby="connect-mcp-heading">
+              <h2 className={styles.paneTitle} id="connect-mcp-heading">
+                Agent Kit release
+              </h2>
+              <p className={styles.sideNote}>
+                The read-only SDK and MCP packages are release-ready, but the install command stays hidden until the
+                scoped npm packages are published. Connecting an existing executor address still works normally.
+              </p>
+            </section>
+          )}
 
           <section aria-labelledby="connect-public-heading">
             <h2 className={styles.paneTitle} id="connect-public-heading">
@@ -368,14 +391,7 @@ export default function ConnectConsole({ proposedAgent }: { proposedAgent?: stri
   );
 }
 
-const MCP_SNIPPET = `{
-  "mcpServers": {
-    "openzaps": {
-      "command": "node",
-      "args": ["/path/to/openzaps/mcp/index.mjs"]
-    }
-  }
-}`;
+const MCP_SNIPPET = mcpClientSnippet();
 
 function parseRelayIntent(record: RelayRecord): ParsedAutomationIntent | null {
   return parseAutomationIntent(

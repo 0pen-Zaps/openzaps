@@ -61,7 +61,14 @@ export function parseAutomationIntent(raw: string): ParsedAutomationIntent | nul
     const recurring = kind === "recurring" || kind === "recurring-relative" || kind === "recurring-stack";
     const authorizationId = BigInt(relayIntentNonce(submission));
     const maxRuns = recurring ? boundedNumber(intent.maxRuns, 1, 0xffff_ffff) : null;
-    const thresholdBps = kind === "trigger" ? boundedNumber(intent.thresholdBps, 1, 10_000) : null;
+    const above = kind === "trigger" ? intent.above === true : null;
+    // The contracts deliberately use asymmetric bounds: an above trigger may
+    // target up to +10,000%, while a below trigger must stay below -100% so
+    // BPS - thresholdBps cannot underflow.
+    const thresholdBps =
+      kind === "trigger"
+        ? boundedNumber(intent.thresholdBps, 1, above ? 1_000_000 : 9_999)
+        : null;
     if ((recurring && maxRuns === null) || (kind === "trigger" && thresholdBps === null)) return null;
 
     return {
@@ -78,7 +85,7 @@ export function parseAutomationIntent(raw: string): ParsedAutomationIntent | nul
       interval: recurring ? BigInt(String(intent.interval)) : null,
       maxRuns,
       thresholdBps,
-      above: kind === "trigger" ? intent.above === true : null,
+      above,
       priceSource: kind === "trigger" ? getAddress(String(intent.priceSource)) : null,
       baselinePriceX96: kind === "trigger" ? BigInt(String(intent.baselinePriceX96)) : null,
     };

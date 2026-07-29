@@ -44,7 +44,9 @@ contract OpenZapFactoryV3_2 {
         AdapterRegistry priceSources_,
         ZapLotteryPot lotteryPot_
     ) {
-        if (address(priceSources_) == address(0) || address(lotteryPot_) == address(0)) revert ZeroAddress();
+        if (address(priceSources_) == address(0) || address(lotteryPot_) == address(0)) {
+            revert ZeroAddress();
+        }
         adapters = adapters_;
         tokens = tokens_;
         priceSources = priceSources_;

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { materializeAndCompile } from "@/app/api/agent/compose/route";
-import { PROPOSABLE_BLOCK_IDS } from "@/lib/agent-catalog";
+import { DEPLOYABLE_RECIPE_COUNT, PROPOSABLE_BLOCK_IDS } from "@/lib/agent-catalog";
 import { RECIPES, decodeChain } from "@/lib/blocks";
 
 /**
@@ -161,7 +161,7 @@ describe("warn is not a rejection", () => {
     // The visual builder accepts warn chains and shows the warn checks; refusing
     // here would make this surface stricter than the one it hands off to.
     let sawWarn = false;
-    for (const recipe of RECIPES.slice(0, 11)) {
+    for (const recipe of RECIPES.slice(0, DEPLOYABLE_RECIPE_COUNT)) {
       const result = materializeAndCompile({
         nodes: recipe.blocks.map(([blockId, params]) => ({
           blockId,
@@ -182,7 +182,7 @@ describe("warn is not a rejection", () => {
 
 describe("refusals from deployable.ts are verbatim", () => {
   it("carries unenforced guards onto the plan without rewording", () => {
-    for (const recipe of RECIPES.slice(0, 11)) {
+    for (const recipe of RECIPES.slice(0, DEPLOYABLE_RECIPE_COUNT)) {
       const result = materializeAndCompile({
         nodes: recipe.blocks.map(([blockId, params]) => ({
           blockId,

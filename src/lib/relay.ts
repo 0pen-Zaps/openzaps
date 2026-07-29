@@ -14,7 +14,7 @@
 import type { Address, Hex } from "viem";
 
 export type RelayIntentKind = "recurring" | "recurring-relative" | "recurring-stack" | "trigger";
-export type RelayStatus = "open" | "consumed";
+export type RelayStatus = "open" | "consumed" | "expired";
 
 /** Exactly the intent-file shape the executor already consumes, plus the kind + signature. */
 export interface RelaySubmission {
@@ -107,7 +107,43 @@ function checkField(name: string, rule: Rule, value: unknown): string | boolean 
   if (typeof value !== "string") throw new Error(`intent.${name}: expected a string`);
   const re = rule === "dec" ? DECIMAL : rule === "addr" ? HEX_ADDR : HEX_32;
   if (!re.test(value)) throw new Error(`intent.${name}: malformed`);
-  return value;
+  // EIP-712 uint values are numbers, not textual spellings of numbers. Store one canonical
+  // spelling so "01" and "1" cannot become distinct relay rows for the same on-chain nonce.
+  // Addresses and bytes32 values are bytes too: casing is not signed meaning.
+  // Lowercase storage keeps the relay's case-sensitive unique/filter columns
+  // aligned with their EVM identity.
+  return rule === "dec" ? canonicalRelayUint(value) : value.toLowerCase();
+}
+
+/** Canonical decimal spelling for a schema-bounded uint string. */
+export function canonicalRelayUint(value: string): string {
+  return BigInt(value).toString();
+}
+
+/**
+ * Normalize known uint fields without requiring a complete intent.
+ *
+ * The immutable-store comparator uses this for rows admitted before canonical decimal parsing was
+ * introduced. Unknown or malformed values are deliberately preserved so they cannot accidentally
+ * compare equal.
+ */
+export function canonicalizeRelayIntentDecimals(
+  kind: RelayIntentKind,
+  intent: Record<string, string | boolean>,
+): Record<string, string | boolean> {
+  const decimalFields = new Set(
+    KIND_FIELDS[kind]
+      .filter(([, rule]) => rule === "dec")
+      .map(([name]) => name),
+  );
+  return Object.fromEntries(
+    Object.entries(intent).map(([name, value]) => [
+      name,
+      decimalFields.has(name) && typeof value === "string" && DECIMAL.test(value)
+        ? canonicalRelayUint(value)
+        : value,
+    ]),
+  );
 }
 
 /**
@@ -160,30 +196,73 @@ export async function publishIntent(sub: RelaySubmission, baseUrl = ""): Promise
   return (await res.json()) as { id: string };
 }
 
-/** Fetch open intents from the relay. Executors call this to discover work. */
-export async function fetchOpenIntents(baseUrl: string, signal?: AbortSignal): Promise<RelayRecord[]> {
-  const res = await fetch(`${baseUrl}/api/intents?status=open`, { signal });
-  if (!res.ok) throw new Error(`relay list failed (HTTP ${res.status})`);
-  const body = (await res.json()) as { intents?: RelayRecord[] };
-  return Array.isArray(body.intents) ? body.intents : [];
+export interface RelayIntentPage {
+  intents: RelayRecord[];
+  nextCursor: string | null;
 }
 
-/** Fetch this owner's relayed intents for a cross-device profile dashboard. */
-export async function fetchOwnerIntents(
+export interface RelayIntentPageOptions {
+  limit?: number;
+  cursor?: string | null;
+  signal?: AbortSignal;
+}
+
+const DEFAULT_RELAY_PAGE_LIMIT = 50;
+const MAX_RELAY_PAGE_LIMIT = 100;
+const RELAY_CURSOR = /^[A-Za-z0-9_-]{1,512}$/;
+
+async function fetchIntentPage(
+  baseUrl: string,
+  params: URLSearchParams,
+  options: RelayIntentPageOptions,
+): Promise<RelayIntentPage> {
+  const limit = options.limit ?? DEFAULT_RELAY_PAGE_LIMIT;
+  if (!Number.isInteger(limit) || limit < 1 || limit > MAX_RELAY_PAGE_LIMIT) {
+    throw new Error(`relay page limit must be an integer from 1 to ${MAX_RELAY_PAGE_LIMIT}`);
+  }
+  const cursor = options.cursor ?? null;
+  if (cursor !== null && !RELAY_CURSOR.test(cursor)) throw new Error("relay cursor is malformed");
+
+  const pageParams = new URLSearchParams(params);
+  pageParams.set("limit", String(limit));
+  if (cursor) pageParams.set("cursor", cursor);
+  const res = await fetch(`${baseUrl}/api/intents?${pageParams.toString()}`, { signal: options.signal });
+  if (!res.ok) throw new Error(`relay list failed (HTTP ${res.status})`);
+  const body = (await res.json()) as { intents?: unknown; nextCursor?: unknown };
+  const intents = Array.isArray(body.intents) ? body.intents as RelayRecord[] : [];
+  if (intents.length > limit) throw new Error("relay page exceeded the requested row bound");
+  const nextCursor =
+    typeof body.nextCursor === "string" && body.nextCursor.length > 0 ? body.nextCursor : null;
+  if (nextCursor !== null && !RELAY_CURSOR.test(nextCursor)) {
+    throw new Error("relay pagination returned a malformed cursor");
+  }
+  if (nextCursor !== null && nextCursor === cursor) {
+    throw new Error("relay pagination returned a repeated cursor");
+  }
+  return { intents, nextCursor };
+}
+
+/** Fetch one bounded, newest-first open-intent page. Follow `nextCursor` explicitly if needed. */
+export async function fetchOpenIntentPage(
+  baseUrl: string,
+  options: RelayIntentPageOptions = {},
+): Promise<RelayIntentPage> {
+  return fetchIntentPage(baseUrl, new URLSearchParams({ status: "open" }), options);
+}
+
+/** Fetch one bounded, newest-first owner page for cross-device UI state. */
+export async function fetchOwnerIntentPage(
   owner: Address,
   baseUrl = "",
-  signal?: AbortSignal,
-): Promise<RelayRecord[]> {
-  const res = await fetch(`${baseUrl}/api/intents?owner=${encodeURIComponent(owner)}`, { signal });
-  if (!res.ok) throw new Error(`owner intent list failed (HTTP ${res.status})`);
-  const body = (await res.json()) as { intents?: RelayRecord[] };
-  return Array.isArray(body.intents) ? body.intents : [];
+  options: RelayIntentPageOptions = {},
+): Promise<RelayIntentPage> {
+  return fetchIntentPage(baseUrl, new URLSearchParams({ owner }), options);
 }
 
 /**
- * Mark a relayed intent consumed so it drops out of the open list. Permissionless BY DESIGN: the
- * route only flips the row if the intent's nonce is ACTUALLY used on-chain, so a caller can never
- * hide a still-live intent (no censorship) — it can only garbage-collect genuinely dead ones.
+ * Mark a relayed intent terminal so it drops out of the open list. Permissionless BY DESIGN: the
+ * route only flips the row if the nonce is used onchain or the signed deadline passed in chain
+ * time, so a caller can never hide a still-live intent.
  */
 export async function consumeIntent(id: string, baseUrl: string, signal?: AbortSignal): Promise<boolean> {
   const res = await fetch(`${baseUrl}/api/intents`, {
