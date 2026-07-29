@@ -1,0 +1,4 @@
+# The parent contracts/.gitignore excludes every nested directory named "lib".
+# ZapPad's release-validation libraries are source files, not vendored packages.
+!script/lib/
+!script/lib/**

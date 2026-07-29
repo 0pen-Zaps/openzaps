@@ -14,6 +14,9 @@
 # testing
 /coverage
 .playwright-cli/
+/output/playwright/zappad/
+/deployments/zappad/*.local.json
+/deployments/zappad/release-evidence/
 
 # next.js
 /.next/

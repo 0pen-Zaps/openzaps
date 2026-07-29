@@ -43,6 +43,7 @@ export function SiteFooter(): React.JSX.Element {
           <div className={styles.col}>
             <h2>Product</h2>
             <Link href="/zap">Zap</Link>
+            <Link href="/launch">ZapPad</Link>
             <Link href="/explore">Explore</Link>
             <Link href="/docs">Developer docs</Link>
             <Link href="/roadmap">Roadmap</Link>

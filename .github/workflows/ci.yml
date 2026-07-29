@@ -1,6 +1,7 @@
 name: CI
 
 on:
+  workflow_dispatch:
   push:
     branches: [main]
   pull_request:
@@ -25,7 +26,7 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run lint
-      - run: npx tsc --noEmit
+      - run: npm run typecheck
       - run: npm test
       - run: npm run validate:workflow
       - run: npm run build
@@ -49,6 +50,125 @@ jobs:
       # the live-chain release matrix. Public endpoints can return pruned-state errors or 429s on a
       # fresh runner, so the required PR gate stays hermetic.
       - run: forge test --no-match-path 'test/*.fork.t.sol'
+
+  zappad-contracts:
+    name: ZapPad contracts (format · build · test)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          submodules: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: v1.5.1
+      - run: forge fmt --root contracts/zappad --check
+      - run: forge build --root contracts/zappad --sizes
+      - run: npm run test:zappad:contracts
+
+  zappad-robinhood-fork:
+    name: ZapPad Robinhood archive fork
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      ROBINHOOD_RPC_URL: ${{ secrets.ROBINHOOD_ARCHIVE_RPC_URL }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          submodules: true
+      - name: Explain unavailable fork gate
+        if: env.ROBINHOOD_RPC_URL == '' && github.event_name == 'pull_request'
+        run: |
+          echo "::notice::ROBINHOOD_ARCHIVE_RPC_URL is not configured; the canonical ZapPad fork gate was not run for this pull request."
+      - name: Require the canonical fork gate for release
+        if: env.ROBINHOOD_RPC_URL == '' && github.event_name != 'pull_request'
+        run: |
+          echo "::error::ROBINHOOD_ARCHIVE_RPC_URL is required for main and manual ZapPad release validation."
+          exit 1
+      - uses: actions/setup-node@v4
+        if: env.ROBINHOOD_RPC_URL != ''
+        with:
+          node-version: 24
+          cache: npm
+      - name: Install root dependencies
+        if: env.ROBINHOOD_RPC_URL != ''
+        run: npm ci
+      - uses: foundry-rs/foundry-toolchain@v1
+        if: env.ROBINHOOD_RPC_URL != ''
+        with:
+          version: v1.5.1
+      - name: Run canonical Robinhood fork gate
+        if: env.ROBINHOOD_RPC_URL != ''
+        run: npm run test:zappad:contracts:fork
+
+  zappad-browser-fork:
+    name: ZapPad browser lifecycle on Robinhood fork
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      ZAPPAD_E2E_ARCHIVE_RPC_URL: ${{ secrets.ROBINHOOD_ARCHIVE_RPC_URL }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          submodules: true
+      - name: Explain unavailable browser fork gate
+        if: env.ZAPPAD_E2E_ARCHIVE_RPC_URL == '' && github.event_name == 'pull_request'
+        run: |
+          echo "::notice::ROBINHOOD_ARCHIVE_RPC_URL is not configured; the deterministic ZapPad browser fork gate was not run for this pull request."
+      - name: Require the browser fork gate for release
+        if: env.ZAPPAD_E2E_ARCHIVE_RPC_URL == '' && github.event_name != 'pull_request'
+        run: |
+          echo "::error::ROBINHOOD_ARCHIVE_RPC_URL is required for main and manual ZapPad release validation."
+          exit 1
+      - uses: actions/setup-node@v4
+        if: env.ZAPPAD_E2E_ARCHIVE_RPC_URL != ''
+        with:
+          node-version: 24
+          cache: npm
+      - uses: foundry-rs/foundry-toolchain@v1
+        if: env.ZAPPAD_E2E_ARCHIVE_RPC_URL != ''
+        with:
+          version: v1.5.1
+      - name: Install app and Chromium
+        if: env.ZAPPAD_E2E_ARCHIVE_RPC_URL != ''
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium
+      - name: Run deterministic browser lifecycle
+        if: env.ZAPPAD_E2E_ARCHIVE_RPC_URL != ''
+        run: npm run test:zappad:e2e:fork
+
+  zappad-slither:
+    name: ZapPad Slither (fail high)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          submodules: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: v1.5.1
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - run: python -m pip install slither-analyzer==0.11.5
+      - run: slither . --filter-paths 'lib|test|script|node_modules' --exclude-low --exclude-informational --fail-high
+        working-directory: contracts/zappad
 
   executor-and-agent-kit:
     name: Executor + Agent Kit (test · package)
