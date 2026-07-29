@@ -1,3 +1,11 @@
+.releaseStep.releaseStep {
+  grid-template-columns: 140px minmax(0, 1fr);
+}
+
+.releaseTag {
+  justify-self: start;
+}
+
 .shell {
   display: grid;
   gap: 16px;
@@ -140,6 +148,11 @@
 }
 
 @media (max-width: 620px) {
+  .releaseStep.releaseStep {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 8px;
+  }
+
   .controls,
   .metrics {
     grid-template-columns: 1fr;

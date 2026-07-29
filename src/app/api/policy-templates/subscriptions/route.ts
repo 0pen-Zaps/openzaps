@@ -18,22 +18,24 @@ export const dynamic = "force-dynamic";
 
 const rateLimited = createRateLimit(30, 60_000);
 const MAX_BODY_BYTES = 2_048;
+const PRIVATE_NO_STORE = { "cache-control": "private, no-store, max-age=0" };
+
+function privateJson(body: Record<string, unknown>, status = 200): NextResponse {
+  return NextResponse.json(body, { status, headers: PRIVATE_NO_STORE });
+}
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
   if (!policyTemplateSubscriptionsEnabled()) {
-    return NextResponse.json(
-      {
-        error: "Public template subscriptions are disabled on this deployment.",
-        code: "SUBSCRIPTIONS_DISABLED",
-      },
-      { status: 503 },
-    );
+    return privateJson({
+      error: "Public template subscriptions are disabled on this deployment.",
+      code: "SUBSCRIPTIONS_DISABLED",
+    }, 503);
   }
   if (!policyRegistryConfigured()) {
-    return NextResponse.json({ error: "The public policy registry is not configured." }, { status: 503 });
+    return privateJson({ error: "The public policy registry is not configured." }, 503);
   }
   if (rateLimited(callerKey(request))) {
-    return NextResponse.json({ error: "Too many requests." }, { status: 429 });
+    return privateJson({ error: "Too many requests." }, 429);
   }
 
   let body: {
@@ -49,14 +51,14 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   try {
     const raw = await readBoundedJsonBody(request, MAX_BODY_BYTES);
     if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
-      return NextResponse.json({ error: "Body must be a JSON object." }, { status: 400 });
+      return privateJson({ error: "Body must be a JSON object." }, 400);
     }
     body = raw as typeof body;
   } catch (error) {
     if (error instanceof BoundedJsonBodyError && error.status === 413) {
-      return NextResponse.json({ error: "Body too large." }, { status: 413 });
+      return privateJson({ error: "Body too large." }, 413);
     }
-    return NextResponse.json({ error: "Body must be valid JSON." }, { status: 400 });
+    return privateJson({ error: "Body must be valid JSON." }, 400);
   }
 
   try {
@@ -71,9 +73,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         admission.subscriber,
         admission.subscriberKey,
       );
-      return NextResponse.json(snapshot, {
-        headers: { "cache-control": "private, no-store, max-age=0" },
-      });
+      return privateJson(snapshot);
     }
     if (body.operation !== "set") {
       throw new PolicyTemplateSubscriptionAdmissionError(
@@ -90,7 +90,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       body.subscriberSignature,
     );
     if (admission.subscribed && !(await getPolicyTemplate(String(body.contentHash)))) {
-      return NextResponse.json({ error: "That exact template version does not exist." }, { status: 404 });
+      return privateJson({ error: "That exact template version does not exist." }, 404);
     }
     const mutation = await setPolicyTemplateSubscription(
       admission.subscriberKey,
@@ -99,22 +99,20 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       admission.expectedVersion,
       admission.expiresAt,
     );
-    return NextResponse.json({
+    return privateJson({
       contentHash: String(body.contentHash).toLowerCase(),
       subscribed: mutation.subscribed,
       subscriber: admission.subscriber,
       version: mutation.version,
-    }, {
-      headers: { "cache-control": "private, no-store, max-age=0" },
     });
   } catch (cause) {
     if (cause instanceof PolicyTemplateSubscriptionAdmissionError) {
-      return NextResponse.json({
+      return privateJson({
         error: cause.message,
         code: cause.code,
         ...(cause.currentVersion === undefined ? {} : { currentVersion: cause.currentVersion }),
-      }, { status: cause.status });
+      }, cause.status);
     }
-    return NextResponse.json({ error: "Policy subscription write failed." }, { status: 502 });
+    return privateJson({ error: "Policy subscription write failed." }, 502);
   }
 }
