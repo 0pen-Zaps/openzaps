@@ -24,11 +24,12 @@ jobs:
           node-version: 24
           cache: npm
       - run: npm ci
-      - run: npm audit --omit=dev --audit-level=high
       - run: npm run lint
       - run: npx tsc --noEmit
       - run: npm test
+      - run: npm run validate:workflow
       - run: npm run build
+      - run: npm run audit:production
 
   contracts:
     name: Contracts (build · unit · fuzz · invariant)

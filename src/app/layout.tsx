@@ -69,7 +69,12 @@ export const metadata: Metadata = {
   creator: "Nodar Janashia",
   publisher: SITE_NAME,
   keywords: SEO_KEYWORDS,
-  alternates: { canonical: "/" },
+  alternates: {
+    canonical: "/",
+    types: {
+      "application/rss+xml": "/feed.xml",
+    },
+  },
   openGraph: {
     title: DEFAULT_TITLE,
     description: DEFAULT_DESCRIPTION,
@@ -151,7 +156,14 @@ const siteGraph = {
         height: 512,
       },
       founder: { "@id": `${SITE_URL}/#founder` },
-      sameAs: [LINKS.x, LINKS.farcaster, "https://github.com/0pen-Zaps/openzaps", TOKEN_LAUNCH.tradeUrl],
+      sameAs: [
+        LINKS.x,
+        LINKS.farcaster,
+        LINKS.discord,
+        LINKS.substack,
+        "https://github.com/0pen-Zaps/openzaps",
+        TOKEN_LAUNCH.tradeUrl,
+      ],
     },
     {
       "@type": "Person",

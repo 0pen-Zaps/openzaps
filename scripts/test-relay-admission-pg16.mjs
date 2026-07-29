@@ -141,6 +141,38 @@ function policySubscriptionMutation(
   `);
 }
 
+function marketingDeliveryClaim({
+  idempotencyKey,
+  runId = "marketing-run-1",
+  candidateId = "marketing-candidate-1",
+  contentHash = "aa".repeat(32),
+  channel = "x",
+  action = "broadcast",
+  interactionId = null,
+  approvedBy = "integration-test",
+  dailyCap = 10,
+}) {
+  const interactionSql = interactionId === null ? "null" : `'${interactionId}'`;
+  return psqlScalar(`
+    select
+      result_code,
+      resulting_status,
+      current_count,
+      resulting_day
+    from public.claim_marketing_delivery(
+      '${idempotencyKey}',
+      '${runId}',
+      '${candidateId}',
+      '${contentHash}',
+      '${channel}',
+      '${action}',
+      ${interactionSql},
+      '${approvedBy}',
+      ${dailyCap}
+    );
+  `);
+}
+
 const owner = "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 const firstZap = "0x1111111111111111111111111111111111111111";
 const cappedZap = "0x2222222222222222222222222222222222222222";
@@ -739,6 +771,539 @@ try {
     `subscription cap changed version or row count: ${subscriberCapState}`,
   );
 
+  const concurrentScheduleA = psqlSession(`
+    select *
+    from private.claim_marketing_schedule_slot_for_day(date '2099-01-05');
+  `);
+  const concurrentScheduleB = psqlSession(`
+    select *
+    from private.claim_marketing_schedule_slot_for_day(date '2099-01-05');
+  `);
+  const concurrentScheduleResults = await Promise.all([
+    concurrentScheduleA,
+    concurrentScheduleB,
+  ]);
+  assert(
+    concurrentScheduleResults.every((result) => result.status === 0),
+    `concurrent schedule claims failed unexpectedly: ${concurrentScheduleResults
+      .map((result) => result.stderr)
+      .join("\n")}`,
+  );
+  const concurrentScheduleOutput = concurrentScheduleResults.map(
+    (result) => `${result.stdout}${result.stderr}`,
+  );
+  assert(
+    concurrentScheduleOutput.filter((output) =>
+      /(?:^|\n)\s*claimed\s+\|\s+weekday_product_update\s+\|\s+2099-01-05\s+\|\s+\S+/.test(output),
+    ).length === 1,
+    `expected one acquired schedule slot:\n${concurrentScheduleOutput.join("\n")}`,
+  );
+  assert(
+    concurrentScheduleOutput.filter((output) =>
+      /(?:^|\n)\s*already_claimed\s+\|\s+weekday_product_update\s+\|\s+2099-01-05\s+\|\s+\S+/.test(output),
+    ).length === 1,
+    `expected one duplicate schedule slot:\n${concurrentScheduleOutput.join("\n")}`,
+  );
+  const scheduleSlotState = psqlScalar(`
+    select count(*), min(claimed_at) is not null
+    from public.marketing_schedule_slots
+    where schedule_key = 'weekday_product_update'
+      and slot_day = date '2099-01-05';
+  `);
+  assert(
+    scheduleSlotState === "1|t",
+    `schedule slot was not unique and durable: ${scheduleSlotState}`,
+  );
+  const weekendScheduleClaim = psqlScalar(`
+    select result_code, schedule_key, slot_day, claimed_at is null
+    from private.claim_marketing_schedule_slot_for_day(date '2099-01-10');
+  `);
+  assert(
+    weekendScheduleClaim ===
+      "outside_schedule|weekday_product_update|2099-01-10|t",
+    `weekend schedule invocation acquired a slot: ${weekendScheduleClaim}`,
+  );
+
+  const missingReceiptWrites = await Promise.all(
+    [
+      {
+        key: "x",
+        channel: "x",
+        action: "broadcast",
+        counter: "xPosts",
+        status: "published",
+      },
+      {
+        key: "discord",
+        channel: "discord",
+        action: "broadcast",
+        counter: "discordPosts",
+        status: "published",
+      },
+      {
+        key: "substack",
+        channel: "substack",
+        action: "prepare_tutorial",
+        counter: "substackTutorials",
+        status: "requires_human_publish",
+      },
+    ].map((fixture) =>
+      psqlSession(`
+        insert into public.marketing_delivery_ledger (
+          idempotency_key,
+          run_id,
+          candidate_id,
+          content_hash,
+          channel,
+          action,
+          counter_key,
+          interaction_id,
+          approved_by,
+          claim_day,
+          status,
+          finalized_at
+        )
+        values (
+          'marketing:missing-receipt:${fixture.key}',
+          'marketing-invalid-run',
+          'marketing-invalid-${fixture.key}',
+          '${"ab".repeat(32)}',
+          '${fixture.channel}',
+          '${fixture.action}',
+          '${fixture.counter}',
+          null,
+          'integration-test',
+          date '2099-01-05',
+          '${fixture.status}',
+          pg_catalog.clock_timestamp()
+        );
+      `),
+    ),
+  );
+  assert(
+    missingReceiptWrites.every((result) => result.status !== 0),
+    `terminal rows accepted missing receipts: ${missingReceiptWrites
+      .map((result) => `${result.status}:${result.stdout}${result.stderr}`)
+      .join("\n")}`,
+  );
+
+  const firstMarketingClaim = marketingDeliveryClaim({
+    idempotencyKey: "marketing:first:x",
+    dailyCap: 1,
+  }).split("|");
+  assert(
+    firstMarketingClaim.slice(0, 3).join("|") === "claimed|claimed|1",
+    `initial marketing claim failed: ${firstMarketingClaim.join("|")}`,
+  );
+  const replayedMarketingClaim = marketingDeliveryClaim({
+    idempotencyKey: "marketing:first:x",
+    dailyCap: 1,
+  }).split("|");
+  assert(
+    replayedMarketingClaim.slice(0, 3).join("|") === "already_claimed|claimed|1",
+    `marketing idempotency replay was not retained: ${replayedMarketingClaim.join("|")}`,
+  );
+  const conflictingMarketingClaim = marketingDeliveryClaim({
+    idempotencyKey: "marketing:first:x",
+    contentHash: "bb".repeat(32),
+    dailyCap: 1,
+  }).split("|");
+  assert(
+    conflictingMarketingClaim[0] === "idempotency_conflict",
+    `marketing idempotency identity was mutable: ${conflictingMarketingClaim.join("|")}`,
+  );
+  const redactedConflict = psqlScalar(`
+    select
+      result_code,
+      provider_message_id is null
+        and provider_url is null
+        and failure_code is null
+        and claimed_at is null
+        and completed_at is null
+    from public.claim_marketing_delivery(
+      'marketing:first:x',
+      'marketing-run-1',
+      'marketing-candidate-1',
+      '${"bb".repeat(32)}',
+      'x',
+      'broadcast',
+      null,
+      'integration-test',
+      1
+    );
+  `);
+  assert(
+    redactedConflict === "idempotency_conflict|t",
+    `marketing conflict exposed existing receipt metadata: ${redactedConflict}`,
+  );
+  for (const [channel, action] of [
+    ["x", "direct_message"],
+    ["discord", "reply"],
+    ["substack", "publish_tutorial"],
+  ]) {
+    const unsupportedClaim = marketingDeliveryClaim({
+      idempotencyKey: `marketing:unsupported:${channel}:${action}`,
+      candidateId: `marketing-unsupported-${channel}-${action}`,
+      contentHash: "de".repeat(32),
+      channel,
+      action,
+    }).split("|");
+    assert(
+      unsupportedClaim[0] === "invalid_input",
+      `undeployed ${channel}/${action} action entered the ledger: ${unsupportedClaim.join("|")}`,
+    );
+  }
+  const cappedMarketingClaim = marketingDeliveryClaim({
+    idempotencyKey: "marketing:second:x",
+    candidateId: "marketing-candidate-2",
+    contentHash: "cc".repeat(32),
+    dailyCap: 1,
+  }).split("|");
+  assert(
+    cappedMarketingClaim.slice(0, 3).join("|") === "daily_cap_reached||1",
+    `marketing daily cap admitted an extra post: ${cappedMarketingClaim.join("|")}`,
+  );
+
+  const firstReplyClaim = marketingDeliveryClaim({
+    idempotencyKey: "marketing:reply:100",
+    candidateId: "marketing-reply-100",
+    contentHash: "dd".repeat(32),
+    action: "reply",
+    interactionId: "100",
+  }).split("|");
+  assert(
+    firstReplyClaim.slice(0, 3).join("|") === "claimed|claimed|1",
+    `initial X reply claim failed: ${firstReplyClaim.join("|")}`,
+  );
+  const duplicateReplyClaim = marketingDeliveryClaim({
+    idempotencyKey: "marketing:reply:100:duplicate",
+    candidateId: "marketing-reply-100-duplicate",
+    contentHash: "ee".repeat(32),
+    action: "reply",
+    interactionId: "100",
+  }).split("|");
+  assert(
+    duplicateReplyClaim[0] === "interaction_already_claimed",
+    `second X reply claim bypassed interaction uniqueness: ${duplicateReplyClaim.join("|")}`,
+  );
+
+  const concurrentDiscordA = psqlSession(`
+    select *
+    from public.claim_marketing_delivery(
+      'marketing:discord:a',
+      'marketing-concurrent-run',
+      'marketing-discord-a',
+      '${"12".repeat(32)}',
+      'discord',
+      'broadcast',
+      null,
+      'integration-test',
+      1
+    );
+  `);
+  const concurrentDiscordB = psqlSession(`
+    select *
+    from public.claim_marketing_delivery(
+      'marketing:discord:b',
+      'marketing-concurrent-run',
+      'marketing-discord-b',
+      '${"13".repeat(32)}',
+      'discord',
+      'broadcast',
+      null,
+      'integration-test',
+      1
+    );
+  `);
+  const concurrentDiscordResults = await Promise.all([
+    concurrentDiscordA,
+    concurrentDiscordB,
+  ]);
+  assert(
+    concurrentDiscordResults.every((result) => result.status === 0),
+    `concurrent marketing claims failed unexpectedly: ${concurrentDiscordResults
+      .map((result) => result.stderr)
+      .join("\n")}`,
+  );
+  const concurrentDiscordOutput = concurrentDiscordResults.map(
+    (result) => `${result.stdout}${result.stderr}`,
+  );
+  assert(
+    concurrentDiscordOutput.filter((output) => /claimed\s+\|\s+claimed\s+\|\s+1/.test(output)).length === 1,
+    `expected one concurrent Discord claim:\n${concurrentDiscordOutput.join("\n")}`,
+  );
+  assert(
+    concurrentDiscordOutput.filter((output) => /daily_cap_reached\s+\|\s+\|\s+1/.test(output)).length === 1,
+    `expected one concurrent Discord cap rejection:\n${concurrentDiscordOutput.join("\n")}`,
+  );
+
+  const marketingSnapshot = psqlScalar(`
+    select
+      x_posts,
+      x_replies,
+      discord_posts,
+      substack_tutorials,
+      direct_messages,
+      pg_catalog.array_to_string(replied_interaction_ids, ',')
+    from public.get_marketing_delivery_snapshot(array['100', '999']);
+  `);
+  assert(
+    marketingSnapshot === "1|1|1|0|0|100",
+    `marketing ledger snapshot drifted from admitted claims: ${marketingSnapshot}`,
+  );
+
+  const finalizedMarketingClaim = psqlScalar(`
+    select result_code, resulting_status
+    from public.complete_marketing_delivery_claim(
+      'marketing:first:x',
+      'x',
+      'broadcast',
+      'published',
+      '123456789',
+      'https://x.com/i/web/status/123456789',
+      null
+    );
+  `);
+  assert(
+    finalizedMarketingClaim === "finalized|published",
+    `marketing claim finalization failed: ${finalizedMarketingClaim}`,
+  );
+  const replayedFinalization = psqlScalar(`
+    select result_code, resulting_status
+    from public.complete_marketing_delivery_claim(
+      'marketing:first:x',
+      'x',
+      'broadcast',
+      'published',
+      '123456789',
+      'https://x.com/i/web/status/123456789',
+      null
+    );
+  `);
+  assert(
+    replayedFinalization === "already_finalized|published",
+    `marketing finalization replay was not idempotent: ${replayedFinalization}`,
+  );
+  const credentialLikeReceipt = psqlScalar(`
+    select result_code, resulting_status
+    from public.complete_marketing_delivery_claim(
+      'marketing:first:x',
+      'x',
+      'broadcast',
+      'published',
+      '123456789',
+      'https://x.com/i/web/status/123456789?token=secret',
+      null
+    );
+  `);
+  assert(
+    credentialLikeReceipt === "invalid_input|",
+    `credential-like provider metadata was accepted: ${credentialLikeReceipt}`,
+  );
+  const mismatchedCompletionIdentity = psqlScalar(`
+    select result_code, resulting_status
+    from public.complete_marketing_delivery_claim(
+      'marketing:first:x',
+      'discord',
+      'broadcast',
+      'published',
+      '123456789',
+      null,
+      null
+    );
+  `);
+  assert(
+    mismatchedCompletionIdentity === "status_conflict|",
+    `completion was not bound to the claimed channel/action: ${mismatchedCompletionIdentity}`,
+  );
+  const invalidSubstackTerminal = psqlScalar(`
+    select result_code, resulting_status
+    from public.complete_marketing_delivery_claim(
+      'marketing:first:x',
+      'substack',
+      'prepare_tutorial',
+      'published',
+      '123456789',
+      null,
+      null
+    );
+  `);
+  assert(
+    invalidSubstackTerminal === "invalid_input|",
+    `Substack handoff accepted a false published receipt: ${invalidSubstackTerminal}`,
+  );
+  const reconciledMarketingReceipt = psqlScalar(`
+    select
+      result_code,
+      resulting_status,
+      provider_message_id,
+      provider_url,
+      coalesce(failure_code, ''),
+      claimed_at is not null,
+      completed_at is not null
+    from public.claim_marketing_delivery(
+      'marketing:first:x',
+      'marketing-run-1',
+      'marketing-candidate-1',
+      '${"aa".repeat(32)}',
+      'x',
+      'broadcast',
+      null,
+      'integration-test',
+      1
+    );
+  `);
+  assert(
+    reconciledMarketingReceipt ===
+      "already_claimed|published|123456789|https://x.com/i/web/status/123456789||t|t",
+    `marketing replay did not return its durable receipt: ${reconciledMarketingReceipt}`,
+  );
+  const conflictingFinalization = psqlScalar(`
+    select result_code, resulting_status
+    from public.complete_marketing_delivery_claim(
+      'marketing:first:x',
+      'x',
+      'broadcast',
+      'failed',
+      null,
+      null,
+      'provider-error'
+    );
+  `);
+  assert(
+    conflictingFinalization === "status_conflict|published",
+    `marketing terminal status was rewritten: ${conflictingFinalization}`,
+  );
+
+  const marketingPrivileges = psqlScalar(`
+    select
+      has_table_privilege(
+        'service_role',
+        'public.marketing_delivery_ledger',
+        'select'
+      ),
+      has_table_privilege(
+        'service_role',
+        'public.marketing_delivery_ledger',
+        'insert'
+      ),
+      has_function_privilege(
+        'anon',
+        'public.claim_marketing_delivery(text,text,text,text,text,text,text,text,integer)',
+        'execute'
+      ),
+      has_function_privilege(
+        'authenticated',
+        'public.get_marketing_delivery_snapshot(text[])',
+        'execute'
+      ),
+      has_function_privilege(
+        'service_role',
+        'public.claim_marketing_delivery(text,text,text,text,text,text,text,text,integer)',
+        'execute'
+      ),
+      has_function_privilege(
+        'service_role',
+        'public.get_marketing_delivery_snapshot(text[])',
+        'execute'
+      ),
+      has_function_privilege(
+        'service_role',
+        'public.complete_marketing_delivery_claim(text,text,text,text,text,text,text)',
+        'execute'
+      );
+  `).split("|");
+  assert(
+    marketingPrivileges.join("|") === "f|f|f|f|t|t|t",
+    `unexpected marketing ledger privileges: ${marketingPrivileges.join(", ")}`,
+  );
+
+  const schedulePrivileges = psqlScalar(`
+    select
+      has_table_privilege(
+        'service_role',
+        'public.marketing_schedule_slots',
+        'select'
+      ),
+      has_table_privilege(
+        'service_role',
+        'public.marketing_schedule_slots',
+        'insert'
+      ),
+      has_function_privilege(
+        'anon',
+        'public.claim_marketing_schedule_slot()',
+        'execute'
+      ),
+      has_function_privilege(
+        'authenticated',
+        'public.claim_marketing_schedule_slot()',
+        'execute'
+      ),
+      has_function_privilege(
+        'service_role',
+        'public.claim_marketing_schedule_slot()',
+        'execute'
+      ),
+      has_function_privilege(
+        'service_role',
+        'private.claim_marketing_schedule_slot_for_day(date)',
+        'execute'
+      ),
+      has_function_privilege(
+        'service_role',
+        'private.claim_marketing_schedule_slot()',
+        'execute'
+      );
+  `).split("|");
+  assert(
+    schedulePrivileges.join("|") === "f|f|f|f|t|f|t",
+    `unexpected schedule-slot privileges: ${schedulePrivileges.join(", ")}`,
+  );
+
+  const serviceLedgerRpc = await psqlSession(`
+    set role service_role;
+    select snapshot_day, x_posts, x_replies
+    from public.get_marketing_delivery_snapshot(array['100']);
+  `);
+  assert(
+    serviceLedgerRpc.status === 0 &&
+      /\|\s+1\s+\|\s+1/.test(`${serviceLedgerRpc.stdout}${serviceLedgerRpc.stderr}`),
+    `service role could not use the marketing snapshot RPC: ${serviceLedgerRpc.stdout}${serviceLedgerRpc.stderr}`,
+  );
+  const serviceScheduleRpc = await psqlSession(`
+    set role service_role;
+    select result_code, schedule_key, slot_day
+    from public.claim_marketing_schedule_slot();
+  `);
+  assert(
+    serviceScheduleRpc.status === 0 &&
+      /(claimed|already_claimed|outside_schedule)\s+\|\s+weekday_product_update/.test(
+        `${serviceScheduleRpc.stdout}${serviceScheduleRpc.stderr}`,
+      ),
+    `service role could not use the schedule-slot RPC: ${serviceScheduleRpc.stdout}${serviceScheduleRpc.stderr}`,
+  );
+  const serviceLedgerRead = await psqlSession(`
+    set role service_role;
+    select * from public.marketing_delivery_ledger;
+  `);
+  assert(
+    serviceLedgerRead.status !== 0 &&
+      /permission denied/.test(`${serviceLedgerRead.stdout}${serviceLedgerRead.stderr}`),
+    "service role unexpectedly bypassed the marketing ledger RPC boundary",
+  );
+  const serviceScheduleRead = await psqlSession(`
+    set role service_role;
+    select * from public.marketing_schedule_slots;
+  `);
+  assert(
+    serviceScheduleRead.status !== 0 &&
+      /permission denied/.test(
+        `${serviceScheduleRead.stdout}${serviceScheduleRead.stderr}`,
+      ),
+    "service role unexpectedly bypassed the schedule-slot RPC boundary",
+  );
+
   const privateStateRead = await psqlSession(`
     set role service_role;
     select * from private.zap_intent_admission_state;
@@ -929,7 +1494,7 @@ try {
     `unexpected service-role privileges: ${privileges.join(", ")}`,
   );
 
-  console.log("PostgreSQL 16 relay admission integration: passed");
+  console.log("PostgreSQL 16 relay and marketing admission integration: passed");
 } finally {
   spawnSync("pg_ctl", ["-D", dataDirectory, "-m", "immediate", "stop"], {
     cwd: root,

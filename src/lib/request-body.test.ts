@@ -1,6 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { BoundedJsonBodyError, readBoundedJsonBody } from "@/lib/request-body";
+import {
+  BoundedJsonBodyError,
+  BoundedTextBodyError,
+  readBoundedJsonBody,
+  readBoundedTextBody,
+} from "@/lib/request-body";
 
 const LIMIT = 32;
 
@@ -87,5 +92,37 @@ describe("bounded JSON request bodies", () => {
         body: "{",
       }), LIMIT),
     ).rejects.toMatchObject({ message: "Body must be valid JSON.", status: 400 });
+  });
+});
+
+describe("bounded text request bodies", () => {
+  it("preserves exact signed text while enforcing encoded-byte limits", async () => {
+    const exact = "{\"content\":\"💥\"}";
+    await expect(
+      readBoundedTextBody(
+        new Request("https://0xzaps.com/api/test", { method: "POST", body: exact }),
+        new TextEncoder().encode(exact).byteLength,
+      ),
+    ).resolves.toBe(exact);
+
+    await expect(
+      readBoundedTextBody(
+        new Request("https://0xzaps.com/api/test", { method: "POST", body: exact }),
+        exact.length,
+      ),
+    ).rejects.toBeInstanceOf(BoundedTextBodyError);
+  });
+
+  it("rejects oversized declared text without consuming it", async () => {
+    await expect(
+      readBoundedTextBody(
+        new Request("https://0xzaps.com/api/test", {
+          method: "POST",
+          headers: { "content-length": String(LIMIT + 1) },
+          body: "signed",
+        }),
+        LIMIT,
+      ),
+    ).rejects.toMatchObject({ message: "Body too large.", status: 413 });
   });
 });

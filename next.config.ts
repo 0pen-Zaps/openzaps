@@ -1,4 +1,5 @@
 import type { NextConfig } from "next";
+import { withWorkflow } from "workflow/next";
 
 const nextConfig: NextConfig = {
   // 308s keep every inbound link — a shared URL, a search result, a bookmark, an
@@ -46,8 +47,29 @@ const nextConfig: NextConfig = {
           },
         ],
       },
+      {
+        source: "/marketing",
+        headers: [
+          {
+            key: "Content-Security-Policy",
+            value: "frame-ancestors 'none'",
+          },
+          {
+            key: "X-Frame-Options",
+            value: "DENY",
+          },
+          {
+            key: "Referrer-Policy",
+            value: "no-referrer",
+          },
+          {
+            key: "X-Content-Type-Options",
+            value: "nosniff",
+          },
+        ],
+      },
     ];
   },
 };
 
-export default nextConfig;
+export default withWorkflow(nextConfig);

@@ -55,6 +55,12 @@ export function SiteFooter(): React.JSX.Element {
             <a href={LINKS.x} target="_blank" rel="noreferrer">
               X @0xzaps
             </a>
+            <a href={LINKS.discord} target="_blank" rel="noreferrer">
+              Discord
+            </a>
+            <a href={LINKS.substack} target="_blank" rel="noreferrer">
+              DeFi Tutorials
+            </a>
             <Link href="/docs#security">Security</Link>
             <Link href="/zap">Visual builder</Link>
           </div>
