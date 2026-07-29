@@ -40,13 +40,14 @@ contract OpenZapFactoryV3_1 {
         AdapterRegistry priceSources_,
         ZapLotteryPot lotteryPot_
     ) {
-        if (address(priceSources_) == address(0) || address(lotteryPot_) == address(0)) revert ZeroAddress();
+        if (address(priceSources_) == address(0) || address(lotteryPot_) == address(0)) {
+            revert ZeroAddress();
+        }
         adapters = adapters_;
         tokens = tokens_;
         priceSources = priceSources_;
         lotteryPot = lotteryPot_;
-        OpenZapV3_1 impl =
-            new OpenZapV3_1(address(this), adapters_, tokens_, priceSources_, address(lotteryPot_));
+        OpenZapV3_1 impl = new OpenZapV3_1(address(this), adapters_, tokens_, priceSources_, address(lotteryPot_));
         implementation = address(impl);
         implCodeHash = address(impl).codehash;
     }

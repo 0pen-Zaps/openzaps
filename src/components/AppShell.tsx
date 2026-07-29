@@ -66,6 +66,7 @@ const GROUPS: readonly NavGroup[] = [
     label: "Learn",
     items: [
       { href: "/docs", label: "Docs", icon: "book" },
+      { href: "/evals", label: "Evals", icon: "pulse" },
       { href: "/token", label: TOKEN.symbol, icon: "tokenMark" },
     ],
   },
@@ -96,7 +97,12 @@ function isZapSurface(pathname: string): boolean {
  * opts in from CSS instead, via `:has([data-screen-label="Compose"])`.
  */
 function measureFor(pathname: string): "read" | "default" {
-  if (pathname.startsWith("/docs") || pathname.startsWith("/token") || pathname.startsWith("/legal")) return "read";
+  if (
+    pathname.startsWith("/docs")
+    || pathname.startsWith("/evals")
+    || pathname.startsWith("/token")
+    || pathname.startsWith("/legal")
+  ) return "read";
   if (pathname.startsWith("/roadmap")) return "read";
   return "default";
 }

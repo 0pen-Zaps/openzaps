@@ -4,11 +4,13 @@ import { getAddress, isAddress } from "viem";
 import { BridgeQuoteError, findBridgeRoute, serializeBridgeQuote } from "@/lib/bridge";
 import { acrossBridgeApiEnabled, fetchAcrossBridgeQuote } from "@/lib/bridge-server";
 import { serverRateLimit } from "@/lib/relay-rate-limit";
+import { BoundedJsonBodyError, readBoundedJsonBody } from "@/lib/request-body";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const MAX_BODY_BYTES = 2_048;
+const MAX_UINT256 = (1n << 256n) - 1n;
 const RATE_LIMIT_MAX = 20;
 const RATE_LIMIT_WINDOW_MS = 60_000;
 
@@ -43,20 +45,13 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     );
   }
 
-  const declaredLength = Number(request.headers.get("content-length") ?? 0);
-  if (Number.isFinite(declaredLength) && declaredLength > MAX_BODY_BYTES) {
-    return noStoreJson({ error: "Bridge quote request is too large." }, 413);
-  }
-
-  const text = await request.text();
-  if (new TextEncoder().encode(text).byteLength > MAX_BODY_BYTES) {
-    return noStoreJson({ error: "Bridge quote request is too large." }, 413);
-  }
-
   let raw: unknown;
   try {
-    raw = JSON.parse(text);
-  } catch {
+    raw = await readBoundedJsonBody(request, MAX_BODY_BYTES);
+  } catch (error) {
+    if (error instanceof BoundedJsonBodyError && error.status === 413) {
+      return noStoreJson({ error: "Bridge quote request is too large." }, 413);
+    }
     return noStoreJson({ error: "Bridge quote request must be JSON." }, 400);
   }
   if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
@@ -71,6 +66,10 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   if (typeof body.outputAmount !== "string" || !/^[1-9]\d*$/.test(body.outputAmount)) {
     return noStoreJson({ error: "Output amount must be a positive integer string." }, 400);
   }
+  const outputAmount = BigInt(body.outputAmount);
+  if (outputAmount > MAX_UINT256) {
+    return noStoreJson({ error: "Output amount exceeds uint256." }, 400);
+  }
   if (typeof body.depositor !== "string" || !isAddress(body.depositor)) {
     return noStoreJson({ error: "Depositor must be an EVM address." }, 400);
   }
@@ -81,7 +80,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   try {
     const quote = await fetchAcrossBridgeQuote({
       routeId,
-      outputAmount: BigInt(body.outputAmount),
+      outputAmount,
       depositor: getAddress(body.depositor),
       recipient: getAddress(body.recipient),
     });

@@ -152,7 +152,7 @@ lending pool **paused**.
 
 | ID | Invariant | Source | Method |
 |---|---|---|---|
-| **I-SUB-1** | A `priceSensitive` step cannot be executed via a path flagged public/permissionless | ADR-0003 | Policy-compilation test |
+| **I-SUB-1** | A `priceSensitive` step cannot be executed via a path flagged public/permissionless | ADR-0003 | Executor admission + private-relay tests |
 | **I-SUB-2** | The factory admits **only optimization-class** policies in v1 | ADR-0004 | Unit |
 
 *(Protective-zap triggering and L2 finality/sequencer-outage invariants are deferred to the v1.x

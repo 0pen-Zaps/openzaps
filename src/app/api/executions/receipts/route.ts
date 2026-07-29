@@ -12,6 +12,7 @@ import {
 } from "@/lib/receipt-server";
 import { serverRateLimited } from "@/lib/relay-rate-limit";
 import { relayConfigured } from "@/lib/relay-server";
+import { BoundedJsonBodyError, readBoundedJsonBody } from "@/lib/request-body";
 import { ROBINHOOD_CHAIN_ID } from "@/lib/robinhood";
 
 export const runtime = "nodejs";
@@ -61,11 +62,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   }
 
   try {
-    const text = await request.text();
-    if (text.length > MAX_BODY_BYTES) {
-      return NextResponse.json({ error: "Body too large." }, { status: 413 });
-    }
-    const input = parseReceiptRequest(JSON.parse(text));
+    const input = parseReceiptRequest(await readBoundedJsonBody(request, MAX_BODY_BYTES));
     const binding = await readRelayReceiptBinding(input.relayIntentId);
     if (!binding) {
       return NextResponse.json({ error: "Relay intent not found." }, { status: 404 });
@@ -80,8 +77,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     const receipt = await storeExecutionReceipt(verified);
     return NextResponse.json({ receipt, stored: true, authorityScope: "none" }, { status: 201 });
   } catch (error) {
-    if (error instanceof SyntaxError) {
-      return NextResponse.json({ error: "Body must be valid JSON." }, { status: 400 });
+    if (error instanceof BoundedJsonBodyError) {
+      return NextResponse.json({ error: error.message }, { status: error.status });
     }
     return errorResponse(error);
   }

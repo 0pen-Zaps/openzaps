@@ -113,13 +113,11 @@ contract ZapOverdrawTest is Test {
     ///      either credited to somebody or sitting in the open round's pot. Never more, never less.
     function _assertSolvent() internal {
         uint256 owed;
-        for (uint256 i = 0; i < _tracked.length; ++i) owed += game.credit(_tracked[i]);
+        for (uint256 i = 0; i < _tracked.length; ++i) {
+            owed += game.credit(_tracked[i]);
+        }
         (,, uint32 seats,,) = game.rounds(game.currentRound());
-        assertEq(
-            zaps.balanceOf(address(game)),
-            owed + game.carryPool() + uint256(seats) * ENTRY,
-            "solvency"
-        );
+        assertEq(zaps.balanceOf(address(game)), owed + game.carryPool() + uint256(seats) * ENTRY, "solvency");
     }
 
     // ------------------------------------------------------------------ //
@@ -512,8 +510,7 @@ contract ZapOverdrawTest is Test {
 
     function test_feeOnTransferTokenIsRefused() public {
         FeeOnTransferERC20 fee = new FeeOnTransferERC20();
-        ZapOverdraw g =
-            new ZapOverdraw(address(fee), RAKE, ENTRY, COMMIT_WINDOW, REVEAL_WINDOW, RAKE_BPS, KEEPER_BPS);
+        ZapOverdraw g = new ZapOverdraw(address(fee), RAKE, ENTRY, COMMIT_WINDOW, REVEAL_WINDOW, RAKE_BPS, KEEPER_BPS);
         fee.mint(alice, 1000e18);
         bytes32 blob = g.commitmentFor(1, alice, 100, "a");
         vm.startPrank(alice);
@@ -639,7 +636,9 @@ contract ZapOverdrawTest is Test {
         game.settle();
 
         uint256 recovered;
-        for (uint256 i = 0; i < n; ++i) recovered += game.credit(sybils[i]);
+        for (uint256 i = 0; i < n; ++i) {
+            recovered += game.credit(sybils[i]);
+        }
         profit = int256(recovered) - int256(spent);
     }
 

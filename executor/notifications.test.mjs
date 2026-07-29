@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { deliverOperationalNotification } from "./notifications.mjs";
+import { deliverOperationalNotification, operationalStatus } from "./notifications.mjs";
 
 const EVENT = {
   status: "underfunded",
@@ -49,4 +49,11 @@ test("explicitly enabled delivery formats webhook, Discord, and Telegram indepen
   assert.equal(calls[0].body.authorityScope, "none");
   assert.match(calls[1].body.content, /UNDERFUNDED/);
   assert.equal(calls[2].body.chat_id, "456");
+});
+
+test("a missing private relay quorum is a blocked operational transition", () => {
+  assert.equal(
+    operationalStatus({ status: "due", outcome: "private-submission-unavailable" }),
+    "blocked",
+  );
 });

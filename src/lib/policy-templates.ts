@@ -1,4 +1,4 @@
-import { keccak256, toBytes, type Address } from "viem";
+import { getAddress, isAddress, keccak256, toBytes, type Address } from "viem";
 
 import {
   compileChain,
@@ -12,6 +12,8 @@ export const POLICY_TEMPLATE_SCHEMA = "openzaps-policy-template/v1";
 export const POLICY_TEMPLATE_HASH = /^0x[0-9a-f]{64}$/;
 export const MAX_TEMPLATE_NAME = 80;
 export const MAX_TEMPLATE_SUMMARY = 240;
+export const POLICY_TEMPLATE_SUBSCRIPTION_TTL_SECONDS = 300;
+export const POLICY_TEMPLATE_SUBSCRIPTION_READ_NONCE = /^0x[0-9a-f]{64}$/;
 
 export type PolicyTemplateChainEntry = {
   block: string;
@@ -34,7 +36,7 @@ export type PublicPolicyTemplate = PolicyTemplateContent & {
   /** EIP-191 signer that admitted this immutable version to the public registry. */
   publisher: Address;
   createdAt: string;
-  /** Anonymous device convenience count only; never ranking, reputation, or proof of people. */
+  /** Wallet-bound convenience count only; never ranking, reputation, or proof of unique people. */
   subscriptionCount: number;
 };
 
@@ -60,6 +62,71 @@ export function policyTemplatePublishMessage(
     `Content hash: ${template.contentHash}`,
     "",
     "This signature publishes this exact immutable template. It cannot move funds or authorize a Zap execution.",
+  ].join("\n");
+}
+
+/**
+ * Human-readable consent for one exact-version subscription state.
+ *
+ * A subscription is convenience metadata, not execution authority. Binding the
+ * wallet, exact content hash, and desired state prevents callers from minting
+ * arbitrary anonymous UUID rows or changing another wallet's pin.
+ */
+export function policyTemplateSubscriptionMessage(input: {
+  subscriber: string;
+  contentHash: string;
+  subscribed: boolean;
+  expectedVersion: number;
+  expiresAt: number;
+}): string {
+  if (!isAddress(input.subscriber)) throw new Error("Subscriber must be a valid wallet address.");
+  if (!isPolicyTemplateHash(input.contentHash)) throw new Error("Template content hash is invalid.");
+  assertSubscriptionVersion(input.expectedVersion);
+  assertSubscriptionExpiry(input.expiresAt);
+  return [
+    "OpenZaps exact policy template subscription",
+    "Domain: 0xzaps.com",
+    "Chain ID: 4663",
+    `Subscriber: ${getAddress(input.subscriber)}`,
+    `Content hash: ${input.contentHash.toLowerCase()}`,
+    `Action: ${input.subscribed ? "subscribe" : "unsubscribe"}`,
+    `Expected authorization version: ${input.expectedVersion}`,
+    `Expires at (Unix seconds): ${input.expiresAt}`,
+    "",
+    "This signature changes convenience metadata only. It cannot move funds or authorize a Zap execution.",
+  ].join("\n");
+}
+
+/**
+ * Short-lived proof of wallet control for an authoritative private read.
+ *
+ * The random request nonce keeps two read prompts visually and
+ * cryptographically distinct. Reads do not consume the mutation version
+ * because they do not change state, but their signed bearer proof expires
+ * quickly and the API never accepts an unsigned wallet-address lookup.
+ */
+export function policyTemplateSubscriptionReadMessage(input: {
+  subscriber: string;
+  requestNonce: string;
+  expiresAt: number;
+}): string {
+  if (!isAddress(input.subscriber)) throw new Error("Subscriber must be a valid wallet address.");
+  if (
+    typeof input.requestNonce !== "string"
+    || !POLICY_TEMPLATE_SUBSCRIPTION_READ_NONCE.test(input.requestNonce.toLowerCase())
+  ) {
+    throw new Error("Subscription read nonce must be 32 random bytes.");
+  }
+  assertSubscriptionExpiry(input.expiresAt);
+  return [
+    "OpenZaps policy template subscriptions read",
+    "Domain: 0xzaps.com",
+    "Chain ID: 4663",
+    `Subscriber: ${getAddress(input.subscriber)}`,
+    `Request nonce: ${input.requestNonce.toLowerCase()}`,
+    `Expires at (Unix seconds): ${input.expiresAt}`,
+    "",
+    "This signature reads convenience metadata only. It cannot move funds or authorize a Zap execution.",
   ].join("\n");
 }
 
@@ -156,4 +223,16 @@ function parentField(value: unknown): string | null {
   if (value === null || value === undefined || value === "") return null;
   if (!isPolicyTemplateHash(value)) throw new Error("Parent hash must be a content hash.");
   return value.toLowerCase();
+}
+
+function assertSubscriptionVersion(value: number): void {
+  if (!Number.isSafeInteger(value) || value < 0) {
+    throw new Error("Subscription authorization version must be a non-negative safe integer.");
+  }
+}
+
+function assertSubscriptionExpiry(value: number): void {
+  if (!Number.isSafeInteger(value) || value < 1) {
+    throw new Error("Subscription authorization expiry must be a positive Unix timestamp.");
+  }
 }

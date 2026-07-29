@@ -45,6 +45,34 @@ benefits — and an absolute `minOut` signed in advance goes stale as the market
 (For *protective* zaps, which genuinely need permissionless on-chain triggering and therefore accept
 MEV, see ADR-0004 — they are out of v1 scope precisely so this private-only rule can hold cleanly.)
 
+## Robinhood Chain implementation status (2026-07-29)
+
+The current executor implements the decision conservatively without changing deployed contracts:
+
+- Every released capsule route references one or more approved adapters, and the maintenance
+  conversion calls a bounded swap adapter. The executor therefore classifies **all current writes
+  as price-sensitive**. This is stricter than a per-step bit: there is no public submission path to
+  accidentally open.
+- The signer creates the EIP-1559 transaction and signature locally. A generic raw-transaction
+  provider fans the same bytes out to an operator-configured set of endpoints explicitly classified
+  `private-relay`; `public-rpc` and `direct-sequencer` classifications are ineligible.
+- Before the first relay request, the executor fsyncs a 0600 outbox entry containing the
+  deterministic hash and exact signed bytes. Restart recovery may redispatch only those same bytes;
+  finalized receipt evidence retains sanitized relay health and inclusion, never the raw transaction
+  or relay credentials.
+- The minimum acceptable set is **two distinct HTTPS origins controlled by two declared
+  operators**. Per-origin acceptance, rejection, timeout/unknown health, and later onchain inclusion
+  are reported. If no qualifying set exists, signer mode fails closed. There is no public fallback.
+
+Robinhood's official documentation describes an Arbitrum L2 with first-come-first-served sequencing
+and lists public/provider RPCs plus sequencer endpoints:
+[architecture](https://docs.robinhood.com/chain/) and
+[connection endpoints](https://docs.robinhood.com/chain/connecting/). It does not currently
+document an independent Flashbots-style builder/private-relay network. Consequently, this
+implementation is source-ready infrastructure and **does not claim builder diversity on
+Robinhood**. Endpoint classification and operator independence remain explicit operator trust
+inputs until such a network or private-orderflow service is documented and verified.
+
 ## Options Considered
 
 ### Option A: Private-only multi-builder (sensitive) + public-after-T (non-sensitive) *(recommended)*
@@ -92,8 +120,16 @@ question).
 
 ## Action Items
 
-1. [ ] Add a per-step `priceSensitive` flag to the compiled policy; default **true** for any AMM adapter (invariant **I-SUB-1**).
-2. [ ] Build a multi-builder private submission adapter with inclusion/health monitoring; enforce **no** public fallback when `priceSensitive`.
-3. [ ] Extend the EIP-712 struct to bind `maxRelayerFee` + net-of-fee `minOut` + gas caps + short `deadline` *jointly* (invariants **I-AUTH-4**, **I-FLOW-2**, **I-FLOW-3**).
-4. [ ] Document, per zap, which steps may use the public-after-T fallback.
-5. [ ] Decide and record the minimum acceptable builder-set size for "censorship-resistant private."
+1. [x] Enforce **I-SUB-1** for the current release by conservatively treating every
+   adapter-backed route as price-sensitive. An explicit per-step field remains a future policy
+   schema optimization; it is not needed to weaken the current all-sensitive rule.
+2. [x] Build a generic multi-relay raw-transaction adapter with per-origin health and inclusion
+   monitoring, local signing, and no public fallback. Robinhood activation remains fail-closed
+   until real private endpoints exist and are configured.
+3. [x] Bind recipient, route/policy hash, gas caps, validity window, deadline, and net recipient
+   floor in the standing EIP-712 intents. v1 one-shot authorization separately binds its relayer
+   fee cap; automated v3 fees are fixed in the capsule rather than selected by the executor.
+4. [x] Document the current release as all-sensitive: no current zap step may use public-after-T.
+   Any future non-sensitive route must make that exception explicit in its policy schema.
+5. [x] Require at least two distinct private-relay origins and two declared operators. This is an
+   admission floor, not proof Robinhood currently has independent private builders.

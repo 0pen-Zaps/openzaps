@@ -171,11 +171,12 @@ function quoteBody({
 }
 
 function responseReturning(body: unknown, ok = true, status = 200): typeof fetch {
-  return vi.fn().mockResolvedValue({
-    ok,
-    status,
-    json: async () => body,
-  }) as unknown as typeof fetch;
+  return vi.fn().mockResolvedValue(
+    new Response(JSON.stringify(body), {
+      status: ok ? status : Math.max(400, status),
+      headers: { "content-type": "application/json" },
+    }),
+  ) as unknown as typeof fetch;
 }
 
 function validQuote(authenticated = true): BridgeQuote {
@@ -654,7 +655,7 @@ describe("the server-side Across boundary", () => {
     ).rejects.toThrow(/changed/);
   });
 
-  it("keeps the direct production API off until both launch and durable-quota flags are explicit", () => {
+  it("keeps the direct production API off until flags and complete credentials are explicit", () => {
     expect(acrossBridgeApiEnabled({ NODE_ENV: "production" })).toBe(false);
     expect(acrossBridgeApiEnabled({
       NODE_ENV: "production",
@@ -668,6 +669,26 @@ describe("the server-side Across boundary", () => {
       NODE_ENV: "production",
       NEXT_PUBLIC_ACROSS_BRIDGE_ENABLED: "true",
       OPENZAPS_ACROSS_DURABLE_QUOTA_ENABLED: "true",
+    })).toBe(false);
+    expect(acrossBridgeApiEnabled({
+      NODE_ENV: "production",
+      NEXT_PUBLIC_ACROSS_BRIDGE_ENABLED: "true",
+      OPENZAPS_ACROSS_DURABLE_QUOTA_ENABLED: "true",
+      ACROSS_API_KEY: "test-key",
+    })).toBe(false);
+    expect(acrossBridgeApiEnabled({
+      NODE_ENV: "production",
+      NEXT_PUBLIC_ACROSS_BRIDGE_ENABLED: "true",
+      OPENZAPS_ACROSS_DURABLE_QUOTA_ENABLED: "true",
+      ACROSS_API_KEY: "test-key",
+      ACROSS_INTEGRATOR_ID: "0xnot-valid",
+    })).toBe(false);
+    expect(acrossBridgeApiEnabled({
+      NODE_ENV: "production",
+      NEXT_PUBLIC_ACROSS_BRIDGE_ENABLED: "true",
+      OPENZAPS_ACROSS_DURABLE_QUOTA_ENABLED: "true",
+      ACROSS_API_KEY: "test-key",
+      ACROSS_INTEGRATOR_ID: "0xbeef",
     })).toBe(true);
     expect(acrossBridgeApiEnabled({ NODE_ENV: "test" })).toBe(true);
   });
@@ -730,6 +751,61 @@ describe("the server-side Across boundary", () => {
       ),
     ).rejects.toThrow(/production credentials/);
     expect(fetchSpy).not.toHaveBeenCalled();
+
+    const removedBypassAttempt = {
+      NODE_ENV: "production",
+      ACROSS_ALLOW_UNAUTHENTICATED: "true",
+    };
+    await expect(
+      fetchAcrossBridgeQuote(
+        { routeId: ROUTE.id, outputAmount: REQUESTED_OUTPUT, depositor: DEPOSITOR, recipient: CAPSULE },
+        fetchSpy,
+        removedBypassAttempt,
+        NOW,
+        protocolReader(),
+      ),
+    ).rejects.toThrow(/production credentials/);
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it("bounds declared and streamed Across responses before parsing them", async () => {
+    const declared = vi.fn().mockResolvedValue(
+      new Response("{}", {
+        headers: {
+          "content-type": "application/json",
+          "content-length": String(256 * 1024 + 1),
+        },
+      }),
+    ) as unknown as typeof fetch;
+    await expect(
+      fetchAcrossBridgeQuote(
+        { routeId: ROUTE.id, outputAmount: REQUESTED_OUTPUT, depositor: DEPOSITOR, recipient: CAPSULE },
+        declared,
+        {},
+        NOW,
+        protocolReader(),
+      ),
+    ).rejects.toThrow(/larger than 256 KiB/);
+
+    const chunk = new Uint8Array(140 * 1024).fill(0x20);
+    const streamed = vi.fn().mockResolvedValue(
+      new Response(new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.enqueue(chunk);
+          controller.enqueue(chunk);
+          controller.close();
+        },
+      }), { headers: { "content-type": "application/json" } }),
+    ) as unknown as typeof fetch;
+    await expect(
+      fetchAcrossBridgeQuote(
+        { routeId: ROUTE.id, outputAmount: REQUESTED_OUTPUT, depositor: DEPOSITOR, recipient: CAPSULE },
+        streamed,
+        {},
+        NOW,
+        protocolReader(),
+      ),
+    ).rejects.toThrow(/larger than 256 KiB/);
   });
 });
 

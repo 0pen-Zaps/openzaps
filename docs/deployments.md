@@ -229,8 +229,70 @@ Deployment prerequisites, in order:
 6. Apply `supabase/migrations/20260726000000_allow_recurring_stack_kind.sql`, or every publish of a
    stacking intent returns an opaque `Relay storage failed (400)` from the `kind` CHECK constraint.
 
+#### Independent post-broadcast acceptance checklist
+
+Do **not** change this section to “live” from Forge console output or `run-latest.json` alone. The
+deployment script checks its own work, but release acceptance must independently reproduce those
+claims from canonical chain state. Record the finalized block number/hash, all six transaction
+hashes, and every deployed address in this file as the checklist is completed.
+
+**Readback from a second RPC**
+
+- [ ] Confirm chain ID `4663`, wait for the release confirmation depth, and pin every read below to
+  the same finalized block. Confirm all six broadcast receipts succeeded and the block hashes still
+  match canonical chain state.
+- [ ] Confirm non-empty runtime code for the price-source registry, oriented price source, lottery
+  pot, factory, and factory-reported implementation. Compare `cast codehash <implementation>` with
+  `factory.implCodeHash()`.
+- [ ] Re-read the price-source registry's `owner()`, zero `pendingOwner()`, and
+  `isAllowed(orientedPriceSource) == true`.
+- [ ] Re-read the oriented source's `poolManager()`, `poolId()`, `currency0()`, `currency1()`, and a
+  non-zero `priceX96()`. They must equal the pinned PoolManager, aeWETH/0xZAPS pool, aeWETH, and
+  0xZAPS values in `DeployV3_2Robinhood.s.sol`.
+- [ ] Re-read the pot's `owner()`, zero `pendingOwner()`, `ZAPS()`, `BUY_ADAPTER()`, `factory()`, and
+  `currentRound() == 1`. The factory must be the new v3.2 factory; token and adapter must be the
+  existing pinned 0xZAPS and Robinhood swap adapter.
+- [ ] Re-read the factory's `VERSION() == "3.2.0-candidate"`, `adapters()`, `tokens()`,
+  `priceSources()`, `lotteryPot()`, `implementation()`, and `implCodeHash()`. Re-read the
+  implementation's `FACTORY()`, `ADAPTERS()`, `TOKENS()`, `PRICE_SOURCES()`, `LOTTERY_POT()`,
+  `ZAPS()`, and `ZAPS_ADAPTER()` and require exact agreement.
+- [ ] Confirm the reused live AdapterRegistry and TokenAllowlist still have the expected owner, zero
+  `pendingOwner()`, and unchanged allowlist state. A v3.2 deployment must not write either registry.
+
+**Source verification**
+
+- [ ] Verify the registry, source, pot, factory, and implementation on Robinhood Blockscout and
+  Sourcify from the exact release commit. Use the pinned Foundry settings: Solidity `0.8.34`,
+  optimizer enabled with 200 runs, `via_ir = true`, EVM `cancun`, and `bytecode_hash = "none"`.
+- [ ] Require creation and runtime matches, published ABI/compiler settings, and independently
+  decoded constructor arguments for each deployment. Save direct explorer links beside the address
+  table; an uploaded source bundle without a bytecode match is not verification.
+
+**App configuration and release**
+
+- [ ] Set all five production build values from the independent readback:
+  `NEXT_PUBLIC_OPENZAP_V3_2_IMPLEMENTATION`, `NEXT_PUBLIC_OPENZAP_V3_2_FACTORY`,
+  `NEXT_PUBLIC_OPENZAP_V3_2_LOTTERY_POT`, `NEXT_PUBLIC_OPENZAP_V3_2_PRICE_SOURCE_REGISTRY`, and
+  `NEXT_PUBLIC_OPENZAP_V3_2_ORIENTED_PRICE_SOURCE`. Do not copy predicted dry-run addresses.
+- [ ] Confirm the recurring-stack Supabase migration is applied, then build and test the exact app
+  commit. Deploy a fresh production build so the `NEXT_PUBLIC_*` values are embedded; aliasing an
+  older build does not activate v3.2.
+- [ ] Read the deployed production build back, confirm `openZapV3_2Configured()` is true, and verify
+  Automate exposes stacking while an intentionally incomplete preview configuration still hides it.
+
+**Mainnet smoke**
+
+- [ ] Create one deliberately small v3.2 capsule from Automate and independently verify its
+  factory-emitted creation log, policy hash, owner, runtime code hash, and v3.2 EIP-712 domain.
+- [ ] Sign and execute one bounded `RecurringStackIntent`. Verify the `ExecutedRecurringStack` log,
+  consumed run/series state, recipient output, executor and pot fee split, owner's ticket increase,
+  and exact `stackIn`/`zapsOut` accounting from chain state rather than UI copy.
+- [ ] Confirm the capsule finishes with no stranded input and no transient adapter allowance. Confirm
+  `/explore`, the durable execution receipt, Guardian, and executor scorecard all classify the run as
+  `recurring-stack` before advertising the lineage.
+
 The app-side mirror (EIP-712 types, settlement math, drafting guards, relay/activity plumbing) and
-both test suites are already in place: `contracts/test/OpenZapV3_2.stack.t.sol` (14 tests) and the
+both test suites are already in place: `contracts/test/OpenZapV3_2.stack.t.sol` (15 tests) and the
 `executions`/`automate` vitest suites.
 
 ### Universal app-creation fee gateway — live (2026-07-25)

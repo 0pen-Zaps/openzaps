@@ -101,6 +101,9 @@ for institutional/high-value zaps by policy.
 
 1. [ ] Implementation: remove `selfdestruct`/`delegatecall`/upgrade hooks; assert stateless & fundless (invariants **I-ISO-1**, **I-ISO-2**).
 2. [ ] Factory: deterministic CREATE2; emit `version` + implementation bytecode hash; **atomic init** guarded to factory-only (invariant **I-ISO-3**).
-3. [ ] Release manifest pinning implementation + adapter bytecode hashes; wire into Hermes pre-submission safety check.
+3. [x] Release manifest pinning implementation + adapter bytecode hashes; the executor re-pins
+   every route dependency, registry approval, and runtime hash at one block before simulation and
+   submission. `executor/manifests/robinhood-mainnet-v1.json` is the reviewed mainnet release
+   artifact; watch-only mode reports incomplete coverage while signing mode fails closed.
 4. [ ] Define the deposit threshold + opt-in path for full per-zap deployment.
 5. [ ] Stand up Safe multisig + `TimelockController` for factory-version and adapter-approval governance; confirm no instance admin exists.

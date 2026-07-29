@@ -14,14 +14,15 @@
   "files": [
     "index.js",
     "index.d.ts",
-    "README.md"
+    "README.md",
+    "LICENSE"
   ],
   "sideEffects": false,
   "license": "MIT",
   "homepage": "https://www.0xzaps.com/docs",
   "repository": {
     "type": "git",
-    "url": "https://github.com/0pen-Zaps/openzaps.git",
+    "url": "git+https://github.com/0pen-Zaps/openzaps.git",
     "directory": "packages/sdk"
   },
   "engines": {

@@ -1,0 +1,168 @@
+name: Publish npm package
+
+on:
+  workflow_dispatch:
+    inputs:
+      package:
+        description: Exact package to publish
+        required: true
+        type: choice
+        options:
+          - "@openzaps/sdk"
+          - "@openzaps/mcp"
+      version:
+        description: Exact version already committed in that package.json
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: npm-production
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: Publish ${{ inputs.package }}@${{ inputs.version }}
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment:
+      name: npm-production
+    steps:
+      # Pin release actions by full commit, not a mutable major tag.
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+          package-manager-cache: false
+
+      - name: Install the reviewed npm CLI
+        run: |
+          npm install --global npm@12.0.1 --ignore-scripts
+          node --version
+          npm --version
+
+      - name: Install the reviewed lockfile
+        run: npm ci --ignore-scripts
+
+      - name: Resolve and verify the explicit package version
+        id: package
+        env:
+          PACKAGE_INPUT: ${{ inputs.package }}
+          EXPECTED_VERSION: ${{ inputs.version }}
+        run: |
+          node <<'NODE'
+          const fs = require("node:fs");
+          const pathByName = {
+            "@openzaps/sdk": "packages/sdk",
+            "@openzaps/mcp": "packages/mcp",
+          };
+          const directory = pathByName[process.env.PACKAGE_INPUT];
+          if (!directory) throw new Error("The selected package is not publishable.");
+          const manifest = JSON.parse(fs.readFileSync(`${directory}/package.json`, "utf8"));
+          if (manifest.name !== process.env.PACKAGE_INPUT) {
+            throw new Error(`Package name mismatch: found ${manifest.name}.`);
+          }
+          if (manifest.version !== process.env.EXPECTED_VERSION) {
+            throw new Error(
+              `Version mismatch: workflow requested ${process.env.EXPECTED_VERSION}, `
+              + `but ${directory}/package.json contains ${manifest.version}.`,
+            );
+          }
+          fs.appendFileSync(
+            process.env.GITHUB_OUTPUT,
+            `directory=${directory}\nname=${manifest.name}\nversion=${manifest.version}\n`,
+          );
+          NODE
+
+      - name: Verify the exact version is unpublished
+        env:
+          PACKAGE_NAME: ${{ steps.package.outputs.name }}
+          PACKAGE_VERSION: ${{ steps.package.outputs.version }}
+        run: |
+          npm ping
+          node <<'NODE'
+          const { spawnSync } = require("node:child_process");
+          const spec = `${process.env.PACKAGE_NAME}@${process.env.PACKAGE_VERSION}`;
+          const result = spawnSync(
+            "npm",
+            ["view", spec, "version", "--json", "--registry=https://registry.npmjs.org"],
+            { encoding: "utf8" },
+          );
+          if (result.status === 0) {
+            throw new Error(`${spec} is already published; refusing to overwrite it.`);
+          }
+          const failure = `${result.stdout}\n${result.stderr}`;
+          if (!failure.includes("E404")) {
+            process.stderr.write(failure);
+            throw new Error(`Could not prove that ${spec} is unpublished.`);
+          }
+          NODE
+
+      - name: Inspect the package tarball
+        env:
+          PACKAGE_DIRECTORY: ${{ steps.package.outputs.directory }}
+          PACKAGE_NAME: ${{ steps.package.outputs.name }}
+          PACKAGE_VERSION: ${{ steps.package.outputs.version }}
+        run: |
+          npm pack "./${PACKAGE_DIRECTORY}" --dry-run --ignore-scripts --json > "$RUNNER_TEMP/npm-pack.json"
+          node <<'NODE'
+          const fs = require("node:fs");
+          const report = JSON.parse(fs.readFileSync(`${process.env.RUNNER_TEMP}/npm-pack.json`, "utf8"));
+          const artifact = Array.isArray(report) ? report[0] : report[process.env.PACKAGE_NAME];
+          if (
+            !artifact
+            || artifact.name !== process.env.PACKAGE_NAME
+            || artifact.version !== process.env.PACKAGE_VERSION
+          ) {
+            throw new Error("Tarball identity does not match the reviewed package and version.");
+          }
+          const expectedFiles = {
+            "@openzaps/sdk": ["LICENSE", "README.md", "index.d.ts", "index.js", "package.json"],
+            "@openzaps/mcp": ["LICENSE", "README.md", "index.mjs", "package.json"],
+          }[process.env.PACKAGE_NAME];
+          const actualFiles = artifact.files?.map((entry) => entry.path).sort();
+          if (!expectedFiles || JSON.stringify(actualFiles) !== JSON.stringify(expectedFiles.sort())) {
+            throw new Error(
+              `Tarball contents do not match the reviewed allowlist: ${JSON.stringify(actualFiles)}.`,
+            );
+          }
+          NODE
+
+      # `NPM_TOKEN` is needed only to create each package's first release, because npm cannot
+      # configure a trusted publisher until the package exists. After both trusted publishers are
+      # configured, remove this environment secret; npm will use this job's short-lived OIDC token.
+      - name: Configure the first-release token when present
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          if [ -n "${NODE_AUTH_TOKEN:-}" ]; then
+            npm config set //registry.npmjs.org/:_authToken "$NODE_AUTH_TOKEN" --location=user
+          fi
+
+      - name: Publish with provenance
+        env:
+          PACKAGE_DIRECTORY: ${{ steps.package.outputs.directory }}
+        run: npm publish "./${PACKAGE_DIRECTORY}" --access public --provenance --ignore-scripts
+
+      - name: Verify the published version
+        env:
+          PACKAGE_NAME: ${{ steps.package.outputs.name }}
+          PACKAGE_VERSION: ${{ steps.package.outputs.version }}
+        run: |
+          for attempt in 1 2 3 4 5; do
+            echo "Registry verification attempt $attempt of 5."
+            published="$(npm view "$PACKAGE_NAME@$PACKAGE_VERSION" version --json --registry=https://registry.npmjs.org 2>/dev/null || true)"
+            if [ "$published" = "\"$PACKAGE_VERSION\"" ]; then
+              exit 0
+            fi
+            sleep 3
+          done
+          echo "The registry did not return the exact published version." >&2
+          exit 1

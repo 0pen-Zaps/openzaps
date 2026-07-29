@@ -11,37 +11,38 @@ export const metadata = pageMetadata({
 
 const phases = [
   [
-    "Now",
-    "Live v1.1 + v3.1 on Robinhood Chain",
-    "Bounded swaps, stitched routes, aeWETH/USDG liquidity, recurring series, and price triggers are live. The visual builder composes typed route blocks with signed execution gas, gas-price, and executor-access policies; the three execution controls can be inserted as one undoable stack and carried into Zap now or Automate.",
+    "Live",
+    "Bounded execution on Robinhood Chain",
+    "v1.1 and v3.1 enforce fixed one- to sixteen-step routes, recipients, assets, spend amounts, output floors, execution gas, gas price, cadence or price triggers, and executor access. Swaps, stitched routes, aeWETH/USDG liquidity, recurring series, and price-triggered Zaps are available in the builder.",
   ],
   [
-    "Next",
-    "More bounded routes and policies",
-    "More policy templates and governed adapters. Each new field, adapter, and token needs contract support, explicit disclosure, and fork coverage before it can carry funds, so none is committed.",
+    "Shipped",
+    "Receipts, Guardian, policies, and public evidence",
+    "The operations layer persists signed intents, execution receipts, cursor-safe relay state, executor scorecards, and read-only Guardian checks. Exact policy compilation, natural-language composition, signed and forkable public templates, the source-ready Agent Kit, and the public eval surface preserve the same rule: agents can discover and submit, but they cannot widen authority.",
   ],
   [
-    "Hardening",
-    "External audit",
-    "No external audit, formal verification, testnet soak, adapter manifest, governance runbook, or incident drill has been completed. There is no date for any of them.",
+    "Release-ready",
+    "Recurring Robinhood v3.2 stack",
+    "The v3.2 contracts, deployment script, application path, fork coverage, independent readback checklist, and runtime adapter-bytecode manifest are complete. It is not live until the governance wallet broadcasts the reviewed deployment and the addresses pass the post-broadcast checks.",
   ],
   [
-    "Beta",
-    "Private submission and monitoring",
-    "Private submission, receipt monitoring, and alert delivery. None of that is built: the console lists the transactions you signed in it, and nothing watches a Zap for you or sends a notification. Permissionless executor submission is built: a recurring or triggered intent either pins one executor or leaves it open to anyone, signed intents publish to a shared relay executors poll, and the owner can always submit a run themselves.",
+    "Gated",
+    "Credentialed production launches",
+    "Across funding, exact simulation, Guardian, wallet-bound template subscriptions, notifications, executor signing, and npm distribution remain off until their documented credentials, migrations, durable quotas, and operator checks exist. Private-relay fanout is implemented fail-closed for price-sensitive execution, but Robinhood Chain does not currently document enough independent private endpoints to activate that lane honestly.",
   ],
   [
-    "Network",
-    "Reusable policies",
-    "A policy template registry, agent reputation, published eval results, and an SDK. This is the least decided part of the list, and we do not know how much of it is worth building.",
+    "Deferred",
+    "Protective auto-deleverage",
+    "Automated deleveraging is a separate protocol model, not another adapter. It stays out of this release because liabilities, oracle failure, venue liquidity, liquidation ordering, and bounded recovery need an explicit v1.x design before an agent can safely trigger it.",
   ],
 ] as const;
 
 const principles = [
   "ERC-20 first. Callback tokens and multi-asset accounting stay out until their failure modes are reviewed.",
-  "Protective zaps stay blocked until oracle, liquidity, and liquidation risk controls are externally reviewed.",
-  "Every execution fee is visible in the typed intent, and every creation fee is visible with its conversion floor before the wallet transaction is signed.",
-  "Every automation keeps nonce invalidation, emergency asset recovery, auditability, and self-submit fallback paths.",
+  "A registry allowlist is not bytecode identity: the reference signing executor independently pins and re-checks every adapter runtime hash.",
+  "Every execution fee is bound by the typed intent or fixed in the capsule and disclosed before signing; every creation fee is shown with its conversion floor.",
+  "Price-sensitive execution fails closed when its qualifying private-relay set is unavailable, records each dispatch result, and never silently falls back to a public endpoint.",
+  "Every automation keeps nonce invalidation, emergency asset recovery, durable receipts, and an inspectable authority boundary.",
 ] as const;
 
 export default function RoadmapPage(): React.JSX.Element {
@@ -64,8 +65,8 @@ export default function RoadmapPage(): React.JSX.Element {
         <Link className={styles.primaryBtn} href="/docs">
           Read docs
         </Link>
-        <Link className={styles.ghostBtn} href="/docs#security">
-          Security model
+        <Link className={styles.ghostBtn} href="/evals">
+          View evals
         </Link>
         <span className={styles.metaChip}>
           <b>Current release</b>
@@ -78,9 +79,6 @@ export default function RoadmapPage(): React.JSX.Element {
         <div className={styles.steps}>
           {phases.map(([phase, title, body], i) => (
             <Reveal className={`${styles.step} ${styles.stepPhased}`} delay={i * 45} key={phase}>
-              {/* The neutral tag, not a live/done badge. Only the first phase
-                  has shipped, and the copy says so — a coloured chip on the
-                  other four would claim progress nothing has made. */}
               <span className={styles.stepTag}>{phase}</span>
               <div>
                 <h3 className={styles.stepTitle}>{title}</h3>

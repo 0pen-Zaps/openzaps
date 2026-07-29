@@ -62,13 +62,7 @@ contract DeployedBaseE2E is Test {
             data: abi.encode(uint256(0.2 ether))
         });
         // 2. Aave: WETH -> aWETH. This adapter takes no data at all.
-        steps[1] = Step({
-            adapter: supplyAdapter,
-            tokenIn: WETH,
-            spender: supplyAdapter,
-            amountIn: 0.2 ether,
-            data: ""
-        });
+        steps[1] = Step({adapter: supplyAdapter, tokenIn: WETH, spender: supplyAdapter, amountIn: 0.2 ether, data: ""});
 
         address[] memory tracked = new address[](3);
         tracked[0] = USDC;

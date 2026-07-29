@@ -66,11 +66,20 @@ export const STATIC_PAGE_SEO = {
   roadmap: {
     title: "DeFi Zap Protocol Roadmap",
     description:
-      "Track what OpenZaps runs today, the next bounded DeFi routes under consideration, and the security gates required before broader agent execution.",
+      "Track what OpenZaps runs today, what is release-ready, which production launches remain gated, and why protective automation is explicitly deferred.",
     path: "/roadmap",
     ogImage: "/og/roadmap.png",
     changeFrequency: "monthly",
     priority: 0.65,
+  },
+  evals: {
+    title: "OpenZaps Release Evals & Executor Scorecards",
+    description:
+      "Inspect reproducible OpenZaps release checks and receipt-backed executor scorecards, with explicit evidence scope, coverage limits, and no delegated authority.",
+    path: "/evals",
+    ogImage: "/og/docs.png",
+    changeFrequency: "weekly",
+    priority: 0.7,
   },
   token: {
     title: `${TOKEN.symbol} Token: Contract, Utility & Market`,

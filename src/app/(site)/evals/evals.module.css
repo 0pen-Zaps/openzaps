@@ -1,0 +1,155 @@
+.shell {
+  display: grid;
+  gap: 16px;
+  margin-top: 14px;
+  padding: 18px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-card);
+  background: var(--panel);
+}
+
+.form {
+  display: grid;
+  gap: 8px;
+}
+
+.form label,
+.history h3 {
+  margin: 0;
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.controls {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+}
+
+.controls input {
+  min-width: 0;
+  height: 40px;
+  padding: 0 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-ctl);
+  background: var(--sunk);
+  color: var(--ink);
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-size: 13px;
+  outline: none;
+}
+
+.controls input:focus {
+  border-color: var(--zap-deep);
+  box-shadow: 0 0 0 3px var(--zap-line);
+}
+
+.controls button {
+  height: 40px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: var(--r-ctl);
+  background: var(--btn);
+  color: var(--btn-ink);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.controls button:disabled {
+  opacity: 0.55;
+}
+
+.metrics {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin: 0;
+}
+
+.metrics div {
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid var(--line-2);
+  border-radius: var(--r-card-sm);
+  background: var(--panel-2);
+}
+
+.metrics dt {
+  color: var(--ink-3);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.metrics dd {
+  margin: 5px 0 0;
+  color: var(--ink);
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-size: 14px;
+  overflow-wrap: anywhere;
+}
+
+.history {
+  display: grid;
+  gap: 7px;
+}
+
+.history a {
+  display: grid;
+  grid-template-columns: 72px minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  min-width: 0;
+  padding: 9px 10px;
+  border: 1px solid var(--line-2);
+  border-radius: var(--r-ctl-sm);
+  color: var(--ink-2);
+}
+
+.history span {
+  color: var(--ink-3);
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.history span[data-outcome="finalized"] {
+  color: var(--ok);
+}
+
+.history code {
+  overflow: hidden;
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-size: 12px;
+  text-overflow: ellipsis;
+}
+
+.history small {
+  color: var(--ink-3);
+  font-size: 11px;
+}
+
+.status {
+  min-height: 20px;
+  margin: 0;
+  color: var(--ink-prose);
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+
+@media (max-width: 620px) {
+  .controls,
+  .metrics {
+    grid-template-columns: 1fr;
+  }
+
+  .history a {
+    grid-template-columns: 70px minmax(0, 1fr);
+  }
+
+  .history small {
+    grid-column: 2;
+  }
+}

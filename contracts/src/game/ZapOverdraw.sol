@@ -437,11 +437,7 @@ contract ZapOverdraw {
     /// @notice The commitment a player must submit to seal `draw` under `salt`.
     /// @dev Callers should compute this locally and keep `salt` secret until reveal. Computing it
     ///      by calling this function through a public RPC leaks the draw to that RPC.
-    function commitmentFor(uint256 roundId, address player, uint16 draw, bytes32 salt)
-        public
-        view
-        returns (bytes32)
-    {
+    function commitmentFor(uint256 roundId, address player, uint16 draw, bytes32 salt) public view returns (bytes32) {
         return keccak256(abi.encode(address(this), block.chainid, roundId, player, draw, salt));
     }
 
@@ -557,9 +553,7 @@ contract ZapOverdraw {
     {
         keys = new uint256[](n);
         for (uint256 i = 0; i < n; ++i) {
-            keys[i] = (uint256(seatOf[roundId][players[i]].draw) << 240)
-                | (_tiebreak(roundId, players[i]) << 64)
-                | i;
+            keys[i] = (uint256(seatOf[roundId][players[i]].draw) << 240) | (_tiebreak(roundId, players[i]) << 64) | i;
         }
         for (uint256 i = 1; i < n; ++i) {
             uint256 key = keys[i];
@@ -605,5 +599,4 @@ contract ZapOverdraw {
         if (!ok) revert TransferFailed();
         if (ret.length != 0 && !abi.decode(ret, (bool))) revert TransferFailed();
     }
-
 }

@@ -5,6 +5,7 @@
 // because the zap re-verifies cadence, condition, signature, and floors on-chain.
 import { getAddress, zeroAddress } from "viem";
 import { openZapV3Abi, priceSourceAbi } from "./abi.mjs";
+import { privateSubmissionDetail } from "./private-submission.mjs";
 import { verifyExecutionTargetProvenance } from "./provenance.mjs";
 
 const BPS = 10_000n;
@@ -281,15 +282,55 @@ export async function submitExecution(
       if (!feeAdmission.allowed) return { deferred: feeAdmission };
 
       let hash;
+      let preparedOutbox = false;
       try {
         // Explicit priority fee capped by the fee ceiling: without it, a node-suggested tip above
         // the cap makes viem reject the request and the submission stalls forever.
         const priority = feeCap < PRIORITY_FEE_WEI ? feeCap : PRIORITY_FEE_WEI;
-        hash = await walletClient.writeContract({
+        const privateSubmission = walletClient.openZapsPrivateSubmission;
+        const privateFields = {};
+        if (privateSubmission?.withPreparationHook) {
+          const admittedNonce = admission?.latestNonce;
+          if (
+            typeof admittedNonce !== "bigint"
+            || admittedNonce < 0n
+            || admittedNonce > BigInt(Number.MAX_SAFE_INTEGER)
+          ) {
+            return {
+              deferred: {
+                outcome: "nonce-lane-unknown",
+                detail: "private submission requires the exact admitted pending nonce",
+              },
+            };
+          }
+          // Supplying every signing field prevents viem from attempting eth_fillTransaction,
+          // eth_estimateGas, or another transaction-shaped call through the read transport.
+          Object.assign(privateFields, {
+            chainId: cfg.chainId,
+            nonce: Number(admittedNonce),
+            type: "eip1559",
+          });
+        }
+        const write = () => walletClient.writeContract({
           ...request,
+          ...privateFields,
           maxFeePerGas: feeCap,
           maxPriorityFeePerGas: priority,
         });
+        hash = privateSubmission?.withPreparationHook
+          ? await privateSubmission.withPreparationHook(
+              async ({ hash: preparedHash, serializedTransaction }) => {
+                await onBroadcast({
+                  hash: preparedHash,
+                  item,
+                  phase: "prepared",
+                  serializedTransaction,
+                });
+                preparedOutbox = true;
+              },
+              write,
+            )
+          : await write();
       } catch (error) {
         return {
           deferred: {
@@ -301,9 +342,18 @@ export async function submitExecution(
 
       let outboxWarning = "";
       try {
-        // Persist the hash before releasing the lane or waiting for confirmations. A concurrent
-        // maintenance write cannot pass admission in the check-to-send gap.
-        await onBroadcast({ hash, item });
+        if (preparedOutbox) {
+          await onBroadcast({
+            hash,
+            item,
+            phase: "submitted",
+            privateSubmission:
+              walletClient.openZapsPrivateSubmission?.getOutcome?.(hash) ?? null,
+          });
+        } else {
+          // Legacy/test clients still persist immediately after their transport returns.
+          await onBroadcast({ hash, item, phase: "submitted" });
+        }
       } catch (error) {
         // The transaction already exists. Never mislabel this as a broadcast failure.
         outboxWarning = `; receipt outbox persistence failed: ${error?.shortMessage ?? error?.message}`;
@@ -324,6 +374,10 @@ export async function submitExecution(
       };
     }
     const { hash, outboxWarning } = laneResult;
+    const privateRelayOutcome =
+      walletClient.openZapsPrivateSubmission?.getOutcome?.(hash) ?? null;
+    const relayDetail = privateSubmissionDetail(privateRelayOutcome);
+    const relaySuffix = relayDetail ? `; ${relayDetail}` : "";
 
     try {
       const confirmations = Number.isInteger(cfg.confirmations) ? cfg.confirmations : 1;
@@ -336,19 +390,35 @@ export async function submitExecution(
         outcome: "confirmation-observed",
         detail:
           `tx ${hash} receipt observed as ${receipt.status} at block ${receipt.blockNumber}; `
-          + `awaiting canonical settlement${outboxWarning}`,
+          + `awaiting canonical settlement${relaySuffix}${outboxWarning}`,
         txHash: hash,
         blockNumber: receipt.blockNumber.toString(),
         confirmations,
         observedReceiptStatus: receipt.status,
+        ...(privateRelayOutcome
+          ? {
+              privateSubmission: {
+                ...privateRelayOutcome,
+                inclusion: "receipt-observed",
+              },
+            }
+          : {}),
       };
     } catch (error) {
       return {
         outcome: "confirmation-pending",
         detail:
           `tx ${hash} broadcast; finality wait pending: `
-          + `${error?.shortMessage ?? error?.message ?? String(error)}${outboxWarning}`,
+          + `${error?.shortMessage ?? error?.message ?? String(error)}${relaySuffix}${outboxWarning}`,
         txHash: hash,
+        ...(privateRelayOutcome
+          ? {
+              privateSubmission: {
+                ...privateRelayOutcome,
+                inclusion: "pending",
+              },
+            }
+          : {}),
       };
     }
   } catch (error) {

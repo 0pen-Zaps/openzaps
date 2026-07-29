@@ -5,6 +5,7 @@
 import { readFileSync, existsSync, mkdirSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
+import { loadAdapterManifestFile } from "./adapter-manifest.mjs";
 
 export const ROBINHOOD_CHAIN_ID = 4663;
 export const DEFAULT_RPC_URL = "https://rpc.mainnet.chain.robinhood.com";
@@ -61,6 +62,23 @@ function boundedInteger(name, value, fallback, min, max) {
   return parsed;
 }
 
+function privateRelayEndpoints(value) {
+  if (value === undefined || value === null || value === "") return [];
+  try {
+    const parsed = JSON.parse(value);
+    if (!Array.isArray(parsed) || parsed.length > 8) {
+      throw new Error("expected an array of at most 8 endpoints");
+    }
+    return parsed;
+  } catch (error) {
+    // Endpoint definitions can contain an Authorization header. Never echo the raw value.
+    console.error(
+      `[config] OPENZAPS_PRIVATE_RELAYS_JSON is invalid (${error.message}) — private submission disabled`,
+    );
+    return [];
+  }
+}
+
 /**
  * An explicit malformed deployment override must disable that lineage instead
  * of silently falling back to a different contract. Zero is the fail-closed
@@ -71,6 +89,13 @@ function safeAddress(name, value, fallback) {
   if (typeof value === "string" && ADDRESS.test(value)) return value;
   console.error(`[config] ${name}=${JSON.stringify(value)} is not an EVM address — disabling that capsule lineage`);
   return ZERO_ADDRESS;
+}
+
+function executorSignerConfigured() {
+  const inline = process.env.OPENZAPS_EXECUTOR_PRIVATE_KEY;
+  if (inline && /^0x[0-9a-fA-F]{64}$/.test(inline)) return true;
+  const keyFile = process.env.OPENZAPS_EXECUTOR_KEYFILE;
+  return Boolean(keyFile && existsSync(keyFile));
 }
 
 export function loadConfig() {
@@ -89,6 +114,27 @@ export function loadConfig() {
     rpcUrl: process.env.OPENZAPS_RPC_URL ?? fileCfg.rpcUrl ?? DEFAULT_RPC_URL,
     rpcUrls, // empty => single-URL mode on rpcUrl
     chainId: safeNumber("OPENZAPS_CHAIN_ID", process.env.OPENZAPS_CHAIN_ID ?? fileCfg.chainId, ROBINHOOD_CHAIN_ID),
+    // Write transport is deliberately separate from read/simulation RPC. Robinhood documents
+    // public RPC and direct-sequencer access, but neither is a documented private-orderflow
+    // service. Only endpoints explicitly classified `private-relay` are eligible; executing mode
+    // remains fail-closed until at least two distinct origins/operators are configured.
+    privateSubmission: {
+      endpoints: privateRelayEndpoints(process.env.OPENZAPS_PRIVATE_RELAYS_JSON),
+      minimumDistinctOrigins: boundedInteger(
+        "OPENZAPS_PRIVATE_RELAY_MIN_ORIGINS",
+        process.env.OPENZAPS_PRIVATE_RELAY_MIN_ORIGINS,
+        2,
+        2,
+        8,
+      ),
+      timeoutMs: boundedInteger(
+        "OPENZAPS_PRIVATE_RELAY_TIMEOUT_MS",
+        process.env.OPENZAPS_PRIVATE_RELAY_TIMEOUT_MS,
+        8_000,
+        1_000,
+        60_000,
+      ),
+    },
     // Exact factory + implementation pins used before any untrusted relay item
     // reaches simulation or broadcast. The public app env names are accepted as
     // a fallback so one deployment manifest can configure both processes.
@@ -155,6 +201,18 @@ export function loadConfig() {
     // used to be the v3 pot, which no longer receives anything — so a sell-side run's aeWETH fee
     // would have sat in a pot no keeper was watching, and the prize loop would never have closed.
     lotteryPot: process.env.OPENZAPS_LOTTERY_POT ?? fileCfg.lotteryPot ?? "0x6ec3D07886Ea641e9d10D45A97a72E5f8ec836F1",
+    // The keeper re-reads the pot's immutable BUY_ADAPTER and ZAPS token at one block, then checks
+    // the adapter against both this registry and the independently reviewed runtime manifest.
+    adapterRegistry: safeAddress(
+      "OPENZAPS_ADAPTER_REGISTRY",
+      process.env.OPENZAPS_ADAPTER_REGISTRY ?? fileCfg.adapterRegistry,
+      "0x9E56e444f490C00A6277326A47Cb462E12dF1f17",
+    ),
+    zapsToken: safeAddress(
+      "OPENZAPS_ZAPS_TOKEN",
+      process.env.OPENZAPS_ZAPS_TOKEN ?? fileCfg.zapsToken,
+      "0xDd90bFa4adC7F4401E611AbaC692D939F9F4CB07",
+    ),
     // The keeper's price feed, used to floor buyZaps output. PAIRED KNOBS: `poolPriceSource` must
     // quote 0xZAPS per one unit of `feeAsset` — reconfigure them TOGETHER or the computed floor is
     // in the wrong units (the pinned pot adapter still fails closed, but conversions stop).
@@ -260,6 +318,18 @@ export function loadConfig() {
       60_000,
     ),
   };
+
+  // A release manifest is intentionally local operator input: no approved adapter hash is inferred
+  // from the same chain being checked. Missing/malformed manifests remain visible in watch-only
+  // mode, but provenance refuses every route in signer mode until all dependencies are covered.
+  cfg.watchOnly = !executorSignerConfigured();
+  cfg.adapterManifestFile =
+    process.env.OPENZAPS_ADAPTER_MANIFEST_FILE
+    ?? fileCfg.adapterManifestFile
+    ?? join(HOME_DIR, "adapter-manifest.json");
+  const loadedAdapterManifest = loadAdapterManifestFile(cfg.adapterManifestFile, cfg.chainId);
+  cfg.adapterManifest = loadedAdapterManifest.manifest;
+  cfg.adapterManifestError = loadedAdapterManifest.error;
 
   for (const dir of [HOME_DIR, cfg.intentsDir, cfg.doneDir, cfg.receiptsDir]) {
     mkdirSync(dir, { recursive: true });

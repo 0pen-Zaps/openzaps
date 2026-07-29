@@ -11,6 +11,7 @@ import {
   verifyPolicyTemplatePublisher,
 } from "@/lib/policy-template-server";
 import { preparePolicyTemplate } from "@/lib/policy-templates";
+import { BoundedJsonBodyError, readBoundedJsonBody } from "@/lib/request-body";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -84,16 +85,11 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
   let raw: unknown;
   try {
-    const contentLength = request.headers.get("content-length");
-    if (contentLength && /^\d+$/.test(contentLength) && Number(contentLength) > MAX_BODY_BYTES) {
+    raw = await readBoundedJsonBody(request, MAX_BODY_BYTES);
+  } catch (error) {
+    if (error instanceof BoundedJsonBodyError && error.status === 413) {
       return NextResponse.json({ error: "Body too large." }, { status: 413 });
     }
-    const text = await request.text();
-    if (new TextEncoder().encode(text).byteLength > MAX_BODY_BYTES) {
-      return NextResponse.json({ error: "Body too large." }, { status: 413 });
-    }
-    raw = JSON.parse(text);
-  } catch {
     return NextResponse.json({ error: "Body must be valid JSON." }, { status: 400 });
   }
 

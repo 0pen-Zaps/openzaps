@@ -448,8 +448,7 @@ contract OpenZapV3_1 {
         if (amountInSpent == 0) revert NoInputSpent();
 
         uint256 floor = _relativeFloor(intent.outAsset, c1, priceX96, amountInSpent, intent.maxSlippageBps);
-        (uint256 net, uint256 executorFee, uint256 potFee) =
-            _settleWithExecutorFee(intent.outAsset, preOut, floor);
+        (uint256 net, uint256 executorFee, uint256 potFee) = _settleWithExecutorFee(intent.outAsset, preOut, floor);
         emit ExecutedRecurringRelative(
             intent.seriesId,
             run,

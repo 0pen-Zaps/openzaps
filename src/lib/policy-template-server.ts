@@ -1,7 +1,9 @@
 import {
   getAddress,
   isAddress,
+  keccak256,
   recoverMessageAddress,
+  toBytes,
   type Address,
   type Hex,
 } from "viem";
@@ -9,17 +11,24 @@ import {
 import {
   isPolicyTemplateHash,
   policyTemplatePublishMessage,
+  policyTemplateSubscriptionReadMessage,
+  policyTemplateSubscriptionMessage,
+  POLICY_TEMPLATE_SUBSCRIPTION_READ_NONCE,
+  POLICY_TEMPLATE_SUBSCRIPTION_TTL_SECONDS,
   preparePolicyTemplate,
   type PreparedPolicyTemplate,
   type PublicPolicyTemplate,
 } from "@/lib/policy-templates";
+import { readBoundedJsonBody } from "@/lib/request-body";
 
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const TEMPLATE_TABLE = "policy_templates";
-const SUBSCRIPTION_TABLE = "policy_template_subscriptions";
+const SUBSCRIPTION_RPC = "set_policy_template_subscription";
+const SUBSCRIPTION_SNAPSHOT_RPC = "get_policy_template_subscription_snapshot";
 const TEMPLATE_SIGNATURE = /^0x[0-9a-fA-F]{130}$/;
 const MAX_PAGE_SIZE = 50;
+const MAX_SUBSCRIPTION_SNAPSHOT_BYTES = 32_768;
 
 type TemplateRow = {
   content_hash: string;
@@ -53,6 +62,55 @@ export type PolicyTemplateAdmission = {
   signature: Hex;
 };
 
+export type PolicyTemplateSubscriptionAdmission = {
+  subscriber: Address;
+  subscriberKey: string;
+  signature: Hex;
+  subscribed: boolean;
+  expectedVersion: number;
+  expiresAt: number;
+};
+
+export type PolicyTemplateSubscriptionSnapshot = {
+  subscriber: Address;
+  version: number;
+  contentHashes: string[];
+};
+
+export type PolicyTemplateSubscriptionMutation = {
+  version: number;
+  subscribed: boolean;
+};
+
+export type PolicyTemplateSubscriptionAdmissionCode =
+  | "INVALID_SUBSCRIBER"
+  | "INVALID_CONTENT_HASH"
+  | "INVALID_ACTION"
+  | "INVALID_VERSION"
+  | "INVALID_EXPIRY"
+  | "SIGNATURE_EXPIRED"
+  | "EXPIRY_TOO_FAR"
+  | "INVALID_SIGNATURE"
+  | "SIGNER_MISMATCH"
+  | "INVALID_READ_NONCE"
+  | "VERSION_CONFLICT"
+  | "SUBSCRIBER_LIMIT"
+  | "TEMPLATE_LIMIT"
+  | "GLOBAL_LIMIT"
+  | "VERSION_EXHAUSTED";
+
+export class PolicyTemplateSubscriptionAdmissionError extends Error {
+  constructor(
+    message: string,
+    readonly code: PolicyTemplateSubscriptionAdmissionCode,
+    readonly status: 409 | 422 | 429 = 422,
+    readonly currentVersion?: number,
+  ) {
+    super(message);
+    this.name = "PolicyTemplateSubscriptionAdmissionError";
+  }
+}
+
 export function policyRegistryConfigured(): boolean {
   return Boolean(SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY);
 }
@@ -71,10 +129,16 @@ export function policyTemplateSubscriptionsEnabled(
   env: {
     NODE_ENV?: string;
     OPENZAPS_POLICY_TEMPLATE_SUBSCRIPTIONS_ENABLED?: string;
+    OPENZAPS_POLICY_TEMPLATE_SUBSCRIPTIONS_DURABLE_QUOTA_ENABLED?: string;
   } = process.env,
 ): boolean {
-  return env.NODE_ENV !== "production"
-    || env.OPENZAPS_POLICY_TEMPLATE_SUBSCRIPTIONS_ENABLED === "true";
+  if (env.NODE_ENV !== "production") {
+    return env.OPENZAPS_POLICY_TEMPLATE_SUBSCRIPTIONS_ENABLED !== "false";
+  }
+  return (
+    env.OPENZAPS_POLICY_TEMPLATE_SUBSCRIPTIONS_ENABLED === "true"
+    && env.OPENZAPS_POLICY_TEMPLATE_SUBSCRIPTIONS_DURABLE_QUOTA_ENABLED === "true"
+  );
 }
 
 export async function listPolicyTemplates(limit: number, cursor: string | null = null): Promise<PolicyTemplatePage> {
@@ -214,25 +278,350 @@ export async function setPolicyTemplateSubscription(
   subscriberKey: string,
   contentHash: string,
   subscribed: boolean,
-): Promise<void> {
-  if (!isSubscriberKey(subscriberKey) || !isPolicyTemplateHash(contentHash)) throw new Error("Invalid subscription.");
-  const path = `${SUBSCRIPTION_TABLE}?subscriber_key=eq.${subscriberKey}&content_hash=eq.${contentHash.toLowerCase()}`;
-  const response = subscribed
-    ? await fetch(registryUrl(`${SUBSCRIPTION_TABLE}?on_conflict=subscriber_key,content_hash`), {
-        method: "POST",
-        headers: registryHeaders({ prefer: "return=minimal,resolution=ignore-duplicates" }),
-        body: JSON.stringify({ subscriber_key: subscriberKey, content_hash: contentHash.toLowerCase() }),
-      })
-    : await fetch(registryUrl(path), {
-        method: "DELETE",
-        headers: registryHeaders({ prefer: "return=minimal" }),
-      });
+  expectedVersion: number,
+  expiresAt: number,
+): Promise<PolicyTemplateSubscriptionMutation> {
+  if (!isSubscriberKey(subscriberKey) || !isPolicyTemplateHash(contentHash)) {
+    throw new PolicyTemplateSubscriptionAdmissionError(
+      "Invalid exact-version subscription.",
+      "INVALID_CONTENT_HASH",
+    );
+  }
+  if (!Number.isSafeInteger(expectedVersion) || expectedVersion < 0) {
+    throw new PolicyTemplateSubscriptionAdmissionError(
+      "Subscription authorization version is invalid.",
+      "INVALID_VERSION",
+    );
+  }
+  if (!Number.isSafeInteger(expiresAt) || expiresAt < 1) {
+    throw new PolicyTemplateSubscriptionAdmissionError(
+      "Subscription authorization expiry is invalid.",
+      "INVALID_EXPIRY",
+    );
+  }
+
+  const response = await fetch(registryUrl(`rpc/${SUBSCRIPTION_RPC}`), {
+    method: "POST",
+    headers: registryHeaders(),
+    body: JSON.stringify({
+      p_subscriber_key: subscriberKey,
+      p_content_hash: contentHash.toLowerCase(),
+      p_subscribed: subscribed,
+      p_expected_version: expectedVersion,
+      p_expires_at: expiresAt,
+    }),
+  });
   if (!response.ok) throw new Error(`Policy subscription write failed (${response.status}).`);
+
+  const rows = (await response.json()) as unknown;
+  if (!Array.isArray(rows) || rows.length !== 1 || !rows[0] || typeof rows[0] !== "object") {
+    throw new Error("Policy subscription write returned an invalid admission result.");
+  }
+  const result = rows[0] as Record<string, unknown>;
+  const code = result.result_code;
+  const version = parseSubscriptionVersion(result.resulting_version);
+  const resultingSubscribed = result.resulting_subscribed;
+
+  if (code === "applied" && version !== null && typeof resultingSubscribed === "boolean") {
+    return { version, subscribed: resultingSubscribed };
+  }
+  if (code === "version_conflict" && version !== null) {
+    throw new PolicyTemplateSubscriptionAdmissionError(
+      "Subscription state changed before this authorization was applied. Sync and sign the new version.",
+      "VERSION_CONFLICT",
+      409,
+      version,
+    );
+  }
+  if (code === "subscriber_limit") {
+    throw new PolicyTemplateSubscriptionAdmissionError(
+      "This wallet has reached the 256-template subscription limit.",
+      "SUBSCRIBER_LIMIT",
+      429,
+      version ?? undefined,
+    );
+  }
+  if (code === "template_limit") {
+    throw new PolicyTemplateSubscriptionAdmissionError(
+      "This exact template has reached the 5,000-subscription limit.",
+      "TEMPLATE_LIMIT",
+      429,
+      version ?? undefined,
+    );
+  }
+  if (code === "global_limit") {
+    throw new PolicyTemplateSubscriptionAdmissionError(
+      "The registry has reached its 50,000-subscription limit.",
+      "GLOBAL_LIMIT",
+      429,
+      version ?? undefined,
+    );
+  }
+  if (code === "expired") {
+    throw new PolicyTemplateSubscriptionAdmissionError(
+      "Subscription authorization expired before it could be applied.",
+      "SIGNATURE_EXPIRED",
+    );
+  }
+  if (code === "invalid_expiry") {
+    throw new PolicyTemplateSubscriptionAdmissionError(
+      "Subscription authorization expiry exceeds the five-minute limit.",
+      "EXPIRY_TOO_FAR",
+    );
+  }
+  if (code === "version_exhausted") {
+    throw new PolicyTemplateSubscriptionAdmissionError(
+      "Subscription authorization version is exhausted.",
+      "VERSION_EXHAUSTED",
+      409,
+      version ?? undefined,
+    );
+  }
+  throw new Error("Policy subscription write returned an unknown admission result.");
 }
 
-export function isSubscriberKey(value: unknown): value is string {
+function isSubscriberKey(value: unknown): value is string {
   return typeof value === "string"
     && /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+}
+
+/** Recover and deterministically pseudonymize the wallet that authorized this exact state. */
+export async function verifyPolicyTemplateSubscriber(
+  subscriberInput: unknown,
+  contentHashInput: unknown,
+  subscribedInput: unknown,
+  expectedVersionInput: unknown,
+  expiresAtInput: unknown,
+  signatureInput: unknown,
+  nowSeconds = Math.floor(Date.now() / 1_000),
+): Promise<PolicyTemplateSubscriptionAdmission> {
+  if (typeof subscriberInput !== "string" || !isAddress(subscriberInput)) {
+    throw new PolicyTemplateSubscriptionAdmissionError(
+      "Subscriber must be a valid wallet address.",
+      "INVALID_SUBSCRIBER",
+    );
+  }
+  if (!isPolicyTemplateHash(contentHashInput)) {
+    throw new PolicyTemplateSubscriptionAdmissionError(
+      "Invalid exact-version subscription.",
+      "INVALID_CONTENT_HASH",
+    );
+  }
+  if (typeof subscribedInput !== "boolean") {
+    throw new PolicyTemplateSubscriptionAdmissionError(
+      "Subscription action must be subscribe or unsubscribe.",
+      "INVALID_ACTION",
+    );
+  }
+  const expectedVersion = parseSubscriptionVersion(expectedVersionInput);
+  if (expectedVersion === null) {
+    throw new PolicyTemplateSubscriptionAdmissionError(
+      "Subscription authorization version is invalid.",
+      "INVALID_VERSION",
+    );
+  }
+  const expiresAt = verifySubscriptionExpiry(expiresAtInput, nowSeconds);
+  if (typeof signatureInput !== "string" || !TEMPLATE_SIGNATURE.test(signatureInput)) {
+    throw new PolicyTemplateSubscriptionAdmissionError(
+      "Subscriber signature must be a 65-byte wallet signature.",
+      "INVALID_SIGNATURE",
+    );
+  }
+  const subscriber = getAddress(subscriberInput);
+  let recovered: Address;
+  try {
+    recovered = await recoverMessageAddress({
+      message: policyTemplateSubscriptionMessage({
+        subscriber,
+        contentHash: contentHashInput,
+        subscribed: subscribedInput,
+        expectedVersion,
+        expiresAt,
+      }),
+      signature: signatureInput as Hex,
+    });
+  } catch {
+    throw new PolicyTemplateSubscriptionAdmissionError(
+      "Subscriber signature could not be recovered.",
+      "INVALID_SIGNATURE",
+    );
+  }
+  if (recovered.toLowerCase() !== subscriber.toLowerCase()) {
+    throw new PolicyTemplateSubscriptionAdmissionError(
+      "Subscriber signature does not match the subscriber wallet.",
+      "SIGNER_MISMATCH",
+    );
+  }
+  return {
+    subscriber,
+    subscriberKey: subscriberKeyForAddress(subscriber),
+    signature: signatureInput as Hex,
+    subscribed: subscribedInput,
+    expectedVersion,
+    expiresAt,
+  };
+}
+
+/** Verify a short-lived wallet proof before returning any wallet-scoped state. */
+export async function verifyPolicyTemplateSubscriberRead(
+  subscriberInput: unknown,
+  requestNonceInput: unknown,
+  expiresAtInput: unknown,
+  signatureInput: unknown,
+  nowSeconds = Math.floor(Date.now() / 1_000),
+): Promise<Pick<PolicyTemplateSubscriptionAdmission, "subscriber" | "subscriberKey" | "signature" | "expiresAt">> {
+  if (typeof subscriberInput !== "string" || !isAddress(subscriberInput)) {
+    throw new PolicyTemplateSubscriptionAdmissionError(
+      "Subscriber must be a valid wallet address.",
+      "INVALID_SUBSCRIBER",
+    );
+  }
+  if (
+    typeof requestNonceInput !== "string"
+    || !POLICY_TEMPLATE_SUBSCRIPTION_READ_NONCE.test(requestNonceInput.toLowerCase())
+  ) {
+    throw new PolicyTemplateSubscriptionAdmissionError(
+      "Subscription read nonce must be 32 random bytes.",
+      "INVALID_READ_NONCE",
+    );
+  }
+  const expiresAt = verifySubscriptionExpiry(expiresAtInput, nowSeconds);
+  if (typeof signatureInput !== "string" || !TEMPLATE_SIGNATURE.test(signatureInput)) {
+    throw new PolicyTemplateSubscriptionAdmissionError(
+      "Subscriber signature must be a 65-byte wallet signature.",
+      "INVALID_SIGNATURE",
+    );
+  }
+
+  const subscriber = getAddress(subscriberInput);
+  let recovered: Address;
+  try {
+    recovered = await recoverMessageAddress({
+      message: policyTemplateSubscriptionReadMessage({
+        subscriber,
+        requestNonce: requestNonceInput,
+        expiresAt,
+      }),
+      signature: signatureInput as Hex,
+    });
+  } catch {
+    throw new PolicyTemplateSubscriptionAdmissionError(
+      "Subscriber signature could not be recovered.",
+      "INVALID_SIGNATURE",
+    );
+  }
+  if (recovered.toLowerCase() !== subscriber.toLowerCase()) {
+    throw new PolicyTemplateSubscriptionAdmissionError(
+      "Subscriber signature does not match the subscriber wallet.",
+      "SIGNER_MISMATCH",
+    );
+  }
+  return {
+    subscriber,
+    subscriberKey: subscriberKeyForAddress(subscriber),
+    signature: signatureInput as Hex,
+    expiresAt,
+  };
+}
+
+/**
+ * Read wallet-scoped state only after the caller has proved control of the
+ * wallet. Neither underlying table is available to anon/authenticated roles.
+ */
+export async function getPolicyTemplateSubscriptionSnapshot(
+  subscriber: Address,
+  subscriberKey: string,
+): Promise<PolicyTemplateSubscriptionSnapshot> {
+  if (!isSubscriberKey(subscriberKey)) throw new Error("Invalid subscription state key.");
+  const response = await fetch(registryUrl(`rpc/${SUBSCRIPTION_SNAPSHOT_RPC}`), {
+    method: "POST",
+    headers: registryHeaders(),
+    body: JSON.stringify({ p_subscriber_key: subscriberKey }),
+    cache: "no-store",
+  });
+  if (!response.ok) {
+    throw new Error(`Policy subscription read failed (${response.status}).`);
+  }
+
+  const rows = await readBoundedJsonBody(response, MAX_SUBSCRIPTION_SNAPSHOT_BYTES);
+  if (!Array.isArray(rows) || rows.length !== 1 || !rows[0] || typeof rows[0] !== "object") {
+    throw new Error("Policy subscription read returned an invalid snapshot.");
+  }
+  const row = rows[0] as Record<string, unknown>;
+  const version = parseSubscriptionVersion(row.resulting_version);
+  const hashes = row.content_hashes;
+  if (version === null || !Array.isArray(hashes)) {
+    throw new Error("Policy subscription read returned an invalid snapshot.");
+  }
+  if (hashes.length > 256) {
+    throw new Error("Policy subscription read exceeded the per-wallet cap.");
+  }
+
+  const contentHashes = hashes.map((contentHash) => {
+    if (!isPolicyTemplateHash(contentHash)) {
+      throw new Error("Policy subscription read returned an invalid content hash.");
+    }
+    return contentHash.toLowerCase();
+  });
+  return {
+    subscriber: getAddress(subscriber),
+    version,
+    contentHashes,
+  };
+}
+
+/** Stable UUID-shaped pseudonym so one wallet cannot allocate unbounded random subscriber keys. */
+export function subscriberKeyForAddress(address: Address): string {
+  const digest = keccak256(
+    toBytes(`openzaps-policy-template-subscriber/v1:${getAddress(address).toLowerCase()}`),
+  ).slice(2, 34);
+  const chars = digest.split("");
+  chars[12] = "4";
+  chars[16] = ((Number.parseInt(chars[16], 16) & 0x3) | 0x8).toString(16);
+  const uuid = [
+    chars.slice(0, 8).join(""),
+    chars.slice(8, 12).join(""),
+    chars.slice(12, 16).join(""),
+    chars.slice(16, 20).join(""),
+    chars.slice(20, 32).join(""),
+  ].join("-");
+  if (!isSubscriberKey(uuid)) throw new Error("Subscriber pseudonym derivation failed.");
+  return uuid;
+}
+
+function parseSubscriptionVersion(value: unknown): number | null {
+  const parsed = typeof value === "string" && /^\d+$/.test(value)
+    ? Number(value)
+    : value;
+  return Number.isSafeInteger(parsed) && Number(parsed) >= 0
+    ? Number(parsed)
+    : null;
+}
+
+function verifySubscriptionExpiry(value: unknown, nowSeconds: number): number {
+  if (!Number.isSafeInteger(nowSeconds) || nowSeconds < 1) {
+    throw new Error("Subscription verifier clock is invalid.");
+  }
+  if (!Number.isSafeInteger(value) || Number(value) < 1) {
+    throw new PolicyTemplateSubscriptionAdmissionError(
+      "Subscription authorization expiry is invalid.",
+      "INVALID_EXPIRY",
+    );
+  }
+  const expiresAt = Number(value);
+  if (expiresAt <= nowSeconds) {
+    throw new PolicyTemplateSubscriptionAdmissionError(
+      "Subscription authorization has expired.",
+      "SIGNATURE_EXPIRED",
+    );
+  }
+  if (expiresAt > nowSeconds + POLICY_TEMPLATE_SUBSCRIPTION_TTL_SECONDS) {
+    throw new PolicyTemplateSubscriptionAdmissionError(
+      "Subscription authorization expiry exceeds the five-minute limit.",
+      "EXPIRY_TOO_FAR",
+    );
+  }
+  return expiresAt;
 }
 
 function publicTemplateFromRow(row: TemplateRow): PublicPolicyTemplate {

@@ -93,6 +93,7 @@ test("intent and maintenance writes share one admission-to-outbox signer lane", 
   await outboxStarted;
   const maintenancePromise = convertPotFees({
     publicClient: {
+      getBlockNumber: async () => 123n,
       readContract: async ({ functionName }) => (functionName === "balanceOf" ? ONE : 2n * Q96),
       simulateContract: async () => ({
         request: {
@@ -122,6 +123,7 @@ test("intent and maintenance writes share one admission-to-outbox signer lane", 
         : { allowed: true };
     },
     withBroadcastLane: maintenanceLane,
+    verifyPotAdapter: async () => ({ verified: true }),
   });
 
   await maintenanceLaneRequested;
@@ -232,6 +234,7 @@ test("a keeper broadcast durably occupies the same signer lane before confirmati
   const hash = `0x${"56".repeat(32)}`;
   const result = await convertPotFees({
     publicClient: {
+      getBlockNumber: async () => 123n,
       readContract: async ({ functionName }) => (functionName === "balanceOf" ? ONE : 2n * Q96),
       simulateContract: async () => ({
         request: {
@@ -270,6 +273,7 @@ test("a keeper broadcast durably occupies the same signer lane before confirmati
         },
         transactionHash,
       ),
+    verifyPotAdapter: async () => ({ verified: true }),
   });
 
   assert.equal(result.outcome, "confirmation-observed");
