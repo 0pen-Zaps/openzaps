@@ -1,0 +1,21 @@
+{
+  "kind": "recurring",
+  "comment": "TESTNET ONLY / NON-PRODUCTION template for chain 46630. Replace every zero address/hash/time and the all-zero signature with the reviewed deployed values and owner signature. Every numeric field must remain a decimal string.",
+  "intent": {
+    "zap": "0x0000000000000000000000000000000000000000",
+    "chainId": "46630",
+    "seriesId": "2026072801",
+    "validAfter": "0",
+    "deadline": "0",
+    "interval": "3600",
+    "maxRuns": "24",
+    "recipient": "0x0000000000000000000000000000000000000000",
+    "executor": "0x0000000000000000000000000000000000000000",
+    "maxGas": "1500000",
+    "maxFeePerGas": "2000000000",
+    "policyHash": "0x0000000000000000000000000000000000000000000000000000000000000000",
+    "outAsset": "0x0000000000000000000000000000000000000000",
+    "minOutPerRun": "990000000000000000"
+  },
+  "signature": "0x0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+}

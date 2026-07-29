@@ -40,7 +40,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: foundry-rs/foundry-toolchain@v1
       - run: forge install foundry-rs/forge-std
-      - run: forge fmt --check src/v3_2 script/DeployV3_2Robinhood.s.sol test/OpenZapV3_2.stack.t.sol test/DeployV3_2Robinhood.t.sol
+      - run: forge fmt --check
       - run: forge build --sizes
       # Fixed-block fork suites depend on archive-capable Base/Robinhood RPCs and are exercised in
       # the live-chain release matrix. Public endpoints can return pruned-state errors or 429s on a
@@ -58,7 +58,7 @@ jobs:
           cache: npm
       - run: npm ci
       - name: Executor + MCP tests
-        run: node --test executor/*.test.mjs mcp/*.test.mjs packages/mcp/*.test.mjs
+        run: node --test executor/*.test.mjs mcp/*.test.mjs packages/sdk/*.test.mjs packages/mcp/*.test.mjs
       - name: SDK import smoke
         run: node --input-type=module -e "const sdk = await import('./packages/sdk/index.js'); if (typeof sdk.buildOpenZapPolicy !== 'function') process.exit(1)"
       - name: MCP tool manifest smoke

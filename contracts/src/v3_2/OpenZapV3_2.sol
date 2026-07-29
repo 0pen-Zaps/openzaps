@@ -109,6 +109,7 @@ contract OpenZapV3_2 {
     uint256 public maxRelayerFeeCap;
     bool public optimization;
     bytes32 public policyHash;
+    bool public policyHalted;
     address[] private _trackedAssets;
     Step[] private _steps;
     mapping(uint256 => bool) public nonceUsed;
@@ -216,10 +217,12 @@ contract OpenZapV3_2 {
     event SeriesFinished(uint256 indexed seriesId, uint32 runs);
     event EmergencyExit(address indexed owner, address indexed asset, uint256 amount);
     event NonceInvalidated(uint256 indexed nonce);
+    event PolicyHalted(address indexed owner, bytes32 indexed policyHash);
 
     error NotFactory();
     error AlreadyInitialized();
     error NotOwner();
+    error PolicyExecutionHalted();
     error NotOptimization();
     error ZeroRecipient();
     error ZeroOwner();
@@ -305,6 +308,11 @@ contract OpenZapV3_2 {
         _;
     }
 
+    modifier whenPolicyActive() {
+        if (policyHalted) revert PolicyExecutionHalted();
+        _;
+    }
+
     constructor(
         address factory_,
         AdapterRegistry adapters_,
@@ -381,7 +389,7 @@ contract OpenZapV3_2 {
     // Execution type 1: one-shot (V2 semantics, unchanged, no protocol fee)  //
     // --------------------------------------------------------------------- //
 
-    function execute(OpenZapIntent calldata intent, bytes calldata sig) external nonReentrant {
+    function execute(OpenZapIntent calldata intent, bytes calldata sig) external whenPolicyActive nonReentrant {
         if (intent.zap != address(this)) revert WrongZap();
         if (intent.chainId != block.chainid) revert WrongChain();
         if (intent.policyHash != policyHash) revert PolicyMismatch();
@@ -421,7 +429,11 @@ contract OpenZapV3_2 {
     /// @notice Execute one due run of an owner-signed recurring series. Submission is
     ///         permissionless unless the signature pins an executor; the CADENCE is enforced here,
     ///         so no submitter can run early or overdraw the series.
-    function executeRecurring(RecurringIntent calldata intent, bytes calldata sig) external nonReentrant {
+    function executeRecurring(RecurringIntent calldata intent, bytes calldata sig)
+        external
+        whenPolicyActive
+        nonReentrant
+    {
         if (intent.zap != address(this)) revert WrongZap();
         if (intent.chainId != block.chainid) revert WrongChain();
         if (intent.policyHash != policyHash) revert PolicyMismatch();
@@ -469,6 +481,7 @@ contract OpenZapV3_2 {
     ///         the net output to clear `spot * (1 - maxSlippageBps)`.
     function executeRecurringRelative(RecurringRelativeIntent calldata intent, bytes calldata sig)
         external
+        whenPolicyActive
         nonReentrant
     {
         if (intent.zap != address(this)) revert WrongZap();
@@ -569,7 +582,11 @@ contract OpenZapV3_2 {
     ///         signed `stackBps` slice of the run's post-fee output converted into 0xZAPS and staked
     ///         to the lottery pot as the OWNER's tickets. Every gate of `executeRecurringRelative` is
     ///         reproduced; the additions are the slice, its own spot-derived floor, and the stake.
-    function executeRecurringStack(RecurringStackIntent calldata intent, bytes calldata sig) external nonReentrant {
+    function executeRecurringStack(RecurringStackIntent calldata intent, bytes calldata sig)
+        external
+        whenPolicyActive
+        nonReentrant
+    {
         _validateStackIntent(intent);
 
         // ---- cadence gate + progress update BEFORE any external call (I-AUTH-1) ----
@@ -759,7 +776,7 @@ contract OpenZapV3_2 {
     /// @notice Execute an owner-signed trigger, valid only while the allowlisted price source
     ///         reports the market past the signed threshold. The clone reads the price itself — the
     ///         submitter cannot supply one (ADR-0004: permissionless, on-chain-conditioned).
-    function executeTrigger(TriggerIntent calldata intent, bytes calldata sig) external nonReentrant {
+    function executeTrigger(TriggerIntent calldata intent, bytes calldata sig) external whenPolicyActive nonReentrant {
         if (intent.zap != address(this)) revert WrongZap();
         if (intent.chainId != block.chainid) revert WrongChain();
         if (intent.policyHash != policyHash) revert PolicyMismatch();
@@ -881,6 +898,15 @@ contract OpenZapV3_2 {
     // --------------------------------------------------------------------- //
     // Recovery & revocation (always available to the owner)                  //
     // --------------------------------------------------------------------- //
+
+    /// @notice Permanently halt this clone's frozen policy (I-REC-4).
+    /// @dev One-way by design: signed intents can never be silently reactivated. Recovery and
+    ///      nonce/series invalidation remain available; resuming execution requires a new clone.
+    function haltPolicy() external onlyOwner {
+        if (policyHalted) revert PolicyExecutionHalted();
+        policyHalted = true;
+        emit PolicyHalted(owner, policyHash);
+    }
 
     function emergencyExit(address[] calldata assets) external onlyOwner {
         for (uint256 i; i < assets.length; ++i) {

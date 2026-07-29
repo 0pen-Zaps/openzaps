@@ -64,7 +64,7 @@ interface IUniswapV3SwapRouter02Minimal {
 ///         │   the vault share), where the deployer has the right; otherwise prints the exact        │
 ///         │   governance calldata as PENDING. Prints the frontend env vars for src/lib/chains.ts.   │
 ///         │                                                                                          │
-///         │ Base (8453): deploys a FULL FRESH v1.1 core (implementation via the factory ctor,        │
+///         │ Base (8453): deploys a FULL FRESH v1.2 candidate (implementation via the factory ctor,   │
 ///         │   registry, allowlist), then `BaseV3SwapAdapter` and `AaveV3SupplyAdapter` (and          │
 ///         │   `AaveV3WithdrawAdapter` IF Track B shipped it — see the import note above). Allowlists  │
 ///         │   the adapters and their tokens, then PROPOSES ownership of registry + allowlist to       │
@@ -127,7 +127,8 @@ contract DeployEverything is Script {
 
     uint256 internal constant ROBINHOOD_CHAIN_ID = 4663;
     uint256 internal constant BASE_CHAIN_ID = 8453;
-    string internal constant EXPECTED_VERSION = "1.1.0";
+    string internal constant LIVE_V1_VERSION = "1.1.0";
+    string internal constant SOURCE_BASE_VERSION = "1.2.0-candidate";
 
     /// @dev Standard burn sink. `ZapVault` refuses `address(0)` as a receiver, so seed shares go here.
     address internal constant DEAD = 0x000000000000000000000000000000000000dEaD;
@@ -165,7 +166,7 @@ contract DeployEverything is Script {
     uint256 internal constant RH_DEFAULT_SEED_ASSETS = 1_000_000; // 1.000000 USDG
 
     // =========================================================================================== //
-    // Base (8453) — a FULL FRESH v1.1 core is deployed here.                                       //
+    // Base (8453) — a FULL FRESH v1.2.0-candidate core is deployed here.                           //
     // =========================================================================================== //
 
     /// @dev The superseded v1.0.0 factory on Base. Recorded so nobody mistakes it for current; this
@@ -332,7 +333,7 @@ contract DeployEverything is Script {
         // The live core must be the one we think it is. A factory pointing at a different registry means
         // allowlisting here would not affect the capsules people actually create.
         OpenZapFactory factory = OpenZapFactory(RH_OPENZAP_FACTORY);
-        if (keccak256(bytes(factory.VERSION())) != keccak256(bytes(EXPECTED_VERSION))) {
+        if (keccak256(bytes(factory.VERSION())) != keccak256(bytes(LIVE_V1_VERSION))) {
             revert UnexpectedCoreVersion(factory.VERSION());
         }
         if (address(factory.adapters()) != RH_ADAPTER_REGISTRY || address(factory.tokens()) != RH_TOKEN_ALLOWLIST) {
@@ -565,7 +566,7 @@ contract DeployEverything is Script {
     }
 
     // =========================================================================================== //
-    // Base (8453) — fresh v1.1 core                                                                //
+    // Base (8453) — fresh v1.2.0-candidate core                                                   //
     // =========================================================================================== //
 
     function _runBase() internal {
@@ -635,7 +636,7 @@ contract DeployEverything is Script {
         vm.stopBroadcast();
 
         // ---- post-deploy assertions: fail the run rather than print a half-wired deployment ----- //
-        if (keccak256(bytes(factory.VERSION())) != keccak256(bytes(EXPECTED_VERSION))) {
+        if (keccak256(bytes(factory.VERSION())) != keccak256(bytes(SOURCE_BASE_VERSION))) {
             revert UnexpectedCoreVersion(factory.VERSION());
         }
         if (
@@ -681,7 +682,7 @@ contract DeployEverything is Script {
         console2.log("governance (proposed, must acceptOwnership)", governance);
         console2.log("core VERSION", factory.VERSION());
         console2.log("");
-        console2.log("-- deployed now (a FRESH, disconnected v1.1 core) --");
+        console2.log("-- deployed now (a FRESH, disconnected v1.2.0-candidate core) --");
         console2.log("AdapterRegistry", address(registry));
         console2.log("TokenAllowlist", address(allowlist));
         console2.log("OpenZapFactory", address(factory));

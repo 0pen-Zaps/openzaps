@@ -97,6 +97,20 @@ const FUNCTION_BY_KIND = {
   trigger: "executeTrigger",
 };
 
+export function executionSimulationParameters(item, account, blockNumber) {
+  const functionName = FUNCTION_BY_KIND[item.kind];
+  if (!functionName) throw new Error(`unsupported intent kind ${item.kind}`);
+  return {
+    address: item.intent.zap,
+    abi: openZapV3Abi,
+    functionName,
+    args: [intentTuple(item), item.signature],
+    account,
+    gas: item.intent.maxGas < 10_000_000n ? item.intent.maxGas : 10_000_000n,
+    ...(typeof blockNumber === "bigint" ? { blockNumber } : {}),
+  };
+}
+
 export function classifySubmissionError(error) {
   const message = [error?.errorName, error?.shortMessage, error?.message].filter(Boolean).join(" ");
   return /ZeroBalanceRelativeStep|ERC20InsufficientBalance|insufficient (?:token )?balance|transfer amount exceeds balance|empty balance/i.test(
@@ -229,18 +243,10 @@ export async function submitExecution(
   const account = walletClient?.account ?? pinned ?? "0x000000000000000000000000000000000000dEaD";
   // The zap enforces `gasleft() <= intent.maxGas` at entry (anti-griefing, I-AUTH-4), so the tx
   // gas LIMIT must not exceed the signed cap — cap it, and cap the cap at a sane ceiling.
-  const gasCeiling = 10_000_000n;
-  const gas = intent.maxGas < gasCeiling ? intent.maxGas : gasCeiling;
+  const simulationParameters = executionSimulationParameters(item, account);
   let request;
   try {
-    ({ request } = await publicClient.simulateContract({
-      address: intent.zap,
-      abi: openZapV3Abi,
-      functionName,
-      args: [intentTuple(item), item.signature],
-      account,
-      gas,
-    }));
+    ({ request } = await publicClient.simulateContract(simulationParameters));
   } catch (err) {
     const outcome = classifySubmissionError(err);
     return { outcome, detail: `simulation failed: ${err.shortMessage ?? err.message}` };

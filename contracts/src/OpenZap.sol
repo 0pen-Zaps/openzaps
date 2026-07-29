@@ -3,6 +3,7 @@ pragma solidity 0.8.34;
 
 import {IERC20} from "./interfaces/IERC20.sol";
 import {IAdapter} from "./interfaces/IAdapter.sol";
+import {IPermit2SignatureTransfer} from "./interfaces/IPermit2SignatureTransfer.sol";
 import {AdapterRegistry} from "./AdapterRegistry.sol";
 import {TokenAllowlist} from "./TokenAllowlist.sol";
 import {Step, Policy, OpenZapIntent} from "./libraries/OpenZapTypes.sol";
@@ -29,6 +30,12 @@ contract OpenZap {
     AdapterRegistry public immutable ADAPTERS;
     TokenAllowlist public immutable TOKENS;
 
+    /// @dev Canonical Permit2 deployment used on Base and Robinhood Chain. SignatureTransfer still
+    ///      requires the owner to approve this contract at the ERC-20 layer; neither the capsule nor
+    ///      its executor receives a standing pull allowance.
+    address public constant PERMIT2 = 0x000000000022D473030F116dDEE9F6B43aC78BA3;
+    uint256 public constant PERMIT2_MAX_DEADLINE_WINDOW = 1 hours;
+
     // --------------------------------------------------------------------- //
     // Per-clone storage (written once by `initialize`)                       //
     // --------------------------------------------------------------------- //
@@ -39,6 +46,7 @@ contract OpenZap {
     uint256 public maxRelayerFeeCap;
     bool public optimization;
     bytes32 public policyHash;
+    bool public policyHalted;
     address[] private _trackedAssets;
     Step[] private _steps;
     mapping(uint256 => bool) public nonceUsed;
@@ -48,6 +56,9 @@ contract OpenZap {
     );
     bytes32 private constant DOMAIN_TYPEHASH =
         keccak256("EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)");
+    bytes32 private constant PERMIT2_WITNESS_TYPEHASH = keccak256("OpenZapIntentWitness(bytes32 intentDigest)");
+    string private constant PERMIT2_WITNESS_TYPE_STRING =
+        "OpenZapIntentWitness witness)OpenZapIntentWitness(bytes32 intentDigest)TokenPermissions(address token,uint256 amount)";
     bytes4 private constant ERC1271_MAGIC = 0x1626ba7e;
     uint256 private constant SECP256K1_HALF_N = 0x7FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF5D576E7357A4501DDFE92F46681B20A0;
     uint256 private constant MAX_STEPS = 16;
@@ -57,10 +68,12 @@ contract OpenZap {
     event Executed(uint256 indexed nonce, address indexed recipient, address outAsset, uint256 amountOut, uint256 fee);
     event EmergencyExit(address indexed owner, address indexed asset, uint256 amount);
     event NonceInvalidated(uint256 indexed nonce);
+    event PolicyHalted(address indexed owner, bytes32 indexed policyHash);
 
     error NotFactory();
     error AlreadyInitialized();
     error NotOwner();
+    error PolicyExecutionHalted();
     error NotOptimization();
     error ZeroRecipient();
     error ZeroOwner();
@@ -84,6 +97,15 @@ contract OpenZap {
     error WrongRecipient();
     error NonceReplay();
     error BadSignature();
+    error Permit2Unavailable();
+    error Permit2TokenMismatch(address expected, address actual);
+    error Permit2AmountMismatch(uint256 expected, uint256 actual);
+    error Permit2Expired();
+    error Permit2DeadlineBeyondIntent();
+    error Permit2DeadlineTooLong();
+    error Permit2OutputAssetConflict();
+    error Permit2PullAmountMismatch(uint256 expected, uint256 actual);
+    error Permit2PullNotConsumed(uint256 residual);
     error MinOutNotMet();
     error Reentrancy();
     error NativeExitFailed();
@@ -97,6 +119,11 @@ contract OpenZap {
 
     modifier onlyOwner() {
         if (msg.sender != owner) revert NotOwner();
+        _;
+    }
+
+    modifier whenPolicyActive() {
+        if (policyHalted) revert PolicyExecutionHalted();
         _;
     }
 
@@ -169,8 +196,63 @@ contract OpenZap {
     /// @notice Execute the frozen action graph under an owner-signed intent. Submitted by Hermes/a
     ///         relayer, which has zero discretion: every authority-bearing field is checked against
     ///         the frozen policy and the signature before any external call.
-    function execute(OpenZapIntent calldata intent, bytes calldata sig) external nonReentrant {
-        // ---- verify & consume authorization BEFORE any external call (I-AUTH-1) ----
+    function execute(OpenZapIntent calldata intent, bytes calldata sig) external whenPolicyActive nonReentrant {
+        _authorize(intent, sig);
+        _executeFrozen(intent, address(0), 0);
+    }
+
+    /// @notice Pull the first frozen step's exact input from the owner through Permit2
+    ///         SignatureTransfer, then execute the same frozen graph as `execute`.
+    /// @dev The Permit2 signature witnesses this exact OpenZap intent digest. Permit2 therefore
+    ///      binds the capsule as spender; this function fixes the transfer destination to the
+    ///      capsule, requires token/amount to equal step zero, and never grants the submitter pull
+    ///      rights. A downstream revert atomically rolls back both nonce consumption and the pull.
+    function executeWithPermit2(
+        OpenZapIntent calldata intent,
+        IPermit2SignatureTransfer.PermitTransferFrom calldata permit,
+        bytes calldata intentSig,
+        bytes calldata permitSig
+    ) external whenPolicyActive nonReentrant {
+        Step storage fundingStep = _steps[0];
+        address pullToken = fundingStep.tokenIn;
+        uint256 pullAmount = fundingStep.amountIn;
+
+        if (PERMIT2.code.length == 0) revert Permit2Unavailable();
+        if (permit.permitted.token != pullToken) {
+            revert Permit2TokenMismatch(pullToken, permit.permitted.token);
+        }
+        if (permit.permitted.amount != pullAmount) {
+            revert Permit2AmountMismatch(pullAmount, permit.permitted.amount);
+        }
+        if (block.timestamp > permit.deadline) revert Permit2Expired();
+        if (permit.deadline > intent.deadline) revert Permit2DeadlineBeyondIntent();
+        if (permit.deadline > block.timestamp + PERMIT2_MAX_DEADLINE_WINDOW) revert Permit2DeadlineTooLong();
+        if (pullToken == intent.outAsset) revert Permit2OutputAssetConflict();
+
+        // The owner authorization is consumed before Permit2 or any adapter can run (I-AUTH-1).
+        _authorize(intent, intentSig);
+        bytes32 intentDigest = hashIntent(intent);
+        bytes32 witness = keccak256(abi.encode(PERMIT2_WITNESS_TYPEHASH, intentDigest));
+
+        uint256 prePull = IERC20(pullToken).balanceOf(address(this));
+        IPermit2SignatureTransfer(PERMIT2)
+            .permitWitnessTransferFrom(
+                permit,
+                IPermit2SignatureTransfer.SignatureTransferDetails({to: address(this), requestedAmount: pullAmount}),
+                owner,
+                witness,
+                PERMIT2_WITNESS_TYPE_STRING,
+                permitSig
+            );
+        uint256 postPull = IERC20(pullToken).balanceOf(address(this));
+        uint256 received = postPull >= prePull ? postPull - prePull : 0;
+        if (received != pullAmount) revert Permit2PullAmountMismatch(pullAmount, received);
+
+        _executeFrozen(intent, pullToken, prePull);
+    }
+
+    function _authorize(OpenZapIntent calldata intent, bytes calldata sig) private {
+        // ---- verify & consume authorization BEFORE any asset-moving external call (I-AUTH-1) ----
         if (intent.zap != address(this)) revert WrongZap();
         if (intent.chainId != block.chainid) revert WrongChain();
         if (intent.policyHash != policyHash) revert PolicyMismatch(); // no submitter policy (I-AUTH-3)
@@ -184,7 +266,9 @@ contract OpenZap {
         if (nonceUsed[intent.nonce]) revert NonceReplay();
         nonceUsed[intent.nonce] = true; // consume first (I-AUTH-1, I-AUTH-2)
         _verifySignature(intent, sig);
+    }
 
+    function _executeFrozen(OpenZapIntent calldata intent, address pulledToken, uint256 prePullBalance) private {
         // Snapshot the output asset BEFORE the loop so settlement uses only THIS run's delta, never a
         // standing balance, dust, or a mid-loop deposit (I-FLOW-4 / I-TOK-2).
         uint256 preOut = IERC20(intent.outAsset).balanceOf(address(this));
@@ -201,6 +285,15 @@ contract OpenZap {
             s.tokenIn.approveExact(s.spender, 0);
             if (adapterOut == address(0) || adapterAmountOut == 0 || !TOKENS.isAllowed(adapterOut)) {
                 revert InvalidAdapterResult(i, adapterOut, adapterAmountOut);
+            }
+        }
+
+        // A SignatureTransfer pull is transaction-scoped funding, not a deposit side effect. If the
+        // graph consumes less than the exact pulled amount, fail closed and roll the whole pull back.
+        if (pulledToken != address(0)) {
+            uint256 finalPullBalance = IERC20(pulledToken).balanceOf(address(this));
+            if (finalPullBalance > prePullBalance) {
+                revert Permit2PullNotConsumed(finalPullBalance - prePullBalance);
             }
         }
 
@@ -223,6 +316,15 @@ contract OpenZap {
     // --------------------------------------------------------------------- //
     // Recovery & revocation (always available to the owner)                  //
     // --------------------------------------------------------------------- //
+
+    /// @notice Permanently halt this clone's frozen policy (I-REC-4).
+    /// @dev One-way by design: signed intents can never be silently reactivated. Recovery and
+    ///      nonce invalidation remain available; resuming execution requires a new clone/policy.
+    function haltPolicy() external onlyOwner {
+        if (policyHalted) revert PolicyExecutionHalted();
+        policyHalted = true;
+        emit PolicyHalted(owner, policyHash);
+    }
 
     /// @notice Unconditional, owner-only drain of arbitrary assets to the owner (invariant I-REC-1).
     /// @dev Routes through NO adapter (I-REC-2). Works regardless of adapter health, Hermes liveness,

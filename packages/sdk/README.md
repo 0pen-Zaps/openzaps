@@ -27,3 +27,15 @@ The production simulation API is independently gated by
 `OPENZAPS_EXACT_POLICY_DURABLE_QUOTA_ENABLED=true`. Package publication does not enable that route.
 The discovery API is public chain data; this SDK has no credential surface and cannot authorize
 execution. Execution requires the capsule owner's EIP-712 signature.
+
+## v1.2 candidate Permit2 owner pull
+
+`buildUnsignedPermit2OwnerPull` prepares the second wallet signature for the source-only v1.2
+candidate. It binds the existing OpenZap intent digest as a Permit2 witness, the capsule as spender,
+and the frozen policy's exact first-step token and amount. It rejects a mismatched policy, a
+different output/funding asset, a deadline beyond the intent, or a window longer than one hour.
+The helper remains pure: it does not request either signature, approve Permit2, or submit a
+transaction.
+
+This path is not present in the live v1.1 implementation. Do not expose it in an app until a v1.2
+factory and implementation have been independently deployed, verified, and pinned.

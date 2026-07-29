@@ -6,10 +6,12 @@ import {Test} from "forge-std/Test.sol";
 import {OpenZapV3_2} from "../src/v3_2/OpenZapV3_2.sol";
 import {OpenZapFactoryV3_2} from "../src/v3_2/OpenZapFactoryV3_2.sol";
 import {RecurringStackIntent} from "../src/v3_2/libraries/OpenZapV3_2Types.sol";
+import {RecurringRelativeIntent} from "../src/v3_1/libraries/OpenZapV3_1Types.sol";
+import {RecurringIntent, TriggerIntent} from "../src/v3/libraries/OpenZapV3Types.sol";
 import {ZapLotteryPot} from "../src/v3/ZapLotteryPot.sol";
 import {AdapterRegistry} from "../src/AdapterRegistry.sol";
 import {TokenAllowlist} from "../src/TokenAllowlist.sol";
-import {Step, Policy} from "../src/libraries/OpenZapTypes.sol";
+import {Step, Policy, OpenZapIntent} from "../src/libraries/OpenZapTypes.sol";
 
 import {MockERC20} from "./mocks/MockERC20.sol";
 import {MockSwapAdapter} from "./mocks/MockSwapAdapter.sol";
@@ -202,6 +204,33 @@ contract OpenZapV3_2StackTest is Test {
     }
 
     // ---- the app-side mirror must agree with the capsule ----
+
+    function test_haltPolicy_blocksEveryV3_2ExecutionSurface_beforeStackSeriesStateChanges() public {
+        RecurringStackIntent memory stack = _stack(zapFwd, address(assetB), address(0), BAND, SLICE);
+        OpenZapIntent memory oneShot;
+        RecurringIntent memory recurring;
+        RecurringRelativeIntent memory relative;
+        TriggerIntent memory trigger;
+
+        vm.prank(owner);
+        zapFwd.haltPolicy();
+
+        vm.expectRevert(OpenZapV3_2.PolicyExecutionHalted.selector);
+        zapFwd.execute(oneShot, "");
+        vm.expectRevert(OpenZapV3_2.PolicyExecutionHalted.selector);
+        zapFwd.executeRecurring(recurring, "");
+        vm.expectRevert(OpenZapV3_2.PolicyExecutionHalted.selector);
+        zapFwd.executeRecurringRelative(relative, "");
+        vm.expectRevert(OpenZapV3_2.PolicyExecutionHalted.selector);
+        zapFwd.executeRecurringStack(stack, "");
+        vm.expectRevert(OpenZapV3_2.PolicyExecutionHalted.selector);
+        zapFwd.executeTrigger(trigger, "");
+
+        (uint32 runs, uint64 lastRun) = zapFwd.series(stack.seriesId);
+        assertEq(runs, 0, "halted stack attempt must not advance the series");
+        assertEq(lastRun, 0, "halted stack attempt must not set cadence state");
+        assertFalse(zapFwd.nonceUsed(stack.seriesId));
+    }
 
     function test_capsuleDigestMatchesTheIndependentlyBuiltOne() public view {
         // The capsule's own hash must equal a digest assembled here from the typehash string and

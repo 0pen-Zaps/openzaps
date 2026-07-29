@@ -96,6 +96,8 @@ the sequencer-outage / L1 force-include escape hatch.
 
 1. [ ] Define the classification rule: a zap is **protective** if its action prevents a loss/liquidation; **optimization** if it merely improves a position.
 2. [ ] Factory rejects or segregates protective-class policies in v1 (invariant **I-SUB-2**).
-3. [ ] Hermes: finality-aware monitoring for high-value zaps; explicit sequencer-down handling.
+3. [x] Hermes source: signer-lane late-block simulation through an independent-node quorum,
+   stale/sequencer-unknown refusal, and receipt retention until an independent quorum agrees on the
+   L1-derived `finalized` L2 boundary. Signer activation still requires qualifying configured nodes.
 4. [ ] Backlog: v1.x ADR for protective-zap trigger model (permissionless on-chain conditions + L1 escape hatch).
 5. [ ] Get sign-off that auto-deleverage / liquidation-protection is explicitly a post-v1 feature.

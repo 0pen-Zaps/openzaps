@@ -21,9 +21,16 @@ import { closeSync, existsSync, openSync, readFileSync, unlinkSync, writeFileSyn
 import { join } from "node:path";
 import { loadConfig, loadExecutorKey } from "./config.mjs";
 import { loadIntents, archiveIntent, readState, writeState } from "./store.mjs";
-import { checkNonceLane, createAsyncMutex, tick, log } from "./engine.mjs";
+import {
+  checkNonceLane,
+  createAsyncMutex,
+  executionSimulationParameters,
+  tick,
+  log,
+} from "./engine.mjs";
 import { checkGas, convertPotFees } from "./keeper.mjs";
 import { loadIntakeToken, startIntake } from "./intake.mjs";
+import { checkLateBlockQuorum } from "./late-block.mjs";
 import { fetchRelayIntents, markRelayConsumed } from "./relay-source.mjs";
 import {
   accountSettledReceipts,
@@ -48,7 +55,7 @@ function getReceiptOutboxController(state) {
   return receiptOutboxController;
 }
 
-async function walletBroadcastAdmission(walletClient, state) {
+async function walletBroadcastAdmission(walletClient, state, item = null) {
   const outboxAdmission = getReceiptOutboxController(state).admission();
   if (!outboxAdmission.allowed) return outboxAdmission;
   const privateSubmission = walletClient?.openZapsPrivateSubmission;
@@ -61,7 +68,31 @@ async function walletBroadcastAdmission(walletClient, state) {
         + (privateSubmission?.readiness?.detail ?? "private relay transport is unavailable"),
     };
   }
-  return checkNonceLane(publicClient, walletClient);
+  const nonceAdmission = await checkNonceLane(publicClient, walletClient);
+  if (!nonceAdmission.allowed) return nonceAdmission;
+
+  const lateBlockAdmission = await checkLateBlockQuorum({
+    clients: lateBlockClients,
+    chainId: cfg.chainId,
+    minimumAgreement: cfg.lateBlock.minimumAgreement,
+    maxHeadSkewBlocks: cfg.lateBlock.maxHeadSkewBlocks,
+    maxBlockAgeSeconds: cfg.lateBlock.maxBlockAgeSeconds,
+    maxFutureSkewSeconds: cfg.lateBlock.maxFutureSkewSeconds,
+    simulate: item
+      ? async (client, blockNumber) => {
+          const { result } = await client.simulateContract(
+            executionSimulationParameters(item, walletClient.account, blockNumber),
+          );
+          return result;
+        }
+      : null,
+  });
+  if (!lateBlockAdmission.allowed) return lateBlockAdmission;
+  return {
+    ...lateBlockAdmission,
+    latestNonce: nonceAdmission.latestNonce,
+    pendingNonce: nonceAdmission.pendingNonce,
+  };
 }
 
 /** Dedup key includes the capsule: different zaps routinely reuse the same series/nonce values. */
@@ -153,6 +184,13 @@ const transport =
     : http(cfg.rpcUrls[0] ?? cfg.rpcUrl, { retryCount: 2, timeout: 8_000 });
 
 const publicClient = createPublicClient({ chain, transport });
+const lateBlockClients = cfg.lateBlock.rpcUrls.map(({ url, origin }) => ({
+  origin,
+  client: createPublicClient({
+    chain,
+    transport: http(url, { retryCount: 0, timeout: 8_000 }),
+  }),
+}));
 const privateSubmissionProvider = createPrivateSubmissionProvider({
   endpoints: cfg.privateSubmission.endpoints,
   minimumDistinctOrigins: cfg.privateSubmission.minimumDistinctOrigins,
@@ -181,7 +219,7 @@ function buildWalletClient() {
 async function connectivity() {
   const [chainId, block] = await Promise.all([publicClient.getChainId(), publicClient.getBlockNumber()]);
   if (chainId !== cfg.chainId) {
-    throw new Error(`RPC ${cfg.rpcUrl} reports chain ${chainId}, config expects ${cfg.chainId}`);
+    throw new Error(`configured RPC reports chain ${chainId}, config expects ${cfg.chainId}`);
   }
   return { chainId, block };
 }
@@ -230,7 +268,12 @@ async function notifyTransitions(state, events) {
 
 async function settleReceipts(state) {
   try {
-    const result = await settleReceiptOutbox({ publicClient, state, cfg });
+    const result = await settleReceiptOutbox({
+      publicClient,
+      finalityClients: lateBlockClients,
+      state,
+      cfg,
+    });
     accountSettledReceipts(state, result.settled);
     await notifyTransitions(
       state,
@@ -411,7 +454,7 @@ async function runPass(walletClient, state) {
         throw error;
       }
     },
-    canBroadcast: () => walletBroadcastAdmission(walletClient, state),
+    canBroadcast: (item) => walletBroadcastAdmission(walletClient, state, item),
     withBroadcastLane: withSignerLane,
   });
 
@@ -426,10 +469,15 @@ async function runPass(walletClient, state) {
         "broadcast-admission-unknown",
         "broadcast-failed",
         "fee-market-unknown",
+        "late-block-head-skew",
+        "late-block-quorum-disagrees",
+        "late-block-quorum-unavailable",
+        "late-block-simulation-failed",
         "nonce-lane-unknown",
         "private-submission-unavailable",
         "receipt-persistence-halted",
         "reverted",
+        "sequencer-stale",
       ].includes(r.outcome)
         ? "error"
         : ["confirmation-pending", "gas-above-cap", "nonce-lane-pending", "receipt-backlog"].includes(r.outcome)
@@ -501,9 +549,14 @@ async function runMaintenance(walletClient, state) {
       "broadcast-failed",
       "broadcast-admission-unknown",
       "fee-market-unknown",
+      "late-block-head-skew",
+      "late-block-quorum-disagrees",
+      "late-block-quorum-unavailable",
+      "late-block-simulation-failed",
       "nonce-lane-unknown",
       "private-submission-unavailable",
       "receipt-persistence-halted",
+      "sequencer-stale",
     ].includes(conv.outcome)
       ? "error"
       : [
@@ -532,11 +585,16 @@ async function runMaintenance(walletClient, state) {
     "confirmation-pending",
     "fee-market-unknown",
     "gas-above-cap",
+    "late-block-head-skew",
+    "late-block-quorum-disagrees",
+    "late-block-quorum-unavailable",
+    "late-block-simulation-failed",
     "nonce-lane-pending",
     "nonce-lane-unknown",
     "private-submission-unavailable",
     "receipt-backlog",
     "receipt-persistence-halted",
+    "sequencer-stale",
     "tx-reverted",
   ].includes(conv.outcome);
   return failed ? Math.max(Math.floor(cfg.convertEveryMs / 4), 30_000) : cfg.convertEveryMs;
@@ -548,7 +606,10 @@ async function main() {
   const command = process.argv[2] ?? "start";
   const walletClient = buildWalletClient();
 
-  const endpointLabel = cfg.rpcUrls.length > 1 ? `${cfg.rpcUrls.length} RPCs (fallback)` : cfg.rpcUrls[0] ?? cfg.rpcUrl;
+  // Provider URLs can contain API credentials. Log only counts, never endpoint text.
+  const endpointLabel = cfg.rpcUrls.length > 0
+    ? `${cfg.rpcUrls.length} configured RPC${cfg.rpcUrls.length === 1 ? "" : "s"} (fallback)`
+    : "the default RPC";
   const { block } = await connectivity();
   log("info", `connected to chain ${cfg.chainId} via ${endpointLabel} (block ${block})`);
   log(
@@ -560,6 +621,11 @@ async function main() {
         : `executor wallet ${walletClient.account.address} — EXECUTION BLOCKED: `
           + walletClient.openZapsPrivateSubmission.readiness.detail
       : "no executor key configured — WATCH-ONLY mode (simulates, never broadcasts)",
+  );
+  log(
+    "info",
+    `late-block admission: ${lateBlockClients.length} independent RPC origin(s) configured; `
+      + `${cfg.lateBlock.minimumAgreement} required before any wallet write`,
   );
   log("info", `intent store: ${cfg.intentsDir}`);
   log("info", cfg.relayUrl ? `relay: polling ${cfg.relayUrl}/api/intents for shared intents` : "relay: disabled (local file store only)");

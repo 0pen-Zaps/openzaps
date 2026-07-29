@@ -62,19 +62,57 @@ export interface OpenZapIntent {
   minOut: bigint;
 }
 
+export interface UnsignedOpenZapIntent {
+  domain: TypedDataDomain & {
+    name: "OpenZap";
+    version: "1";
+    chainId: number;
+    verifyingContract: Address;
+  };
+  types: typeof OPENZAP_INTENT_TYPES;
+  primaryType: "OpenZapIntent";
+  message: OpenZapIntent;
+}
+
+export interface Permit2OwnerPullInput {
+  intent: UnsignedOpenZapIntent;
+  policy: OpenZapPolicy;
+  nonce: bigint | number | string;
+  deadline: bigint | number | string;
+  nowSeconds: bigint | number | string;
+}
+
 export const OPENZAP_STEP_COMPONENTS: readonly object[];
 export const OPENZAP_POLICY_COMPONENTS: readonly object[];
 export const OPENZAP_INTENT_TYPES: {
   readonly OpenZapIntent: readonly { readonly name: string; readonly type: string }[];
 };
+export const PERMIT2_ADDRESS: Address;
+export const PERMIT2_MAX_DEADLINE_WINDOW_SECONDS: bigint;
+export const OPENZAP_PERMIT2_WITNESS_TYPES: {
+  readonly TokenPermissions: readonly { readonly name: string; readonly type: string }[];
+  readonly OpenZapIntentWitness: readonly { readonly name: string; readonly type: string }[];
+  readonly PermitWitnessTransferFrom: readonly { readonly name: string; readonly type: string }[];
+};
 
 export function buildOpenZapPolicy(input: OpenZapPolicyInput): OpenZapPolicy;
 export function hashOpenZapPolicy(policy: OpenZapPolicy): Hex;
-export function buildUnsignedOpenZapIntent(input: UnsignedIntentInput): {
-  domain: TypedDataDomain;
-  types: typeof OPENZAP_INTENT_TYPES;
-  primaryType: "OpenZapIntent";
-  message: OpenZapIntent;
+export function buildUnsignedOpenZapIntent(input: UnsignedIntentInput): UnsignedOpenZapIntent;
+export function buildUnsignedPermit2OwnerPull(input: Permit2OwnerPullInput): {
+  domain: TypedDataDomain & {
+    name: "Permit2";
+    chainId: number;
+    verifyingContract: Address;
+  };
+  types: typeof OPENZAP_PERMIT2_WITNESS_TYPES;
+  primaryType: "PermitWitnessTransferFrom";
+  message: {
+    permitted: { token: Address; amount: bigint };
+    spender: Address;
+    nonce: bigint;
+    deadline: bigint;
+    witness: { intentDigest: Hex };
+  };
 };
 
 export interface OpenZapsClientOptions {

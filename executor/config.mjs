@@ -6,6 +6,7 @@ import { readFileSync, existsSync, mkdirSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { loadAdapterManifestFile } from "./adapter-manifest.mjs";
+import { parseLateBlockRpcUrls } from "./late-block.mjs";
 
 export const ROBINHOOD_CHAIN_ID = 4663;
 export const DEFAULT_RPC_URL = "https://rpc.mainnet.chain.robinhood.com";
@@ -109,11 +110,68 @@ export function loadConfig() {
     : typeof rpcUrlsRaw === "string"
       ? rpcUrlsRaw.split(",").map((u) => u.trim()).filter(Boolean)
       : [];
+  let lateBlockRpcUrls = [];
+  try {
+    // Quorum endpoints are environment-only because provider URLs commonly contain API
+    // credentials. They must never be persisted in the world-readable public config file.
+    lateBlockRpcUrls = parseLateBlockRpcUrls(process.env.OPENZAPS_LATE_BLOCK_RPC_URLS);
+  } catch (error) {
+    // Do not echo the raw environment value. An empty set keeps signer admission fail closed.
+    console.error(`[config] ${error.message} — late-block admission disabled`);
+  }
 
   const cfg = {
     rpcUrl: process.env.OPENZAPS_RPC_URL ?? fileCfg.rpcUrl ?? DEFAULT_RPC_URL,
     rpcUrls, // empty => single-URL mode on rpcUrl
     chainId: safeNumber("OPENZAPS_CHAIN_ID", process.env.OPENZAPS_CHAIN_ID ?? fileCfg.chainId, ROBINHOOD_CHAIN_ID),
+    lateBlock: {
+      rpcUrls: lateBlockRpcUrls,
+      minimumAgreement: boundedInteger(
+        "OPENZAPS_LATE_BLOCK_MIN_AGREEMENT",
+        process.env.OPENZAPS_LATE_BLOCK_MIN_AGREEMENT,
+        2,
+        2,
+        8,
+      ),
+      maxHeadSkewBlocks: boundedInteger(
+        "OPENZAPS_LATE_BLOCK_MAX_HEAD_SKEW",
+        process.env.OPENZAPS_LATE_BLOCK_MAX_HEAD_SKEW,
+        2,
+        0,
+        16,
+      ),
+      maxBlockAgeSeconds: boundedInteger(
+        "OPENZAPS_SEQUENCER_MAX_BLOCK_AGE_SECONDS",
+        process.env.OPENZAPS_SEQUENCER_MAX_BLOCK_AGE_SECONDS,
+        60,
+        5,
+        900,
+      ),
+      maxFutureSkewSeconds: boundedInteger(
+        "OPENZAPS_MAX_CLOCK_SKEW_SECONDS",
+        process.env.OPENZAPS_MAX_CLOCK_SKEW_SECONDS,
+        30,
+        0,
+        300,
+      ),
+    },
+    // Nitro's `finalized` L2 block tag is the operator-facing settlement boundary derived from
+    // the parent chain. Canonical confirmations remain an additional, not substitute, check.
+    finalityBlockTag: "finalized",
+    finalityMaxHeadSkewBlocks: boundedInteger(
+      "OPENZAPS_FINALITY_MAX_HEAD_SKEW",
+      process.env.OPENZAPS_FINALITY_MAX_HEAD_SKEW,
+      128,
+      0,
+      4_096,
+    ),
+    finalityMaxBlockAgeSeconds: boundedInteger(
+      "OPENZAPS_FINALITY_MAX_BLOCK_AGE_SECONDS",
+      process.env.OPENZAPS_FINALITY_MAX_BLOCK_AGE_SECONDS,
+      3_600,
+      60,
+      86_400,
+    ),
     // Write transport is deliberately separate from read/simulation RPC. Robinhood documents
     // public RPC and direct-sequencer access, but neither is a documented private-orderflow
     // service. Only endpoints explicitly classified `private-relay` are eligible; executing mode

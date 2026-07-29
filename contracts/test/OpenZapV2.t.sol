@@ -580,6 +580,25 @@ contract V2RecoveryTest is V2BaseTest {
         zap.execute(it, sig);
     }
 
+    function test_haltPolicy_blocksV2WithoutConsumingNonce_andLeavesRecoveryAvailable() public {
+        OpenZapIntent memory it = _defaultIntent();
+        bytes memory sig = _signIntent(OWNER_PK, it);
+
+        vm.prank(owner);
+        zap.haltPolicy();
+
+        vm.expectRevert(OpenZapV2.PolicyExecutionHalted.selector);
+        zap.execute(it, sig);
+        assertFalse(zap.nonceUsed(it.nonce), "halted attempt must not consume authorization");
+
+        vm.prank(owner);
+        zap.invalidateNonce(it.nonce);
+        vm.prank(owner);
+        zap.emergencyExit(_inAssets());
+        assertTrue(zap.nonceUsed(it.nonce), "granular revocation remains available");
+        assertEq(tokenIn.balanceOf(owner), AMOUNT_IN, "recovery remains available");
+    }
+
     function testFuzz_emergencyExit_fromArbitraryDeposits(uint96 a, uint96 b) public {
         tokenIn.mint(address(zap), a);
         tokenOut.mint(address(zap), b);
