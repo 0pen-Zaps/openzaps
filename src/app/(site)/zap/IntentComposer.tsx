@@ -1,6 +1,5 @@
 "use client";
 
-import { useRouter } from "next/navigation";
 import { useId, useState } from "react";
 
 import styles from "./intent-composer.module.css";
@@ -15,7 +14,6 @@ type ComposeResult =
   | { ok: false; refusal?: { reason: string; issues: string[] }; error?: string };
 
 export function IntentComposer({ compact = false }: { compact?: boolean }): React.JSX.Element {
-  const router = useRouter();
   const inputId = useId();
   const [prompt, setPrompt] = useState("");
   const [busy, setBusy] = useState(false);
@@ -43,13 +41,17 @@ export function IntentComposer({ compact = false }: { compact?: boolean }): Reac
         return;
       }
 
-      const href = body.plan.handoff?.href ?? `/zap?view=design&d=${encodeURIComponent(body.plan.token)}`;
       setMessage(
         body.model === "deterministic-catalog"
           ? "Matched a reviewed blueprint locally. Opening the compiled design…"
           : "Compiled against the block catalog. Opening the design…",
       );
-      router.push(href);
+      // The composer and the builder are two query-driven views of the same
+      // Next route. A client router transition can leave the Suspense-backed
+      // Start view mounted even after the compose request succeeds. Rebuilding
+      // the page from the compiler's validated token makes the URL and visible
+      // design change together, and avoids trusting a response-provided href.
+      window.location.assign(`/zap?view=design&d=${encodeURIComponent(body.plan.token)}`);
     } catch {
       setMessage("The composer could not be reached. The reviewed blueprints below still work.");
     } finally {
