@@ -1,7 +1,7 @@
-// Crash-safe execution receipt outbox. A transaction hash is queued immediately after broadcast,
-// before the daemon waits for confirmations. Each finalized receipt is then written to a stable
-// local JSON document and, for relayed intents, nominated to the hosted verifier. Both destinations
-// are idempotent; neither receipt nor scorecard data grants execution authority.
+// Crash-safe execution receipt outbox. A locally signed transaction is durably queued with its
+// deterministic hash and exact bytes before the first private-relay request. Each finalized receipt
+// is then written to a stable local JSON document and, for relayed intents, nominated to the hosted
+// verifier. Both destinations are idempotent; neither receipt nor scorecard data grants authority.
 import {
   closeSync,
   existsSync,
@@ -13,6 +13,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { join } from "node:path";
+import { keccak256 } from "viem";
 
 export const RECEIPT_OUTBOX_LIMIT = 256;
 export const RECEIPT_DELIVERY_OUTBOX_LIMIT = 256;
@@ -23,6 +24,7 @@ export const HOSTED_DELIVERY_MAX_ATTEMPTS = 8;
 const HOSTED_RETRY_BASE_MS = 15_000;
 const HOSTED_RETRY_MAX_MS = 60 * 60_000;
 const TX_HASH = /^0x[0-9a-fA-F]{64}$/;
+const RAW_TRANSACTION = /^0x(?:[0-9a-fA-F]{2})+$/;
 
 function intentNonce(item) {
   return String(item.kind === "trigger" ? item.intent.nonce : item.intent.seriesId);
@@ -155,7 +157,45 @@ export function accountSettledReceipts(state, settled) {
   return state.earnings;
 }
 
-export function queueTransactionReceipt(state, entry, txHash) {
+function validatedRawTransaction(serializedTransaction, txHash) {
+  if (serializedTransaction === undefined || serializedTransaction === null) return null;
+  if (
+    typeof serializedTransaction !== "string"
+    || !RAW_TRANSACTION.test(serializedTransaction)
+  ) {
+    throw new Error("prepared raw transaction is malformed");
+  }
+  if (keccak256(serializedTransaction).toLowerCase() !== txHash.toLowerCase()) {
+    throw new Error("prepared raw transaction does not match its deterministic hash");
+  }
+  return serializedTransaction.toLowerCase();
+}
+
+function relayEvidence(outcome) {
+  if (!outcome || typeof outcome !== "object") return null;
+  return {
+    mode: outcome.mode === "private-multi-relay" ? outcome.mode : "private-multi-relay",
+    status: String(outcome.status ?? "unknown").slice(0, 64),
+    requiredDistinctOrigins: Number(outcome.requiredDistinctOrigins ?? 0),
+    attemptedOrigins: Number(outcome.attemptedOrigins ?? 0),
+    acceptedOrigins: Number(outcome.acceptedOrigins ?? 0),
+    unknownOrigins: Number(outcome.unknownOrigins ?? 0),
+    rejectedOrigins: Number(outcome.rejectedOrigins ?? 0),
+    endpoints: Array.isArray(outcome.endpoints)
+      ? outcome.endpoints.slice(0, 8).map((endpoint) => ({
+          id: String(endpoint?.id ?? "").slice(0, 64),
+          origin: String(endpoint?.origin ?? "").slice(0, 256),
+          operator: String(endpoint?.operator ?? "").slice(0, 96),
+          classification: String(endpoint?.classification ?? "").slice(0, 32),
+          status: String(endpoint?.status ?? "unknown").slice(0, 32),
+          latencyMs: Number(endpoint?.latencyMs ?? 0),
+          detail: String(endpoint?.detail ?? "").slice(0, 240),
+        }))
+      : [],
+  };
+}
+
+export function queueTransactionReceipt(state, entry, txHash, options = {}) {
   if (typeof txHash !== "string" || !TX_HASH.test(txHash)) {
     throw new Error("receipt outbox transaction hash is malformed");
   }
@@ -171,8 +211,23 @@ export function queueTransactionReceipt(state, entry, txHash) {
   ) {
     throw new Error("receipt outbox transaction identity is malformed");
   }
+  const serializedTransaction = validatedRawTransaction(options.serializedTransaction, txHash);
   const outbox = recordMap(state, "receiptOutbox");
-  if (outbox[txHash]) return outbox[txHash];
+  if (outbox[txHash]) {
+    const existing = outbox[txHash];
+    if (
+      serializedTransaction
+      && existing.serializedTransaction
+      && existing.serializedTransaction.toLowerCase() !== serializedTransaction
+    ) {
+      throw new Error("receipt outbox already contains different raw bytes for this hash");
+    }
+    if (serializedTransaction && !existing.serializedTransaction) {
+      existing.serializedTransaction = serializedTransaction;
+      existing.submissionState = "prepared";
+    }
+    return existing;
+  }
   if (Object.keys(outbox).length >= RECEIPT_OUTBOX_LIMIT) {
     throw new Error(`receipt outbox reached its ${RECEIPT_OUTBOX_LIMIT}-transaction safety limit`);
   }
@@ -185,24 +240,27 @@ export function queueTransactionReceipt(state, entry, txHash) {
     firstSeenAt: new Date().toISOString(),
     attempts: 0,
     lastError: null,
+    submissionState: serializedTransaction ? "prepared" : "submitted",
+    serializedTransaction,
+    lastPrivateDispatchAt: null,
+    privateSubmission: null,
   };
   return outbox[txHash];
 }
 
-export function queueExecutionReceipt(state, item, txHash) {
-  return queueTransactionReceipt(state, receiptEntryForIntent(item), txHash);
+export function queueExecutionReceipt(state, item, txHash, options) {
+  return queueTransactionReceipt(state, receiptEntryForIntent(item), txHash, options);
 }
 
 /**
- * Couple hash admission to durable state persistence. Once persistence fails after a broadcast,
- * this process permanently opens the circuit: the already-broadcast transaction keeps its true
- * outcome, but no later wallet write is admitted until the operator repairs storage and restarts.
+ * Couple transaction preparation/submission to durable state persistence. A prepared transaction
+ * is fsynced before private dispatch. If persistence later fails, this process permanently opens the
+ * circuit and admits no later wallet write until the operator repairs storage and restarts.
  */
 export function createReceiptOutboxController(state, persist) {
   let persistenceFailure = null;
-  const recordOperation = async (entry, txHash) => {
+  const persistOrOpenCircuit = async (txHash, action) => {
     try {
-      queueTransactionReceipt(state, entry, txHash);
       await persist(state);
     } catch (error) {
       persistenceFailure ??= {
@@ -210,11 +268,38 @@ export function createReceiptOutboxController(state, persist) {
         message: error?.message ?? String(error),
       };
       throw new Error(
-        `transaction ${txHash} was broadcast but receipt outbox persistence failed; `
+        `transaction ${txHash} ${action}, but receipt outbox persistence failed; `
           + "broadcast circuit is now open",
         { cause: error },
       );
     }
+  };
+  const recordOperation = async (entry, txHash) => {
+    queueTransactionReceipt(state, entry, txHash);
+    await persistOrOpenCircuit(txHash, "was broadcast");
+  };
+  const recordPreparedOperation = async (entry, txHash, serializedTransaction) => {
+    queueTransactionReceipt(state, entry, txHash, { serializedTransaction });
+    await persistOrOpenCircuit(txHash, "was prepared and was not dispatched");
+  };
+  const markSubmitted = async (txHash, outcome = null) => {
+    const entry = recordMap(state, "receiptOutbox")[txHash];
+    if (!entry) throw new Error(`prepared transaction ${txHash} is missing from the receipt outbox`);
+    entry.submissionState = "submitted";
+    entry.lastPrivateDispatchAt = new Date().toISOString();
+    entry.lastError = null;
+    entry.privateSubmission = relayEvidence(outcome);
+    await persistOrOpenCircuit(txHash, "was submitted");
+    return entry;
+  };
+  const recordDispatchFailure = async (txHash, error) => {
+    const entry = recordMap(state, "receiptOutbox")[txHash];
+    if (!entry) throw new Error(`prepared transaction ${txHash} is missing from the receipt outbox`);
+    entry.submissionState = "prepared";
+    entry.lastPrivateDispatchAt = new Date().toISOString();
+    entry.lastError = String(error?.message ?? error ?? "private relay dispatch failed").slice(0, 500);
+    await persistOrOpenCircuit(txHash, "remained prepared after private relay rejection");
+    return entry;
   };
   return {
     admission() {
@@ -249,16 +334,58 @@ export function createReceiptOutboxController(state, persist) {
     async record(item, txHash) {
       return recordOperation(receiptEntryForIntent(item), txHash);
     },
+    async recordPrepared(item, txHash, serializedTransaction) {
+      return recordPreparedOperation(
+        receiptEntryForIntent(item),
+        txHash,
+        serializedTransaction,
+      );
+    },
     async recordOperation(entry, txHash) {
       return recordOperation(entry, txHash);
     },
+    async recordPreparedOperation(entry, txHash, serializedTransaction) {
+      return recordPreparedOperation(entry, txHash, serializedTransaction);
+    },
+    markSubmitted,
+    recordDispatchFailure,
     get failure() {
       return persistenceFailure ? { ...persistenceFailure } : null;
     },
   };
 }
 
-/** fsync + rename produces one durable, machine-readable file per transaction. */
+/** Route the engine's prepare/submit phases without allowing an index callback to discard raw bytes. */
+export async function recordExecutionSubmissionEvent(controller, state, event) {
+  const { hash, item, phase = "submitted", serializedTransaction, privateSubmission } = event;
+  if (phase === "prepared") {
+    return controller.recordPrepared(item, hash, serializedTransaction);
+  }
+  if (phase !== "submitted") {
+    throw new Error(`unknown execution submission phase ${String(phase)}`);
+  }
+  if (state.receiptOutbox?.[hash]?.serializedTransaction) {
+    return controller.markSubmitted(hash, privateSubmission);
+  }
+  return controller.record(item, hash);
+}
+
+/** Same phase router for maintenance writes, which have an operation identity instead of an intent. */
+export async function recordOperationSubmissionEvent(controller, state, entry, event) {
+  const { hash, phase = "submitted", serializedTransaction, privateSubmission } = event;
+  if (phase === "prepared") {
+    return controller.recordPreparedOperation(entry, hash, serializedTransaction);
+  }
+  if (phase !== "submitted") {
+    throw new Error(`unknown operation submission phase ${String(phase)}`);
+  }
+  if (state.receiptOutbox?.[hash]?.serializedTransaction) {
+    return controller.markSubmitted(hash, privateSubmission);
+  }
+  return controller.recordOperation(entry, hash);
+}
+
+/** Atomic no-replace publication produces one durable, machine-readable file per transaction. */
 export function persistReceiptDocument(receiptsDir, document) {
   const target = join(receiptsDir, `${document.chainId}-${document.txHash.toLowerCase()}.json`);
   const created = persistExclusiveDocument(
@@ -542,6 +669,12 @@ export async function settleReceiptOutbox({ publicClient, state, cfg, fetchImpl 
         confirmations,
         recordedAt: new Date().toISOString(),
         authorityScope: "none",
+        privateSubmission: entry.privateSubmission
+          ? {
+              ...relayEvidence(entry.privateSubmission),
+              inclusion: receipt.status === "success" ? "finalized" : "reverted",
+            }
+          : null,
       };
       const local = persistReceiptDocument(cfg.receiptsDir, document);
 

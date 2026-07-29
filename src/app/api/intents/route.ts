@@ -7,6 +7,7 @@ import {
   type RelaySubmission,
 } from "@/lib/relay";
 import { RelayAdmissionError, verifyRelaySubmissionAdmission } from "@/lib/relay-admission";
+import { BoundedJsonBodyError, readBoundedJsonBody } from "@/lib/request-body";
 import {
   RelayQueryError,
   insertRelayIntentImmutable,
@@ -37,18 +38,11 @@ const sb = relayUrl;
 const sbHeaders = relayHeaders;
 
 // Best-effort in-memory rate limit. On serverless this is per warm instance, not global — a first
-// line of defense against burst abuse of the unauthenticated endpoint, not a hard guarantee. A
-// global limiter (Upstash/KV) is the production hardening; noted for follow-up.
+// line of defense against burst abuse of the unauthenticated endpoint, not a hard guarantee.
 const RL_WINDOW_MS = 10_000;
 const RL_MAX = 20;
 function rateLimited(req: NextRequest): boolean {
   return serverRateLimited(req, "intents", RL_MAX, RL_WINDOW_MS);
-}
-
-async function readBody(request: NextRequest): Promise<unknown> {
-  const text = await request.text();
-  if (text.length > MAX_BODY_BYTES) throw new Error("body too large");
-  return JSON.parse(text);
 }
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
@@ -61,10 +55,12 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
   let raw: unknown;
   try {
-    raw = await readBody(request);
-  } catch (err) {
-    const tooLarge = (err as Error).message === "body too large";
-    return NextResponse.json({ error: tooLarge ? "Body too large." : "Body must be valid JSON." }, { status: tooLarge ? 413 : 400 });
+    raw = await readBoundedJsonBody(request, MAX_BODY_BYTES);
+  } catch (error) {
+    if (error instanceof BoundedJsonBodyError) {
+      return NextResponse.json({ error: error.message }, { status: error.status });
+    }
+    return NextResponse.json({ error: "Body must be valid JSON." }, { status: 400 });
   }
 
   let sub: RelaySubmission;
@@ -189,11 +185,14 @@ export async function PATCH(request: NextRequest): Promise<NextResponse> {
   }
   let id: string;
   try {
-    const body = (await readBody(request)) as { id?: unknown };
+    const body = (await readBoundedJsonBody(request, MAX_BODY_BYTES)) as { id?: unknown };
     if (typeof body.id !== "string" || !/^[0-9a-f-]{36}$/.test(body.id)) throw new Error("id must be a uuid");
     id = body.id;
-  } catch (err) {
-    return NextResponse.json({ error: `Bad request: ${(err as Error).message}` }, { status: 400 });
+  } catch (error) {
+    if (error instanceof BoundedJsonBodyError) {
+      return NextResponse.json({ error: error.message }, { status: error.status });
+    }
+    return NextResponse.json({ error: `Bad request: ${(error as Error).message}` }, { status: 400 });
   }
 
   const lookup = await fetch(sb(`${TABLE}?select=zap,kind,nonce,status,intent&id=eq.${id}`), { headers: sbHeaders(), cache: "no-store" });

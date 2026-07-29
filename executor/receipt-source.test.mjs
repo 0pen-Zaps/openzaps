@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { mkdtempSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { keccak256 } from "viem";
 
 import {
   HOSTED_DELIVERY_MAX_ATTEMPTS,
@@ -12,6 +13,8 @@ import {
   intentHasPendingReceipt,
   persistReceiptDocument,
   queueExecutionReceipt,
+  recordExecutionSubmissionEvent,
+  recordOperationSubmissionEvent,
   receiptOutboxHasCapacity,
   settleReceiptOutbox,
 } from "./receipt-source.mjs";
@@ -217,6 +220,157 @@ test("an outbox persistence failure opens a fail-closed broadcast circuit for th
   assert.equal(admission.outcome, "receipt-persistence-halted");
   assert.match(admission.detail, /disk full/);
   assert.match(admission.detail, /repair state storage and restart/);
+});
+
+test("prepared raw bytes are hash-bound, durable, and transition to submitted evidence", async () => {
+  const raw = "0x0201";
+  const hash = keccak256(raw);
+  const persisted = [];
+  const state = {};
+  const controller = createReceiptOutboxController(state, async (nextState) => {
+    persisted.push(JSON.parse(JSON.stringify(nextState)));
+  });
+  await controller.recordPrepared(ITEM, hash, raw);
+  assert.equal(state.receiptOutbox[hash].submissionState, "prepared");
+  assert.equal(state.receiptOutbox[hash].serializedTransaction, raw);
+  assert.equal(persisted.length, 1);
+
+  await controller.markSubmitted(hash, {
+    mode: "private-multi-relay",
+    status: "accepted-quorum",
+    requiredDistinctOrigins: 2,
+    attemptedOrigins: 2,
+    acceptedOrigins: 2,
+    unknownOrigins: 0,
+    rejectedOrigins: 0,
+    endpoints: [
+      {
+        id: "relay-a",
+        origin: "https://relay-a.example",
+        operator: "operator-a",
+        classification: "private-relay",
+        status: "accepted",
+        latencyMs: 10,
+        detail: "accepted",
+      },
+    ],
+  });
+  assert.equal(state.receiptOutbox[hash].submissionState, "submitted");
+  assert.equal(state.receiptOutbox[hash].privateSubmission.acceptedOrigins, 2);
+  assert.equal(persisted.length, 2);
+  assert.ok(
+    !JSON.stringify(state.receiptOutbox[hash].privateSubmission).includes(raw),
+    "relay health evidence must not copy raw transaction bytes",
+  );
+});
+
+test("final receipt preserves sanitized private relay evidence and inclusion, never signed bytes", async () => {
+  const receiptsDir = mkdtempSync(join(tmpdir(), "openzaps-private-receipt-"));
+  const raw = "0x0205";
+  const hash = keccak256(raw);
+  const authorization = "Bearer receipt-must-not-contain-this-secret";
+  const state = {};
+  const controller = createReceiptOutboxController(state, async () => {});
+
+  await controller.recordPrepared(ITEM, hash, raw);
+  await controller.markSubmitted(hash, {
+    mode: "private-multi-relay",
+    status: "accepted-quorum",
+    requiredDistinctOrigins: 2,
+    attemptedOrigins: 2,
+    acceptedOrigins: 2,
+    unknownOrigins: 0,
+    rejectedOrigins: 0,
+    authorization,
+    rawTransaction: raw,
+    endpoints: [
+      {
+        id: "relay-a",
+        origin: "https://relay-a.example",
+        url: "https://relay-a.example/rpc?credential=must-not-survive",
+        operator: "operator-a",
+        classification: "private-relay",
+        status: "accepted",
+        latencyMs: 10,
+        detail: "accepted",
+        authorization,
+      },
+    ],
+  });
+
+  const result = await settleReceiptOutbox({
+    publicClient: chain(),
+    state,
+    cfg: { confirmations: 3, receiptsDir, relayUrl: "", chainId: 4663 },
+  });
+
+  assert.equal(result.settled.length, 1);
+  assert.deepEqual(state.receiptOutbox, {});
+  const [file] = readdirSync(receiptsDir);
+  const serializedDocument = readFileSync(join(receiptsDir, file), "utf8");
+  const document = JSON.parse(serializedDocument);
+  assert.equal(document.privateSubmission.status, "accepted-quorum");
+  assert.equal(document.privateSubmission.acceptedOrigins, 2);
+  assert.equal(document.privateSubmission.inclusion, "finalized");
+  assert.equal(document.privateSubmission.endpoints[0].origin, "https://relay-a.example");
+  assert.ok(!Object.hasOwn(document, "serializedTransaction"));
+  assert.ok(!serializedDocument.includes(raw));
+  assert.ok(!serializedDocument.includes(authorization));
+  assert.ok(!serializedDocument.includes("credential=must-not-survive"));
+});
+
+test("prepared journal rejects raw bytes that do not match the claimed hash", async () => {
+  const controller = createReceiptOutboxController({}, async () => {});
+  await assert.rejects(
+    () => controller.recordPrepared(ITEM, HASH, "0x0201"),
+    /does not match its deterministic hash/,
+  );
+});
+
+test("execution and maintenance callbacks preserve prepare then submit phases end to end", async () => {
+  const executionRaw = "0x0203";
+  const executionHash = keccak256(executionRaw);
+  const operationRaw = "0x0204";
+  const operationHash = keccak256(operationRaw);
+  const state = {};
+  const snapshots = [];
+  const controller = createReceiptOutboxController(state, async (nextState) => {
+    snapshots.push(JSON.parse(JSON.stringify(nextState)));
+  });
+  await recordExecutionSubmissionEvent(controller, state, {
+    hash: executionHash,
+    item: ITEM,
+    phase: "prepared",
+    serializedTransaction: executionRaw,
+  });
+  assert.equal(state.receiptOutbox[executionHash].submissionState, "prepared");
+  await recordExecutionSubmissionEvent(controller, state, {
+    hash: executionHash,
+    item: ITEM,
+    phase: "submitted",
+    privateSubmission: { status: "accepted-quorum", acceptedOrigins: 2 },
+  });
+  assert.equal(state.receiptOutbox[executionHash].submissionState, "submitted");
+
+  const operation = {
+    relayIntentId: null,
+    zap: "0x0000000000000000000000000000000000000001",
+    kind: "pot-conversion",
+    nonce: operationHash,
+  };
+  await recordOperationSubmissionEvent(controller, state, operation, {
+    hash: operationHash,
+    phase: "prepared",
+    serializedTransaction: operationRaw,
+  });
+  assert.equal(state.receiptOutbox[operationHash].submissionState, "prepared");
+  await recordOperationSubmissionEvent(controller, state, operation, {
+    hash: operationHash,
+    phase: "submitted",
+    privateSubmission: { status: "accepted-degraded", acceptedOrigins: 1 },
+  });
+  assert.equal(state.receiptOutbox[operationHash].submissionState, "submitted");
+  assert.equal(snapshots.length, 4);
 });
 
 test("a permanent hosted rejection becomes durable dead-letter evidence", async () => {

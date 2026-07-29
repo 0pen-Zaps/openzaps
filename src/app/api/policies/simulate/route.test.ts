@@ -19,10 +19,16 @@ describe("chain-exact policy API operational gates", () => {
     expect(exactPolicyApiEnabled({
       NODE_ENV: "production",
       OPENZAPS_EXACT_POLICY_API_ENABLED: "true",
+    })).toBe(false);
+    expect(exactPolicyApiEnabled({
+      NODE_ENV: "production",
+      OPENZAPS_EXACT_POLICY_API_ENABLED: "true",
+      OPENZAPS_EXACT_POLICY_DURABLE_QUOTA_ENABLED: "true",
     })).toBe(true);
 
     vi.stubEnv("NODE_ENV", "production");
     vi.stubEnv("OPENZAPS_EXACT_POLICY_API_ENABLED", "");
+    vi.stubEnv("OPENZAPS_EXACT_POLICY_DURABLE_QUOTA_ENABLED", "");
     const response = await POST(new NextRequest("https://0xzaps.com/api/policies/simulate", {
       method: "POST",
       body: "{}",

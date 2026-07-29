@@ -1,23 +1,24 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { createWalletClient, custom } from "viem";
+import { createWalletClient, custom, getAddress, isAddress, type Address } from "viem";
 
 import { useWalletSession } from "@/components/WalletProvider";
 import type { ChainNode } from "@/lib/blocks";
 import {
   MAX_TEMPLATE_NAME,
   MAX_TEMPLATE_SUMMARY,
+  isPolicyTemplateHash,
   policyTemplatePublishMessage,
+  policyTemplateSubscriptionReadMessage,
+  policyTemplateSubscriptionMessage,
+  POLICY_TEMPLATE_SUBSCRIPTION_TTL_SECONDS,
   preparePolicyTemplate,
   templateChain,
   type PublicPolicyTemplate,
 } from "@/lib/policy-templates";
 import { getInjectedProvider, robinhoodChain } from "@/lib/robinhood";
 import styles from "./policy-template-registry.module.css";
-
-const SUBSCRIBER_KEY = "openzaps:policy-template-subscriber:v1";
-const SUBSCRIPTIONS_KEY = "openzaps:policy-template-subscriptions:v1";
 
 type RegistryResponse = {
   configured: boolean;
@@ -26,6 +27,23 @@ type RegistryResponse = {
   templates: PublicPolicyTemplate[];
   nextCursor?: string | null;
   error?: string;
+};
+
+type SubscriptionSnapshotResponse = {
+  subscriber?: unknown;
+  version?: unknown;
+  contentHashes?: unknown;
+  error?: string;
+  code?: string;
+};
+
+type SubscriptionMutationResponse = {
+  subscriber?: unknown;
+  version?: unknown;
+  contentHash?: unknown;
+  subscribed?: unknown;
+  error?: string;
+  code?: string;
 };
 
 export function PolicyTemplateRegistry({
@@ -50,6 +68,14 @@ export function PolicyTemplateRegistry({
   const [name, setName] = useState("");
   const [summary, setSummary] = useState("");
   const [subscribed, setSubscribed] = useState<Set<string>>(() => new Set());
+  const [subscriptionWallet, setSubscriptionWallet] = useState<Address | null>(null);
+  const [subscriptionVersion, setSubscriptionVersion] = useState(0);
+  const [subscriptionsSyncing, setSubscriptionsSyncing] = useState(false);
+  const activeSubscriptionWallet = walletSession.account
+    && subscriptionWallet
+    && getAddress(walletSession.account) === subscriptionWallet
+    ? subscriptionWallet
+    : null;
 
   const load = useCallback(async (cursor: string | null = null): Promise<void> => {
     try {
@@ -73,17 +99,71 @@ export function PolicyTemplateRegistry({
   useEffect(() => {
     const frame = window.requestAnimationFrame(() => {
       void load(null);
-      try {
-        const stored = JSON.parse(window.localStorage.getItem(SUBSCRIPTIONS_KEY) ?? "[]") as unknown;
-        if (Array.isArray(stored)) {
-          setSubscribed(new Set(stored.filter((entry): entry is string => typeof entry === "string")));
-        }
-      } catch {
-        // A corrupt convenience cache cannot affect the exact-version records.
-      }
     });
     return () => window.cancelAnimationFrame(frame);
   }, [load]);
+
+  const syncSubscriptions = async (): Promise<void> => {
+    if (subscriptionsSyncing || !subscriptionsEnabled) return;
+    setSubscriptionsSyncing(true);
+    setStatus("");
+    try {
+      const subscriber = getAddress(await walletSession.connect());
+      const provider = getInjectedProvider();
+      if (!provider) throw new Error("No injected wallet found.");
+      const wallet = createWalletClient({ chain: robinhoodChain, transport: custom(provider) });
+      const expiresAt = subscriptionExpiry();
+      const requestNonce = randomRequestNonce();
+      const subscriberSignature = await wallet.signMessage({
+        account: subscriber,
+        message: policyTemplateSubscriptionReadMessage({
+          subscriber,
+          requestNonce,
+          expiresAt,
+        }),
+      });
+      const response = await fetch("/api/policy-templates/subscriptions", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        cache: "no-store",
+        body: JSON.stringify({
+          operation: "read",
+          subscriber,
+          subscriberSignature,
+          requestNonce,
+          expiresAt,
+        }),
+      });
+      const body = (await response.json()) as SubscriptionSnapshotResponse;
+      if (!response.ok) throw new Error(body.error ?? "Wallet subscriptions could not be read.");
+      if (
+        typeof body.subscriber !== "string"
+        || !isAddress(body.subscriber)
+        || getAddress(body.subscriber) !== subscriber
+        || !Number.isSafeInteger(body.version)
+        || Number(body.version) < 0
+        || !Array.isArray(body.contentHashes)
+        || body.contentHashes.some((entry) => !isPolicyTemplateHash(entry))
+      ) {
+        throw new Error("The subscription service returned an invalid wallet snapshot.");
+      }
+      const [active] = await wallet.getAddresses();
+      if (!active || getAddress(active) !== subscriber) {
+        throw new Error("The active wallet changed while subscriptions were loading.");
+      }
+      setSubscribed(new Set(body.contentHashes.map((entry) => String(entry).toLowerCase())));
+      setSubscriptionWallet(subscriber);
+      setSubscriptionVersion(Number(body.version));
+      setStatus(`Loaded ${body.contentHashes.length} exact-version subscription${body.contentHashes.length === 1 ? "" : "s"} for ${shortAddress(subscriber)}.`);
+    } catch (cause) {
+      setSubscribed(new Set());
+      setSubscriptionWallet(null);
+      setSubscriptionVersion(0);
+      setStatus(cause instanceof Error ? cause.message : "Wallet subscriptions could not be read.");
+    } finally {
+      setSubscriptionsSyncing(false);
+    }
+  };
 
   const publish = async (): Promise<void> => {
     if (!name.trim() || publishing || chain.length === 0) return;
@@ -134,38 +214,89 @@ export function PolicyTemplateRegistry({
   };
 
   const toggleSubscription = async (template: PublicPolicyTemplate): Promise<void> => {
+    if (!activeSubscriptionWallet) {
+      setStatus("Load this wallet’s authoritative subscriptions before changing them.");
+      return;
+    }
     const next = !subscribed.has(template.contentHash);
     setStatus("");
     try {
-      const subscriberKey = readSubscriberKey();
+      const subscriber = getAddress(await walletSession.connect());
+      if (subscriber !== activeSubscriptionWallet) {
+        setSubscribed(new Set());
+        setSubscriptionWallet(null);
+        setSubscriptionVersion(0);
+        throw new Error("The active wallet changed. Load its subscriptions before changing them.");
+      }
+      const provider = getInjectedProvider();
+      if (!provider) throw new Error("No injected wallet found.");
+      const wallet = createWalletClient({ chain: robinhoodChain, transport: custom(provider) });
+      const expiresAt = subscriptionExpiry();
+      const subscriberSignature = await wallet.signMessage({
+        account: subscriber,
+        message: policyTemplateSubscriptionMessage({
+          subscriber,
+          contentHash: template.contentHash,
+          subscribed: next,
+          expectedVersion: subscriptionVersion,
+          expiresAt,
+        }),
+      });
       const response = await fetch("/api/policy-templates/subscriptions", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ subscriberKey, contentHash: template.contentHash, subscribed: next }),
+        cache: "no-store",
+        body: JSON.stringify({
+          operation: "set",
+          subscriber,
+          subscriberSignature,
+          contentHash: template.contentHash,
+          subscribed: next,
+          expectedVersion: subscriptionVersion,
+          expiresAt,
+        }),
       });
-      const body = (await response.json()) as { error?: string };
+      const body = (await response.json()) as SubscriptionMutationResponse;
       if (!response.ok) {
+        if (body.code === "VERSION_CONFLICT") {
+          setSubscribed(new Set());
+          setSubscriptionWallet(null);
+          setSubscriptionVersion(0);
+        }
         setStatus(body.error ?? "The subscription could not be changed.");
         return;
+      }
+      const [active] = await wallet.getAddresses();
+      if (
+        !active
+        || getAddress(active) !== subscriber
+        || typeof body.subscriber !== "string"
+        || !isAddress(body.subscriber)
+        || getAddress(body.subscriber) !== subscriber
+        || body.contentHash !== template.contentHash
+        || body.subscribed !== next
+        || !Number.isSafeInteger(body.version)
+        || Number(body.version) !== subscriptionVersion + 1
+      ) {
+        setSubscribed(new Set());
+        setSubscriptionWallet(null);
+        setSubscriptionVersion(0);
+        throw new Error("The subscription response was not authoritative for the active wallet.");
       }
       setSubscribed((current) => {
         const updated = new Set(current);
         if (next) updated.add(template.contentHash);
         else updated.delete(template.contentHash);
-        try {
-          window.localStorage.setItem(SUBSCRIPTIONS_KEY, JSON.stringify([...updated]));
-        } catch {
-          // The server-side exact-version row is still authoritative.
-        }
         return updated;
       });
+      setSubscriptionVersion(Number(body.version));
       setStatus(
         next
           ? `Subscribed to exact version ${template.version}; later forks will not silently replace it.`
           : `Unsubscribed from exact version ${template.version}.`,
       );
-    } catch {
-      setStatus("The subscription could not be changed.");
+    } catch (cause) {
+      setStatus(cause instanceof Error ? cause.message : "The subscription could not be changed.");
     }
   };
 
@@ -176,12 +307,26 @@ export function PolicyTemplateRegistry({
           <h2 id="public-policy-templates">Public policy templates</h2>
           <p>
             Every version is immutable, wallet-signed, and addressed by its content hash. Forks name an exact
-            parent; subscriptions pin one exact version, never “latest”.
+            parent; wallet-bound subscriptions pin one exact version, never “latest”.
           </p>
         </div>
-        <button type="button" className={styles.refresh} onClick={() => void load(null)} disabled={configured === null}>
-          Refresh
-        </button>
+        <div className={styles.actions}>
+          <button
+            type="button"
+            className={styles.refresh}
+            onClick={() => void syncSubscriptions()}
+            disabled={!subscriptionsEnabled || subscriptionsSyncing}
+          >
+            {subscriptionsSyncing
+              ? "Loading subscriptions…"
+              : activeSubscriptionWallet
+                ? `Synced ${shortAddress(activeSubscriptionWallet)}`
+                : "Load my subscriptions"}
+          </button>
+          <button type="button" className={styles.refresh} onClick={() => void load(null)} disabled={configured === null}>
+            Refresh
+          </button>
+        </div>
       </div>
 
       {parent ? (
@@ -221,6 +366,11 @@ export function PolicyTemplateRegistry({
           admission controls are enabled.
         </p>
       ) : null}
+      {configured && subscriptionsEnabled && !activeSubscriptionWallet ? (
+        <p className={styles.notice}>
+          Subscription state stays hidden until the active wallet signs a short-lived read request.
+        </p>
+      ) : null}
 
       {configured === false ? (
         <p className={styles.notice}>The public registry is not configured here. Local saves and content share links are unaffected.</p>
@@ -243,12 +393,22 @@ export function PolicyTemplateRegistry({
                   </button>
                   <button
                     type="button"
-                    data-subscribed={subscribed.has(template.contentHash)}
+                    data-subscribed={activeSubscriptionWallet ? subscribed.has(template.contentHash) : false}
                     onClick={() => void toggleSubscription(template)}
-                    disabled={!subscriptionsEnabled}
-                    title={subscriptionsEnabled ? undefined : "Exact-version subscriptions are disabled on this deployment."}
+                    disabled={!subscriptionsEnabled || !activeSubscriptionWallet || subscriptionsSyncing}
+                    title={
+                      !subscriptionsEnabled
+                        ? "Exact-version subscriptions are disabled on this deployment."
+                        : !activeSubscriptionWallet
+                          ? "Load the active wallet’s authoritative subscriptions first."
+                          : undefined
+                    }
                   >
-                    {subscribed.has(template.contentHash) ? "Subscribed" : `Subscribe v${template.version}`}
+                    {!activeSubscriptionWallet
+                      ? "Load to check"
+                      : subscribed.has(template.contentHash)
+                        ? "Subscribed"
+                        : `Subscribe v${template.version}`}
                   </button>
                 </div>
               </article>
@@ -269,24 +429,21 @@ export function PolicyTemplateRegistry({
   );
 }
 
-function readSubscriberKey(): string {
-  try {
-    const current = window.localStorage.getItem(SUBSCRIBER_KEY);
-    if (current) return current;
-    const created = crypto.randomUUID();
-    window.localStorage.setItem(SUBSCRIBER_KEY, created);
-    return created;
-  } catch {
-    return crypto.randomUUID();
-  }
-}
-
 function shortHash(hash: string): string {
   return `${hash.slice(0, 10)}…${hash.slice(-6)}`;
 }
 
 function shortAddress(address: string): string {
   return `${address.slice(0, 6)}…${address.slice(-4)}`;
+}
+
+function subscriptionExpiry(): number {
+  return Math.floor(Date.now() / 1_000) + Math.min(120, POLICY_TEMPLATE_SUBSCRIPTION_TTL_SECONDS);
+}
+
+function randomRequestNonce(): `0x${string}` {
+  const bytes = crypto.getRandomValues(new Uint8Array(32));
+  return `0x${Array.from(bytes, (value) => value.toString(16).padStart(2, "0")).join("")}`;
 }
 
 function dedupeTemplates(templates: readonly PublicPolicyTemplate[]): PublicPolicyTemplate[] {

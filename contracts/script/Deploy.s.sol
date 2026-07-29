@@ -12,10 +12,7 @@ import {OpenZapFactory} from "../src/OpenZapFactory.sol";
 ///      immediately after deployment. Adapters and tokens must be explicitly allowlisted before any
 ///      zap can be created against them.
 contract Deploy is Script {
-    function run()
-        external
-        returns (AdapterRegistry registry, TokenAllowlist allowlist, OpenZapFactory factory)
-    {
+    function run() external returns (AdapterRegistry registry, TokenAllowlist allowlist, OpenZapFactory factory) {
         address governance = vm.envOr("GOVERNANCE", msg.sender);
         vm.startBroadcast();
         registry = new AdapterRegistry(governance);

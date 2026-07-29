@@ -566,9 +566,7 @@ contract OpenZapV3_1RelativeTest is Test {
                     uint256 execFeeOut,
                     uint256 potFeeOut,
                     uint256 floorOut
-                ) = abi.decode(
-                    logs[i].data, (uint256, uint256, address, uint256, uint256, uint256, uint256)
-                );
+                ) = abi.decode(logs[i].data, (uint256, uint256, address, uint256, uint256, uint256, uint256));
                 runOut; // silence unused
                 outAssetOut;
                 amountOutOut;

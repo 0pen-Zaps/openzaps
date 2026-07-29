@@ -520,9 +520,7 @@ contract AaveV3WithdrawAdapterForkTest is Test {
         a1.mint(caller, 1 ether);
         vm.startPrank(caller);
         a1.approve(address(adapter), 1 ether);
-        vm.expectRevert(
-            abi.encodeWithSelector(AaveV3WithdrawAdapter.ATokenReplaced.selector, address(a1), address(a2))
-        );
+        vm.expectRevert(abi.encodeWithSelector(AaveV3WithdrawAdapter.ATokenReplaced.selector, address(a1), address(a2)));
         adapter.execute(address(a1), 1 ether, "");
         vm.stopPrank();
 
@@ -559,7 +557,11 @@ contract AaveV3WithdrawAdapterForkTest is Test {
     function _deploySupplyZap(string memory salt, uint256 amountIn, address recipient) internal returns (address) {
         Step[] memory steps = new Step[](1);
         steps[0] = Step({
-            adapter: address(supplyAdapter), tokenIn: WETH, spender: address(supplyAdapter), amountIn: amountIn, data: ""
+            adapter: address(supplyAdapter),
+            tokenIn: WETH,
+            spender: address(supplyAdapter),
+            amountIn: amountIn,
+            data: ""
         });
         address[] memory tracked = new address[](2);
         tracked[0] = WETH;

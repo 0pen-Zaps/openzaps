@@ -1,0 +1,58 @@
+{
+  "_evidence": {
+    "network": "Robinhood Chain mainnet",
+    "registry": "0x9E56e444f490C00A6277326A47Cb462E12dF1f17",
+    "observedBlock": "22052833",
+    "observedAt": "2026-07-29T01:18:13Z",
+    "approvalBasis": "Addresses are pinned in the application/deployment catalog and covered by the release test suite. Runtime hashes and registry allowlist status were independently read at observedBlock before this manifest was committed."
+  },
+  "version": 1,
+  "chainId": "4663",
+  "adapters": [
+    {
+      "label": "RobinhoodV4SwapAdapter aeWETH/0xZAPS",
+      "address": "0x04f62dA4b51a010eFa32aa81569169C47AEd602C",
+      "runtimeCodeHash": "0x9cdd8da48dd7d59616a640e7d0b60f12cf819519de204efb5abbbe8e0a6d257e"
+    },
+    {
+      "label": "RobinhoodV4PoolAdapter aeWETH/USDG",
+      "address": "0x714E48930d1d9a53149AA7B92cD88C9E172d1942",
+      "runtimeCodeHash": "0xfd209cf1b408cd1c9c3478b947c857712fc8ef62f5c19d5863a0c9e2dc666224"
+    },
+    {
+      "label": "ZapVaultDepositAdapter USDG/ozUSDG",
+      "address": "0x1b289fD37Ff4497531a953aa922ab258F5e81164",
+      "runtimeCodeHash": "0x033442116291cfe613b4d82666b5b22b8ed88a5aad5eb15f5cdd3a708b77ab3e"
+    },
+    {
+      "label": "ZapVaultRedeemAdapter ozUSDG/USDG",
+      "address": "0x16eD4f04657c7a965aef333F5Cf0c9d745e0c8cE",
+      "runtimeCodeHash": "0x8b3cd3bed2c895bc6083044dcdb5eb2a7b57b18db22fd80d455b6a0a3ac639f6"
+    },
+    {
+      "label": "RobinhoodV4RouteAdapter USDG to aeWETH to 0xZAPS",
+      "address": "0x132e65D4A28ec1687D3B2b2a6e2DfD75afCf4900",
+      "runtimeCodeHash": "0xa072ee627b548f6da96b55e2d3730273fe040cf7fa136019223b21a8c87faff4"
+    },
+    {
+      "label": "RobinhoodV4RouteAdapter 0xZAPS to aeWETH to USDG",
+      "address": "0x9C3F7F057aC3d2828C7271ba73538B33E32E7a59",
+      "runtimeCodeHash": "0xa072ee627b548f6da96b55e2d3730273fe040cf7fa136019223b21a8c87faff4"
+    },
+    {
+      "label": "ZapRangeDepositAdapter",
+      "address": "0xaB2e75fdb8f108c0589048c8cc0F3ce5Fb8b7896",
+      "runtimeCodeHash": "0x88dc844f20a1bba970ae9ff6c6b27d15dff6b85691dd5d6d553683a5346ddd9c"
+    },
+    {
+      "label": "ZapRangeWithdrawAdapter settling USDG",
+      "address": "0xDeaC50A0fD41e66900E8a4ab721ce8A43129aE1C",
+      "runtimeCodeHash": "0xd231fe6a115b0cb4154ca86926b534d9e50ee85fdde795e19b39caabcb5f5d0e"
+    },
+    {
+      "label": "ZapRangeWithdrawAdapter settling aeWETH",
+      "address": "0x5a7F5e5D5Ef503300E04Ab91145CDA2F1c7289B8",
+      "runtimeCodeHash": "0x0b16a8d5f3616207766f991e2bf20df2b808559e492fd7b02e0db727c82cab08"
+    }
+  ]
+}

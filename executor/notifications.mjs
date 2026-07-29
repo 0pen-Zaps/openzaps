@@ -92,7 +92,12 @@ export function operationalStatus(result) {
   if (result.outcome === "finalized") return "finalized";
   if (result.outcome === "reverted") return "reverted";
   if (result.outcome === "underfunded") return "underfunded";
-  if (result.outcome === "blocked" || result.status === "blocked" || result.status === "error") return "blocked";
+  if (
+    result.outcome === "blocked"
+    || result.outcome === "private-submission-unavailable"
+    || result.status === "blocked"
+    || result.status === "error"
+  ) return "blocked";
   if (result.status === "expired") return "expired";
   return null;
 }

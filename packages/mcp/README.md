@@ -1,7 +1,7 @@
 # `@openzaps/mcp`
 
-This package is prepared for publication but is not yet available from npm. The configuration below
-applies only after the `@openzaps/mcp` release has been verified:
+Use the configuration below only for a release that is visible and provenance-verified on npm.
+Before the first release, validate the packaged entrypoint directly from the repository checkout.
 
 ```json
 {

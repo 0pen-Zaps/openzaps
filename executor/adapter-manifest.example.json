@@ -1,0 +1,13 @@
+{
+  "_instructions": [
+    "Copy this file to ~/.openzaps/executor/adapter-manifest.json.",
+    "Populate adapters only from a reviewed release artifact; the executor never treats an observed onchain hash as approval.",
+    "Each entry is: { \"label\": \"operator note\", \"address\": \"0x + 40 hex\", \"runtimeCodeHash\": \"0x + 64 hex\" }.",
+    "Every adapter referenced by a capsule route must be present. recurring-stack routes also require the capsule's immutable ZAPS_ADAPTER.",
+    "An empty, absent, malformed, wrong-chain, or incomplete manifest keeps a signing executor fail closed. Watch-only mode reports the gap.",
+    "The current Robinhood adapter registry is 0x9E56e444f490C00A6277326A47Cb462E12dF1f17; registry approval is checked independently and is not a substitute for a release-approved hash."
+  ],
+  "version": 1,
+  "chainId": "4663",
+  "adapters": []
+}

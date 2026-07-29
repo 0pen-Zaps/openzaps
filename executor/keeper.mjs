@@ -10,12 +10,15 @@
 // buyZaps to one pinned adapter and the 0xZAPS output asset, so the worst a wrong plan does is
 // waste one reverted simulation.
 import { erc20Abi, lotteryPotAbi, priceSourceAbi } from "./abi.mjs";
+import { verifyPotAdapterManifest } from "./adapter-manifest.mjs";
 import { checkPendingBaseFee, log } from "./engine.mjs";
+import { privateSubmissionDetail } from "./private-submission.mjs";
 
 const BPS = 10_000n;
 const Q96 = 1n << 96n;
 /** Modest tip (0.1 gwei) — comfortably above Robinhood Chain's observed floor, far below the cap. */
 const PRIORITY_FEE_WEI = 100_000_000n;
+const POT_CONVERSION_GAS_LIMIT = 3_000_000n;
 
 /**
  * Decide whether to convert the pot's accrued fee asset and, if so, the slippage-protected floor.
@@ -82,10 +85,34 @@ export async function convertPotFees({
   onBroadcast = async () => {},
   canBroadcast = async () => ({ allowed: true }),
   withBroadcastLane = async (operation) => operation(),
+  verifyPotAdapter = verifyPotAdapterManifest,
 }) {
   if (!cfg.lotteryPot || !cfg.poolPriceSource || !cfg.feeAsset) {
     return { outcome: "disabled", detail: "pot/price-source/fee-asset not configured" };
   }
+  let adapterProof;
+  try {
+    const atBlock = await publicClient.getBlockNumber();
+    adapterProof = await verifyPotAdapter(publicClient, cfg, atBlock);
+  } catch (error) {
+    return {
+      outcome: "blocked",
+      detail:
+        `pot adapter provenance failed: `
+        + `${error?.shortMessage ?? error?.message ?? String(error)}`,
+    };
+  }
+  if (!adapterProof?.verified && walletClient) {
+    return {
+      outcome: "blocked",
+      detail:
+        `pot adapter provenance failed closed: `
+        + `${adapterProof?.detail ?? "release manifest verification is unavailable"}`,
+    };
+  }
+  const manifestWarning = !adapterProof?.verified
+    ? `; watch-only adapter manifest gap: ${adapterProof?.detail ?? "unverified"}`
+    : "";
   let feeBalance;
   let priceX96;
   try {
@@ -113,6 +140,7 @@ export async function convertPotFees({
       functionName: "buyZaps",
       args: [cfg.feeAsset, plan.amountIn, plan.minZapsOut],
       account: walletClient?.account ?? "0x000000000000000000000000000000000000dEaD",
+      gas: POT_CONVERSION_GAS_LIMIT,
     }));
   } catch (err) {
     return { outcome: "simulation-reverted", detail: err.shortMessage ?? err.message, amountIn: plan.amountIn };
@@ -121,7 +149,9 @@ export async function convertPotFees({
   if (!walletClient) {
     return {
       outcome: "watch-only",
-      detail: `would convert ${plan.amountIn} fee-asset → ≥${plan.minZapsOut} 0xZAPS`,
+      detail:
+        `would convert ${plan.amountIn} fee-asset → ≥${plan.minZapsOut} 0xZAPS`
+        + manifestWarning,
       amountIn: plan.amountIn,
     };
   }
@@ -158,16 +188,61 @@ export async function convertPotFees({
         // Explicit priority fee capped by the fee cap: without it, a node-suggested priority tip
         // above the cap makes viem reject the request and every conversion stalls.
         const priority = feeCap < PRIORITY_FEE_WEI ? feeCap : PRIORITY_FEE_WEI;
-        const hash = await walletClient.writeContract({
+        const privateSubmission = walletClient.openZapsPrivateSubmission;
+        const privateFields = {};
+        if (privateSubmission?.withPreparationHook) {
+          const admittedNonce = admission?.latestNonce;
+          if (
+            typeof admittedNonce !== "bigint"
+            || admittedNonce < 0n
+            || admittedNonce > BigInt(Number.MAX_SAFE_INTEGER)
+          ) {
+            return {
+              deferred: {
+                outcome: "nonce-lane-unknown",
+                detail: "private pot conversion requires the exact admitted pending nonce",
+              },
+            };
+          }
+          Object.assign(privateFields, {
+            chainId: cfg.chainId,
+            nonce: Number(admittedNonce),
+            type: "eip1559",
+          });
+        }
+        const write = () => walletClient.writeContract({
           ...request,
+          ...privateFields,
           maxFeePerGas: feeCap,
           maxPriorityFeePerGas: priority,
         });
+        let preparedOutbox = false;
+        const hash = privateSubmission?.withPreparationHook
+          ? await privateSubmission.withPreparationHook(
+              async ({ hash: preparedHash, serializedTransaction }) => {
+                await onBroadcast({
+                  hash: preparedHash,
+                  operation: "pot-conversion",
+                  amountIn: plan.amountIn,
+                  phase: "prepared",
+                  serializedTransaction,
+                });
+                preparedOutbox = true;
+              },
+              write,
+            )
+          : await write();
         let outboxWarning = "";
         try {
-          // Keep the signer lane locked until the hash is durable. All executor wallet writes
-          // share this receipt-backed marker, so a stale pending-nonce RPC cannot admit another.
-          await onBroadcast({ hash, operation: "pot-conversion", amountIn: plan.amountIn });
+          await onBroadcast({
+            hash,
+            operation: "pot-conversion",
+            amountIn: plan.amountIn,
+            phase: "submitted",
+            privateSubmission: preparedOutbox
+              ? privateSubmission.getOutcome(hash)
+              : null,
+          });
         } catch (error) {
           // The transaction already exists. Preserve that truth and let the durable-state
           // controller open its process-wide admission circuit.
@@ -205,6 +280,10 @@ export async function convertPotFees({
     };
   }
   const { hash, outboxWarning = "" } = laneResult;
+  const privateRelayOutcome =
+    walletClient.openZapsPrivateSubmission?.getOutcome?.(hash) ?? null;
+  const relayDetail = privateSubmissionDetail(privateRelayOutcome);
+  const relaySuffix = relayDetail ? `; ${relayDetail}` : "";
 
   try {
     const receipt = await publicClient.waitForTransactionReceipt({ hash, timeout: 120_000 });
@@ -212,21 +291,39 @@ export async function convertPotFees({
       outcome: "confirmation-observed",
       detail:
         `buyZaps ${hash} receipt observed as ${receipt.status}; awaiting canonical settlement`
-        + ` — ${plan.amountIn} fee-asset → ≥${plan.minZapsOut} 0xZAPS${outboxWarning}`,
+        + ` — ${plan.amountIn} fee-asset → ≥${plan.minZapsOut} 0xZAPS`
+        + `${relaySuffix}${outboxWarning}`,
       amountIn: plan.amountIn,
       minZapsOut: plan.minZapsOut,
       txHash: hash,
       observedReceiptStatus: receipt.status,
+      ...(privateRelayOutcome
+        ? {
+            privateSubmission: {
+              ...privateRelayOutcome,
+              inclusion: "receipt-observed",
+            },
+          }
+        : {}),
     };
   } catch (err) {
     return {
       outcome: "confirmation-pending",
       detail:
         `buyZaps ${hash} broadcast; finality wait pending: ${err.shortMessage ?? err.message}`
+        + relaySuffix
         + outboxWarning,
       amountIn: plan.amountIn,
       minZapsOut: plan.minZapsOut,
       txHash: hash,
+      ...(privateRelayOutcome
+        ? {
+            privateSubmission: {
+              ...privateRelayOutcome,
+              inclusion: "pending",
+            },
+          }
+        : {}),
     };
   }
 }

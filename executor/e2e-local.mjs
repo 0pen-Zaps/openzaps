@@ -290,13 +290,24 @@ async function main() {
   };
 
   const prizeBefore = await read(pot, "roundPrize", [1n]);
-  const conv = await convertPotFees({ publicClient, walletClient: executorWallet, cfg: keeperCfg });
+  const verifyLocalPotAdapter = async () => ({ verified: true, status: "local-e2e-fixture" });
+  const conv = await convertPotFees({
+    publicClient,
+    walletClient: executorWallet,
+    cfg: keeperCfg,
+    verifyPotAdapter: verifyLocalPotAdapter,
+  });
   assertEq(conv.outcome, "confirmation-observed", "keeper observes the buyZaps receipt");
   assertEq(await read(pot, "roundPrize", [1n]), prizeBefore + parseEther("1"), "converted 0xZAPS added to the round prize");
 
   const feeBalAfter = await publicClient.readContract({ address: feeAsset.address, abi: feeAsset.abi, functionName: "balanceOf", args: [pot.address] });
   assertEq(feeBalAfter, 0n, "pot fully drained of the fee asset");
-  const idle = await convertPotFees({ publicClient, walletClient: executorWallet, cfg: keeperCfg });
+  const idle = await convertPotFees({
+    publicClient,
+    walletClient: executorWallet,
+    cfg: keeperCfg,
+    verifyPotAdapter: verifyLocalPotAdapter,
+  });
   assertEq(idle.outcome, "idle", "keeper idles when the pot holds no convertible fee");
 
   log(failures ? "error" : "info", failures ? `E2E FAILED — ${failures} assertion(s)` : "E2E PASSED — all assertions green");

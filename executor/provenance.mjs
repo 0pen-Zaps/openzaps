@@ -12,10 +12,15 @@
 import { getAddress, isAddressEqual, keccak256, zeroAddress } from "viem";
 
 import { openZapFactoryV3Abi, openZapV3Abi, zapCreatedEvent } from "./abi.mjs";
+import {
+  AdapterManifestVerificationError,
+  verifyRouteAdapterManifest,
+} from "./adapter-manifest.mjs";
 
 const ACTIVITY_FROM_BLOCK = 15_900_000n;
 const MAX_VERIFIED_CACHE = 4_096;
 const verified = new Map();
+const reportedManifestGaps = new Set();
 
 export class CapsuleProvenanceError extends Error {
   constructor(message) {
@@ -68,6 +73,48 @@ function remember(key, proof) {
 /** Test-only cache reset; it does not weaken the production path. */
 export function clearCapsuleProvenanceCache() {
   verified.clear();
+  reportedManifestGaps.clear();
+}
+
+function reportWatchOnlyManifestGap(item, result) {
+  const key = [
+    String(item?.intent?.zap).toLowerCase(),
+    String(item?.intent?.policyHash).toLowerCase(),
+    result.detail,
+  ].join(":");
+  if (reportedManifestGaps.has(key)) return;
+  reportedManifestGaps.add(key);
+  while (reportedManifestGaps.size > MAX_VERIFIED_CACHE) {
+    const oldest = reportedManifestGaps.values().next().value;
+    if (oldest === undefined) break;
+    reportedManifestGaps.delete(oldest);
+  }
+  console.warn(
+    `[provenance] watch-only adapter manifest gap for ${item.intent.zap}: ${result.detail}`,
+  );
+}
+
+async function withAdapterManifestProof(client, item, cfg, proof, blockNumber) {
+  let adapterManifest;
+  try {
+    adapterManifest = await verifyRouteAdapterManifest(client, item, cfg, blockNumber);
+  } catch (error) {
+    const detail = error instanceof AdapterManifestVerificationError
+      ? error.message
+      : error?.shortMessage ?? error?.message ?? String(error);
+    throw new CapsuleProvenanceError(`adapter manifest verification failed: ${detail}`);
+  }
+  if (!adapterManifest.verified) {
+    // Only an explicitly configured watch-only process may continue far enough to report/simulate
+    // an uncovered route. Undefined posture is treated as executing and therefore fails closed.
+    if (cfg?.watchOnly !== true) {
+      throw new CapsuleProvenanceError(
+        `adapter manifest verification failed: ${adapterManifest.detail}`,
+      );
+    }
+    reportWatchOnlyManifestGap(item, adapterManifest);
+  }
+  return { ...proof, adapterManifest };
 }
 
 /**
@@ -96,7 +143,19 @@ export async function verifyExecutionTargetProvenance(client, item, cfg) {
     policyHash.toLowerCase(),
   ].join(":");
   const cached = verified.get(cacheKey);
-  if (cached) return cached;
+  if (cached) {
+    // Capsule lineage/policy is immutable and remains cached, but adapter code and registry status
+    // are live safety dependencies. Re-pin and re-check them before every simulation/submission.
+    let adapterBlock;
+    try {
+      adapterBlock = await client.getBlockNumber();
+    } catch {
+      throw new CapsuleProvenanceError(
+        "chain head is unavailable; adapter manifest verification failed closed",
+      );
+    }
+    return withAdapterManifestProof(client, item, cfg, cached, adapterBlock);
+  }
 
   let atBlock;
   try {
@@ -203,7 +262,7 @@ export async function verifyExecutionTargetProvenance(client, item, cfg) {
     throw new CapsuleProvenanceError("canonical factory has no matching ZapCreated provenance");
   }
 
-  return remember(cacheKey, {
+  const proof = remember(cacheKey, {
     verified: true,
     lineage: expected.key,
     factory: expected.factory,
@@ -214,4 +273,5 @@ export async function verifyExecutionTargetProvenance(client, item, cfg) {
     creationTxHash: creation.transactionHash,
     creationBlock: creation.blockNumber,
   });
+  return withAdapterManifestProof(client, item, cfg, proof, atBlock);
 }

@@ -4,17 +4,18 @@
   "description": "Read-only OpenZaps MCP server for policy discovery and exact simulation",
   "type": "module",
   "bin": {
-    "openzaps-mcp": "./index.mjs"
+    "openzaps-mcp": "index.mjs"
   },
   "files": [
     "index.mjs",
-    "README.md"
+    "README.md",
+    "LICENSE"
   ],
   "license": "MIT",
   "homepage": "https://www.0xzaps.com/docs",
   "repository": {
     "type": "git",
-    "url": "https://github.com/0pen-Zaps/openzaps.git",
+    "url": "git+https://github.com/0pen-Zaps/openzaps.git",
     "directory": "packages/mcp"
   },
   "engines": {

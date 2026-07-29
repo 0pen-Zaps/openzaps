@@ -49,9 +49,11 @@ tail -f ~/Library/Logs/openzaps-executor.log
 
 - **Watch-only (default).** No key configured ⇒ the daemon reads chain state, evaluates every
   stored intent, simulates due runs, and logs what it *would* submit. It cannot broadcast.
-- **Executing.** Set `OPENZAPS_EXECUTOR_KEYFILE` to a `chmod 600` file holding a 0x-prefixed
-  private key (or `OPENZAPS_EXECUTOR_PRIVATE_KEY` in the environment). This wallet only pays gas
-  and receives fees. Never reuse a wallet that holds anything you care about.
+- **Executing candidate.** Set `OPENZAPS_EXECUTOR_KEYFILE` to a `chmod 600` file holding a
+  0x-prefixed private key (or inject `OPENZAPS_EXECUTOR_PRIVATE_KEY` through a secret manager).
+  The key alone does **not** enable writes: an approved adapter manifest and the private-relay
+  quorum described below must also pass. This wallet only pays gas and receives fees. Never reuse
+  a wallet that holds anything you care about.
 
 ## Intent store
 
@@ -75,6 +77,76 @@ overridden with `OPENZAPS_V3_FACTORY` / `OPENZAPS_V3_IMPLEMENTATION` and
 `OPENZAPS_V3_1_FACTORY` / `OPENZAPS_V3_1_IMPLEMENTATION`. The undeployed v3.2 lineage stays disabled
 until both `OPENZAPS_V3_2_FACTORY` and `OPENZAPS_V3_2_IMPLEMENTATION` are configured.
 
+Signer mode also requires `OPENZAPS_ADAPTER_MANIFEST_FILE` (default
+`~/.openzaps/executor/adapter-manifest.json`) to cover every route adapter with an independently
+reviewed runtime hash. For the documented Robinhood mainnet release, copy
+[`manifests/robinhood-mainnet-v1.json`](./manifests/robinhood-mainnet-v1.json) to that default
+operator path or point `OPENZAPS_ADAPTER_MANIFEST_FILE` at an immutable installed copy. The empty
+[`adapter-manifest.example.json`](./adapter-manifest.example.json) is a schema template for other
+networks, not an executable mainnet manifest.
+The pot keeper additionally re-reads the pot's immutable `BUY_ADAPTER` and `ZAPS`, checks
+`OPENZAPS_ADAPTER_REGISTRY` still allows the adapter, and matches the same manifest pin plus
+`OPENZAPS_ZAPS_TOKEN`. Missing pins, changed bytecode, retired adapters, and unreadable dependencies
+block before simulation or signing. Watch-only may report a missing pin, but never promotes the
+observed onchain hash into approval.
+
+## Private submission on Robinhood Chain
+
+Every released executor route calls an adapter, and the pot conversion calls a bounded swap
+adapter, so the daemon conservatively classifies **every current wallet write as price-sensitive**.
+It never falls back to the normal read RPC for those writes. viem prepares and signs the
+transaction locally; only the signed raw bytes enter the private submission provider.
+
+The executor's preflight `eth_call` still contains route calldata. Operators seeking
+confidentiality from infrastructure providers must point the read/simulation client at a trusted
+or self-hosted RPC; the relay adapter prevents public **transaction submission**, not disclosure
+to the RPC operator chosen for simulation.
+
+Robinhood Chain is an Arbitrum L2 with first-come-first-served sequencing. Its documentation lists
+a public RPC, infrastructure-provider RPCs, a sequencer feed, and a direct sequencer endpoint; it
+does not document an independent private-builder/private-relay network. The public and direct
+sequencer endpoints therefore do **not** satisfy this gate:
+
+- [Robinhood Chain architecture and transaction ordering](https://docs.robinhood.com/chain/)
+- [Robinhood Chain endpoints](https://docs.robinhood.com/chain/connecting/)
+
+`OPENZAPS_PRIVATE_RELAYS_JSON` is an environment-only JSON array. Each endpoint must declare a
+stable `id`, an HTTPS `url`, its `operator`, and one of the explicit classifications
+`private-relay`, `direct-sequencer`, or `public-rpc`. Only `private-relay` is eligible. At least two
+distinct HTTPS origins **and** two distinct declared operators are required by default:
+
+```json
+[
+  {
+    "id": "relay-a",
+    "url": "https://private-a.example/rpc",
+    "classification": "private-relay",
+    "operator": "provider-a"
+  },
+  {
+    "id": "relay-b",
+    "url": "https://private-b.example/rpc",
+    "classification": "private-relay",
+    "operator": "provider-b"
+  }
+]
+```
+
+An optional `authorization` value is sent as the HTTP `Authorization` header and is never included
+in health output; inject the whole JSON through a process secret manager, not a tracked file or
+shell history. `OPENZAPS_PRIVATE_RELAY_MIN_ORIGINS` defaults to 2 and cannot be lowered below 2.
+`OPENZAPS_PRIVATE_RELAY_TIMEOUT_MS` defaults to 8000. Different URLs or operator labels are
+operator declarations, not cryptographic proof of independent control: operators must verify the
+actual relay trust domains and privacy contract before enabling a signer.
+
+The same raw transaction is fanned out to every eligible origin. Results record
+accepted/already-known, rejected, or uncertain health per origin. A timeout is uncertain because
+the relay may have accepted before the connection failed; the daemon retains the deterministic
+hash and waits for onchain inclusion rather than risking nonce reuse. If every relay rejects, no
+public retry occurs. With no qualifying set configured, an executor key starts in an explicit
+`private-submission-unavailable` fail-closed state. This is source-ready plumbing, not a claim that
+Robinhood currently offers builder diversity.
+
 ## The shared relay (how executors discover work)
 
 The daemon polls a hosted **intent relay** (`OPENZAPS_RELAY_URL`, default `https://www.0xzaps.com`)
@@ -95,10 +167,14 @@ passes in chain time, the daemon marks it terminal on the relay. Set
 
 ## Receipts and notifications
 
-A transaction hash — execution or pot conversion — enters the receipt outbox immediately after
-broadcast, before confirmation waiting. The immediate wait reports only that a receipt was
-observed; it does not declare finality. Finalized and reverted transactions are promoted only by
-the later canonical-settlement pass and written as versioned JSON to
+A locally signed private transaction — execution or pot conversion — enters the receipt outbox as
+`prepared` **before** the first relay request, with its deterministic hash and raw bytes. The 0600
+state file is fsynced first; failure means nothing is dispatched. A successful or uncertain relay
+fanout advances it to `submitted`, while a crash or rejection leaves exact bytes available for
+bounded private redispatch. Raw bytes and relay credentials are never logged or sent to hosted
+receipt APIs. The immediate wait reports only that a receipt was observed; it does not declare
+finality. Finalized and reverted transactions are promoted only by the later canonical-settlement
+pass and written as versioned JSON to
 `~/.openzaps/executor/receipts/` (override with `OPENZAPS_RECEIPTS_DIR`). Relayed executions are also
 sent to `/api/executions/receipts`, which independently decodes the signed calldata, transaction
 sender, receipt, confirmations, and execution event before an idempotent database upsert. Receipt
@@ -120,10 +196,10 @@ capped at 256 and settled in batches of 32. A mined receipt is only settled when
 still matches the canonical block at its height, so a reorg leaves the hash queued for a later
 pass. Hosted delivery is decoupled into its own capped queue, retries with exponential backoff,
 and moves permanent failures or the eighth failed attempt into
-`dead-letter-*.json` evidence instead of growing state forever. If the hash cannot be durably
-written after broadcast, the transaction keeps its real pending/final outcome and the process
-opens a loud broadcast circuit: no later wallet write is allowed until storage is repaired and the
-daemon restarts. State replacement fsyncs the temporary file and parent directory; an unreadable,
+`dead-letter-*.json` evidence instead of growing state forever. If the prepared journal cannot be
+written, no relay request occurs and the process opens a loud broadcast circuit. If the submitted
+transition cannot be written, the already-durable prepared bytes still occupy the lane and no later
+wallet write is admitted. State replacement fsyncs the temporary file and parent directory; an unreadable,
 corrupt, or orphan-temporary `state.json` fails startup instead of being treated as empty.
 Receipt/dead-letter filenames are published with an atomic no-replace link, and an existing file
 must match the transaction's immutable identity before it is accepted as idempotent evidence.
@@ -135,16 +211,11 @@ An unresolved hash deliberately stops every later wallet write. Do not delete th
 second write can reuse the same nonce on a lagging RPC. Stop the daemon, preserve `state.json` and
 the receipt directory, and compare the transaction plus the account's `latest` and `pending`
 nonces through every configured RPC. If any endpoint reports the transaction or a pending nonce,
-restore healthy RPC service and let canonical settlement clear the marker. If every independent
-endpoint agrees the transaction was dropped, replace or rebroadcast that exact nonce with operator
-wallet tooling, then restart the daemon and wait for the replacement's canonically matched receipt.
-There is intentionally no force-clear command.
-
-The signer uses the provider's `sendTransaction` path, so there is a narrow crash window after an
-RPC accepts a transaction but before the hash reaches durable state. After any crash during a
-broadcast, treat the wallet as occupied until its nonce and transaction history have been
-reconciled across the configured RPC set. A future raw-transaction journal can close that final
-window; the current fail-closed recovery posture does not claim crash-atomic broadcasting.
+restore healthy RPC service and let canonical settlement clear the marker. A `prepared` entry is
+automatically redispatched as the exact same signed bytes after nonce admission; it never uses the
+public RPC. If every independent endpoint agrees a submitted transaction was dropped, preserve the
+journal and reconcile that exact nonce before any manual replacement. There is intentionally no
+force-clear command.
 
 Operational notifications are off by default. To send in a production process, set
 `NODE_ENV=production`, `OPENZAPS_NOTIFICATIONS_ENABLED=true`, and one or more of:
@@ -157,13 +228,17 @@ changes execution or receipt state.
 ## Intent intake (no more file shuffling)
 
 The daemon runs a localhost-only HTTP listener (`OPENZAPS_INTAKE_PORT`, default 8477; `0`
-disables): the Automate tab detects it after you sign and offers **Send to executor**, delivering
-the signed intent straight into the store. Auth is a bearer token minted once into
-`~/.openzaps/executor/intake.token` (chmod 600) — `node executor/index.mjs status` prints it;
-paste it into the UI field one time. Bound to `127.0.0.1`, CORS-scoped to the OpenZaps origins,
-schema-validated on arrival, and chain-checked — a hostile or malformed payload gets a 4xx and
-nothing is written. Everything the file drop enforces still applies: the capsule re-verifies every
-intent on-chain, so intake spam can only waste a simulation.
+disables). Auth is a bearer token minted once into `~/.openzaps/executor/intake.token` with mode
+0600. The public Automate page deliberately never reads or stores that local capability. Use the
+local MCP server's `deliver_intent_local` tool: its own process reads the token from disk and sends
+the already-signed intent to `127.0.0.1`. `node executor/index.mjs status` prints only the token file
+path, never the capability itself. Without MCP, download the signed JSON and place it in
+`~/.openzaps/executor/intents/`.
+
+The listener is bound to loopback, CORS-scoped to the OpenZaps origins, schema-validated on
+arrival, and chain-checked — a hostile or malformed payload gets a 4xx and nothing is written.
+Everything the file drop enforces still applies: the capsule re-verifies every intent onchain, so
+intake spam can only waste a simulation.
 
 ## Pot-conversion keeper
 
@@ -193,4 +268,6 @@ fee; convert pot fee assets to 0xZAPS via the pinned bounded adapter (permission
 Cannot: change route, amounts, recipient, or out-asset (frozen policy + signature); run early
 (`IntervalNotElapsed`), re-run (`NonceReplay`), fire an unarmed trigger (`TriggerNotMet`), pass
 itself a bigger fee (constants in the contract), or bypass the owner's net-of-fee floor
-(`MinOutNotMet`). Losing the executor key loses gas money and fee income, nothing else.
+(`MinOutNotMet`). It also cannot send a price-sensitive write through the public RPC: local raw
+signing is wired only to the qualifying private-relay set. Losing the executor key loses gas money
+and fee income, nothing else.

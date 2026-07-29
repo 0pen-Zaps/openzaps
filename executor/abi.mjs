@@ -170,6 +170,46 @@ export const openZapV3Abi = [
     inputs: [],
     outputs: [{ name: "", type: "address" }],
   },
+  {
+    type: "function",
+    name: "ADAPTERS",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [{ name: "", type: "address" }],
+  },
+  {
+    type: "function",
+    name: "ZAPS_ADAPTER",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [{ name: "", type: "address" }],
+  },
+  {
+    type: "function",
+    name: "stepCount",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [{ name: "", type: "uint256" }],
+  },
+  {
+    type: "function",
+    name: "step",
+    stateMutability: "view",
+    inputs: [{ name: "i", type: "uint256" }],
+    outputs: [
+      {
+        name: "",
+        type: "tuple",
+        components: [
+          { name: "adapter", type: "address" },
+          { name: "tokenIn", type: "address" },
+          { name: "spender", type: "address" },
+          { name: "amountIn", type: "uint256" },
+          { name: "data", type: "bytes" },
+        ],
+      },
+    ],
+  },
 ];
 
 export const openZapFactoryV3Abi = [
@@ -201,6 +241,16 @@ export const zapCreatedEvent = {
   ],
 };
 
+export const adapterRegistryAbi = [
+  {
+    type: "function",
+    name: "isAllowed",
+    stateMutability: "view",
+    inputs: [{ name: "adapter", type: "address" }],
+    outputs: [{ name: "", type: "bool" }],
+  },
+];
+
 export const priceSourceAbi = [
   {
     type: "function",
@@ -222,6 +272,20 @@ export const erc20Abi = [
 ];
 
 export const lotteryPotAbi = [
+  {
+    type: "function",
+    name: "BUY_ADAPTER",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [{ name: "", type: "address" }],
+  },
+  {
+    type: "function",
+    name: "ZAPS",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [{ name: "", type: "address" }],
+  },
   {
     type: "function",
     name: "buyZaps",

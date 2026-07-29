@@ -16,11 +16,13 @@ import {
   type BridgeProtocolEvidence,
   type BridgeQuote,
 } from "@/lib/bridge";
+import { BoundedJsonBodyError, readBoundedJsonBody } from "@/lib/request-body";
+
+export const MAX_ACROSS_RESPONSE_BYTES = 256 * 1024;
 
 type AcrossEnvironment = {
   readonly ACROSS_API_KEY?: string;
   readonly ACROSS_INTEGRATOR_ID?: string;
-  readonly ACROSS_ALLOW_UNAUTHENTICATED?: string;
   readonly NEXT_PUBLIC_ACROSS_BRIDGE_ENABLED?: string;
   readonly OPENZAPS_ACROSS_DURABLE_QUOTA_ENABLED?: string;
   readonly NODE_ENV?: string;
@@ -159,23 +161,29 @@ export async function readAcrossProtocolEvidence(
 /**
  * The browser flag is not an API boundary: a caller can address the route
  * directly. Production therefore requires both the product launch flag and an
- * explicit acknowledgement that a durable edge quota is active.
+ * explicit acknowledgement that a durable edge quota is active. It also
+ * validates the complete credential pair before the route becomes reachable,
+ * rather than discovering a partial rollout after accepting a request.
  */
 export function acrossBridgeApiEnabled(
   environment: AcrossEnvironment = process.env,
 ): boolean {
   if (environment.NODE_ENV !== "production") return true;
+  const apiKey = environment.ACROSS_API_KEY?.trim() ?? "";
+  const integratorId = environment.ACROSS_INTEGRATOR_ID?.trim() ?? "";
   return (
     environment.NEXT_PUBLIC_ACROSS_BRIDGE_ENABLED === "true"
     && environment.OPENZAPS_ACROSS_DURABLE_QUOTA_ENABLED === "true"
+    && apiKey.length > 0
+    && /^0x[0-9a-fA-F]{4}$/.test(integratorId)
   );
 }
 
 /**
  * Obtain a minimum-output quote without exposing the Across API key in the
- * browser. Both credentials are optional for local development because Across
- * currently permits a tightly rate-limited unauthenticated request, but a
- * half-configured credential pair fails closed.
+ * browser. Both credentials are optional for local development, but production
+ * requires a complete authenticated pair and a half-configured pair always
+ * fails closed.
  */
 export async function fetchAcrossBridgeQuote(
   request: AcrossQuoteRequest,
@@ -183,7 +191,6 @@ export async function fetchAcrossBridgeQuote(
   environment: AcrossEnvironment = {
     ACROSS_API_KEY: process.env.ACROSS_API_KEY,
     ACROSS_INTEGRATOR_ID: process.env.ACROSS_INTEGRATOR_ID,
-    ACROSS_ALLOW_UNAUTHENTICATED: process.env.ACROSS_ALLOW_UNAUTHENTICATED,
     NEXT_PUBLIC_ACROSS_BRIDGE_ENABLED: process.env.NEXT_PUBLIC_ACROSS_BRIDGE_ENABLED,
     OPENZAPS_ACROSS_DURABLE_QUOTA_ENABLED: process.env.OPENZAPS_ACROSS_DURABLE_QUOTA_ENABLED,
     NODE_ENV: process.env.NODE_ENV,
@@ -203,7 +210,6 @@ export async function fetchAcrossBridgeQuote(
   if (
     !apiKey
     && environment.NODE_ENV === "production"
-    && environment.ACROSS_ALLOW_UNAUTHENTICATED !== "true"
   ) {
     throw new BridgeQuoteError("Authenticated Across production credentials are not configured.");
   }
@@ -249,8 +255,11 @@ export async function fetchAcrossBridgeQuote(
 
   let raw: unknown;
   try {
-    raw = await response.json();
-  } catch {
+    raw = await readBoundedJsonBody(response, MAX_ACROSS_RESPONSE_BYTES);
+  } catch (error) {
+    if (error instanceof BoundedJsonBodyError && error.status === 413) {
+      throw new BridgeQuoteError("Across returned a response larger than 256 KiB.");
+    }
     throw new BridgeQuoteError("Across returned a response that was not JSON.");
   }
 

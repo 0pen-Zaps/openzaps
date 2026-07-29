@@ -122,9 +122,8 @@ contract RobinhoodPoolMenuForkTest is Test {
     ///         routes a real exact-input swap in BOTH directions against live state, with no dust and
     ///         no residual allowance left behind.
     function test_aeWethUsdg_adapterRoutesBothDirections() public {
-        RobinhoodV4PoolAdapter adapter = new RobinhoodV4PoolAdapter(
-            UNIVERSAL_ROUTER, PERMIT2, AEWETH, USDG, USDG_FEE, USDG_TS, address(0)
-        );
+        RobinhoodV4PoolAdapter adapter =
+            new RobinhoodV4PoolAdapter(UNIVERSAL_ROUTER, PERMIT2, AEWETH, USDG, USDG_FEE, USDG_TS, address(0));
         assertEq(adapter.poolId(), USDG_POOL_ID, "adapter not wired to the (450,9) pool");
         assertGt(_liquidity(USDG_POOL_ID), 0, "pool went dry");
 
@@ -158,9 +157,8 @@ contract RobinhoodPoolMenuForkTest is Test {
     ///         HOOKED pool routes a real swap in both directions. Proves the menu is not limited to
     ///         hookless pools.
     function test_aeWethZaps_adapterRoutesBothDirections() public {
-        RobinhoodV4PoolAdapter adapter = new RobinhoodV4PoolAdapter(
-            UNIVERSAL_ROUTER, PERMIT2, AEWETH, ZAPS, DYNAMIC_FEE_FLAG, ZAPS_TS, ZAPS_HOOK
-        );
+        RobinhoodV4PoolAdapter adapter =
+            new RobinhoodV4PoolAdapter(UNIVERSAL_ROUTER, PERMIT2, AEWETH, ZAPS, DYNAMIC_FEE_FLAG, ZAPS_TS, ZAPS_HOOK);
         assertEq(adapter.poolId(), ZAPS_POOL_ID, "adapter not wired to the aeWETH/0xZAPS pool");
         assertGt(_liquidity(ZAPS_POOL_ID), 0, "pool went dry");
 
@@ -198,12 +196,10 @@ contract RobinhoodPoolMenuForkTest is Test {
     ///         pool ids, both with live liquidity and both proved to route above. This test is the
     ///         single place a reviewer can read the final answer.
     function test_deployableMenu_isExactlyTheseTwo() public {
-        RobinhoodV4PoolAdapter usdgAdapter = new RobinhoodV4PoolAdapter(
-            UNIVERSAL_ROUTER, PERMIT2, AEWETH, USDG, USDG_FEE, USDG_TS, address(0)
-        );
-        RobinhoodV4PoolAdapter zapsAdapter = new RobinhoodV4PoolAdapter(
-            UNIVERSAL_ROUTER, PERMIT2, AEWETH, ZAPS, DYNAMIC_FEE_FLAG, ZAPS_TS, ZAPS_HOOK
-        );
+        RobinhoodV4PoolAdapter usdgAdapter =
+            new RobinhoodV4PoolAdapter(UNIVERSAL_ROUTER, PERMIT2, AEWETH, USDG, USDG_FEE, USDG_TS, address(0));
+        RobinhoodV4PoolAdapter zapsAdapter =
+            new RobinhoodV4PoolAdapter(UNIVERSAL_ROUTER, PERMIT2, AEWETH, ZAPS, DYNAMIC_FEE_FLAG, ZAPS_TS, ZAPS_HOOK);
 
         // Distinct, real, liquid pools.
         assertEq(usdgAdapter.poolId(), USDG_POOL_ID);

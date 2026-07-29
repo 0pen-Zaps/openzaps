@@ -56,11 +56,11 @@ This is a monorepo. The web app and the Solidity protocol live together.
 
 | Path | What |
 | --- | --- |
-| [`src/app/`](src/app) | The Next.js 16 site, in two route groups. `(landing)` is `/` alone, with its own nav, footer, and token scope; `(site)` is every interior page — `/zap`, `/explore`, `/profile`, `/pot`, `/zapdraw`, `/docs`, `/token`, `/roadmap`, `/legal` — wrapped in the app shell. `src/app/api/` holds the route handlers; `globals.css` holds the five-theme token layer. |
+| [`src/app/`](src/app) | The Next.js 16 site, in two route groups. `(landing)` is `/` alone, with its own nav, footer, and token scope; `(site)` is every interior page — `/zap`, `/explore`, `/profile`, `/pot`, `/zapdraw`, `/docs`, `/evals`, `/token`, `/roadmap`, `/legal` — wrapped in the app shell. `src/app/api/` holds the route handlers; `globals.css` holds the five-theme token layer. |
 | [`src/components/`](src/components) | UI shared across routes: `AppShell` (sidebar, context bar, and the one `#zapscroll` container that owns the scroll), the theme provider and picker, the `Glyph` set, the wallet session provider, and the footer. |
 | [`src/lib/`](src/lib) | Chain definitions, protocol addresses and ABIs, the block catalog behind the visual builder, the block-pinned exact-policy compiler, the theme registry (`theme.ts`), and the `?view=` contract the sidebar and the consoles both read (`zap-view.ts`). |
 | [`contracts/`](contracts/README.md) | The Solidity protocol, bounded adapters, deploy/smoke scripts, and the Foundry unit / fuzz / invariant / fork suite. [`v1.1`](contracts/src) carries the single-shot routes; [`v3`](contracts/src/v3/README.md) adds recurring + price-triggered execution and the executor fee/lottery economy; `v3_1` adds per-run floors priced from live spot. The creation gateway preserves all three lineages while enforcing the current app's separate 0xZAPS-converted creation fee. See [`docs/deployments.md`](docs/deployments.md). |
-| [`executor/`](executor/README.md) | The reference **Zap Executor** daemon: watches time and chain, discovers work from the shared intent pool, and submits owed recurring/triggered runs for 80% of the 1% protocol fee (20% funds the 0xZAPS lottery pot). Watch-only unless a gas key is configured. |
+| [`executor/`](executor/README.md) | The reference **Zap Executor** daemon: watches time and chain, discovers work from the shared intent pool, and submits owed recurring/triggered runs for 80% of the 1% protocol fee (20% funds the 0xZAPS lottery pot). Watch-only unless a gas key, a release-approved adapter manifest, and a healthy private-relay set are configured. |
 | [`packages/sdk`](packages/sdk) / [`packages/mcp`](packages/mcp) | Publish-ready read-only Agent Kit packages. The SDK compiles exact policy and unsigned EIP-712 artifacts; the npx MCP entrypoint discovers and simulates without signing or broadcasting. |
 | [`docs/`](docs) | Architecture Decision Records, the testable invariant catalog, and product/security research the design derives from. |
 
@@ -104,9 +104,9 @@ fails any change that introduces one.
 | --- | --- | --- |
 | `DEPLOYER_PRIVATE_KEY` | Foundry deploy scripts | Read from the shell, or use a named keystore or hardware wallet. Never expose it to the web app. |
 | `SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY` | Intent relay, public policy registry, receipts, Guardian, and executor scorecards | Server-side only. The affected APIs return an unconfigured response until storage exists. Apply the reviewed migrations in `supabase/migrations/` before enabling the new operations and registry surfaces; follow the shared-project history rules in [`supabase/README.md`](supabase/README.md). |
-| `OPENZAPS_EXECUTOR_PRIVATE_KEY` *or* `OPENZAPS_EXECUTOR_KEYFILE` | Reference executor daemon | Optional. With neither set the daemon is watch-only and never broadcasts. See [`executor/README.md`](executor/README.md) for receipt and notification configuration. |
+| `OPENZAPS_EXECUTOR_PRIVATE_KEY` *or* `OPENZAPS_EXECUTOR_KEYFILE` | Reference executor daemon | Optional. With neither set the daemon is watch-only and never broadcasts. A key alone is insufficient: signing also requires the reviewed adapter manifest and private-relay admission checks in [`executor/README.md`](executor/README.md). |
 | `ANTHROPIC_API_KEY` | `/api/agent/*`, server-side only | Optional. Without it those routes return 503, the connect surface hides its free-text composer rather than offering one that fails, and `/explore/[address]` answers questions from the capsule's own facts. `OPENZAPS_AGENT_MODEL` overrides the model id. |
-| `ACROSS_API_KEY` + `ACROSS_INTEGRATOR_ID` | Server-side Across `/swap/approval` quote proxy | Production requires the complete pair; `ACROSS_INTEGRATOR_ID` is a two-byte `0x` value. A half-configured pair is rejected. `ACROSS_ALLOW_UNAUTHENTICATED=true` is an explicit diagnostic override, not the release posture. |
+| `ACROSS_API_KEY` + `ACROSS_INTEGRATOR_ID` | Server-side Across `/swap/approval` quote proxy | Production requires the complete pair; `ACROSS_INTEGRATOR_ID` is a two-byte `0x` value. A missing or malformed pair is rejected even when the launch flags are set. |
 
 The following flags are not credentials. They prevent source-ready work from being presented as
 live before its external dependency or production control exists:
@@ -114,13 +114,17 @@ live before its external dependency or production control exists:
 | Flag | Production requirement |
 | --- | --- |
 | `NEXT_PUBLIC_ACROSS_BRIDGE_ENABLED=true` + `OPENZAPS_ACROSS_DURABLE_QUOTA_ENABLED=true` | Enables Base → Robinhood USDG funding only after the authenticated Across pair and a durable edge quota are configured. The server checks both flags, so hiding the browser surface cannot leave a credential-consuming quote API exposed. |
-| `OPENZAPS_EXACT_POLICY_API_ENABLED=true` | Enables `/api/policies/simulate` in production. Set it only after a durable WAF/request quota exists; the in-process limiter is burst hygiene, not that quota. |
+| `OPENZAPS_EXACT_POLICY_API_ENABLED=true` + `OPENZAPS_EXACT_POLICY_DURABLE_QUOTA_ENABLED=true` | Enables `/api/policies/simulate` in production after a durable WAF/request quota exists. The second flag records that external control; the in-process limiter remains burst hygiene only. |
 | `OPENZAPS_GUARDIAN_ENABLED=true` + `OPENZAPS_GUARDIAN_DURABLE_QUOTA_ENABLED=true` | Enables the read-only Guardian in production after durable quota and Supabase-backed operations storage are in place. The second flag records that the external quota exists; it does not create one. |
 | `OPENZAPS_POLICY_TEMPLATE_PUBLISHING_ENABLED=true` | Enables wallet-attributed public template publication in production after the template and security-attribution migrations are applied. Browsing remains read-only when publication is off. |
-| `OPENZAPS_POLICY_TEMPLATE_SUBSCRIPTIONS_ENABLED=true` | Enables anonymous exact-version subscription writes in production only after a durable request quota exists. The database still caps rows globally and per template; counts are convenience metadata, never identity or reputation. |
+| `OPENZAPS_POLICY_TEMPLATE_SUBSCRIPTIONS_ENABLED=true` + `OPENZAPS_POLICY_TEMPLATE_SUBSCRIPTIONS_DURABLE_QUOTA_ENABLED=true` | Enables wallet-signed, wallet-pseudonymous exact-version subscription writes after the migration and a durable request quota exist. The database additionally caps each subscriber, each template, and the global table; counts are convenience metadata, never execution authority or reputation. |
 | `NEXT_PUBLIC_OPENZAPS_AGENT_KIT_PUBLISHED=true` | Shows the npx install path only after both scoped packages actually exist in npm. Until then the packages are source-ready, not published. |
 
 **Never paste a private key into a tracked file.**
+
+Release operators should use the bounded procedures in [`docs/operations-runbook.md`](docs/operations-runbook.md);
+the scoped-package bootstrap and trusted-publishing path is documented separately in
+[`docs/npm-publishing.md`](docs/npm-publishing.md).
 
 ## The 0xZAPS token
 

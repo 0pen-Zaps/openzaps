@@ -77,6 +77,113 @@ test("a post-broadcast finality timeout retains the hash as confirmation-pending
   assert.equal(result.txHash, hash);
 });
 
+test("submission surfaces private relay health and inclusion outcome", async () => {
+  const hash = `0x${"35".repeat(32)}`;
+  const relayOutcome = {
+    hash,
+    mode: "private-multi-relay",
+    status: "accepted-degraded",
+    requiredDistinctOrigins: 2,
+    attemptedOrigins: 2,
+    acceptedOrigins: 1,
+    unknownOrigins: 1,
+    rejectedOrigins: 0,
+    endpoints: [
+      { id: "relay-a", origin: "https://relay-a.example", status: "accepted" },
+      { id: "relay-b", origin: "https://relay-b.example", status: "unknown" },
+    ],
+  };
+  const result = await submitExecution(
+    {
+      simulateContract: async () => ({ request: { address: ITEM.intent.zap } }),
+      getBlock: async () => ({ baseFeePerGas: 1n }),
+      waitForTransactionReceipt: async () => ({ status: "success", blockNumber: 125n }),
+    },
+    {
+      account: { address: "0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC" },
+      writeContract: async () => hash,
+      openZapsPrivateSubmission: {
+        getOutcome: () => relayOutcome,
+      },
+    },
+    ITEM,
+    CFG,
+    async () => {},
+    allowCanonicalTarget,
+  );
+  assert.equal(result.outcome, "confirmation-observed");
+  assert.equal(result.privateSubmission.status, "accepted-degraded");
+  assert.equal(result.privateSubmission.inclusion, "receipt-observed");
+  assert.match(result.detail, /private relays accepted-degraded/);
+});
+
+test("private submission journals signed bytes before dispatch and binds preparation fields", async () => {
+  const hash = `0x${"36".repeat(32)}`;
+  const raw = "0x0201";
+  const events = [];
+  let preparationHook;
+  const privateSubmission = {
+    withPreparationHook: async (hook, operation) => {
+      preparationHook = hook;
+      try {
+        return await operation();
+      } finally {
+        preparationHook = null;
+      }
+    },
+    getOutcome: () => ({
+      hash,
+      mode: "private-multi-relay",
+      status: "accepted-quorum",
+      requiredDistinctOrigins: 2,
+      attemptedOrigins: 2,
+      acceptedOrigins: 2,
+      unknownOrigins: 0,
+      rejectedOrigins: 0,
+      endpoints: [],
+    }),
+  };
+  let writeRequest;
+  const result = await submitExecution(
+    {
+      simulateContract: async () => ({
+        request: {
+          address: ITEM.intent.zap,
+          gas: ITEM.intent.maxGas,
+        },
+      }),
+      getBlock: async () => ({ baseFeePerGas: 1n }),
+      waitForTransactionReceipt: async () => {
+        events.push("wait");
+        return { status: "success", blockNumber: 126n };
+      },
+    },
+    {
+      account: { address: "0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC" },
+      openZapsPrivateSubmission: privateSubmission,
+      writeContract: async (request) => {
+        writeRequest = request;
+        await preparationHook({ hash, serializedTransaction: raw });
+        events.push("dispatch");
+        return hash;
+      },
+    },
+    ITEM,
+    { ...CFG, chainId: 4663 },
+    async ({ phase, serializedTransaction }) => {
+      events.push(phase);
+      if (phase === "prepared") assert.equal(serializedTransaction, raw);
+    },
+    allowCanonicalTarget,
+    async () => ({ allowed: true, latestNonce: 7n }),
+  );
+  assert.deepEqual(events, ["prepared", "dispatch", "submitted", "wait"]);
+  assert.equal(writeRequest.chainId, 4663);
+  assert.equal(writeRequest.nonce, 7);
+  assert.equal(writeRequest.type, "eip1559");
+  assert.equal(result.privateSubmission.inclusion, "receipt-observed");
+});
+
 test("an outbox persistence error never mislabels an already-broadcast transaction", async () => {
   const hash = `0x${"45".repeat(32)}`;
   const result = await submitExecution(

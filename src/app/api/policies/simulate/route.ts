@@ -11,6 +11,7 @@ import {
   type PolicyChainReader,
 } from "@/lib/policy-exact";
 import { serverRateLimited } from "@/lib/relay-rate-limit";
+import { BoundedJsonBodyError, readBoundedJsonBody } from "@/lib/request-body";
 import { ROBINHOOD_RPC_URL, robinhoodChain } from "@/lib/robinhood";
 
 export const runtime = "nodejs";
@@ -32,9 +33,14 @@ export function exactPolicyApiEnabled(
   env: {
     NODE_ENV?: string;
     OPENZAPS_EXACT_POLICY_API_ENABLED?: string;
+    OPENZAPS_EXACT_POLICY_DURABLE_QUOTA_ENABLED?: string;
   } = process.env,
 ): boolean {
-  return env.NODE_ENV !== "production" || env.OPENZAPS_EXACT_POLICY_API_ENABLED === "true";
+  if (env.NODE_ENV !== "production") return env.OPENZAPS_EXACT_POLICY_API_ENABLED !== "false";
+  return (
+    env.OPENZAPS_EXACT_POLICY_API_ENABLED === "true"
+    && env.OPENZAPS_EXACT_POLICY_DURABLE_QUOTA_ENABLED === "true"
+  );
 }
 
 /** Warm-instance concurrency guard; durable WAF quota remains the production boundary. */
@@ -50,35 +56,15 @@ export function acquireExactPolicySlot(): (() => void) | null {
 }
 
 export async function readExactPolicyBody(request: NextRequest): Promise<ExactPolicyRequest> {
-  const contentLength = request.headers.get("content-length");
-  if (contentLength && /^\d+$/.test(contentLength) && Number(contentLength) > MAX_BODY_BYTES) {
-    throw new ExactPolicyBodyError("Body too large.", 413);
-  }
-  if (!request.body) throw new ExactPolicyBodyError("Request body must be valid JSON.", 400);
-
-  const reader = request.body.getReader();
-  const decoder = new TextDecoder();
-  let bytes = 0;
-  let text = "";
   try {
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      bytes += value.byteLength;
-      if (bytes > MAX_BODY_BYTES) {
-        await reader.cancel();
-        throw new ExactPolicyBodyError("Body too large.", 413);
-      }
-      text += decoder.decode(value, { stream: true });
+    return await readBoundedJsonBody(request, MAX_BODY_BYTES) as ExactPolicyRequest;
+  } catch (error) {
+    if (error instanceof BoundedJsonBodyError) {
+      throw new ExactPolicyBodyError(
+        error.status === 413 ? "Body too large." : "Request body must be valid JSON.",
+        error.status,
+      );
     }
-    text += decoder.decode();
-  } finally {
-    reader.releaseLock();
-  }
-
-  try {
-    return JSON.parse(text) as ExactPolicyRequest;
-  } catch {
     throw new ExactPolicyBodyError("Request body must be valid JSON.", 400);
   }
 }
