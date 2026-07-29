@@ -42,7 +42,10 @@ jobs:
       - run: forge install foundry-rs/forge-std
       - run: forge fmt --check src/v3_2 script/DeployV3_2Robinhood.s.sol test/OpenZapV3_2.stack.t.sol test/DeployV3_2Robinhood.t.sol
       - run: forge build --sizes
-      - run: forge test
+      # Fixed-block fork suites depend on archive-capable Base/Robinhood RPCs and are exercised in
+      # the live-chain release matrix. Public endpoints can return pruned-state errors or 429s on a
+      # fresh runner, so the required PR gate stays hermetic.
+      - run: forge test --no-match-path 'test/*.fork.t.sol'
 
   executor-and-agent-kit:
     name: Executor + Agent Kit (test · package)
