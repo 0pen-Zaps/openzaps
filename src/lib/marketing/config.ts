@@ -330,11 +330,6 @@ export function readMarketingConfig(env: Environment = process.env): MarketingCo
       "Non-dry-run marketing drafting requires the durable marketing ledger.",
     );
   }
-  if (autoPublishRequested.value) {
-    blockers.push(
-      "Auto-publish is not available in this release; every outbound delivery requires human approval.",
-    );
-  }
   if (directMessagesEnabled.value) {
     blockers.push(
       "Direct-message delivery is not available in this release; keep OPENZAPS_MARKETING_DM_ENABLED=false.",
@@ -368,17 +363,33 @@ export function readMarketingConfig(env: Environment = process.env): MarketingCo
   const xAiReplyApproved =
     xAiReplyApprovalRequested.value && xAutomatedLabelConfirmed.value;
 
+  const autoPublishReady =
+    enabled.value &&
+    configurationValid &&
+    !dryRun.value &&
+    durableLedgerConfigured &&
+    (channels.discordBroadcast || channels.x);
+  const autoPublish =
+    autoPublishRequested.value && autoPublishReady;
+  if (autoPublishRequested.value && !autoPublishReady) {
+    blockers.push(
+      "Bounded auto-publish requires live mode, the durable ledger, and at least one ready X or Discord broadcast channel.",
+    );
+  }
+
   const mode = !enabled.value
     ? "disabled"
     : dryRun.value
       ? "dry_run"
-      : "review_only";
+      : autoPublish
+        ? "live"
+        : "review_only";
 
   return {
     enabled: enabled.value,
     dryRun: dryRun.value,
     autoPublishRequested: autoPublishRequested.value,
-    autoPublish: false,
+    autoPublish,
     xAiReplyApproved,
     xAutomatedLabelConfirmed: xAutomatedLabelConfirmed.value,
     mode,
@@ -390,7 +401,7 @@ export function readMarketingConfig(env: Environment = process.env): MarketingCo
         configurationValid &&
         (dryRun.value || durableLedgerConfigured),
       durableLedgerConfigured,
-      autoPublishReady: false,
+      autoPublishReady,
       channels,
       blockers,
     },

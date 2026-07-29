@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const {
   closeMock,
+  buildScheduledMock,
   collectMock,
   completeMock,
   createHookMock,
@@ -9,8 +10,11 @@ const {
   generateMock,
   notifyMock,
   publishMock,
+  publishScheduledMock,
+  scheduledRequestMock,
 } = vi.hoisted(() => ({
   closeMock: vi.fn(),
+  buildScheduledMock: vi.fn(),
   collectMock: vi.fn(),
   completeMock: vi.fn(),
   createHookMock: vi.fn(),
@@ -18,6 +22,8 @@ const {
   generateMock: vi.fn(),
   notifyMock: vi.fn(),
   publishMock: vi.fn(),
+  publishScheduledMock: vi.fn(),
+  scheduledRequestMock: vi.fn(),
 }));
 
 vi.mock("workflow", () => ({
@@ -30,17 +36,21 @@ vi.mock("workflow", () => ({
 
 vi.mock("@/workflows/marketing-agent/steps", () => ({
   closeMarketingRunStreamStep: closeMock,
+  buildScheduledMarketingDraftStep: buildScheduledMock,
   collectMarketingSourcesStep: collectMock,
   completeMarketingResultStep: completeMock,
   emitMarketingRunEventStep: emitMock,
   generateMarketingDraftStep: generateMock,
   notifyMarketingReviewStep: notifyMock,
   publishMarketingBundleStep: publishMock,
+  publishScheduledMarketingBundleStep: publishScheduledMock,
+  scheduledMarketingDraftRequest: scheduledRequestMock,
 }));
 
 import {
   marketingDeliveryResultStatus,
   openZapsMarketingWorkflow,
+  openZapsScheduledMarketingWorkflow,
 } from "@/workflows/marketing-agent";
 import type {
   MarketingDelivery,
@@ -127,5 +137,66 @@ describe("marketing review workflow", () => {
     expect(publishMock).toHaveBeenCalledOnce();
     expect(result.status).toBe("published");
     expect(closeMock).toHaveBeenCalledOnce();
+  });
+});
+
+describe("bounded scheduled marketing workflow", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    const sourceRequest = {
+      kind: "product_update" as const,
+      brief: "Publish the versioned bounded-authority education template.",
+      channels: ["discord" as const],
+      sourceUrls: [],
+    };
+    scheduledRequestMock.mockReturnValue(sourceRequest);
+    collectMock.mockResolvedValue({ id: "source-1" });
+    buildScheduledMock.mockResolvedValue({
+      id: "scheduled-1",
+      policy: [{ disposition: "allow" }],
+      candidates: [{ id: "candidate-1", channel: "discord" }],
+    });
+    emitMock.mockResolvedValue(undefined);
+    publishScheduledMock.mockResolvedValue(deliveries("published"));
+    completeMock.mockImplementation(async (result: MarketingWorkflowResult) => result);
+    closeMock.mockResolvedValue(undefined);
+  });
+
+  it("publishes an auto-authorized template without creating a human approval hook", async () => {
+    const result = await openZapsScheduledMarketingWorkflow({
+      channels: ["discord"],
+    });
+
+    expect(scheduledRequestMock).toHaveBeenCalledWith({
+      channels: ["discord"],
+    });
+    expect(buildScheduledMock).toHaveBeenCalledOnce();
+    expect(emitMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "draft",
+        state: "auto_authorized",
+      }),
+    );
+    expect(createHookMock).not.toHaveBeenCalled();
+    expect(notifyMock).not.toHaveBeenCalled();
+    expect(publishScheduledMock).toHaveBeenCalledOnce();
+    expect(result.approval).toBeNull();
+    expect(result.status).toBe("published");
+  });
+
+  it("blocks instead of falling through to review when auto-authorization is absent", async () => {
+    buildScheduledMock.mockResolvedValueOnce({
+      id: "scheduled-1",
+      policy: [{ disposition: "require_approval" }],
+      candidates: [{ id: "candidate-1", channel: "discord" }],
+    });
+
+    const result = await openZapsScheduledMarketingWorkflow({
+      channels: ["discord"],
+    });
+
+    expect(result.status).toBe("blocked");
+    expect(createHookMock).not.toHaveBeenCalled();
+    expect(publishScheduledMock).not.toHaveBeenCalled();
   });
 });

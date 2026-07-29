@@ -5,12 +5,19 @@
  * workflow runs and channel adapters must be able to persist them as JSON.
  */
 
-export const MARKETING_POLICY_VERSION = 1 as const;
+export const MARKETING_POLICY_VERSION = 2 as const;
+
+/**
+ * Versioned, server-rendered copy whose exact public fields are checked again
+ * immediately before any automatic provider write.
+ */
+export const SCHEDULED_MARKETING_TEMPLATE_ID = "bounded-authority-v1" as const;
 
 export const MARKETING_RUN_STATES = [
   "queued",
   "drafting",
   "policy_check",
+  "auto_authorized",
   "awaiting_approval",
   "approved",
   "publishing",
@@ -197,8 +204,8 @@ export interface MarketingReadiness {
   canDraft: boolean;
   /** True only when a durable cross-run usage and idempotency ledger is explicitly configured. */
   durableLedgerConfigured: boolean;
-  /** Hard-disabled in this release: every run must cross the approval hook. */
-  autoPublishReady: false;
+  /** True only for the bounded scheduled-template surface. */
+  autoPublishReady: boolean;
   channels: MarketingChannelReadiness;
   blockers: string[];
 }
@@ -212,8 +219,8 @@ export interface MarketingConfig {
   dryRun: boolean;
   /** Operator intent before the durable-ledger safety gate is applied. */
   autoPublishRequested: boolean;
-  /** Hard-disabled in this release even when a durable ledger is available. */
-  autoPublish: false;
+  /** Effective only for server-controlled deterministic scheduled templates. */
+  autoPublish: boolean;
   /** Effective only when both independent X attestations are true. */
   xAiReplyApproved: boolean;
   xAutomatedLabelConfirmed: boolean;
@@ -229,6 +236,14 @@ export interface MarketingPolicyContext {
   usage: MarketingDailyUsage;
   /** A separate human approval record; never inferred from content. */
   humanApproved: boolean;
+  /**
+   * Server-created authority for one exact deterministic template. Public
+   * drafting inputs cannot request or construct this authorization.
+   */
+  automaticAuthorization?: {
+    kind: "scheduled_template";
+    templateId: typeof SCHEDULED_MARKETING_TEMPLATE_ID;
+  };
   /** Durable ledger entries prevent retry/replay from producing a second reply. */
   repliedInteractionIds: string[];
 }

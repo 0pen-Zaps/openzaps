@@ -27,6 +27,8 @@ const X_USERNAME = /^[A-Za-z0-9_]{1,15}$/u;
 export interface XPublishInput {
   text: string;
   idempotencyKey: string;
+  /** False only for exact server-authored deterministic templates. */
+  madeWithAi?: boolean;
   replyToTweetId?: string;
   /** Immutable account id recorded when the reply target was verified. */
   expectedAuthenticatedAccountId?: string;
@@ -326,7 +328,7 @@ export async function publishXPost(
         made_with_ai: true,
         reply: { in_reply_to_tweet_id: input.replyToTweetId },
       }
-    : { text: input.text, made_with_ai: true };
+    : { text: input.text, made_with_ai: input.madeWithAi ?? true };
   const { payload, response } = await xJsonRequest(
     "POST",
     X_CREATE_POST_URL,
@@ -521,7 +523,7 @@ export function postXBroadcast(
 export function postXReply(
   input: Omit<
     XPublishInput,
-    "replyToTweetId" | "expectedAuthenticatedAccountId"
+    "replyToTweetId" | "expectedAuthenticatedAccountId" | "madeWithAi"
   > & {
     inReplyToTweetId: string;
     authenticatedAccountId: string;
@@ -534,6 +536,7 @@ export function postXReply(
       idempotencyKey: input.idempotencyKey,
       replyToTweetId: input.inReplyToTweetId,
       expectedAuthenticatedAccountId: input.authenticatedAccountId,
+      madeWithAi: true,
     },
     dependencies,
   );

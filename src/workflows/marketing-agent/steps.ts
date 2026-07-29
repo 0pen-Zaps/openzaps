@@ -14,8 +14,12 @@ import {
   isCanonicalOutboundUrl,
   marketingSourcePacketPromptData,
   readMarketingConfig,
+  scheduledMarketingTemplate,
+  isScheduledMarketingTemplateCandidate,
+  SCHEDULED_MARKETING_TEMPLATE_ID,
   type MarketingFact,
   type MarketingPolicyContext,
+  type ScheduledMarketingChannel,
 } from "@/lib/marketing";
 import {
   ChannelAdapterError,
@@ -42,6 +46,7 @@ import {
   MarketingApprovalPayloadSchema,
   MarketingDraftBundleSchema,
   MarketingDraftRequestSchema,
+  MarketingScheduledRequestSchema,
   MarketingRunEventSchema,
   MarketingWorkflowResultSchema,
   type GeneratedChannelDraft,
@@ -50,11 +55,16 @@ import {
   type MarketingDelivery,
   type MarketingDraftBundle,
   type MarketingDraftRequest,
+  type MarketingScheduledRequest,
   type MarketingRunEvent,
   type MarketingWorkflowResult,
 } from "@/workflows/marketing-agent/contracts";
 
 const DEFAULT_MODEL = "openai/gpt-5-mini";
+const SCHEDULED_MODEL =
+  `deterministic/${SCHEDULED_MARKETING_TEMPLATE_ID}` as const;
+const SCHEDULED_BRIEF =
+  "Publish the versioned bounded-authority education template.";
 const DEFAULT_SITE_URL = "https://www.0xzaps.com";
 const SOURCE_TIMEOUT_MS = 12_000;
 const JSON_SOURCE_LIMIT = 1_000_000;
@@ -470,6 +480,7 @@ function candidateFlags(request: MarketingDraftRequest, draft: GeneratedChannelD
 async function policyContext(
   humanApproved: boolean,
   interactionIds: readonly string[] = [],
+  automaticAuthorization?: MarketingPolicyContext["automaticAuthorization"],
 ): Promise<MarketingPolicyContext> {
   const now = new Date().toISOString();
   const config = readMarketingConfig();
@@ -481,8 +492,21 @@ async function policyContext(
     config,
     usage: ledgerSnapshot.usage,
     humanApproved,
+    ...(automaticAuthorization ? { automaticAuthorization } : {}),
     repliedInteractionIds: ledgerSnapshot.repliedInteractionIds,
   };
+}
+
+export function scheduledMarketingDraftRequest(
+  rawRequest: MarketingScheduledRequest,
+): MarketingDraftRequest {
+  const request = MarketingScheduledRequestSchema.parse(rawRequest);
+  return MarketingDraftRequestSchema.parse({
+    kind: "product_update",
+    brief: SCHEDULED_BRIEF,
+    channels: request.channels,
+    sourceUrls: [],
+  });
 }
 
 function toCandidate(
@@ -601,6 +625,126 @@ export async function generateMarketingDraftStep(
 // its inputs, so recovery happens through a fresh, explicitly requested run.
 generateMarketingDraftStep.maxRetries = 0;
 
+function scheduledBundleId(
+  channels: readonly ScheduledMarketingChannel[],
+): string {
+  const hash = createHash("sha256")
+    .update(JSON.stringify({
+      templateId: SCHEDULED_MARKETING_TEMPLATE_ID,
+      channels: [...channels].sort(),
+    }))
+    .digest("hex")
+    .slice(0, 24);
+  return `scheduled:${hash}`;
+}
+
+export async function buildScheduledMarketingDraftStep(
+  rawRequest: MarketingScheduledRequest,
+  sourcePacket: ReturnType<typeof buildMarketingSourcePacket>,
+  runId: string,
+): Promise<MarketingDraftBundle> {
+  "use step";
+
+  const request = scheduledMarketingDraftRequest(rawRequest);
+  const channels = request.channels as ScheduledMarketingChannel[];
+  const bundleId = scheduledBundleId(channels);
+  const candidates = channels.map((channel) => {
+    const template = scheduledMarketingTemplate(channel);
+    return DeployedMarketingCandidateSchema.parse({
+      id: `${bundleId}:${channel}`,
+      channel,
+      action: "broadcast",
+      kind: "product_update",
+      topics: template.topics,
+      body: template.body,
+      links: template.links,
+      disclosures: template.disclosures,
+      claims: template.claims,
+      sourcePacket,
+      interaction: null,
+      flags: template.flags,
+    });
+  });
+  const context = await policyContext(false, [], {
+    kind: "scheduled_template",
+    templateId: SCHEDULED_MARKETING_TEMPLATE_ID,
+  });
+  const policy = candidates.map((candidate) =>
+    evaluateMarketingPolicy(candidate, context),
+  );
+
+  return MarketingDraftBundleSchema.parse({
+    id: bundleId,
+    runId,
+    requestedAt: sourcePacket.createdAt,
+    model: SCHEDULED_MODEL,
+    request,
+    sourcePacket,
+    candidates,
+    presentations: candidates.map((candidate) => ({
+      candidateId: candidate.id,
+      channel: candidate.channel,
+    })),
+    policy,
+    usage: {
+      inputTokens: 0,
+      outputTokens: 0,
+      totalTokens: 0,
+    },
+  });
+}
+
+buildScheduledMarketingDraftStep.maxRetries = 0;
+
+function isExactScheduledBundle(bundle: MarketingDraftBundle): boolean {
+  if (
+    bundle.model !== SCHEDULED_MODEL ||
+    bundle.request.kind !== "product_update" ||
+    bundle.request.brief !== SCHEDULED_BRIEF ||
+    bundle.request.sourceUrls.length !== 0 ||
+    bundle.request.interactionUrl !== undefined ||
+    bundle.request.channels.some(
+      (channel) => channel !== "x" && channel !== "discord",
+    ) ||
+    bundle.sourcePacket.interaction !== null ||
+    bundle.requestedAt !== bundle.sourcePacket.createdAt
+  ) {
+    return false;
+  }
+  const channels = bundle.request.channels as ScheduledMarketingChannel[];
+  if (
+    bundle.id !== scheduledBundleId(channels) ||
+    bundle.candidates.length !== channels.length ||
+    bundle.presentations.length !== channels.length
+  ) {
+    return false;
+  }
+
+  return channels.every((channel) => {
+    const candidate = bundle.candidates.find(
+      (item) => item.channel === channel,
+    );
+    const presentations = bundle.presentations.filter(
+      (item) => item.channel === channel,
+    );
+    return (
+      candidate !== undefined &&
+      candidate.id === `${bundle.id}:${channel}` &&
+      JSON.stringify(candidate.sourcePacket) ===
+        JSON.stringify(bundle.sourcePacket) &&
+      isScheduledMarketingTemplateCandidate(
+        candidate,
+        SCHEDULED_MARKETING_TEMPLATE_ID,
+      ) &&
+      presentations.length === 1 &&
+      presentations[0]?.candidateId === candidate.id &&
+      presentations[0]?.title === undefined &&
+      presentations[0]?.subtitle === undefined &&
+      presentations[0]?.tags === undefined
+    );
+  });
+}
+
 function safeChannelError(error: unknown): string {
   if (error instanceof ChannelAdapterError) return `${error.code}: ${error.message}`;
   return "Channel delivery failed without a safe provider receipt.";
@@ -610,6 +754,15 @@ function itemIdempotencyKey(
   bundle: MarketingDraftBundle,
   candidate: DeployedMarketingCandidate,
 ): string {
+  if (
+    bundle.model === SCHEDULED_MODEL &&
+    isScheduledMarketingTemplateCandidate(
+      candidate,
+      SCHEDULED_MARKETING_TEMPLATE_ID,
+    )
+  ) {
+    return `scheduled:${SCHEDULED_MARKETING_TEMPLATE_ID}:${candidate.channel}`;
+  }
   return `${bundle.id.replace(/[^A-Za-z0-9._:-]/gu, "_")}:${candidate.channel}`;
 }
 
@@ -621,7 +774,13 @@ function deliveryContentHash(
     (item) => item.candidateId === candidate.id,
   );
   return createHash("sha256")
-    .update(JSON.stringify({ candidate, presentation: presentation ?? null }))
+    .update(JSON.stringify({
+      channel: candidate.channel,
+      action: candidate.action,
+      body: candidate.body,
+      links: candidate.links,
+      presentation: presentation ?? null,
+    }))
     .digest("hex");
 }
 
@@ -666,25 +825,32 @@ async function finalizeDeliveryClaim(
   return false;
 }
 
-export async function publishMarketingBundleStep(
-  rawBundle: MarketingDraftBundle,
-  approval: MarketingApprovalPayload,
-): Promise<MarketingDelivery[]> {
-  "use step";
+interface DeliveryAuthorization {
+  approvedBy: string;
+  humanApproved: boolean;
+  automaticAuthorization?: MarketingPolicyContext["automaticAuthorization"];
+  xMadeWithAi: boolean;
+}
 
-  const bundle = MarketingDraftBundleSchema.parse(rawBundle);
-  const reviewedApproval = MarketingApprovalPayloadSchema.parse(approval);
-  if (reviewedApproval.decision !== "approve") {
-    return bundle.candidates.map((candidate) => ({
-      channel: candidate.channel,
-      candidateId: candidate.id,
-      status: "blocked",
-      idempotencyKey: itemIdempotencyKey(bundle, candidate),
-      error: "Human approval did not authorize delivery.",
-    }));
-  }
+function blockedDeliveries(
+  bundle: MarketingDraftBundle,
+  error: string,
+): MarketingDelivery[] {
+  return bundle.candidates.map((candidate) => ({
+    channel: candidate.channel,
+    candidateId: candidate.id,
+    status: "blocked",
+    idempotencyKey: itemIdempotencyKey(bundle, candidate),
+    error,
+  }));
+}
+
+async function deliverMarketingBundle(
+  bundle: MarketingDraftBundle,
+  authorization: DeliveryAuthorization,
+): Promise<MarketingDelivery[]> {
   const context = await policyContext(
-    true,
+    authorization.humanApproved,
     bundle.candidates.flatMap((candidate) =>
       candidate.channel === "x" &&
       candidate.action === "reply" &&
@@ -692,6 +858,7 @@ export async function publishMarketingBundleStep(
         ? [candidate.interaction.id]
         : [],
     ),
+    authorization.automaticAuthorization,
   );
   const decisions = bundle.candidates.map((candidate) =>
     evaluateMarketingPolicy(candidate, context),
@@ -700,13 +867,12 @@ export async function publishMarketingBundleStep(
     (decision) => !["allow", "dry_run"].includes(decision.disposition),
   );
   if (blocked) {
-    return bundle.candidates.map((candidate) => ({
-      channel: candidate.channel,
-      candidateId: candidate.id,
-      status: "blocked",
-      idempotencyKey: itemIdempotencyKey(bundle, candidate),
-      error: "Deterministic policy blocked delivery after approval.",
-    }));
+    return blockedDeliveries(
+      bundle,
+      authorization.humanApproved
+        ? "Deterministic policy blocked delivery after approval."
+        : "Deterministic policy blocked automatic scheduled delivery.",
+    );
   }
 
   const dryRun = context.config.dryRun;
@@ -799,7 +965,7 @@ export async function publishMarketingBundleStep(
           candidate.interaction
             ? candidate.interaction.id
             : null,
-        approvedBy: reviewedApproval.approvedBy,
+        approvedBy: authorization.approvedBy,
         dailyCap: context.config.dailyCaps[dailyCounter],
       });
     } catch {
@@ -875,7 +1041,11 @@ export async function publishMarketingBundleStep(
                 authenticatedAccountId:
                   candidate.interaction.authenticatedAccountId,
               })
-            : await postXBroadcast({ text: candidate.body, idempotencyKey });
+            : await postXBroadcast({
+                text: candidate.body,
+                idempotencyKey,
+                madeWithAi: authorization.xMadeWithAi,
+              });
         const finalized = await finalizeDeliveryClaim({
           idempotencyKey,
           channel: "x",
@@ -986,10 +1156,55 @@ export async function publishMarketingBundleStep(
   return deliveries;
 }
 
+export async function publishMarketingBundleStep(
+  rawBundle: MarketingDraftBundle,
+  approval: MarketingApprovalPayload,
+): Promise<MarketingDelivery[]> {
+  "use step";
+
+  const bundle = MarketingDraftBundleSchema.parse(rawBundle);
+  const reviewedApproval = MarketingApprovalPayloadSchema.parse(approval);
+  if (reviewedApproval.decision !== "approve") {
+    return blockedDeliveries(
+      bundle,
+      "Human approval did not authorize delivery.",
+    );
+  }
+  return deliverMarketingBundle(bundle, {
+    approvedBy: reviewedApproval.approvedBy,
+    humanApproved: true,
+    xMadeWithAi: true,
+  });
+}
+
+export async function publishScheduledMarketingBundleStep(
+  rawBundle: MarketingDraftBundle,
+): Promise<MarketingDelivery[]> {
+  "use step";
+
+  const bundle = MarketingDraftBundleSchema.parse(rawBundle);
+  if (!isExactScheduledBundle(bundle)) {
+    return blockedDeliveries(
+      bundle,
+      "Scheduled delivery did not match the exact versioned server template.",
+    );
+  }
+  return deliverMarketingBundle(bundle, {
+    approvedBy: `system:${SCHEDULED_MARKETING_TEMPLATE_ID}`,
+    humanApproved: false,
+    automaticAuthorization: {
+      kind: "scheduled_template",
+      templateId: SCHEDULED_MARKETING_TEMPLATE_ID,
+    },
+    xMadeWithAi: false,
+  });
+}
+
 // Publishing APIs do not provide a universal idempotency header. Retrying after
 // an ambiguous provider response could duplicate a public post, so the workflow
 // records a safe failure and leaves retry to a fresh human-reviewed run.
 publishMarketingBundleStep.maxRetries = 0;
+publishScheduledMarketingBundleStep.maxRetries = 0;
 
 export async function notifyMarketingReviewStep(
   draft: MarketingDraftBundle,

@@ -51,10 +51,12 @@ vi.mock("@/lib/marketing/channels", async (importOriginal) => {
 });
 
 import {
+  buildScheduledMarketingDraftStep,
   collectMarketingSourcesStep,
   generateMarketingDraftStep,
   notifyMarketingReviewStep,
   publishMarketingBundleStep,
+  publishScheduledMarketingBundleStep,
 } from "@/workflows/marketing-agent/steps";
 
 const CREATED_AT = new Date().toISOString();
@@ -121,7 +123,7 @@ function bundle(): MarketingDraftBundle {
     presentations: [{ candidateId: candidate.id, channel: "x" }],
     policy: [
       {
-        policyVersion: 1,
+        policyVersion: 2,
         candidateId: candidate.id,
         riskTier: 1,
         disposition: "require_approval",
@@ -170,6 +172,35 @@ function zeroSnapshot() {
       },
     },
     repliedInteractionIds: [],
+  };
+}
+
+function scheduledSourcePacket() {
+  const sourcePacket = bundle().sourcePacket;
+  return {
+    ...sourcePacket,
+    facts: [
+      {
+        key: "authority.execution",
+        label: "Execution authority",
+        value:
+          "The immutable Zap policy and owner-signed intent define what may execute.",
+        status: "confirmed" as const,
+        sourceUrl:
+          "https://github.com/0pen-Zaps/openzaps/blob/main/docs/adr/0006-agent-connection-and-mcp-surface.md",
+        observedAt: CREATED_AT,
+      },
+      {
+        key: "authority.submission",
+        label: "Submission authority",
+        value:
+          "An agent may submit a due run but cannot widen its signed terms.",
+        status: "confirmed" as const,
+        sourceUrl:
+          "https://github.com/0pen-Zaps/openzaps/blob/main/docs/adr/0006-agent-connection-and-mcp-surface.md",
+        observedAt: CREATED_AT,
+      },
+    ],
   };
 }
 
@@ -663,6 +694,200 @@ describe("durable marketing delivery admission", () => {
     expect(mocks.claim).not.toHaveBeenCalled();
     expect(mocks.xReply).not.toHaveBeenCalled();
   });
+
+  it("auto-publishes only the exact versioned scheduled template", async () => {
+    setLiveEnvironment();
+    vi.stubEnv("OPENZAPS_MARKETING_AUTO_PUBLISH", "true");
+    mocks.getSnapshot.mockResolvedValue(zeroSnapshot());
+    mocks.claim.mockResolvedValue({
+      result: "claimed",
+      status: "claimed",
+      currentCount: 1,
+      day: zeroSnapshot().usage.day,
+    });
+    mocks.xBroadcast.mockResolvedValue({
+      providerMessageId: "777",
+      providerUrl: "https://x.com/i/web/status/777",
+    });
+    mocks.complete.mockResolvedValue({
+      result: "finalized",
+      status: "published",
+    });
+
+    const draft = await buildScheduledMarketingDraftStep(
+      { channels: ["x"] },
+      scheduledSourcePacket(),
+      "scheduled-run-1",
+    );
+    expect(draft.model).toBe("deterministic/bounded-authority-v1");
+    expect(draft.policy).toEqual([
+      expect.objectContaining({
+        disposition: "allow",
+        riskTier: 1,
+        approvalRequired: false,
+        approvalReasons: [],
+      }),
+    ]);
+    expect(mocks.generateText).not.toHaveBeenCalled();
+
+    await expect(
+      publishScheduledMarketingBundleStep(draft),
+    ).resolves.toMatchObject([
+      { status: "published", providerMessageId: "777" },
+    ]);
+    expect(mocks.claim).toHaveBeenCalledWith(
+      expect.objectContaining({
+        idempotencyKey: "scheduled:bounded-authority-v1:x",
+        approvedBy: "system:bounded-authority-v1",
+        channel: "x",
+        action: "broadcast",
+      }),
+    );
+    expect(mocks.xBroadcast).toHaveBeenCalledWith(
+      expect.objectContaining({ madeWithAi: false }),
+    );
+  });
+
+  it("uses the same bounded path for a verified Discord destination", async () => {
+    setLiveEnvironment();
+    vi.stubEnv("OPENZAPS_MARKETING_AUTO_PUBLISH", "true");
+    vi.stubEnv(
+      "DISCORD_MARKETING_WEBHOOK_URL",
+      "https://discord.com/api/webhooks/123/public-token",
+    );
+    vi.stubEnv("OPENZAPS_DISCORD_GUILD_ID", "456");
+    vi.stubEnv("DISCORD_MARKETING_CHANNEL_ID", "789");
+    mocks.getSnapshot.mockResolvedValue(zeroSnapshot());
+    mocks.claim.mockResolvedValue({
+      result: "claimed",
+      status: "claimed",
+      currentCount: 1,
+      day: zeroSnapshot().usage.day,
+    });
+    mocks.discord.mockResolvedValue({ providerMessageId: "888" });
+    mocks.complete.mockResolvedValue({
+      result: "finalized",
+      status: "published",
+    });
+
+    const draft = await buildScheduledMarketingDraftStep(
+      { channels: ["discord"] },
+      scheduledSourcePacket(),
+      "scheduled-run-discord",
+    );
+    await expect(
+      publishScheduledMarketingBundleStep(draft),
+    ).resolves.toMatchObject([
+      { channel: "discord", status: "published", providerMessageId: "888" },
+    ]);
+
+    expect(mocks.verifyDiscordDestination).toHaveBeenCalledOnce();
+    expect(mocks.claim).toHaveBeenCalledWith(
+      expect.objectContaining({
+        idempotencyKey: "scheduled:bounded-authority-v1:discord",
+        channel: "discord",
+      }),
+    );
+    expect(mocks.discord).toHaveBeenCalledOnce();
+  });
+
+  it("uses one durable key per template revision and channel across runs", async () => {
+    setLiveEnvironment();
+    vi.stubEnv("OPENZAPS_MARKETING_AUTO_PUBLISH", "true");
+    mocks.getSnapshot.mockResolvedValue(zeroSnapshot());
+    mocks.claim.mockResolvedValue({
+      result: "already_claimed",
+      status: "published",
+      providerMessageId: "777",
+      providerUrl: "https://x.com/i/web/status/777",
+      currentCount: 1,
+      day: zeroSnapshot().usage.day,
+    });
+
+    const first = await buildScheduledMarketingDraftStep(
+      { channels: ["x"] },
+      scheduledSourcePacket(),
+      "scheduled-run-1",
+    );
+    const second = await buildScheduledMarketingDraftStep(
+      { channels: ["x"] },
+      scheduledSourcePacket(),
+      "scheduled-run-2",
+    );
+    expect(second.id).toBe(first.id);
+
+    await publishScheduledMarketingBundleStep(second);
+
+    expect(mocks.claim).toHaveBeenCalledWith(
+      expect.objectContaining({
+        idempotencyKey: "scheduled:bounded-authority-v1:x",
+      }),
+    );
+    expect(mocks.xBroadcast).not.toHaveBeenCalled();
+  });
+
+  it("blocks scheduled body, claim, and evidence tampering before a provider write", async () => {
+    setLiveEnvironment();
+    vi.stubEnv("OPENZAPS_MARKETING_AUTO_PUBLISH", "true");
+    mocks.getSnapshot.mockResolvedValue(zeroSnapshot());
+    const draft = await buildScheduledMarketingDraftStep(
+      { channels: ["x"] },
+      scheduledSourcePacket(),
+      "scheduled-run-1",
+    );
+    const baseCandidate = draft.candidates[0]!;
+    const variants: MarketingDraftBundle[] = [
+      {
+        ...draft,
+        candidates: [
+          { ...baseCandidate, body: `${baseCandidate.body} Changed.` },
+        ],
+      },
+      {
+        ...draft,
+        candidates: [
+          { ...baseCandidate, claims: baseCandidate.claims.slice(0, 1) },
+        ],
+      },
+      {
+        ...draft,
+        sourcePacket: { ...draft.sourcePacket, facts: [] },
+        candidates: [
+          {
+            ...baseCandidate,
+            sourcePacket: { ...baseCandidate.sourcePacket, facts: [] },
+          },
+        ],
+      },
+    ];
+
+    for (const variant of variants) {
+      await expect(
+        publishScheduledMarketingBundleStep(variant),
+      ).resolves.toMatchObject([{ status: "blocked" }]);
+    }
+    expect(mocks.claim).not.toHaveBeenCalled();
+    expect(mocks.xBroadcast).not.toHaveBeenCalled();
+  });
+
+  it("rechecks the automatic authority immediately before durable admission", async () => {
+    setLiveEnvironment();
+    vi.stubEnv("OPENZAPS_MARKETING_AUTO_PUBLISH", "true");
+    mocks.getSnapshot.mockResolvedValue(zeroSnapshot());
+    const draft = await buildScheduledMarketingDraftStep(
+      { channels: ["x"] },
+      scheduledSourcePacket(),
+      "scheduled-run-1",
+    );
+
+    vi.stubEnv("OPENZAPS_MARKETING_AUTO_PUBLISH", "false");
+    await expect(
+      publishScheduledMarketingBundleStep(draft),
+    ).resolves.toMatchObject([{ status: "blocked" }]);
+
+    expect(mocks.claim).not.toHaveBeenCalled();
+    expect(mocks.xBroadcast).not.toHaveBeenCalled();
+  });
 });
 
 describe("bounded source collection", () => {
@@ -820,6 +1045,7 @@ describe("bounded source collection", () => {
 
   it("disables Workflow retries for review notifications and publishing", () => {
     expect(publishMarketingBundleStep.maxRetries).toBe(0);
+    expect(publishScheduledMarketingBundleStep.maxRetries).toBe(0);
     expect(notifyMarketingReviewStep.maxRetries).toBe(0);
   });
 

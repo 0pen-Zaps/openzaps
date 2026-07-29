@@ -95,7 +95,7 @@ function draftBundle() {
       channel: "x",
     }],
     policy: [{
-      policyVersion: 1,
+      policyVersion: 2,
       candidateId: "candidate-1",
       riskTier: 1,
       disposition: "require_approval",

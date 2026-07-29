@@ -5,17 +5,21 @@ import {
   type MarketingApprovalPayload,
   type MarketingDelivery,
   type MarketingDraftRequest,
+  type MarketingScheduledRequest,
   type MarketingRunEvent,
   type MarketingWorkflowResult,
 } from "@/workflows/marketing-agent/contracts";
 import {
   closeMarketingRunStreamStep,
+  buildScheduledMarketingDraftStep,
   collectMarketingSourcesStep,
   completeMarketingResultStep,
   emitMarketingRunEventStep,
   generateMarketingDraftStep,
   notifyMarketingReviewStep,
   publishMarketingBundleStep,
+  publishScheduledMarketingBundleStep,
+  scheduledMarketingDraftRequest,
 } from "@/workflows/marketing-agent/steps";
 
 export const marketingApprovalHook = defineHook({
@@ -155,9 +159,76 @@ export async function openZapsMarketingWorkflow(
   return result;
 }
 
+export async function openZapsScheduledMarketingWorkflow(
+  request: MarketingScheduledRequest,
+): Promise<MarketingWorkflowResult> {
+  "use workflow";
+
+  const { workflowRunId } = getWorkflowMetadata();
+  const sourceRequest = scheduledMarketingDraftRequest(request);
+  const sourcePacket = await collectMarketingSourcesStep(sourceRequest);
+  const draft = await buildScheduledMarketingDraftStep(
+    request,
+    sourcePacket,
+    workflowRunId,
+  );
+  const dispositions = draft.policy.map((decision) => decision.disposition);
+  const state: "auto_authorized" | "blocked" | "dry_run_complete" =
+    dispositions.every((value) => value === "allow")
+      ? "auto_authorized"
+      : dispositions.every((value) => value === "dry_run")
+        ? "dry_run_complete"
+        : "blocked";
+
+  await emit({
+    type: "draft",
+    at: new Date().toISOString(),
+    state,
+    draft,
+  });
+
+  if (state !== "auto_authorized") {
+    const result = await completeMarketingResultStep({
+      runId: workflowRunId,
+      status: state,
+      draft,
+      approval: null,
+      deliveries: draft.candidates.map((candidate) => ({
+        channel: candidate.channel,
+        candidateId: candidate.id,
+        status: state === "blocked" ? "blocked" : "dry_run",
+        idempotencyKey: `${draft.id}:${candidate.channel}`,
+        ...(state === "blocked"
+          ? {
+              error:
+                "Bounded automatic authorization was not available; no provider write was attempted.",
+            }
+          : {}),
+      })),
+    });
+    await emit({ type: "result", at: new Date().toISOString(), result });
+    await closeMarketingRunStreamStep();
+    return result;
+  }
+
+  const deliveries = await publishScheduledMarketingBundleStep(draft);
+  const status = marketingDeliveryResultStatus(deliveries);
+  const result = await completeMarketingResultStep({
+    runId: workflowRunId,
+    status,
+    draft,
+    approval: null,
+    deliveries,
+  });
+  await emit({ type: "result", at: new Date().toISOString(), result });
+  await closeMarketingRunStreamStep();
+  return result;
+}
+
 export type {
   MarketingApprovalPayload,
   MarketingDraftRequest,
+  MarketingScheduledRequest,
   MarketingRunEvent,
   MarketingWorkflowResult,
 } from "@/workflows/marketing-agent/contracts";
