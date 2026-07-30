@@ -173,6 +173,33 @@ function marketingDeliveryClaim({
   `);
 }
 
+function submitLeadFixture({
+  fingerprint,
+  email,
+  name,
+  qualificationScore = 4,
+}) {
+  return psqlScalar(`
+    select result_code
+    from public.submit_lead_request(
+      '${fingerprint}',
+      'agent_builder',
+      '${name}',
+      '${email}',
+      'OpenZaps PostgreSQL harness',
+      'https://example.com/openzaps-harness',
+      'Automate a bounded multi-protocol workflow with one approved transaction.',
+      'ETH, USDC, and a harness-only protocol fixture',
+      'When the pre-committed market condition is met',
+      'Enforce explicit value, slippage, protocol, and expiry limits.',
+      'within_30_days',
+      true,
+      '{"utm_source":"integration-harness","secret_marker":"must-not-leak"}'::jsonb,
+      ${qualificationScore}
+    );
+  `);
+}
+
 const owner = "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 const firstZap = "0x1111111111111111111111111111111111111111";
 const cappedZap = "0x2222222222222222222222222222222222222222";
@@ -356,6 +383,502 @@ try {
   assert(
     hardenedPrivileges.join("|") === "t|f|f|t|t|t|f|f|f|f|f|f|t|f|f|t",
     `unexpected hardened service privileges: ${hardenedPrivileges.join(", ")}`,
+  );
+
+  const notificationOutputColumns = psqlScalar(`
+    select pg_catalog.array_to_string(
+      array(
+        select arguments.name
+        from pg_catalog.pg_proc as functions
+        cross join lateral (
+          select
+            functions.proargnames[positions.position] as name,
+            functions.proargmodes[positions.position] as mode,
+            positions.position
+          from pg_catalog.generate_subscripts(
+            functions.proargnames,
+            1
+          ) as positions(position)
+        ) as arguments
+        where functions.oid =
+          'public.claim_next_lead_notification(text)'::regprocedure
+          and arguments.mode in ('o', 't')
+        order by arguments.position
+      ),
+      ','
+    );
+  `);
+  assert(
+    notificationOutputColumns ===
+      "lead_id,persona,name,email,project,project_url,workflow,protocols_assets,trigger_description,guardrails,timeline,qualification_score,created_at",
+    `lead notification claim exposed an unexpected record shape: ${notificationOutputColumns}`,
+  );
+
+  const notificationPrivileges = psqlScalar(`
+    select
+      (
+        select relrowsecurity
+        from pg_catalog.pg_class
+        where oid = 'private.lead_notification_outbox'::regclass
+      ),
+      has_table_privilege(
+        'service_role',
+        'private.lead_notification_outbox',
+        'select'
+      ),
+      has_table_privilege(
+        'anon',
+        'private.lead_notification_outbox',
+        'select'
+      ),
+      has_function_privilege(
+        'service_role',
+        'public.claim_next_lead_notification(text)',
+        'execute'
+      ),
+      has_function_privilege(
+        'anon',
+        'public.claim_next_lead_notification(text)',
+        'execute'
+      ),
+      has_function_privilege(
+        'authenticated',
+        'public.claim_next_lead_notification(text)',
+        'execute'
+      ),
+      has_function_privilege(
+        'service_role',
+        'private.claim_next_lead_notification(text)',
+        'execute'
+      ),
+      has_function_privilege(
+        'service_role',
+        'public.complete_lead_notification(uuid,text,text)',
+        'execute'
+      ),
+      has_function_privilege(
+        'service_role',
+        'public.fail_lead_notification(uuid,text,text,boolean)',
+        'execute'
+      );
+  `).split("|");
+  assert(
+    notificationPrivileges.join("|") === "t|f|f|t|f|f|t|t|t",
+    `unexpected lead-notification privileges: ${notificationPrivileges.join(", ")}`,
+  );
+
+  const emptyServiceNotificationClaim = await psqlSession(`
+    set role service_role;
+    select count(*)
+    from public.claim_next_lead_notification('harness-empty-worker');
+  `);
+  assert(
+    emptyServiceNotificationClaim.status === 0
+      && /(?:^|\n)\s*0\s*(?:\n|$)/.test(
+        `${emptyServiceNotificationClaim.stdout}${emptyServiceNotificationClaim.stderr}`,
+      ),
+    `service role could not call the notification RPC: ${emptyServiceNotificationClaim.stdout}${emptyServiceNotificationClaim.stderr}`,
+  );
+  const directNotificationRead = await psqlSession(`
+    set role service_role;
+    select * from private.lead_notification_outbox;
+  `);
+  assert(
+    directNotificationRead.status !== 0
+      && /permission denied/.test(
+        `${directNotificationRead.stdout}${directNotificationRead.stderr}`,
+      ),
+    "service role unexpectedly bypassed the private lead-notification RPC boundary",
+  );
+
+  const firstLeadEmail = "lead-concurrent-a@example.com";
+  const secondLeadEmail = "lead-concurrent-b@example.com";
+  const firstLeadSubmission = submitLeadFixture({
+    fingerprint: "a".repeat(64),
+    email: firstLeadEmail,
+    name: "Harness Lead Alpha",
+    qualificationScore: 5,
+  });
+  const secondLeadSubmission = submitLeadFixture({
+    fingerprint: "b".repeat(64),
+    email: secondLeadEmail,
+    name: "Harness Lead Beta",
+    qualificationScore: 4,
+  });
+  assert(
+    firstLeadSubmission === "accepted" && secondLeadSubmission === "accepted",
+    `lead notification fixtures were not accepted: ${firstLeadSubmission}|${secondLeadSubmission}`,
+  );
+
+  const atomicEnqueueState = psqlScalar(`
+    select
+      count(*),
+      count(*) filter (
+        where outbox.status = 'pending'
+          and outbox.attempt_count = 0
+          and outbox.claimed_by is null
+          and outbox.lease_expires_at is null
+      ),
+      count(distinct outbox.lead_id)
+    from private.lead_notification_outbox as outbox
+    join private.lead_requests as leads
+      on leads.id = outbox.lead_id
+    where leads.email in ('${firstLeadEmail}', '${secondLeadEmail}');
+  `);
+  assert(
+    atomicEnqueueState === "2|2|2",
+    `accepted leads were not atomically enqueued exactly once: ${atomicEnqueueState}`,
+  );
+
+  const concurrentNotificationClaimA = psqlSession(`
+    select lead_id, email
+    from public.claim_next_lead_notification('harness-worker-a');
+  `);
+  const concurrentNotificationClaimB = psqlSession(`
+    select lead_id, email
+    from public.claim_next_lead_notification('harness-worker-b');
+  `);
+  const concurrentNotificationClaims = await Promise.all([
+    concurrentNotificationClaimA,
+    concurrentNotificationClaimB,
+  ]);
+  assert(
+    concurrentNotificationClaims.every((result) => result.status === 0),
+    `concurrent lead-notification claims failed: ${concurrentNotificationClaims
+      .map((result) => `${result.stdout}${result.stderr}`)
+      .join("\n")}`,
+  );
+
+  const concurrentNotificationState = psqlScalar(`
+    select
+      count(*) filter (where outbox.status = 'processing'),
+      count(distinct outbox.claimed_by),
+      sum(outbox.attempt_count)
+    from private.lead_notification_outbox as outbox
+    join private.lead_requests as leads
+      on leads.id = outbox.lead_id
+    where leads.email in ('${firstLeadEmail}', '${secondLeadEmail}');
+  `);
+  assert(
+    concurrentNotificationState === "2|2|2",
+    `SKIP LOCKED did not give concurrent workers distinct claims: ${concurrentNotificationState}`,
+  );
+
+  const workerAClaim = psqlScalar(`
+    select outbox.lead_id, leads.email
+    from private.lead_notification_outbox as outbox
+    join private.lead_requests as leads
+      on leads.id = outbox.lead_id
+    where outbox.claimed_by = 'harness-worker-a';
+  `);
+  const [workerALeadId] = workerAClaim.split("|");
+  const reenteredWorkerAClaim = psqlScalar(`
+    select lead_id, email
+    from public.claim_next_lead_notification('harness-worker-a');
+  `);
+  assert(
+    reenteredWorkerAClaim === workerAClaim,
+    `same worker did not re-enter its active claim: ${workerAClaim} -> ${reenteredWorkerAClaim}`,
+  );
+  const reenteredAttemptCount = psqlScalar(`
+    select attempt_count
+    from private.lead_notification_outbox
+    where lead_id = '${workerALeadId}';
+  `);
+  assert(
+    reenteredAttemptCount === "1",
+    `same-worker re-entry incremented the attempt count: ${reenteredAttemptCount}`,
+  );
+  const unavailableClaim = psqlScalar(`
+    select count(*)
+    from public.claim_next_lead_notification('harness-worker-unavailable');
+  `);
+  assert(
+    unavailableClaim === "0",
+    `a third worker stole a live notification lease: ${unavailableClaim}`,
+  );
+
+  const invalidCompletion = psqlScalar(`
+    select result_code
+    from public.complete_lead_notification(
+      '${workerALeadId}',
+      'harness-worker-a',
+      'invalid provider id'
+    );
+  `);
+  assert(
+    invalidCompletion === "invalid_input",
+    `unsafe provider identifier was accepted: ${invalidCompletion}`,
+  );
+  const completedNotification = psqlScalar(`
+    select result_code
+    from public.complete_lead_notification(
+      '${workerALeadId}',
+      'harness-worker-a',
+      'resend-msg-a'
+    );
+  `);
+  const replayedCompletion = psqlScalar(`
+    select result_code
+    from public.complete_lead_notification(
+      '${workerALeadId}',
+      'harness-worker-a',
+      'resend-msg-a'
+    );
+  `);
+  const conflictingCompletion = psqlScalar(`
+    select result_code
+    from public.complete_lead_notification(
+      '${workerALeadId}',
+      'harness-worker-a',
+      'resend-msg-conflict'
+    );
+  `);
+  assert(
+    completedNotification === "sent"
+      && replayedCompletion === "already_sent"
+      && conflictingCompletion === "ownership_lost",
+    `lead-notification completion was not replay-safe: ${completedNotification}|${replayedCompletion}|${conflictingCompletion}`,
+  );
+  const completedNotificationState = psqlScalar(`
+    select
+      status,
+      attempt_count,
+      provider_message_id,
+      claimed_by is null,
+      lease_expires_at is null,
+      sent_at is not null
+    from private.lead_notification_outbox
+    where lead_id = '${workerALeadId}';
+  `);
+  assert(
+    completedNotificationState === "sent|1|resend-msg-a|t|t|t",
+    `completed notification retained an invalid state: ${completedNotificationState}`,
+  );
+
+  const workerBClaim = psqlScalar(`
+    select outbox.lead_id, leads.email
+    from private.lead_notification_outbox as outbox
+    join private.lead_requests as leads
+      on leads.id = outbox.lead_id
+    where outbox.claimed_by = 'harness-worker-b';
+  `);
+  const [workerBLeadId] = workerBClaim.split("|");
+  const lostFailureClaim = psqlScalar(`
+    select result_code
+    from public.fail_lead_notification(
+      '${workerBLeadId}',
+      'harness-wrong-worker',
+      'provider_503',
+      false
+    );
+  `);
+  const releasedNotification = psqlScalar(`
+    select result_code
+    from public.fail_lead_notification(
+      '${workerBLeadId}',
+      'harness-worker-b',
+      'provider_503',
+      false
+    );
+  `);
+  assert(
+    lostFailureClaim === "ownership_lost"
+      && releasedNotification === "released",
+    `transient notification failure did not honor claim ownership: ${lostFailureClaim}|${releasedNotification}`,
+  );
+  const releasedNotificationState = psqlScalar(`
+    select
+      status,
+      attempt_count,
+      last_error_code,
+      claimed_by is null,
+      lease_expires_at is null,
+      next_attempt_at > pg_catalog.clock_timestamp()
+    from private.lead_notification_outbox
+    where lead_id = '${workerBLeadId}';
+  `);
+  assert(
+    releasedNotificationState === "pending|1|provider_503|t|t|t",
+    `transient notification failure did not schedule backoff: ${releasedNotificationState}`,
+  );
+  const earlyRecoveryClaim = psqlScalar(`
+    select count(*)
+    from public.claim_next_lead_notification('harness-recovery-worker');
+  `);
+  assert(
+    earlyRecoveryClaim === "0",
+    `notification retry ignored its durable backoff: ${earlyRecoveryClaim}`,
+  );
+
+  psql(`
+    update private.lead_notification_outbox
+    set next_attempt_at = pg_catalog.clock_timestamp()
+    where lead_id = '${workerBLeadId}';
+  `);
+  const recoveredNotification = psqlScalar(`
+    select lead_id
+    from public.claim_next_lead_notification('harness-recovery-worker');
+  `);
+  assert(
+    recoveredNotification === workerBLeadId,
+    `due notification was not recovered: ${workerBLeadId} -> ${recoveredNotification}`,
+  );
+  const recoveredAttemptCount = psqlScalar(`
+    select status, attempt_count, claimed_by
+    from private.lead_notification_outbox
+    where lead_id = '${workerBLeadId}';
+  `);
+  assert(
+    recoveredAttemptCount === "processing|2|harness-recovery-worker",
+    `notification retry did not acquire a fresh attempt: ${recoveredAttemptCount}`,
+  );
+  const recoveredCompletion = psqlScalar(`
+    select result_code
+    from public.complete_lead_notification(
+      '${workerBLeadId}',
+      'harness-recovery-worker',
+      'resend-msg-b'
+    );
+  `);
+  assert(
+    recoveredCompletion === "sent",
+    `recovered notification could not complete: ${recoveredCompletion}`,
+  );
+
+  const permanentLeadEmail = "lead-permanent@example.com";
+  const permanentLeadSubmission = submitLeadFixture({
+    fingerprint: "c".repeat(64),
+    email: permanentLeadEmail,
+    name: "Harness Lead Permanent",
+    qualificationScore: 3,
+  });
+  assert(
+    permanentLeadSubmission === "accepted",
+    `permanent-failure lead fixture was not accepted: ${permanentLeadSubmission}`,
+  );
+  const permanentLeadId = psqlScalar(`
+    select lead_id
+    from public.claim_next_lead_notification('harness-permanent-worker');
+  `);
+  psql(`
+    update private.lead_notification_outbox
+    set lease_expires_at =
+      pg_catalog.clock_timestamp() - interval '1 second'
+    where lead_id = '${permanentLeadId}';
+  `);
+  const expiredLeaseRecovery = psqlScalar(`
+    select lead_id
+    from public.claim_next_lead_notification('harness-takeover-worker');
+  `);
+  const expiredLeaseState = psqlScalar(`
+    select status, attempt_count, claimed_by
+    from private.lead_notification_outbox
+    where lead_id = '${permanentLeadId}';
+  `);
+  assert(
+    expiredLeaseRecovery === permanentLeadId
+      && expiredLeaseState ===
+        "processing|2|harness-takeover-worker",
+    `expired notification lease was not recoverable: ${expiredLeaseRecovery}|${expiredLeaseState}`,
+  );
+  const expiredOwnerFailure = psqlScalar(`
+    select result_code
+    from public.fail_lead_notification(
+      '${permanentLeadId}',
+      'harness-permanent-worker',
+      'invalid_recipient',
+      true
+    );
+  `);
+  const invalidFailureCode = psqlScalar(`
+    select result_code
+    from public.fail_lead_notification(
+      '${permanentLeadId}',
+      'harness-takeover-worker',
+      'INVALID CODE',
+      true
+    );
+  `);
+  const permanentFailure = psqlScalar(`
+    select result_code
+    from public.fail_lead_notification(
+      '${permanentLeadId}',
+      'harness-takeover-worker',
+      'invalid_recipient',
+      true
+    );
+  `);
+  const replayedPermanentFailure = psqlScalar(`
+    select result_code
+    from public.fail_lead_notification(
+      '${permanentLeadId}',
+      'harness-takeover-worker',
+      'invalid_recipient',
+      true
+    );
+  `);
+  assert(
+    expiredOwnerFailure === "ownership_lost"
+      && invalidFailureCode === "invalid_input"
+      && permanentFailure === "permanent_failure"
+      && replayedPermanentFailure === "permanent_failure",
+    `permanent notification failure was not safe or idempotent: ${expiredOwnerFailure}|${invalidFailureCode}|${permanentFailure}|${replayedPermanentFailure}`,
+  );
+  const permanentFailureState = psqlScalar(`
+    select
+      status,
+      last_error_code,
+      claimed_by is null,
+      lease_expires_at is null,
+      provider_message_id is null,
+      sent_at is null
+    from private.lead_notification_outbox
+    where lead_id = '${permanentLeadId}';
+  `);
+  assert(
+    permanentFailureState ===
+      "permanent_failure|invalid_recipient|t|t|t|t",
+    `permanent notification failure retained an invalid state: ${permanentFailureState}`,
+  );
+
+  const cascadeLeadEmail = "lead-cascade@example.com";
+  const cascadeLeadSubmission = submitLeadFixture({
+    fingerprint: "d".repeat(64),
+    email: cascadeLeadEmail,
+    name: "Harness Lead Cascade",
+    qualificationScore: 2,
+  });
+  assert(
+    cascadeLeadSubmission === "accepted",
+    `cascade lead fixture was not accepted: ${cascadeLeadSubmission}`,
+  );
+  const cascadeLeadId = psqlScalar(`
+    select id
+    from private.lead_requests
+    where email = '${cascadeLeadEmail}';
+  `);
+  const cascadeBefore = psqlScalar(`
+    select
+      (select count(*) from private.lead_requests
+       where id = '${cascadeLeadId}'),
+      (select count(*) from private.lead_notification_outbox
+       where lead_id = '${cascadeLeadId}');
+  `);
+  psql(`
+    delete from private.lead_requests
+    where id = '${cascadeLeadId}';
+  `);
+  const cascadeAfter = psqlScalar(`
+    select
+      (select count(*) from private.lead_requests
+       where id = '${cascadeLeadId}'),
+      (select count(*) from private.lead_notification_outbox
+       where lead_id = '${cascadeLeadId}');
+  `);
+  assert(
+    cascadeBefore === "1|1" && cascadeAfter === "0|0",
+    `lead deletion did not cascade to its notification outbox: ${cascadeBefore} -> ${cascadeAfter}`,
   );
 
   psql(`
@@ -1494,7 +2017,9 @@ try {
     `unexpected service-role privileges: ${privileges.join(", ")}`,
   );
 
-  console.log("PostgreSQL 16 relay and marketing admission integration: passed");
+  console.log(
+    "PostgreSQL 16 relay, marketing, and lead-notification integration: passed",
+  );
 } finally {
   spawnSync("pg_ctl", ["-D", dataDirectory, "-m", "immediate", "stop"], {
     cwd: root,

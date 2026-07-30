@@ -1,6 +1,28 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vitest";
+
+const mocks = vi.hoisted(() => ({
+  configured: vi.fn(),
+  start: vi.fn(),
+  workflow: vi.fn(),
+}));
 
 vi.mock("server-only", () => ({}));
+vi.mock("workflow/api", () => ({
+  start: mocks.start,
+}));
+vi.mock("@/lib/leads/notification-server", () => ({
+  leadNotificationDeliveryConfigured: mocks.configured,
+}));
+vi.mock("@/workflows/lead-notification", () => ({
+  openZapsLeadNotificationWorkflow: mocks.workflow,
+}));
 vi.mock("@/lib/leads/server", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/leads/server")>()),
   submitLeadRequest: vi.fn(),
@@ -44,6 +66,11 @@ function request(
   });
 }
 
+beforeEach(() => {
+  mocks.configured.mockReturnValue(true);
+  mocks.start.mockResolvedValue({ runId: "wrun_lead_notification_1" });
+});
+
 afterEach(() => {
   vi.resetAllMocks();
 });
@@ -61,6 +88,28 @@ describe("POST /api/leads/request", () => {
     expect(raw).not.toContain("nodar@example.com");
     expect(raw).not.toContain("qualification");
     expect(mockedSubmit).toHaveBeenCalledOnce();
+    expect(mocks.start).toHaveBeenCalledWith(mocks.workflow);
+  });
+
+  it("keeps durable acceptance successful when advisory workflow start fails", async () => {
+    mockedSubmit.mockResolvedValue("accepted");
+    mocks.start.mockRejectedValue(new Error("workflow unavailable"));
+
+    const response = await POST(request());
+
+    expect(response.status).toBe(202);
+    expect(await response.json()).toEqual({ accepted: true });
+    expect(mocks.start).toHaveBeenCalledOnce();
+  });
+
+  it("does not attempt workflow start when notification delivery is not ready", async () => {
+    mockedSubmit.mockResolvedValue("accepted");
+    mocks.configured.mockReturnValue(false);
+
+    const response = await POST(request());
+
+    expect(response.status).toBe(202);
+    expect(mocks.start).not.toHaveBeenCalled();
   });
 
   it("silently accepts the honeypot without touching durable storage", async () => {
@@ -71,6 +120,7 @@ describe("POST /api/leads/request", () => {
     expect(response.status).toBe(202);
     expect(await response.json()).toEqual({ accepted: true });
     expect(mockedSubmit).not.toHaveBeenCalled();
+    expect(mocks.start).not.toHaveBeenCalled();
   });
 
   it("rejects missing or cross-origin browser provenance before reading", async () => {
@@ -118,6 +168,7 @@ describe("POST /api/leads/request", () => {
       error: "Please try again later.",
     });
     expect(raw).not.toContain("fingerprint");
+    expect(mocks.start).not.toHaveBeenCalled();
   });
 
   it("fails closed when durable storage is unavailable", async () => {
@@ -129,5 +180,6 @@ describe("POST /api/leads/request", () => {
       accepted: false,
       error: "Lead intake is temporarily unavailable.",
     });
+    expect(mocks.start).not.toHaveBeenCalled();
   });
 });

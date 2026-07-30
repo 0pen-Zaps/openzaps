@@ -49,8 +49,9 @@ or funds a request.
 ## Private storage and consent
 
 Apply
-`supabase/migrations/20260730020106_private_lead_intake.sql` before exposing
-the form in a deployment.
+`supabase/migrations/20260730020106_private_lead_intake.sql` and
+`supabase/migrations/20260730144125_lead_submission_notification_outbox.sql`
+before exposing the form in a deployment.
 
 The migration stores contact and workflow data in `private.lead_requests` and
 short-lived quota counters in `private.lead_request_quotas`. The two are not
@@ -70,6 +71,34 @@ recorded, may extend an active request only within a hard one-year limit, and
 make `closed` terminal with no more than 30 days remaining. A daily retention
 job deletes expired requests and quota counters. An operator can also
 permanently delete a request through the narrow lead endpoint.
+
+## Submission notifications
+
+Every accepted lead insert creates one row in
+`private.lead_notification_outbox` in the same database transaction. The
+public request does not wait for email delivery and still returns its minimal
+`202` after durable storage if the email provider or workflow scheduler is
+temporarily unavailable.
+
+A no-argument Vercel Workflow claims one due row at a time with a finite lease,
+loads only the notification-safe lead fields through a service-role RPC, sends
+one plain-text message to `nodar.janashia@gmail.com`, and records the provider
+receipt. The provider idempotency key is derived from the private lead ID.
+Concurrent workers use `FOR UPDATE SKIP LOCKED`; retries cannot widen the
+recipient or sender. The existing daily retention route also starts a bounded
+recovery drain, so a missed immediate scheduler nudge remains recoverable.
+
+Email content includes the submitted contact and workflow details, timeline,
+qualification score, received time, and a link to the private lead desk. It
+omits attribution, network metadata, fingerprints, quotas, secrets, and
+provider error bodies. Project URL query strings and fragments are removed.
+If a free-text field resembles a credential, the notification withholds that
+entire field and the operator must inspect the protected lead desk instead.
+Because a delivered email is a separate copy, database cascade deletion cannot
+remove it from the operator mailbox or the provider's service records. Delete
+the matching mailbox notification when the lead is deleted. The public privacy
+notice distinguishes database expiry from email-provider and mailbox
+retention.
 
 ## Operator access
 
@@ -100,11 +129,20 @@ each scheduled run without copying personal data into its report.
 | `OPENZAPS_SUPABASE_PROJECT_REF` | Exact project ref required to bind the configured Supabase origin. |
 | `OPENZAPS_LEAD_FINGERPRINT_SECRET` | At least 32 bytes; HMAC key for the non-reversible daily quota fingerprint. |
 | `OPENZAPS_LEAD_ADMIN_TOKEN` | At least 32 bytes; private lead read/lifecycle credential. |
+| `OPENZAPS_LEAD_NOTIFICATION_ENABLED` | Exact `true` production gate. Leave unset in preview and development. |
+| `OPENZAPS_LEAD_NOTIFICATION_TO` | Must exactly equal `nodar.janashia@gmail.com`; any other value disables delivery. |
+| `OPENZAPS_LEAD_NOTIFICATION_FROM` | Server-only Resend sender. Use a verified OpenZaps sender for production. |
+| `OPENZAPS_LEAD_NOTIFICATION_OPERATOR_URL` | Optional clean HTTPS OpenZaps lead-desk URL; defaults to `https://www.0xzaps.com/marketing`. |
+| `RESEND_API_KEY` | Server-only Resend credential scoped through the production Vercel integration. |
 | `OPENZAPS_MARKETING_ADMIN_TOKEN` | Separate private drafting/publication credential. |
 | `CRON_SECRET` | Existing Vercel cron credential used for retention. |
 
 All secrets belong in Vercel environment settings. Never place them in a
 tracked file, a lead request, a model prompt, or a client-exposed variable.
+Keep the notification enable gate and provider key out of preview deployments
+so test submissions cannot email the production recipient. The runtime also
+requires Vercel's system `VERCEL_ENV` value to be exactly `production`; a
+mis-scoped preview secret therefore remains fail-closed.
 
 ## Lead Scout
 
