@@ -1,7 +1,15 @@
+import { existsSync } from "node:fs";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { BLOCKS, defaultParams, getBlock } from "@/lib/blocks";
-import { PROTOCOL_IDS, protocolName, protocolsForAction, type ProtocolId } from "@/lib/protocols";
+import {
+  PROTOCOL_IDS,
+  protocolLogoAsset,
+  protocolName,
+  protocolsForAction,
+  type ProtocolId,
+} from "@/lib/protocols";
 
 /** A block's protocols at its catalog defaults, as bare ids. */
 function ids(blockId: string, params?: Record<string, unknown>): ProtocolId[] {
@@ -101,5 +109,22 @@ describe("protocolName", () => {
 
   it("keeps ids unique", () => {
     expect(new Set(PROTOCOL_IDS).size).toBe(PROTOCOL_IDS.length);
+  });
+});
+
+describe("protocolLogoAsset", () => {
+  it("maps every protocol to a vendored image that exists", () => {
+    for (const id of PROTOCOL_IDS) {
+      const asset = protocolLogoAsset(id);
+      expect(asset.src, id).toMatch(/^\/.+\.svg$/);
+      expect(existsSync(join(process.cwd(), "public", asset.src)), id).toBe(true);
+    }
+  });
+
+  it("uses one authentic Uniswap mark and differentiates versions in text", () => {
+    expect(protocolLogoAsset("uniswap-v3").src).toBe(
+      protocolLogoAsset("uniswap-v4").src,
+    );
+    expect(protocolName("uniswap-v3")).not.toBe(protocolName("uniswap-v4"));
   });
 });

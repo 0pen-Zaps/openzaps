@@ -132,6 +132,13 @@
   background: var(--panel);
 }
 
+.sourceSummary {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 0.65rem 0.85rem;
+}
+
 .sourceState,
 .blockEvidence {
   display: flex;
@@ -141,6 +148,22 @@
   font-family: var(--font-mono), ui-monospace, monospace;
   font-size: 0.68rem;
   letter-spacing: 0.02em;
+}
+
+.sourceVenue {
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  gap: 0.4rem;
+  color: var(--ink-3);
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-size: 0.66rem;
+  white-space: nowrap;
+}
+
+.sourceVenue strong {
+  color: var(--ink-2);
+  font-weight: 600;
 }
 
 .sourceState i {
@@ -351,33 +374,45 @@
   gap: 0.7rem;
 }
 
-.tokenDot {
+.assetMark {
   display: grid;
-  width: 2.15rem;
-  height: 2.15rem;
   flex: 0 0 auto;
   place-items: center;
+  overflow: hidden;
+  border: 1px solid var(--line-strong);
   border-radius: 50%;
   background: var(--chip);
   color: var(--ink);
   font-family: var(--font-mono), ui-monospace, monospace;
   font-size: 0.8rem;
-  font-style: normal;
+  font-weight: 700;
+  line-height: 1;
 }
 
-.tokenDot[data-market="zaps"] {
-  background: var(--zap);
-  color: var(--on-zap);
+.assetMarkImage {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
 }
 
-.marketIdentity > span,
+.assetMark[data-asset="weth"] .assetMarkImage {
+  width: 68%;
+  height: 68%;
+}
+
+.assetMark[data-asset="usdg"] {
+  background: var(--panel-2);
+  color: var(--ink-2);
+}
+
+.marketIdentityCopy,
 .marketPrice,
 .marketHolding {
   display: grid;
   gap: 0.2rem;
 }
 
-.marketIdentity strong,
+.marketIdentityCopy strong,
 .marketPrice strong,
 .marketHolding strong {
   color: var(--ink);
@@ -385,13 +420,24 @@
   font-variant-numeric: tabular-nums;
 }
 
-.marketIdentity small,
+.marketIdentityCopy small,
 .marketPrice small,
 .marketHolding small,
 .marketHolding em {
   color: var(--ink-3);
   font-size: 0.67rem;
   font-style: normal;
+}
+
+.marketVenue {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin-left: auto;
+  color: var(--ink-3);
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-size: 0.59rem;
+  white-space: nowrap;
 }
 
 .marketPrice strong {
@@ -609,27 +655,117 @@
 
 .routeBox {
   display: grid;
-  gap: 0.35rem;
+  gap: 0.75rem;
   margin-top: 1rem;
-  padding: 0.8rem;
+  padding: 0.9rem;
   border: 1px solid var(--line);
   border-radius: var(--r-card-sm);
   background: var(--sunk);
 }
 
-.routeBox span,
-.routeBox small {
-  color: var(--ink-3);
-  font-size: 0.62rem;
+.routeHeading,
+.routeVenue,
+.routeFlow,
+.routeStep,
+.routeAsset {
+  display: flex;
+  align-items: center;
 }
 
-.routeBox code {
+.routeHeading {
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.routeLabel {
+  color: var(--ink-3);
+  font-size: 0.62rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.routeVenue {
+  gap: 0.35rem;
+}
+
+.routeVenue strong {
+  color: var(--ink-2);
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-size: 0.62rem;
+  font-weight: 600;
+}
+
+.routeFlow {
+  min-width: 0;
+  justify-content: space-between;
+  gap: 0.25rem;
+}
+
+.routeStep {
+  min-width: 0;
+  gap: 0.25rem;
+}
+
+.routeArrow {
+  color: var(--ink-3);
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-size: 0.7rem;
+}
+
+.routeAsset {
+  min-width: 0;
+  gap: 0.35rem;
+  padding: 0.3rem 0.42rem 0.3rem 0.3rem;
+  border: 1px solid var(--line);
+  border-radius: var(--r-pill);
+  background: var(--panel);
+}
+
+.routeAsset strong {
+  color: var(--ink);
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-size: 0.61rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.routeSummary {
+  display: grid;
+  gap: 0.25rem;
+  padding-top: 0.7rem;
+  border-top: 1px solid var(--line);
+}
+
+.routeSummary strong {
+  color: var(--ink-2);
+  font-size: 0.67rem;
+}
+
+.routeSummary span {
+  color: var(--ink-3);
+  font-size: 0.62rem;
+  line-height: 1.45;
+}
+
+.routeAudit {
+  display: grid;
+  gap: 0.3rem;
+}
+
+.routeAudit code {
   overflow: hidden;
   color: var(--ink-2);
   font-family: var(--font-mono), ui-monospace, monospace;
   font-size: 0.66rem;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.routeAudit small {
+  color: var(--ink-3);
+  font-size: 0.6rem;
+  line-height: 1.45;
 }
 
 .quoteCard {
@@ -903,6 +1039,17 @@
   }
 }
 
+@media (max-width: 920px) {
+  .sourceBar {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .blockEvidence {
+    flex-wrap: wrap;
+  }
+}
+
 @media (max-width: 760px) {
   .screen {
     padding-top: 1.25rem;
@@ -922,8 +1069,13 @@
     align-items: flex-start;
   }
 
-  .sourceBar {
+  .sourceBar,
+  .sourceSummary {
     flex-direction: column;
+  }
+
+  .sourceSummary {
+    align-items: flex-start;
   }
 
   .blockEvidence {
@@ -975,6 +1127,34 @@
 
   .methodGrid article:last-child {
     border-bottom: 0;
+  }
+}
+
+@media (max-width: 360px) {
+  .routeFlow {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 0.35rem;
+  }
+
+  .routeStep {
+    display: grid;
+    grid-template-columns: 0.75rem minmax(0, 1fr);
+    gap: 0.35rem;
+  }
+
+  .routeStep:first-child .routeAsset {
+    grid-column: 2;
+  }
+
+  .routeArrow {
+    align-self: center;
+    text-align: center;
+    transform: rotate(90deg);
+  }
+
+  .routeAsset {
+    width: fit-content;
   }
 }
 
