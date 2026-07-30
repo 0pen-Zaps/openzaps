@@ -38,6 +38,7 @@ import {
   projectedRelativeFloor,
   projectedStackRecipientFloor,
   readAutomationHandoff,
+  verifyFundingConfirmation,
   type AutomationIntentKind,
   type AutomationMode,
 } from "@/lib/automate";
@@ -1331,7 +1332,19 @@ export default function AutomateConsole(): React.JSX.Element {
         args: [record.address, missing],
       });
       const hash = await wallet.writeContract(request);
-      await publicClient.waitForTransactionReceipt({ hash });
+      const receipt = await publicClient.waitForTransactionReceipt({ hash });
+      await verifyFundingConfirmation({
+        receiptStatus: receipt.status,
+        receiptBlockNumber: receipt.blockNumber,
+        target,
+        readBalance: (blockNumber) => publicClient.readContract({
+          address: recordRoute.tokenIn.address,
+          abi: erc20Abi,
+          functionName: "balanceOf",
+          args: [record.address],
+          blockNumber,
+        }),
+      });
       await applyLoad(record);
       setNotice(`Funded ${formatToken(missing, recordRoute.tokenIn.decimals)} ${recordRoute.tokenIn.symbol} into the Zap.`);
       trackEvent("automate_fund");

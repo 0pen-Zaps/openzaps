@@ -9,11 +9,13 @@ verified against the invariants in [`../docs/invariant-spec.md`](../docs/invaria
 
 > ## ⚠️ Security status: LIVE, INTERNALLY TESTED, PRE-EXTERNAL-AUDIT
 >
-> Three generations are deployed on Robinhood Chain: **v1.1** (single-shot routes), **v3**
-> (recurring + price-triggered execution and the executor fee/lottery economy), and **v3.1**
-> (per-run floors priced from live spot). They ship with passing unit/fuzz/invariant tests, Slither
-> review, live-pool fork tests in both directions, a full Factory/clone/EIP-712 fork test, exact
-> Sourcify matches, and successful bounded mainnet smoke zaps. They have **not** had a professional
+> Four generations are deployed on Robinhood Chain: **v1.1** (single-shot routes), **v3**
+> (recurring + price-triggered execution and the executor fee/lottery economy), **v3.1**
+> (per-run floors priced from live spot), and the unaudited **v3.2 candidate** (owner-signed recurring
+> 0xZAPS stacking plus a permanent owner-only policy halt). All four have passing unit coverage and
+> exact Sourcify runtime matches; the established v1.1/v3/v3.1 lineages additionally have
+> fuzz/invariant and live-pool fork coverage plus successful bounded mainnet smoke zaps. The v3.2
+> production canaries remain a release gate. None has had a professional
 > third-party audit or formal prover run. Keep deposits scoped, use narrow allowlisted adapters, and
 > preserve the owner-only `emergencyExit` path until those external gates are complete.
 >
@@ -44,7 +46,7 @@ Hermes / relayer ──simulate / private submit / monitor───────�
 | [`OpenZap.sol`](src/OpenZap.sol) | The immutable per-zap instance (clone target). `initialize`, pre-funded `execute`, witnessed `executeWithPermit2`, one-way `haltPolicy`, `emergencyExit`, and `invalidateNonce`; EIP-712 + ERC-1271 verification. |
 | [`OpenZapFactory.sol`](src/OpenZapFactory.sol) | Versioned factory; deploys the hardened implementation in its constructor, then atomically deploys + initializes EIP-1167 clones; publishes `implCodeHash` for Hermes manifest checks. |
 | [`OpenZapCreationGateway.sol`](src/fee/OpenZapCreationGateway.sol) | Fee-enforcing app gateway in front of the existing v1.1/v3/v3.1 factories. Charges exactly 0.00001 native ETH, wraps and atomically converts it through the pinned aeWETH → 0xZAPS adapter, and reverts the underlying factory creation if conversion misses the caller-reviewed floor. |
-| [`OpenZapStackCreationGateway.sol`](src/fee/OpenZapStackCreationGateway.sol) | Source-only v3.2 gateway pinned to one recurring-stack factory. It creates and binds a separate no-drain creation pot inside its constructor transaction, preserving the live legacy creation round while retaining the same exact-fee, reviewed-floor, residue-free rollback guarantees. |
+| [`OpenZapStackCreationGateway.sol`](src/fee/OpenZapStackCreationGateway.sol) | Deployed v3.2 gateway pinned to one recurring-stack factory. It creates and binds a separate no-drain creation pot inside its constructor transaction, preserving the live legacy creation round while retaining the same exact-fee, reviewed-floor, residue-free rollback guarantees. |
 | [`ZapCreationFeePot.sol`](src/fee/ZapCreationFeePot.sol) | No-drain, balance-backed 0xZAPS pot for converted creation fees. Credits tickets to the policy owner; governance can only award the accounted round prize to an address with tickets. |
 | [`AdapterRegistry.sol`](src/AdapterRegistry.sol) | Two-step-owned allowlist of adapter contracts; production is narrowed to the pinned Robinhood adapter. |
 | [`TokenAllowlist.sol`](src/TokenAllowlist.sol) | Curated ERC-20 allowlist (excludes fee-on-transfer / rebasing). |

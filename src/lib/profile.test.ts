@@ -215,7 +215,7 @@ describe("lineageForFactory", () => {
     expect(lineageForFactory(OPENZAP_CONTRACTS.factory)).toBe("v1.1");
     expect(lineageForFactory(OPENZAP_V3_CONTRACTS.factory)).toBe("v3");
     expect(lineageForFactory(OPENZAP_V3_1_CONTRACTS.factory)).toBe("v3.1");
-    expect(lineageForFactory(OPENZAP_V3_2_CONTRACTS.factory)).toBe("unknown");
+    expect(lineageForFactory(OPENZAP_V3_2_CONTRACTS.factory)).toBe("v3.2");
     expect(lineageForFactory(OTHER)).toBe("unknown");
   });
 

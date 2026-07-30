@@ -67,10 +67,10 @@ export const FOUNDATION_STATES = [
       "The reviewed source path includes isolated creation, exact Permit2 allowances, irreversible halt, recovery, and fail-closed provenance. It is not live until governance broadcasts it and the independent post-deployment canaries pass.",
   },
   {
-    status: { label: "Release-ready · automate", tone: "experimental" },
+    status: { label: "Deployed candidate · canaries pending", tone: "experimental" },
     title: "Recurring Robinhood v3.2 stack",
     body:
-      "The stack-only creation path, owner-pull funding, Automate lifecycle, fork coverage, and adapter-bytecode manifest are source-ready. It is not live until deployment, relay migration, address readback, and post-broadcast checks are complete.",
+      "The isolated stack-only factory, creation gateway, execution pot, and creation pot are deployed on Robinhood Chain and independently wired back to the reviewed source. The contracts remain unaudited, and the production creation, execution, and permanent-halt canaries must pass before this lineage is advertised as live.",
   },
   {
     status: { label: "Gated", tone: "gated" },

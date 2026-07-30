@@ -145,7 +145,7 @@ lending pool **paused**.
 | **I-FEE-1** | Creation accepts exactly the immutable native fee; underpayment and overpayment revert | ADR-0005 | Unit + fork |
 | **I-FEE-2** | Conversion requires nonzero caller minimum and measured 0xZAPS output at or above it | ADR-0005 | Unit + live-pool fork |
 | **I-FEE-3** | Any factory, wrapping, adapter, floor, transfer, or accounting failure rolls back the underlying CREATE2 clone too | ADR-0005 | Unit rollback/retry test |
-| **I-FEE-4** | Lineage selects only the pinned v1.1, v3, or v3.1 factory; resulting runtime/domain remain that factory's | ADR-0005 | Unit + all-lineage fork |
+| **I-FEE-4** | The universal gateway selects only the pinned v1.1, v3, or v3.1 factory; the isolated stack gateway selects only the pinned v3.2 factory. In every case the resulting runtime/domain remains that factory's | ADR-0005; v3.2 deployment design | Unit + all-lineage fork |
 | **I-FEE-5** | Gateway spends exactly the wrapped fee, measures 0xZAPS by balance delta, transfers the exact delta, and leaves zero adapter approval | ADR-0005 | Unit + fork |
 | **I-FEE-6** | Pot accounting never exceeds received 0xZAPS; direct donations cannot mint tickets or become an award | ADR-0005 | Unit |
 | **I-FEE-7** | The creation pot has no drain; only its current accounted prize can leave, and only to a current-round ticket holder | ADR-0005 | Unit + static review |

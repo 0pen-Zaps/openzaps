@@ -245,23 +245,50 @@ Addresses are wired into `src/lib/robinhood.ts` (`OPENZAP_V3_1_CONTRACTS`).
 for the `recurring-relative` kind. Aggregate at that block: 28 creations, 37 executions of which 25
 are automated, 1 recovery, `319,932,354.4393` 0xZAPS of executed volume.
 
-### The v3.2 stacking stack — built, NOT deployed
+### The v3.2 stacking stack — deployed candidate, activation canaries pending
 
-UNAUDITED CANDIDATE. Source is in [`contracts/src/v3_2`](../contracts/src/v3_2), and the guarded
-Robinhood deployment script is
+UNAUDITED CANDIDATE. Deployed on Robinhood Chain on 2026-07-29 from the contract tree at
+`91b386ad4f31cdd00afd318f6a56b13bc3d06039`. Source is in
+[`contracts/src/v3_2`](../contracts/src/v3_2), and the guarded Robinhood deployment script is
 [`contracts/script/DeployV3_2Robinhood.s.sol`](../contracts/script/DeployV3_2Robinhood.s.sol).
 The user-facing create/sign/manage path is implemented in Automate, backed by the stack-only
 [`OpenZapStackCreationGateway`](../contracts/src/fee/OpenZapStackCreationGateway.sol). That gateway
 can call only the v3.2 factory and creates/binds its own dedicated `ZapCreationFeePot` inside its
 constructor transaction. The live v1 creation gateway and its active prize round are not mutated.
-Local build, tests, and a no-broadcast script simulation do not create a deployment: no v3.2
-deployment is recorded in this repository, and all seven app defaults remain zero. Adds
-`executeRecurringStack`: everything
-`executeRecurringRelative` does, plus an
+
+| Contract | Address | Source match |
+|---|---|---|
+| Price-source registry (AdapterRegistry) | [`0xe0b5240B079896111cB9c4a36CcAfAd85a444a12`](https://robinhoodchain.blockscout.com/address/0xe0b5240B079896111cB9c4a36CcAfAd85a444a12) | [Sourcify](https://repo.sourcify.dev/4663/0xe0b5240B079896111cB9c4a36CcAfAd85a444a12) |
+| V4PoolPriceSourceOriented | [`0xc11D92bF92EeeE280a68eabe35E48c7a2e94e42e`](https://robinhoodchain.blockscout.com/address/0xc11D92bF92EeeE280a68eabe35E48c7a2e94e42e) | [Sourcify](https://repo.sourcify.dev/4663/0xc11D92bF92EeeE280a68eabe35E48c7a2e94e42e) |
+| ZapLotteryPot (v3.2 execution) | [`0x7B8791e36f2e42FB80D209e340aE04aE94Fd411F`](https://robinhoodchain.blockscout.com/address/0x7B8791e36f2e42FB80D209e340aE04aE94Fd411F) | [Sourcify](https://repo.sourcify.dev/4663/0x7B8791e36f2e42FB80D209e340aE04aE94Fd411F) |
+| OpenZapFactoryV3_2 (`3.2.0-candidate`) | [`0xd9134F778E523E9CF2fD75FFCb98499E9046457B`](https://robinhoodchain.blockscout.com/address/0xd9134F778E523E9CF2fD75FFCb98499E9046457B) | [Sourcify](https://repo.sourcify.dev/4663/0xd9134F778E523E9CF2fD75FFCb98499E9046457B) |
+| OpenZapV3_2 implementation | [`0x5882e3dC1Ca0A7162d8F80ab59BC98E2fB8da987`](https://robinhoodchain.blockscout.com/address/0x5882e3dC1Ca0A7162d8F80ab59BC98E2fB8da987) | [Sourcify](https://repo.sourcify.dev/4663/0x5882e3dC1Ca0A7162d8F80ab59BC98E2fB8da987) |
+| OpenZapStackCreationGateway (`1.0.0-candidate`) | [`0xa4D3bE6b97b320F1C81975038EcD5e1C5d7b3291`](https://robinhoodchain.blockscout.com/address/0xa4D3bE6b97b320F1C81975038EcD5e1C5d7b3291) | [Sourcify](https://repo.sourcify.dev/4663/0xa4D3bE6b97b320F1C81975038EcD5e1C5d7b3291) |
+| ZapCreationFeePot (v3.2 creation) | [`0x6a1eb88408ce53C7C9e1eb460Cc68a8BD485dC12`](https://robinhoodchain.blockscout.com/address/0x6a1eb88408ce53C7C9e1eb460Cc68a8BD485dC12) | [Sourcify](https://repo.sourcify.dev/4663/0x6a1eb88408ce53C7C9e1eb460Cc68a8BD485dC12) |
+
+The seven contiguous governance transactions (nonces 298–304) all succeeded:
+
+| Step | Transaction |
+|---|---|
+| Deploy price-source registry | [`0xf009a233…b01e`](https://robinhoodchain.blockscout.com/tx/0xf009a2333785a098a3bf6d37a121c4dbb488c2d0dfa4daee5101a1c92c27b01e) |
+| Deploy oriented source | [`0x1c30b0f3…96e0`](https://robinhoodchain.blockscout.com/tx/0x1c30b0f3cb328ab3018ccc1795d36bc24d1f90c1579e6960121a93789ac896e0) |
+| Allowlist oriented source | [`0xe4aa0bcf…014d`](https://robinhoodchain.blockscout.com/tx/0xe4aa0bcf82753ebb7c9ab1c811d0ec9656f3ae4425994176fda51cde7c7d014d) |
+| Deploy execution pot | [`0x3700caf1…dc41`](https://robinhoodchain.blockscout.com/tx/0x3700caf11e519a22fe4baae31d33a9d8e4b6dd72941f027ba4090e923f04dc41) |
+| Deploy factory and implementation | [`0xb733dd28…b754`](https://robinhoodchain.blockscout.com/tx/0xb733dd281a5f0872345e989b970db45a003186e514d4993046a708475e4db754) |
+| Bind execution pot to factory | [`0xb0b86c30…860d`](https://robinhoodchain.blockscout.com/tx/0xb0b86c3057e5388b7aff29ede9413df0a1324d91f3344ea798fae5f49f1f860d) |
+| Deploy stack gateway and creation pot | [`0x61a12053…25b4`](https://robinhoodchain.blockscout.com/tx/0x61a120530e9271c8eec62b9eb6928136e4e53099197b89820c1404c465d125b4) |
+
+The pinned release/readback block is `22,633,091`
+(`0x19cbcee76d7cee977d052c2c45f4a458149a534807010f5d8662c3ca9c66d439`). The implementation
+runtime code hash is
+`0xe271b762131d9e198769ed44124fa52eef4051e00da517716136dae5bfcef321`.
+
+v3.2 adds `executeRecurringStack`: everything `executeRecurringRelative` does, plus an
 owner-signed `stackBps` slice of every run's **post-fee** output converted into 0xZAPS and staked to
-the lottery pot as the **owner's** tickets. Every run of a stacking series is a real market buy of
-the protocol token — the first execution type where buying 0xZAPS is the user's own authorized
-choice rather than the protocol's fee slice. Superset of v3.1; domain version `"3.2"`.
+the lottery pot as the **owner's** tickets. Every run acquires and stakes 0xZAPS as the user's own
+authorized policy action rather than as the protocol's fee slice. When the primary output is another
+asset, the stack slice is a real market buy; when the primary output is already 0xZAPS, it skips the
+conversion leg and stakes directly. Superset of v3.1; domain version `"3.2"`.
 
 Verified strict-superset property: `diff` of the v3.1 and v3.2 implementations removes **no logic**
 from v3.1 — only two import paths, the `DOMAIN_VERSION` literal, and the widened constructor.
@@ -301,11 +328,12 @@ Deployment prerequisites, in order:
    conversion leg (only needed for zaps whose output is not already 0xZAPS).
 5. Broadcast only from the current owner of both reused live registries, with both `pendingOwner`
    values zero. The deployment script enforces this before and after its seven top-level transactions.
-6. Fill `OPENZAP_V3_2_CONTRACTS` in `src/lib/robinhood.ts` (or the `NEXT_PUBLIC_OPENZAP_V3_2_*` env
-   vars). Until then `openZapV3_2Configured()` is `false` and the Automate surface must keep the
-   stacking option hidden — offering a creation path into an undeployed lineage would fail open.
-7. Apply `supabase/migrations/20260726000000_allow_recurring_stack_kind.sql`, or every publish of a
-   stacking intent returns an opaque `Relay storage failed (400)` from the `kind` CHECK constraint.
+6. Fill `OPENZAP_V3_2_CONTRACTS` in `src/lib/robinhood.ts` and the seven
+   `NEXT_PUBLIC_OPENZAP_V3_2_*` production build values as one set. An explicit zero, malformed, or
+   partial override keeps `openZapV3_2Configured()` false.
+7. Apply `supabase/migrations/20260726000000_allow_recurring_stack_kind.sql` before activation, or
+   every publish of a stacking intent returns an opaque `Relay storage failed (400)` from the `kind`
+   CHECK constraint. Production records this migration as applied.
 
 #### Independent post-broadcast acceptance checklist
 
@@ -316,38 +344,49 @@ hashes, and every deployed address in this file as the checklist is completed.
 
 **Readback from a second RPC**
 
-- [ ] Confirm chain ID `4663`, wait for the release confirmation depth, and pin every read below to
+- [x] Confirm chain ID `4663`, wait for the release confirmation depth, and pin every read below to
   the same finalized block. Confirm all seven broadcast receipts succeeded and the block hashes still
   match canonical chain state.
-- [ ] Confirm non-empty runtime code for the price-source registry, oriented price source, execution
+- [x] Confirm non-empty runtime code for the price-source registry, oriented price source, execution
   lottery pot, factory, factory-reported implementation, stack creation gateway, and its
   constructor-created creation-fee pot. Compare `cast codehash <implementation>` with
   `factory.implCodeHash()`.
-- [ ] Re-read the price-source registry's `owner()`, zero `pendingOwner()`, and
+- [x] Re-read the price-source registry's `owner()`, zero `pendingOwner()`, and
   `isAllowed(orientedPriceSource) == true`.
-- [ ] Re-read the oriented source's `poolManager()`, `poolId()`, `currency0()`, `currency1()`, and a
+- [x] Re-read the oriented source's `poolManager()`, `poolId()`, `currency0()`, `currency1()`, and a
   non-zero `priceX96()`. They must equal the pinned PoolManager, aeWETH/0xZAPS pool, aeWETH, and
   0xZAPS values in `DeployV3_2Robinhood.s.sol`.
-- [ ] Re-read the pot's `owner()`, zero `pendingOwner()`, `ZAPS()`, `BUY_ADAPTER()`, `factory()`, and
+- [x] Re-read the pot's `owner()`, zero `pendingOwner()`, `ZAPS()`, `BUY_ADAPTER()`, `factory()`, and
   `currentRound() == 1`. The factory must be the new v3.2 factory; token and adapter must be the
   existing pinned 0xZAPS and Robinhood swap adapter.
-- [ ] Re-read the factory's `VERSION() == "3.2.0-candidate"`, `adapters()`, `tokens()`,
+- [x] Re-read the factory's `VERSION() == "3.2.0-candidate"`, `adapters()`, `tokens()`,
   `priceSources()`, `lotteryPot()`, `implementation()`, and `implCodeHash()`. Re-read the
   implementation's `FACTORY()`, `ADAPTERS()`, `TOKENS()`, `PRICE_SOURCES()`, `LOTTERY_POT()`,
   `ZAPS()`, and `ZAPS_ADAPTER()` and require exact agreement.
-- [ ] Re-read the stack creation gateway's `VERSION() == "1.0.0-candidate"`, `STACK_FACTORY()`,
+- [x] Re-read the stack creation gateway's `VERSION() == "1.0.0-candidate"`, `STACK_FACTORY()`,
   `AEWETH()`, `ZAPS()`, `CREATION_ADAPTER()`, `CREATION_FEE()`, and `CREATION_POT()`. Re-read that
   creation pot's owner, zero pending owner, `ZAPS()`, gateway, zero gateway installer, round 1, and
   zero initial accounted balance/tickets/prize. Confirm the live legacy creation pot/gateway and its
   active round are unchanged.
-- [ ] Confirm the reused live AdapterRegistry and TokenAllowlist still have the expected owner, zero
+- [x] Confirm the reused live AdapterRegistry and TokenAllowlist still have the expected owner, zero
   `pendingOwner()`, and unchanged allowlist state. A v3.2 deployment must not write either registry.
+
+Official Robinhood, PublicNode, and Tenderly independently agreed on finalized head `22,635,680`
+(`0x27e5175d34bfb2da9f8b54884dffc20a36954a042efbf718735e81da567d9415`), which covers the pinned
+release block. The seven receipt identities were byte-identical across all three RPCs. Runtime sizes
+for registry/source/execution pot/factory/implementation/gateway/creation pot were respectively
+724/860/3,330/2,411/20,461/4,168/2,725 bytes. The pinned source returned non-zero
+`priceX96 = 197999494098391985161062720735267947840`. Pre/post snapshots of both reused registries and
+the legacy creation gateway/pot were byte-identical; the legacy creation pot remained on round 1 with
+`accountedZaps = 76428190824996617078884`.
 
 **Source verification**
 
-- [ ] Verify the registry, source, both pots, factory, implementation, and stack creation gateway on
-  Robinhood Blockscout and Sourcify from the exact release commit. Use the pinned Foundry settings: Solidity `0.8.34`,
+- [x] Verify the registry, source, both pots, factory, implementation, and stack creation gateway on
+  Sourcify from the exact contract tree. Use the pinned Foundry settings: Solidity `0.8.34`,
   optimizer enabled with 200 runs, `via_ir = true`, EVM `cancun`, and `bytecode_hash = "none"`.
+- [ ] Import the same exact-source metadata into Robinhood Blockscout and require each address to
+  publish its own verification rather than relying on a bytecode-twin label.
 - [ ] Require creation and runtime matches, published ABI/compiler settings, and independently
   decoded constructor arguments for each deployment. Save direct explorer links beside the address
   table; an uploaded source bundle without a bytecode match is not verification.
@@ -359,9 +398,9 @@ hashes, and every deployed address in this file as the checklist is completed.
   `NEXT_PUBLIC_OPENZAP_V3_2_LOTTERY_POT`, `NEXT_PUBLIC_OPENZAP_V3_2_PRICE_SOURCE_REGISTRY`, and
   `NEXT_PUBLIC_OPENZAP_V3_2_ORIENTED_PRICE_SOURCE`, `NEXT_PUBLIC_OPENZAP_V3_2_CREATION_GATEWAY`, and
   `NEXT_PUBLIC_OPENZAP_V3_2_CREATION_FEE_POT`. Do not copy predicted dry-run addresses.
-- [ ] Confirm the recurring-stack Supabase migration is applied, then build and test the exact app
-  commit. Deploy a fresh production build so the `NEXT_PUBLIC_*` values are embedded; aliasing an
-  older build does not activate v3.2.
+- [x] Confirm the recurring-stack Supabase migration is applied.
+- [ ] Build and test the exact app commit. Deploy a fresh production build so the `NEXT_PUBLIC_*`
+  values are embedded; aliasing an older build does not activate v3.2.
 - [ ] Read the deployed production build back, confirm `openZapV3_2Configured()` is true, and verify
   Automate exposes stacking while an intentionally incomplete preview configuration still hides it.
 
@@ -379,7 +418,7 @@ hashes, and every deployed address in this file as the checklist is completed.
   `/explore`, the durable execution receipt, Guardian, and executor scorecard all classify the run as
   `recurring-stack` before advertising the lineage.
 
-The source-ready application path implements fail-closed configuration, gateway provenance
+The deployed-candidate application path implements fail-closed configuration, gateway provenance
 readback, v3.2 creation, typed-data signing, exact persistence/export, and
 relay/activity/status/cancellation plumbing. Its pure logic and contract surfaces are covered by
 `contracts/test/OpenZapV3_2.stack.t.sol` (16 tests),

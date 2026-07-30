@@ -75,8 +75,8 @@ bundler. That transport is availability only; it is not signer quorum. `OPENZAPS
 (default 12) and `OPENZAPS_RECEIPT_TIMEOUT_MS` control the initial receipt wait. Canonical v3/v3.1
 pins default to the documented Robinhood deployments and may be
 overridden with `OPENZAPS_V3_FACTORY` / `OPENZAPS_V3_IMPLEMENTATION` and
-`OPENZAPS_V3_1_FACTORY` / `OPENZAPS_V3_1_IMPLEMENTATION`. The undeployed v3.2 lineage stays disabled
-until its executor and fee-conversion unit is configured all at once:
+`OPENZAPS_V3_1_FACTORY` / `OPENZAPS_V3_1_IMPLEMENTATION`. The v3.2 lineage stays disabled for each
+operator until its executor and fee-conversion unit is configured all at once:
 `OPENZAPS_V3_2_FACTORY`, `OPENZAPS_V3_2_IMPLEMENTATION`, `OPENZAPS_V3_2_LOTTERY_POT`,
 `OPENZAPS_V3_2_POOL_PRICE_SOURCE`, and `OPENZAPS_V3_2_FEE_ASSET`. A partial set, a zero/malformed
 address, or an invalid v3.2 conversion bound fails config loading; it never enables an execution

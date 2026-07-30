@@ -40,10 +40,11 @@ describe("site config stays consistent with onchain constants", () => {
   // readContract and typed-data encoding reject a mis-checksummed address at CALL time (never at
   // build), so it slips past types, tsc, and lint — and only fails when a wallet or RPC touches it.
   // A bad literal now collapses to zeroAddress via optionalAddress; both prongs below catch it.
-  it("every OpenZap v3 / v3.1 contract address is configured and EIP-55 checksummed", () => {
+  it("every OpenZap v3 / v3.1 / v3.2 contract address is configured and EIP-55 checksummed", () => {
     for (const [label, contracts] of [
       ["v3", OPENZAP_V3_CONTRACTS],
       ["v3.1", OPENZAP_V3_1_CONTRACTS],
+      ["v3.2", OPENZAP_V3_2_CONTRACTS],
     ] as const) {
       for (const [key, addr] of Object.entries(contracts)) {
         expect(addr, `${label}.${key} must be configured (non-zero)`).not.toBe(zeroAddress);
@@ -52,16 +53,9 @@ describe("site config stays consistent with onchain constants", () => {
     }
   });
 
-  // v3.2 (stacking) is intentionally NOT in the loop above: it is unbuilt on-chain, so its addresses
-  // are all zero by design. This test pins the fail-closed posture — and inverts into a deployment
-  // checklist. When v3.2 ships, this test starts failing, which is the signal to move it into the
-  // checksummed loop above and gate the Automate stacking option on `openZapV3_2Configured()`.
-  it("v3.2 stays gated off until a verified deployment is configured", () => {
-    expect(openZapV3_2Configured()).toBe(false);
-    expect(optionalContractSetState(OPENZAP_V3_2_CONTRACTS)).toBe("absent");
-    for (const [key, addr] of Object.entries(OPENZAP_V3_2_CONTRACTS)) {
-      expect(addr, `v3.2.${key} must stay zero until deployed`).toBe(zeroAddress);
-    }
+  it("enables v3.2 only as one complete verified deployment set", () => {
+    expect(openZapV3_2Configured()).toBe(true);
+    expect(optionalContractSetState(OPENZAP_V3_2_CONTRACTS)).toBe("configured");
   });
 
   it("optional contract sets distinguish absent, partial, and fully configured states", () => {
@@ -85,6 +79,7 @@ describe("site config stays consistent with onchain constants", () => {
       "v1.1",
       "v3",
       "v3.1",
+      "v3.2",
     ]);
   });
 

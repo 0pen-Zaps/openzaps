@@ -26,8 +26,8 @@ export function GET(): NextResponse {
         ? "configured in this build — creation remains closed until the app's independent onchain provenance and launch canaries pass"
         : "closed — v1.2 remains undeployed or incompletely configured",
       recurringStack: openZapV3_2Configured()
-        ? "configured in this build — creation remains closed until the app's onchain provenance readback passes"
-        : "closed — v3.2 remains undeployed or incompletely configured",
+        ? "open — canonical v3.2 stack, dedicated creation gateway, and both pots are configured; contracts remain pre-external-audit"
+        : "closed — the v3.2 deployment set is incomplete or explicitly disabled",
     },
     contracts: CONTRACTS,
     creationFee: {

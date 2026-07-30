@@ -15,6 +15,7 @@ import {
   OPENZAP_CONTRACTS,
   OPENZAP_V3_CONTRACTS,
   OPENZAP_V3_1_CONTRACTS,
+  OPENZAP_V3_2_CONTRACTS,
   ROBINHOOD_ASSETS,
 } from "@/lib/robinhood";
 import {
@@ -465,13 +466,14 @@ describe("assertCanonicalClone", () => {
     expect(assertCanonicalClone(expectedCloneRuntime(SPOOFER), SPOOFER)).toBe(false);
   });
 
-  it("accepts an automated (v3 / v3.1) capsule, not just a v1.1 one", () => {
+  it("accepts every canonical automated capsule, not just a v1.1 one", () => {
     // Checking only the v1.1 implementation marked every automated capsule
     // "unverified shape" on its detail page despite a byte-correct clone.
     for (const impl of [
       OPENZAP_CONTRACTS.implementation,
       OPENZAP_V3_CONTRACTS.implementation,
       OPENZAP_V3_1_CONTRACTS.implementation,
+      OPENZAP_V3_2_CONTRACTS.implementation,
     ]) {
       expect(assertCanonicalClone(expectedCloneRuntime(impl), impl), impl).toBe(true);
     }
