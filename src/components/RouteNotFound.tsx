@@ -18,7 +18,7 @@ import styles from "@/app/status.module.css";
 /** Where to send someone instead. Mirrors the shell's sidebar, in its order. */
 const SUGGESTIONS = [
   { href: "/zap?view=start", label: "Start a zap" },
-  { href: "/zapdraw", label: "ZapDraw" },
+  { href: "/virtual-trading", label: "Virtual Trading" },
   { href: "/profile", label: "My zaps" },
   { href: "/explore", label: "Explore" },
   { href: "/pot", label: "Pot" },

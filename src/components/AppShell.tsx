@@ -64,7 +64,17 @@ const GROUPS: readonly NavGroup[] = [
       },
     ],
   },
-  { label: "Play", items: [{ href: "/zapdraw", label: "ZapDraw", icon: "bars", chip: "open" }] },
+  {
+    label: "Simulate",
+    items: [
+      {
+        href: "/virtual-trading",
+        label: "Virtual Trading",
+        icon: "bars",
+        chip: "paper",
+      },
+    ],
+  },
   {
     label: "Watch",
     items: [
@@ -87,11 +97,8 @@ const GROUPS: readonly NavGroup[] = [
 /**
  * Is this the five-view zap surface?
  *
- * Exact equality, never `startsWith("/zap")` — `/zapdraw` also starts with
- * `/zap`, and with a prefix test the game surface reports itself as the Start
- * view: the breadcrumb reads "Make › Start", and both Start and ZapDraw light
- * up in the sidebar at once. The zap surface is a single route that carries its
- * view in the query string, so equality is the whole test.
+ * Exact equality, never a prefix test: the zap surface is a single route that
+ * carries its view in the query string, so equality is the whole test.
  */
 function isZapSurface(pathname: string): boolean {
   return pathname === "/zap";

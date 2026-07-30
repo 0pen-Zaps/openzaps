@@ -27,10 +27,10 @@ import {IERC20} from "../src/interfaces/IERC20.sol";
 ///          reveal, because an unrevealed seat forfeits its entry by design; and
 ///        * `RAKE_RECIPIENT` is immutable and receives real tokens every round.
 ///
-///      SETTING `NEXT_PUBLIC_OVERDRAW_ADDRESS` IN VERCEL IS A SEPARATE, LATER STEP. The web surface
-///      fails closed to "not deployed" until that variable is set, and setting it is the moment the
-///      product starts asking real people for real 0xZAPS. Do it only after verifying the deployed
-///      bytecode, reading back every immutable below, and playing one round end to end.
+///      HISTORICAL TOOLING ONLY. The ZapDraw web surface is retired. Deploying another immutable
+///      table does not re-enable a first-party UI, and operators must not restore
+///      `NEXT_PUBLIC_OVERDRAW_ADDRESS` or the retired routes. This script remains so the deployed
+///      contract can be reproduced and verified on a fork.
 ///
 ///      Usage:
 ///        forge script script/DeployOverdraw.s.sol \

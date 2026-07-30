@@ -449,22 +449,24 @@ aeWETH→0xZAPS adapter with a caller-reviewed minimum output, and credits a sep
   independently read back. It held zero ETH, aeWETH, 0xZAPS, and zero adapter allowance after deployment.
 - The existing automated execution fee remains separate: 1% per run, split 80% executor / 20% to
   the original v3 or v3.1 automation pot.
-### ZapDraw (`ZapOverdraw`) — **LIVE on 4663**
+### ZapDraw (`ZapOverdraw`) — **CONTRACT LIVE ON 4663; WEB SURFACE RETIRED**
 
 | | |
 |---|---|
 | Contract | `contracts/src/game/ZapOverdraw.sol` |
 | Deploy script | `contracts/script/DeployOverdraw.s.sol` |
-| Tests | `contracts/test/ZapOverdraw.t.sol` (28 unit/fuzz), `src/lib/overdraw.test.ts` (15) |
+| Tests | `contracts/test/ZapOverdraw.t.sol` (unit, fuzz, and invariant coverage) |
 | Address on 4663 | [`0xb1C9e106a85Ad26603BA3AC89fFa4bE29E6C5336`](https://robinhoodchain.blockscout.com/address/0xb1C9e106a85Ad26603BA3AC89fFa4bE29E6C5336) |
 | Deployer | `0x5a52D4B820Ae7F02880d270562950918ACb14aA2` (governance) |
-| App surface | `/zapdraw`, gated on `NEXT_PUBLIC_OVERDRAW_ADDRESS` |
+| Former app surface | Retired; all legacy URLs redirect to `/virtual-trading` |
 
-> **The product is ZapDraw; the contract is `ZapOverdraw`.** The name was settled after the contract
-> was already immutable onchain, so the two differ on purpose. Contract-bound identifiers keep the
-> deployed name — `ZapOverdraw`, `NEXT_PUBLIC_OVERDRAW_ADDRESS`, `overdrawAbi` — because they must
-> match what is actually deployed. Everything user-facing says ZapDraw. `/overdraw` and
-> `/overdraw/how` 308-redirect to the `/zapdraw` equivalents; both were briefly live and sitemapped.
+> **The deployed contract is still `ZapOverdraw`; its former web product was ZapDraw.** The name was
+> settled after the contract was already immutable onchain, so its Solidity source, scripts, and
+> address retain `ZapOverdraw`. The former `NEXT_PUBLIC_OVERDRAW_ADDRESS` setting is historical
+> configuration and must not be restored. The public game surface was retired on 2026-07-30.
+> `/zapdraw`, `/zapdraw/how`, `/overdraw`, and `/overdraw/how` now
+> 308-redirect directly to `/virtual-trading`. This web retirement does not pause or alter the
+> immutable contract.
 
 **Live state, read from chain 2026-07-27:**
 
@@ -504,70 +506,27 @@ It is **not part of the protocol**. It is not an adapter, is not allowlisted in 
 `AdapterRegistry`, holds no policy capsule, and no zap route can reach it. A bug in it cannot touch
 capsule funds, and deploying it changes nothing about the live v1.1/v3 sets above.
 
-### Go-live runbook
+### Retired operator status
 
-Simulated against live chain state and rehearsed end to end on a fork of it (2026-07-27): deploy,
-then smoke, both green; the smoke script was also confirmed to REJECT a build pointed at the wrong
-stake token, so it is a gate rather than a formality.
+There is no supported ZapDraw deployment or relaunch runbook. The former live-chain convenience
+launcher has been removed. The Solidity deployment and smoke scripts remain solely as source and
+historical verification evidence for the immutable contract already listed above; they explicitly
+warn operators not to restore the web product.
 
-One command does the whole thing, and refuses to report success unless the smoke passes:
+Production release gates for the retirement are:
 
-```bash
-cd contracts && ./script/golive-overdraw.sh --account nodar-deployer
-```
+1. `NEXT_PUBLIC_OVERDRAW_ADDRESS` is absent from the Vercel Production environment.
+2. `/zapdraw`, `/zapdraw/how`, `/overdraw`, and `/overdraw/how` each return one direct permanent
+   redirect to `/virtual-trading`.
+3. The active navigation, sitemap, metadata, and public LLM inventory contain no game surface.
 
-It deploys, reads the address back out of the contract, runs the smoke, and writes the address to
-`/tmp/overdraw-deployed.txt`. A failed smoke exits non-zero and writes nothing — verified by
-pointing a deployment at a fake stake token on a fork and confirming the gate held. Signer flags are
-passed straight through, so `--ledger` or `--trezor` work identically; no key is read or echoed.
+The contract stays live onchain because it has no pause or admin withdrawal path. Site retirement
+does not settle a round, open a round, move its balance, or otherwise mutate that contract.
 
-The same three steps by hand:
-
-```bash
-cd contracts
-
-# 1. Simulate. No key, no broadcast — proves the constructor guards pass against live state.
-OVERDRAW_RAKE_RECIPIENT=0x5a52D4B820Ae7F02880d270562950918ACb14aA2 \
-forge script script/DeployOverdraw.s.sol:DeployOverdraw \
-  --rpc-url https://rpc.mainnet.chain.robinhood.com \
-  --sender <deployer address>
-
-# 2. Broadcast. Signer from the keystore; never a key on the command line.
-OVERDRAW_RAKE_RECIPIENT=0x5a52D4B820Ae7F02880d270562950918ACb14aA2 \
-forge script script/DeployOverdraw.s.sol:DeployOverdraw \
-  --rpc-url https://rpc.mainnet.chain.robinhood.com \
-  --account nodar-deployer --broadcast
-
-# 3. Verify the DEPLOYED contract, not the broadcast log.
-OVERDRAW_ADDRESS=0x<deployed> \
-forge script script/SmokeOverdraw.s.sol:SmokeOverdraw \
-  --rpc-url https://rpc.mainnet.chain.robinhood.com
-```
-
-Only once step 3 prints `SMOKE PASSED` does `NEXT_PUBLIC_OVERDRAW_ADDRESS` get set in Vercel and the
-site redeployed. Until then `/overdraw` fails closed and nobody can send the game a token.
-
-Defaults the script applies, all permanent once broadcast:
-
-| Parameter | Value | Why |
-|---|---|---|
-| `stake` | 0xZAPS `0xDd90…CB07` | verified live: 18 dp, 100B supply |
-| `rakeRecipient` | `0x5a52…4aA2` (governance) | a live user-controlled address; also the carry's release valve |
-| `entryFee` | `1,000,000` 0xZAPS | ≈ `0.00073` aeWETH quoted against the pinned pool on 2026-07-27 — a couple of dollars a seat |
-| `commitWindow` / `revealWindow` | 6 h / 6 h | an unrevealed seat forfeits, so the window must be survivable |
-| `rakeBps` / `keeperBps` | 200 / 50 | rake doubles as the carry drain rate; zero is refused |
-
-Estimated deployment cost: **1,736,917 gas ≈ 0.000139 ETH** at 0.08 gwei.
-
-Two things gate it, in this order:
-
-1. ~~**Broadcast.**~~ Done — see the address above.
-2. ~~**`NEXT_PUBLIC_OVERDRAW_ADDRESS` in Vercel.**~~ Set on Production 2026-07-27.
-
-**The kill switch:** removing `NEXT_PUBLIC_OVERDRAW_ADDRESS` and redeploying returns `/zapdraw` to
-its fail-closed state — no address, no table, nothing for a wallet to approve. That is the fastest
-way to take the game off the site; the contract stays live onchain regardless, because it has no
-pause and no admin.
+Read-only retirement check at block `23,278,666` on 2026-07-30: `currentRound()` was `3`;
+round 3 had `0` seats, `0` reveals, and `settled == false`, with its reveal window already closed.
+The contract's 0xZAPS balance exactly matched `carryPool()` at `2,925,000 0xZAPS`. No settlement or
+other contract write was sent.
 
 Verified locally end to end on an anvil node at chain 4663 (2026-07-26): four seats at 1,000 stake,
 draws 10/25/30/50%, revealed out of order. Capacity settled at 3,900 (4,000 fees − 80 rake − 20

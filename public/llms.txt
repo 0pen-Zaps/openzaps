@@ -16,8 +16,7 @@ Key facts:
 - [Roadmap](https://www.0xzaps.com/roadmap): current live capabilities, proposed route expansion, submission tooling, and hardening gates
 - [0xZAPS token](https://www.0xzaps.com/token): verified contract, official Clanker market, FAQ
 - [0xZAPS automation fee pot](https://www.0xzaps.com/pot): source-backed pot balances, conversion records, participant credits, rounds, and payouts
-- [ZapDraw](https://www.0xzaps.com/zapdraw): a sealed-draw game whose entry and payouts are 0xZAPS — each seat commits the hash of a claim on one round's shared capacity, and the smallest claims are paid in full first
-- [How a ZapDraw round plays out](https://www.0xzaps.com/zapdraw/how): a step-by-step walkthrough of a single round, from four sealed claims to the payout order
+- [Virtual Trading](https://www.0xzaps.com/virtual-trading): paper trade 0xZAPS and aeWETH with 10,000 virtual USDG, canonical Robinhood Chain route quotes, and a browser-local ledger without connecting a wallet or risking real funds
 - [Risk disclosures](https://www.0xzaps.com/legal): pre-audit software, onchain irreversibility, token risk
 
 Every verified factory-created Zap has a canonical detail page at `https://www.0xzaps.com/explore/{checksummed-address}` with crawlable policy, provenance, lifecycle, and onchain execution evidence.
