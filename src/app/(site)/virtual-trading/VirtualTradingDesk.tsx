@@ -1,8 +1,10 @@
 "use client";
 
+import Image from "next/image";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { Glyph } from "@/components/Glyph";
+import { ProtocolLogo } from "@/components/ProtocolLogo";
 import {
   USDG_DECIMALS,
   VIRTUAL_MARKETS,
@@ -29,6 +31,14 @@ import {
   type VirtualPortfolio,
   type VirtualPortfolioValuation,
 } from "@/lib/virtual-trading";
+import {
+  VIRTUAL_ASSET_VISUALS,
+  VIRTUAL_TRADING_VENUE,
+  virtualQuotePath,
+  virtualQuotePoolCount,
+  virtualQuoteRouteLabel,
+  type VirtualQuoteAssetId,
+} from "@/lib/virtual-trading-visuals";
 import styles from "./virtual-trading.module.css";
 
 type SnapshotState =
@@ -43,6 +53,39 @@ type ValuationState =
 
 const MARKET_IDS = Object.keys(VIRTUAL_MARKETS) as VirtualMarketId[];
 const PORTFOLIO_LOCK_NAME = `${VIRTUAL_TRADING_STORAGE_KEY}.write`;
+
+function VirtualAssetMark({
+  assetId,
+  size = 36,
+}: {
+  assetId: VirtualQuoteAssetId;
+  size?: number;
+}): React.JSX.Element {
+  const asset = VIRTUAL_ASSET_VISUALS[assetId];
+
+  return (
+    <span
+      className={styles.assetMark}
+      data-asset={assetId}
+      style={{ width: size, height: size }}
+      aria-hidden="true"
+    >
+      {asset.imageSrc ? (
+        <Image
+          src={asset.imageSrc}
+          alt=""
+          width={size}
+          height={size}
+          className={styles.assetMarkImage}
+          draggable={false}
+          unoptimized
+        />
+      ) : (
+        asset.monogram
+      )}
+    </span>
+  );
+}
 
 async function withPortfolioLock<T>(work: () => T | Promise<T>): Promise<T> {
   if (navigator.locks) {
@@ -387,20 +430,30 @@ export function VirtualTradingDesk(): React.JSX.Element {
   const hasOpenPositions = MARKET_IDS.some(
     (id) => BigInt(portfolio.positions[id].quantityRaw) > 0n,
   );
+  const routePath = virtualQuotePath(marketId, side);
+  const routePoolCount = virtualQuotePoolCount(marketId);
 
   return (
     <section className={styles.desk} aria-label="Virtual trading practice desk">
       <div className={styles.sourceBar}>
-        <span className={styles.sourceState} data-state={snapshot.status}>
-          <i aria-hidden />
-          {snapshot.status === "loading"
-            ? "Reading canonical markets"
-            : snapshot.status === "unavailable"
-              ? "Canonical markets unavailable"
-              : snapshot.staleSince
-                ? "Showing last verified marks"
-                : "Canonical markets verified"}
-        </span>
+        <div className={styles.sourceSummary}>
+          <span className={styles.sourceState} data-state={snapshot.status}>
+            <i aria-hidden />
+            {snapshot.status === "loading"
+              ? "Reading canonical markets"
+              : snapshot.status === "unavailable"
+                ? "Canonical markets unavailable"
+                : snapshot.staleSince
+                  ? "Showing last verified marks"
+                  : "Canonical markets verified"}
+          </span>
+          <span className={styles.sourceVenue}>
+            <ProtocolLogo protocol={VIRTUAL_TRADING_VENUE.protocol} size={18} />
+            <strong>{VIRTUAL_TRADING_VENUE.name}</strong>
+            <span aria-hidden>·</span>
+            {VIRTUAL_TRADING_VENUE.network} {VIRTUAL_TRADING_VENUE.chainId}
+          </span>
+        </div>
         {readySnapshot ? (
           <span className={styles.blockEvidence}>
             Block <strong>{Number(readySnapshot.blockNumber).toLocaleString("en-US")}</strong>
@@ -442,7 +495,7 @@ export function VirtualTradingDesk(): React.JSX.Element {
             {metrics.navRaw === null
               ? "Awaiting deterministic joint exit quote"
               : hasOpenPositions && readyValuation
-                ? `Cash + joint exit quote · block ${Number(readyValuation.blockNumber).toLocaleString("en-US")}`
+                ? `Cash + joint Uniswap v4 exit · block ${Number(readyValuation.blockNumber).toLocaleString("en-US")}`
                 : "Cash only · no open positions"}
           </small>
         </article>
@@ -495,12 +548,14 @@ export function VirtualTradingDesk(): React.JSX.Element {
                   aria-pressed={marketId === id}
                 >
                   <span className={styles.marketIdentity}>
-                    <i className={styles.tokenDot} data-market={id} aria-hidden>
-                      {id === "zaps" ? "Z" : "Ξ"}
-                    </i>
-                    <span>
+                    <VirtualAssetMark assetId={id} size={38} />
+                    <span className={styles.marketIdentityCopy}>
                       <strong>{item.symbol}</strong>
                       <small>{item.name}</small>
+                    </span>
+                    <span className={styles.marketVenue}>
+                      <ProtocolLogo protocol={VIRTUAL_TRADING_VENUE.protocol} size={18} />
+                      <span>{VIRTUAL_TRADING_VENUE.name}</span>
                     </span>
                   </span>
                   <span className={styles.marketPrice}>
@@ -602,9 +657,47 @@ export function VirtualTradingDesk(): React.JSX.Element {
           {inputIssue ? <p className={styles.fieldError}>{inputIssue}</p> : null}
 
           <div className={styles.routeBox}>
-            <span>Route</span>
-            <code>{side === "buy" ? market.buyRouteId : market.sellRouteId}</code>
-            <small>Read-only quote · stable canonical head · exact input</small>
+            <div className={styles.routeHeading}>
+              <span className={styles.routeLabel}>Execution route</span>
+              <span className={styles.routeVenue}>
+                <ProtocolLogo protocol={VIRTUAL_TRADING_VENUE.protocol} size={18} />
+                <strong>{VIRTUAL_TRADING_VENUE.name}</strong>
+              </span>
+            </div>
+            <div
+              className={styles.routeFlow}
+              role="img"
+              aria-label={virtualQuoteRouteLabel(marketId, side)}
+            >
+              {routePath.map((assetId, index) => {
+                const asset = VIRTUAL_ASSET_VISUALS[assetId];
+                return (
+                  <span className={styles.routeStep} key={assetId}>
+                    {index > 0 ? <span className={styles.routeArrow} aria-hidden>→</span> : null}
+                    <span className={styles.routeAsset}>
+                      <VirtualAssetMark assetId={assetId} size={24} />
+                      <strong>{asset.symbol}</strong>
+                    </span>
+                  </span>
+                );
+              })}
+            </div>
+            <div className={styles.routeSummary}>
+              <strong>
+                {routePoolCount} pinned pool{routePoolCount === 1 ? "" : "s"}
+              </strong>
+              <span>
+                {marketId === "zaps"
+                  ? "The 0xZAPS leg uses its Clanker-hooked v4 pool."
+                  : "Direct hookless USDG / aeWETH v4 pool."}
+              </span>
+            </div>
+            <div className={styles.routeAudit}>
+              <code title={side === "buy" ? market.buyRouteId : market.sellRouteId}>
+                {side === "buy" ? market.buyRouteId : market.sellRouteId}
+              </code>
+              <small>Read-only eth_call · exact input · the virtual ledger mirrors the USDG edge</small>
+            </div>
           </div>
 
           {quoteMatchesOrder && quote ? (
