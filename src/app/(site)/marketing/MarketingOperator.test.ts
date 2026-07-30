@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 
-import { operatorLeads } from "./MarketingOperator";
+import {
+  leadReplyHref,
+  operatorLeads,
+  pollRetryDelay,
+  shouldRetryPoll,
+} from "./MarketingOperator";
 
 const VALID_LEAD = {
   id: "019fab5e-be72-72d2-809b-0a1d4a35c86b",
@@ -42,5 +47,33 @@ describe("operator lead queue parsing", () => {
     expect(
       operatorLeads({ leads: Array.from({ length: 101 }, () => VALID_LEAD) }),
     ).toEqual([]);
+  });
+});
+
+describe("operator follow-up helpers", () => {
+  it("builds a fixed-purpose mail link without letting contact data alter its query", () => {
+    expect(leadReplyHref("partner@example.com")).toBe(
+      "mailto:partner%40example.com?subject=Your%20OpenZaps%20Zap%20request",
+    );
+    expect(leadReplyHref("partner@example.com?body=unexpected")).toBe(
+      "mailto:partner%40example.com%3Fbody%3Dunexpected?subject=Your%20OpenZaps%20Zap%20request",
+    );
+  });
+
+  it("backs off transient polling failures and caps the retry interval", () => {
+    expect(pollRetryDelay(1)).toBe(2_500);
+    expect(pollRetryDelay(2)).toBe(5_000);
+    expect(pollRetryDelay(5)).toBe(30_000);
+    expect(pollRetryDelay(50)).toBe(30_000);
+  });
+
+  it("retries only transient polling failures", () => {
+    expect(shouldRetryPoll()).toBe(true);
+    expect(shouldRetryPoll(408)).toBe(true);
+    expect(shouldRetryPoll(429)).toBe(true);
+    expect(shouldRetryPoll(503)).toBe(true);
+    expect(shouldRetryPoll(400)).toBe(false);
+    expect(shouldRetryPoll(401)).toBe(false);
+    expect(shouldRetryPoll(404)).toBe(false);
   });
 });
