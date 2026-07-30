@@ -201,22 +201,27 @@ describe("readMarketingConfig", () => {
     ).toBe(false);
   });
 
-  it("keeps every-run human approval even when the durable ledger is ready", () => {
+  it("enables only bounded auto-publish when the ledger and Discord are ready", () => {
     const config = readMarketingConfig({
       OPENZAPS_MARKETING_ENABLED: "true",
       OPENZAPS_MARKETING_DRY_RUN: "false",
       OPENZAPS_MARKETING_AUTO_PUBLISH: "true",
       OPENZAPS_MARKETING_DURABLE_LEDGER_CONFIGURED: "true",
+      DISCORD_MARKETING_WEBHOOK_URL:
+        "https://discord.com/api/webhooks/123/public-token",
+      OPENZAPS_DISCORD_GUILD_ID: "456",
+      DISCORD_MARKETING_CHANNEL_ID: "789",
       OPENZAPS_MARKETING_SUPABASE_PROJECT_REF: "abcdefghijklmnopqrst",
       SUPABASE_URL: "https://abcdefghijklmnopqrst.supabase.co",
       SUPABASE_SERVICE_ROLE_KEY: "service-secret",
     });
 
     expect(config.autoPublishRequested).toBe(true);
-    expect(config.autoPublish).toBe(false);
+    expect(config.autoPublish).toBe(true);
     expect(config.readiness.durableLedgerConfigured).toBe(true);
-    expect(config.readiness.autoPublishReady).toBe(false);
-    expect(config.mode).toBe("review_only");
+    expect(config.readiness.autoPublishReady).toBe(true);
+    expect(config.mode).toBe("live");
+    expect(JSON.stringify(config)).not.toContain("public-token");
   });
 
   it("keeps requested auto-publish in review-only mode until a durable ledger exists", () => {
@@ -235,7 +240,7 @@ describe("readMarketingConfig", () => {
     expect(config.readiness.durableLedgerConfigured).toBe(false);
     expect(config.readiness.autoPublishReady).toBe(false);
     expect(config.readiness.blockers).toContain(
-      "Auto-publish is not available in this release; every outbound delivery requires human approval.",
+      "Bounded auto-publish requires live mode, the durable ledger, and at least one ready X or Discord broadcast channel.",
     );
     expect(config.readiness.blockers).toContain(
       "Non-dry-run marketing drafting requires the durable marketing ledger.",

@@ -8,6 +8,7 @@ import {
   MarketingApprovalPayloadSchema,
   MarketingDraftBundleSchema,
   MarketingDraftRequestSchema,
+  MarketingScheduledRequestSchema,
 } from "@/workflows/marketing-agent/contracts";
 
 describe("marketing workflow request contracts", () => {
@@ -33,6 +34,30 @@ describe("marketing workflow request contracts", () => {
         brief: "Explain a verified product update.",
         channels: ["x", "x"],
         sourceUrls: ["https://attacker.example/instructions"],
+      }).success,
+    ).toBe(false);
+  });
+
+  it("keeps scheduled authority to the server-only X and Discord surface", () => {
+    expect(
+      MarketingScheduledRequestSchema.parse({
+        channels: ["discord", "x"],
+      }),
+    ).toEqual({ channels: ["discord", "x"] });
+    expect(
+      MarketingScheduledRequestSchema.safeParse({
+        channels: ["discord", "discord"],
+      }).success,
+    ).toBe(false);
+    expect(
+      MarketingScheduledRequestSchema.safeParse({
+        channels: ["substack"],
+      }).success,
+    ).toBe(false);
+    expect(
+      MarketingScheduledRequestSchema.safeParse({
+        channels: ["discord"],
+        templateId: "caller-selected-template",
       }).success,
     ).toBe(false);
   });
@@ -402,7 +427,7 @@ describe("generated marketing output contracts", () => {
         tags: ["OpenZaps"],
       }],
       policy: [{
-        policyVersion: 1,
+        policyVersion: 2,
         candidateId: candidate.id,
         riskTier: 2,
         disposition: "require_approval",

@@ -486,7 +486,7 @@
   }
 }
 
-@media (max-width: 860px) {
+@media (max-width: 1040px) {
   .navLinks {
     display: none;
   }

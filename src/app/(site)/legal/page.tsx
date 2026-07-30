@@ -52,6 +52,43 @@ export default function LegalPage(): React.JSX.Element {
         </div>
       </section>
 
+      <section className={styles.section} id="request-data">
+        <h2 className={styles.h2}>Request data and privacy</h2>
+        <div className={styles.defs}>
+          <div className={styles.def}>
+            <strong className={styles.defTerm}>What the request desk stores</strong>
+            <p className={styles.defBody}>
+              A Request a Zap submission stores the name and email you provide,
+              project details, workflow, protocols or assets, trigger, safety
+              limits, timeline, consent record, minimized campaign labels, and
+              only the referring website&apos;s origin. OpenZaps derives a
+              non-reversible abuse-control value from the request network
+              address, but keeps it separately from lead records and never
+              stores the raw address.
+            </p>
+          </div>
+          <div className={styles.def}>
+            <strong className={styles.defTerm}>Why it is used</strong>
+            <p className={styles.defBody}>
+              Authorized operators use this data only to assess the requested
+              workflow, prevent form abuse, and reply about that request.
+              Submission does not join a newsletter, authorize automated
+              outreach, or grant any wallet or signing authority.
+            </p>
+          </div>
+          <div className={styles.def}>
+            <strong className={styles.defTerm}>How long it remains</strong>
+            <p className={styles.defBody}>
+              Unanswered requests expire after 180 days. A human-reviewed active
+              design conversation may be renewed only within a fixed one-year
+              maximum, and a closed request expires within 30 days. A daily
+              retention job removes expired records and short-lived abuse
+              controls.
+            </p>
+          </div>
+        </div>
+      </section>
+
       <section className={styles.note}>
         <span className={styles.noteEyebrow}>No financial advice</span>
         <strong className={styles.noteTitle}>

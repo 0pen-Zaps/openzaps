@@ -99,6 +99,34 @@ describe("X channel adapter", () => {
     });
   });
 
+  it("marks an exact server-authored broadcast as not AI-generated", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(xUserResponse())
+      .mockResolvedValueOnce(
+        Response.json({ data: { id: "200" } }, { status: 201 }),
+      );
+
+    await postXBroadcast(
+      {
+        text: "Versioned server template.",
+        idempotencyKey: "scheduled:template:x",
+        madeWithAi: false,
+      },
+      {
+        ...X_IDENTITY,
+        userAccessToken: "token",
+        fetchImpl: fetchMock,
+      },
+    );
+
+    const [, init] = fetchMock.mock.calls[1] as [string, RequestInit];
+    expect(JSON.parse(init.body as string)).toEqual({
+      text: "Versioned server template.",
+      made_with_ai: false,
+    });
+  });
+
   it("uses the official reply object for a reply", async () => {
     const fetchMock = vi
       .fn()

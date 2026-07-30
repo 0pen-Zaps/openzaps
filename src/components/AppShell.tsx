@@ -53,6 +53,17 @@ const GROUPS: readonly NavGroup[] = [
       { href: "/zap?view=connect", label: "Connect", icon: "plug", view: "connect" },
     ],
   },
+  {
+    label: "Build with us",
+    items: [
+      {
+        href: "/request-a-zap",
+        label: "Request a Zap",
+        icon: "sparkle",
+        chip: "free",
+      },
+    ],
+  },
   { label: "Play", items: [{ href: "/zapdraw", label: "ZapDraw", icon: "bars", chip: "open" }] },
   {
     label: "Watch",

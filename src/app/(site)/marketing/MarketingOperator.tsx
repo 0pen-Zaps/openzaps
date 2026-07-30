@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import {
   marketingRunIdFromSearch,
@@ -10,12 +10,14 @@ import { parseCanonicalXStatusUrl } from "@/lib/marketing/x-interaction";
 import styles from "./marketing.module.css";
 
 const TOKEN_STORAGE_KEY = "openzaps:marketing:operator-token";
+const LEAD_TOKEN_STORAGE_KEY = "openzaps:marketing:lead-desk-token";
 const RUN_STORAGE_KEY = "openzaps:marketing:run-id";
 const POLL_INTERVAL_MS = 2_500;
 
 const CHANNELS = ["x", "discord", "substack"] as const;
 type Channel = (typeof CHANNELS)[number];
 type DraftKind = "product_update" | "tutorial" | "community_reply";
+type LeadStatus = "new" | "contacted" | "qualified" | "closed";
 type JsonRecord = Record<string, unknown>;
 
 type OperatorError = Error & { status?: number };
@@ -27,6 +29,33 @@ type ReadinessRow = {
   state: string;
   detail: string;
 };
+
+export type OperatorLead = {
+  id: string;
+  persona: string;
+  name: string;
+  email: string;
+  emailVerified: boolean;
+  project: string | null;
+  projectUrl: string | null;
+  workflow: string;
+  protocolsAssets: string | null;
+  trigger: string;
+  guardrails: string;
+  timeline: string;
+  attribution: JsonRecord;
+  qualificationScore: number;
+  status: LeadStatus;
+  createdAt: string;
+  updatedAt: string;
+  expiresAt: string;
+};
+
+const LEAD_DATE_FORMATTER = new Intl.DateTimeFormat("en-US", {
+  dateStyle: "medium",
+  timeStyle: "short",
+  timeZone: "America/New_York",
+});
 
 function isRecord(value: unknown): value is JsonRecord {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -159,6 +188,78 @@ function readinessRows(status: JsonRecord | null): ReadinessRow[] {
   return rows;
 }
 
+export function operatorLeads(body: JsonRecord): OperatorLead[] {
+  if (!Array.isArray(body.leads) || body.leads.length > 100) return [];
+
+  return body.leads.flatMap((value): OperatorLead[] => {
+    if (!isRecord(value)) return [];
+    const id = text(value.id);
+    const persona = text(value.persona);
+    const name = text(value.name);
+    const email = text(value.email);
+    const emailVerified = value.emailVerified;
+    const workflow = text(value.workflow);
+    const trigger = text(value.trigger);
+    const guardrails = text(value.guardrails);
+    const timeline = text(value.timeline);
+    const status = text(value.status);
+    const createdAt = text(value.createdAt);
+    const updatedAt = text(value.updatedAt);
+    const expiresAt = text(value.expiresAt);
+    const score = value.qualificationScore;
+    if (
+      !id
+      || !persona
+      || !name
+      || !email
+      || typeof emailVerified !== "boolean"
+      || !workflow
+      || !trigger
+      || !guardrails
+      || !timeline
+      || !status
+      || !["new", "contacted", "qualified", "closed"].includes(status)
+      || !createdAt
+      || !updatedAt
+      || !expiresAt
+      || typeof score !== "number"
+      || !Number.isInteger(score)
+      || score < 0
+      || score > 5
+    ) {
+      return [];
+    }
+
+    return [{
+      id,
+      persona,
+      name,
+      email,
+      emailVerified,
+      project: text(value.project),
+      projectUrl: text(value.projectUrl),
+      workflow,
+      protocolsAssets: text(value.protocolsAssets),
+      trigger,
+      guardrails,
+      timeline,
+      attribution: isRecord(value.attribution) ? value.attribution : {},
+      qualificationScore: score,
+      status: status as LeadStatus,
+      createdAt,
+      updatedAt,
+      expiresAt,
+    }];
+  });
+}
+
+function leadDate(value: string): string {
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.valueOf())
+    ? "Unknown time"
+    : LEAD_DATE_FORMATTER.format(parsed);
+}
+
 function nestedRun(body: JsonRecord): JsonRecord {
   return isRecord(body.run) ? body.run : body;
 }
@@ -231,6 +332,8 @@ function sessionRemove(key: string): void {
 export function MarketingOperator(): React.JSX.Element {
   const [tokenInput, setTokenInput] = useState("");
   const [token, setToken] = useState("");
+  const [leadTokenInput, setLeadTokenInput] = useState("");
+  const [leadToken, setLeadToken] = useState("");
   const [status, setStatus] = useState<JsonRecord | null>(null);
   const [kind, setKind] = useState<DraftKind>("product_update");
   const [brief, setBrief] = useState("");
@@ -241,9 +344,23 @@ export function MarketingOperator(): React.JSX.Element {
   const [run, setRun] = useState<JsonRecord | null>(null);
   const [comment, setComment] = useState("");
   const [acknowledgedDraftKey, setAcknowledgedDraftKey] = useState("");
-  const [busy, setBusy] = useState<"connect" | "create" | "approve" | "reject" | "">("");
-  const [notice, setNotice] = useState("Enter the operator token to load readiness.");
+  const [leads, setLeads] = useState<OperatorLead[]>([]);
+  const [leadScoreFloor, setLeadScoreFloor] = useState(3);
+  const [leadQueueState, setLeadQueueState] = useState<
+    "idle" | "loading" | "ready" | "error"
+  >("idle");
+  const [leadQueueError, setLeadQueueError] = useState("");
+  const [leadActionId, setLeadActionId] = useState("");
+  const [leadDeleteConfirmId, setLeadDeleteConfirmId] = useState("");
+  const [leadActionNotice, setLeadActionNotice] = useState("");
+  const [busy, setBusy] = useState<
+    "connect" | "create" | "approve" | "reject" | ""
+  >("");
+  const [notice, setNotice] = useState(
+    "Enter both operator tokens to load readiness and the private lead queue.",
+  );
   const [pollRevision, setPollRevision] = useState(0);
+  const leadRequestGeneration = useRef(0);
 
   const readiness = useMemo(() => readinessRows(status), [status]);
   const currentStatus = runStatus(run);
@@ -259,12 +376,22 @@ export function MarketingOperator(): React.JSX.Element {
 
   const forgetToken = (message = "Operator token forgotten for this tab."): void => {
     sessionRemove(TOKEN_STORAGE_KEY);
+    sessionRemove(LEAD_TOKEN_STORAGE_KEY);
     sessionRemove(RUN_STORAGE_KEY);
+    leadRequestGeneration.current += 1;
     setToken("");
     setTokenInput("");
+    setLeadToken("");
+    setLeadTokenInput("");
     setStatus(null);
     setRunId("");
     setRun(null);
+    setLeads([]);
+    setLeadQueueState("idle");
+    setLeadQueueError("");
+    setLeadActionId("");
+    setLeadDeleteConfirmId("");
+    setLeadActionNotice("");
     setAcknowledgedDraftKey("");
     setNotice(message);
   };
@@ -278,9 +405,83 @@ export function MarketingOperator(): React.JSX.Element {
     setNotice(error instanceof Error ? error.message : fallback);
   };
 
+  const loadLeadQueue = async (
+    candidateToken: string,
+    minimumScore: number,
+  ): Promise<void> => {
+    const requestGeneration = leadRequestGeneration.current + 1;
+    leadRequestGeneration.current = requestGeneration;
+    setLeadQueueState("loading");
+    setLeadQueueError("");
+    try {
+      const body = await operatorRequest(
+        `/api/leads?limit=50&minScore=${minimumScore}`,
+        candidateToken,
+      );
+      if (leadRequestGeneration.current !== requestGeneration) return;
+      setLeads(operatorLeads(body));
+      setLeadQueueState("ready");
+    } catch (error) {
+      if (leadRequestGeneration.current !== requestGeneration) return;
+      const requestError = error as OperatorError;
+      if (requestError?.status === 401) {
+        handleError(error, "The lead queue could not be loaded.");
+        return;
+      }
+      setLeads([]);
+      setLeadQueueState("error");
+      setLeadQueueError(
+        error instanceof Error
+          ? error.message
+          : "The lead queue could not be loaded.",
+      );
+    }
+  };
+
+  const updateLeadLifecycle = async (
+    id: string,
+    status: Exclude<LeadStatus, "new">,
+  ): Promise<void> => {
+    if (!leadToken || leadActionId) return;
+    setLeadActionId(id);
+    setLeadActionNotice("");
+    try {
+      await operatorRequest(`/api/leads/${encodeURIComponent(id)}`, leadToken, {
+        method: "PATCH",
+        body: JSON.stringify({ status }),
+      });
+      setLeadDeleteConfirmId("");
+      setLeadActionNotice(`Request marked ${titleCase(status)}.`);
+      await loadLeadQueue(leadToken, leadScoreFloor);
+    } catch (error) {
+      handleError(error, "The request status could not be updated.");
+    } finally {
+      setLeadActionId("");
+    }
+  };
+
+  const permanentlyDeleteLead = async (id: string): Promise<void> => {
+    if (!leadToken || leadActionId) return;
+    setLeadActionId(id);
+    setLeadActionNotice("");
+    try {
+      await operatorRequest(`/api/leads/${encodeURIComponent(id)}`, leadToken, {
+        method: "DELETE",
+      });
+      setLeadDeleteConfirmId("");
+      setLeadActionNotice("Request permanently deleted.");
+      await loadLeadQueue(leadToken, leadScoreFloor);
+    } catch (error) {
+      handleError(error, "The request could not be deleted.");
+    } finally {
+      setLeadActionId("");
+    }
+  };
+
   useEffect(() => {
     const storedToken = sessionRead(TOKEN_STORAGE_KEY);
-    if (!storedToken) return;
+    const storedLeadToken = sessionRead(LEAD_TOKEN_STORAGE_KEY);
+    if (!storedToken || !storedLeadToken) return;
 
     let cancelled = false;
     void operatorRequest("/api/marketing/status", storedToken)
@@ -288,6 +489,8 @@ export function MarketingOperator(): React.JSX.Element {
         if (cancelled) return;
         setTokenInput(storedToken);
         setToken(storedToken);
+        setLeadTokenInput(storedLeadToken);
+        setLeadToken(storedLeadToken);
         setStatus(body);
         const recoveredRunId =
           marketingRunIdFromSearch(window.location.search)
@@ -296,6 +499,7 @@ export function MarketingOperator(): React.JSX.Element {
           sessionWrite(RUN_STORAGE_KEY, recoveredRunId);
           setRunId(recoveredRunId);
         }
+        void loadLeadQueue(storedLeadToken, 3);
         setNotice("Operator session restored. Readiness is current.");
       })
       .catch((error: unknown) => {
@@ -346,8 +550,9 @@ export function MarketingOperator(): React.JSX.Element {
 
   const connect = async (): Promise<void> => {
     const candidate = tokenInput.trim();
-    if (!candidate || busy) {
-      setNotice("Enter the operator token.");
+    const candidateLeadToken = leadTokenInput.trim();
+    if (!candidate || !candidateLeadToken || busy) {
+      setNotice("Enter both separately scoped operator tokens.");
       return;
     }
 
@@ -355,7 +560,9 @@ export function MarketingOperator(): React.JSX.Element {
     try {
       const body = await operatorRequest("/api/marketing/status", candidate);
       sessionWrite(TOKEN_STORAGE_KEY, candidate);
+      sessionWrite(LEAD_TOKEN_STORAGE_KEY, candidateLeadToken);
       setToken(candidate);
+      setLeadToken(candidateLeadToken);
       setStatus(body);
       const recoveredRunId =
         marketingRunIdFromSearch(window.location.search)
@@ -365,6 +572,7 @@ export function MarketingOperator(): React.JSX.Element {
         setRunId(recoveredRunId);
       }
       setNotice("Connected. Readiness is current.");
+      await loadLeadQueue(candidateLeadToken, leadScoreFloor);
     } catch (error) {
       handleError(error, "Could not load marketing readiness.");
     } finally {
@@ -486,11 +694,14 @@ export function MarketingOperator(): React.JSX.Element {
             <span className={styles.step}>01</span>
             <h2 id="operator-access">Operator access</h2>
           </div>
-          <StatusChip ready={Boolean(token)} label={token ? "connected" : "locked"} />
+          <StatusChip
+            ready={Boolean(token && leadToken)}
+            label={token && leadToken ? "connected" : "locked"}
+          />
         </div>
 
         <label className={styles.field}>
-          <span>Admin token</span>
+          <span>Marketing approval token</span>
           <span className={styles.inlineControl}>
             <input
               type="password"
@@ -501,10 +712,27 @@ export function MarketingOperator(): React.JSX.Element {
               onKeyDown={(event) => {
                 if (event.key === "Enter") void connect();
               }}
-              disabled={Boolean(token)}
-              placeholder="Private bearer token"
+              disabled={Boolean(token && leadToken)}
+              placeholder="Publishing-scope bearer token"
             />
-            {token ? (
+          </span>
+        </label>
+        <label className={styles.field}>
+          <span>Lead desk token</span>
+          <span className={styles.inlineControl}>
+            <input
+              type="password"
+              autoComplete="off"
+              spellCheck={false}
+              value={leadTokenInput}
+              onChange={(event) => setLeadTokenInput(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") void connect();
+              }}
+              disabled={Boolean(token && leadToken)}
+              placeholder="Lead-data-scope bearer token"
+            />
+            {token && leadToken ? (
               <button className={styles.secondaryButton} type="button" onClick={() => forgetToken()}>
                 Forget
               </button>
@@ -521,12 +749,13 @@ export function MarketingOperator(): React.JSX.Element {
           </span>
         </label>
         <p className={styles.hint}>
-          Kept in <code>sessionStorage</code> for this tab only; never placed in a URL,
-          cookie, or persistent local storage.
+          Separate tokens keep publication authority apart from private lead
+          access. Both stay in <code>sessionStorage</code> for this tab only;
+          neither is placed in a URL, cookie, or persistent local storage.
         </p>
       </section>
 
-      {token ? (
+      {token && leadToken ? (
         <>
           <section className={styles.panel} aria-labelledby="channel-readiness">
             <div className={styles.sectionHead}>
@@ -560,10 +789,207 @@ export function MarketingOperator(): React.JSX.Element {
             )}
           </section>
 
-          <section className={styles.panel} aria-labelledby="create-marketing-draft">
+          <section className={styles.panel} aria-labelledby="lead-request-queue">
             <div className={styles.sectionHead}>
               <div>
                 <span className={styles.step}>03</span>
+                <h2 id="lead-request-queue">Qualified Zap requests</h2>
+              </div>
+              <div className={styles.queueControls}>
+                <label>
+                  Minimum score
+                  <select
+                    value={leadScoreFloor}
+                    onChange={(event) => {
+                      const next = Number(event.target.value);
+                      setLeadScoreFloor(next);
+                      void loadLeadQueue(leadToken, next);
+                    }}
+                    disabled={leadQueueState === "loading"}
+                  >
+                    <option value={0}>All</option>
+                    <option value={3}>3+</option>
+                    <option value={4}>4+</option>
+                    <option value={5}>5 only</option>
+                  </select>
+                </label>
+                <button
+                  className={styles.textButton}
+                  type="button"
+                  onClick={() => void loadLeadQueue(leadToken, leadScoreFloor)}
+                  disabled={leadQueueState === "loading"}
+                >
+                  {leadQueueState === "loading" ? "Loading…" : "Refresh"}
+                </button>
+              </div>
+            </div>
+
+            {leadQueueState === "loading" ? (
+              <div className={styles.generating} role="status" aria-live="polite">
+                <span aria-hidden />
+                <p>Loading the private request queue.</p>
+              </div>
+            ) : leadQueueState === "error" ? (
+              <div className={styles.queueError} role="status">
+                <strong>Lead queue unavailable.</strong>
+                <span>{leadQueueError}</span>
+              </div>
+            ) : leads.length ? (
+              <div className={styles.leadQueue}>
+                {leads.map((lead) => (
+                  <article className={styles.leadCard} key={lead.id}>
+                    <header>
+                      <div>
+                        <span className={styles.leadPersona}>{titleCase(lead.persona)}</span>
+                        <h3>{lead.project ?? lead.name}</h3>
+                        {lead.project ? <p>{lead.name}</p> : null}
+                      </div>
+                      <span
+                        className={styles.leadScore}
+                        data-qualified={lead.qualificationScore >= 3 || undefined}
+                        aria-label={`Qualification score ${lead.qualificationScore} out of 5`}
+                      >
+                        {lead.qualificationScore}/5
+                      </span>
+                    </header>
+
+                    <div className={styles.leadContact}>
+                      <span>{lead.email}</span>
+                      <span
+                        data-email-state={
+                          lead.emailVerified ? "verified" : "unverified"
+                        }
+                      >
+                        {lead.emailVerified
+                          ? "Email verified"
+                          : "Email unverified · request-specific reply only"}
+                      </span>
+                      {lead.projectUrl ? (
+                        <a
+                          href={lead.projectUrl}
+                          target="_blank"
+                          rel="noreferrer noopener"
+                        >
+                          Project ↗
+                        </a>
+                      ) : null}
+                    </div>
+
+                    <dl className={styles.leadBrief}>
+                      <div>
+                        <dt>Workflow</dt>
+                        <dd>{lead.workflow}</dd>
+                      </div>
+                      <div>
+                        <dt>Trigger</dt>
+                        <dd>{lead.trigger}</dd>
+                      </div>
+                      <div>
+                        <dt>Must never change</dt>
+                        <dd>{lead.guardrails}</dd>
+                      </div>
+                      {lead.protocolsAssets ? (
+                        <div>
+                          <dt>Protocols / assets</dt>
+                          <dd>{lead.protocolsAssets}</dd>
+                        </div>
+                      ) : null}
+                    </dl>
+
+                    <footer>
+                      <span>{titleCase(lead.timeline)}</span>
+                      <span>{titleCase(lead.status)}</span>
+                      <span>{leadDate(lead.createdAt)} ET</span>
+                      {text(lead.attribution.utmSource) ? (
+                        <span>Source: {text(lead.attribution.utmSource)}</span>
+                      ) : null}
+                    </footer>
+                    <div className={styles.leadActions}>
+                      {lead.status === "new" ? (
+                        <button
+                          type="button"
+                          onClick={() => void updateLeadLifecycle(lead.id, "contacted")}
+                          disabled={Boolean(leadActionId)}
+                        >
+                          Mark contacted
+                        </button>
+                      ) : null}
+                      {lead.status === "new" || lead.status === "contacted" ? (
+                        <button
+                          type="button"
+                          onClick={() => void updateLeadLifecycle(lead.id, "qualified")}
+                          disabled={Boolean(leadActionId)}
+                        >
+                          Qualify
+                        </button>
+                      ) : null}
+                      {lead.status !== "closed" ? (
+                        <button
+                          type="button"
+                          onClick={() => void updateLeadLifecycle(lead.id, "closed")}
+                          disabled={Boolean(leadActionId)}
+                        >
+                          Close
+                        </button>
+                      ) : null}
+                      {leadDeleteConfirmId === lead.id ? (
+                        <>
+                          <button
+                            type="button"
+                            data-danger
+                            onClick={() => void permanentlyDeleteLead(lead.id)}
+                            disabled={Boolean(leadActionId)}
+                          >
+                            Confirm permanent delete
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setLeadDeleteConfirmId("")}
+                            disabled={Boolean(leadActionId)}
+                          >
+                            Cancel
+                          </button>
+                        </>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => setLeadDeleteConfirmId(lead.id)}
+                          disabled={Boolean(leadActionId)}
+                        >
+                          Delete
+                        </button>
+                      )}
+                    </div>
+                  </article>
+                ))}
+              </div>
+            ) : leadQueueState === "ready" ? (
+              <p className={styles.empty}>
+                No active requests meet this score threshold.
+              </p>
+            ) : null}
+            {leadQueueState === "ready" ? (
+              <p className="srOnly" role="status" aria-live="polite">
+                {leads.length === 1
+                  ? "1 request loaded."
+                  : `${leads.length} requests loaded.`}
+              </p>
+            ) : null}
+            {leadActionNotice ? (
+              <p className={styles.queueNotice} role="status" aria-live="polite">
+                {leadActionNotice}
+              </p>
+            ) : null}
+            <p className={styles.hint}>
+              Private contact and workflow data is shown only after operator
+              authentication. Requests are never enrolled in a marketing list.
+            </p>
+          </section>
+
+          <section className={styles.panel} aria-labelledby="create-marketing-draft">
+            <div className={styles.sectionHead}>
+              <div>
+                <span className={styles.step}>04</span>
                 <h2 id="create-marketing-draft">Create a review draft</h2>
               </div>
             </div>
@@ -667,7 +1093,7 @@ export function MarketingOperator(): React.JSX.Element {
             <section className={styles.panel} aria-labelledby="review-marketing-draft">
               <div className={styles.sectionHead}>
                 <div>
-                  <span className={styles.step}>04</span>
+                  <span className={styles.step}>05</span>
                   <h2 id="review-marketing-draft">Review and decide</h2>
                 </div>
                 <StatusChip

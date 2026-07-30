@@ -1,15 +1,20 @@
 # OpenZaps Marketing Agent Runbook
 
 This runbook covers deployment and operation of the OpenZaps marketing agent on
-Vercel. The supported production posture is **review-only**: the agent collects
-evidence and drafts channel-specific copy, deterministic policy evaluates it,
-and an authenticated operator approves or rejects every outbound bundle.
+Vercel. Model-generated copy is **review-only**: the agent collects evidence
+and drafts channel-specific copy, deterministic policy evaluates it, and an
+authenticated operator approves or rejects every generated outbound bundle.
+There is one narrower automatic lane for exact, versioned, server-rendered
+tier-1 education templates on ready X and Discord broadcast providers.
 
 The agent does not receive wallet authority. It cannot create, fund, sign, or
 execute a Zap. Its only external write surfaces are reviewed X broadcasts and
 operator-selected, verified X replies, plus reviewed Discord broadcasts.
 Discord slash commands return deterministic responses. Substack publication
 always stops at a human editor handoff.
+
+The inbound request queue and separate review-only Lead Scout are documented
+in [lead-engine.md](lead-engine.md).
 
 ## Operating invariants
 
@@ -20,7 +25,8 @@ always stops at a human editor handoff.
 | Claims cite facts | Every asserted or qualified generated claim must cite a source-packet fact key. Unavailable data is `null`, never zero. |
 | Pre-audit disclosure | Public copy includes `Pre-audit software. Verify before use.` while the protocol remains pre-audit. |
 | Canonical links only | Outbound links are restricted to `0xzaps.com`, `www.0xzaps.com`, `defitutorials.substack.com`, and `github.com/0pen-Zaps/openzaps`. |
-| Human review | Review-only is the supported mode. Tutorials, incidents, security, token/trading, partnerships, roadmaps, and new deployments always require approval. |
+| Human review | Every model-generated item and every reply remains review-only. Tutorials, incidents, security, token/trading, partnerships, roadmaps, and new deployments always require approval. |
+| Bounded scheduled templates | Automatic delivery accepts only the exact public fields of the current versioned server template, only for tier-1 X/Discord broadcasts, and rechecks configuration, source freshness, provider identity/destination, caps, and the durable claim immediately before writing. A changed body, claim, or channel—or missing, stale, or internally inconsistent source evidence—cannot inherit that authority. |
 | Prohibited means prohibited | A human cannot override credential exposure, guaranteed-return claims, impersonation, policy bypasses, unsolicited bulk messaging, unavailable-as-zero claims, or non-canonical links. |
 | No unverified X replies | An operator supplies only a canonical `x.com/<user>/status/<id>` URL and a paraphrase. The agent verifies the author and explicit mention/owned quote through X's API, stores metadata but not post text, requires human approval, and enforces one lifetime reply per interaction. There is no polling or browser scraping. |
 | No undocumented publishing | X uses `POST /2/tweets`; Discord uses official webhooks/REST; Substack uses its official editor and public RSS feed. There is no browser scraping, session-cookie automation, or private endpoint. |
@@ -29,13 +35,22 @@ always stops at a human editor handoff.
 The workflow is:
 
 ```text
-operator or cron
+operator
   -> authenticated workflow start
   -> production evidence snapshot
   -> model-generated structured drafts
   -> deterministic policy
   -> operator approval hook
   -> X / Discord delivery OR Substack editor handoff
+
+cron
+  -> durable weekday slot
+  -> production evidence snapshot
+  -> exact versioned server template (no model)
+  -> deterministic tier-1 policy
+  -> fresh automatic-authority and provider checks
+  -> durable once-per-template/channel claim
+  -> X / Discord delivery
 ```
 
 Discord slash-command answers are a separate deterministic FAQ path. They do
@@ -50,7 +65,7 @@ not invoke the model or the approval workflow.
 | `POST /api/marketing/runs` | Start a durable draft workflow | Operator bearer token |
 | `GET /api/marketing/runs/:runId` | Read the latest run event/result | Operator bearer token |
 | `POST /api/marketing/approvals` | Resume the one-shot approval hook | Operator bearer token |
-| `GET /api/marketing/cron` | Start the scheduled product-update draft | `Authorization: Bearer <CRON_SECRET>` |
+| `GET /api/marketing/cron` | Start the bounded scheduled-template workflow | `Authorization: Bearer <CRON_SECRET>` |
 | `POST /api/marketing/discord/interactions` | Receive Discord application commands | Discord Ed25519 request signature and a five-minute freshness window |
 
 The operator token is held in browser `sessionStorage`, scoped to the current
@@ -72,7 +87,7 @@ or interactive `vercel env add`; never commit `.env` files.
 | --- | --- | --- |
 | `OPENZAPS_MARKETING_ENABLED` | `false` | Master gate. Set `true` only after a disabled deployment passes readiness checks. |
 | `OPENZAPS_MARKETING_DRY_RUN` | `true` | When `true`, runs stop at `dry_run_complete` and never wait for approval or publish. |
-| `OPENZAPS_MARKETING_AUTO_PUBLISH` | `false` | Keep `false`. A `true` request is reported as a blocker, but effective auto-publish remains hard `false`; this release cannot enter unattended live mode. |
+| `OPENZAPS_MARKETING_AUTO_PUBLISH` | `false` | Enables only the exact versioned scheduled-template lane when live mode, the durable ledger, and at least one requested X/Discord provider are ready. It never authorizes model output, replies, tutorials, direct messages, or operator-supplied copy. |
 | `OPENZAPS_MARKETING_DURABLE_LEDGER_CONFIGURED` | `false` | Set `true` only after the reviewed migration is applied and its RPC/privilege checks pass in the target Supabase project. Non-dry-run drafting fails closed without it. |
 | `OPENZAPS_MARKETING_ADMIN_TOKEN` | unset | Strong random operator bearer token. Missing configuration denies every operator API. |
 | `OPENZAPS_MARKETING_APPROVER_ID` | `authenticated-operator` | Non-secret audit label recorded with approvals. Do not put an email address or other unnecessary personal data here. |
@@ -117,9 +132,10 @@ exact project-ref/host binding, canonical Supabase origin, and service-role
 secret are all present. Loopback HTTP is accepted only outside production. Dry
 runs may use a marked empty snapshot and never call the provider. Live drafting
 and delivery fail closed without the durable ledger. Effective `autoPublish`
-remains `false`; the ledger does not replace human approval. Direct-message
-delivery is hard-disabled because there is no deployed DM adapter; setting the
-legacy DM flag does not enable it.
+can become `true` only for the scheduled-template prerequisites above; the
+ledger never replaces human approval for generated copy or replies.
+Direct-message delivery is hard-disabled because there is no deployed DM
+adapter; setting the legacy DM flag does not enable it.
 
 ### Schedule
 
@@ -127,14 +143,14 @@ legacy DM flag does not enable it.
 | --- | --- | --- |
 | `CRON_SECRET` | unset | Vercel Cron bearer secret. A missing value makes the cron route return `401`. |
 | `OPENZAPS_MARKETING_SCHEDULE_ENABLED` | unset/disabled | Must be exactly `true` before cron starts a workflow. |
-| `OPENZAPS_MARKETING_SCHEDULE_CHANNELS` | `x,discord` | Comma-separated subset of `x`, `discord`, and `substack`; invalid values are ignored and duplicates removed. |
+| `OPENZAPS_MARKETING_SCHEDULE_CHANNELS` | `x,discord` | Comma-separated subset of `x` and `discord`; invalid values are ignored, duplicates are removed, and a requested channel is omitted until its provider gates are ready. |
 
 `vercel.json` invokes the route at `0 14 * * 1-5`: 14:00 UTC every weekday.
 That is 10:00 Eastern during daylight-saving time and 09:00 Eastern during
-standard time. Vercel schedules use UTC. The route starts a reviewable
-`product_update` draft; it does not bypass approval. Including `substack`
-creates a tutorial-style handoff candidate only when the generated request and
-policy allow it—it never publishes to Substack.
+standard time. Vercel schedules use UTC. The route never invokes a model. It
+renders the exact `bounded-authority-v1` education template and can publish it
+only when `OPENZAPS_MARKETING_AUTO_PUBLISH=true` and every fresh gate passes.
+Substack, replies, and arbitrary copy are outside this lane.
 
 Keep the schedule disabled during previews and initial production rollout.
 Before starting a workflow, cron atomically claims one
@@ -142,6 +158,11 @@ Before starting a workflow, cron atomically claims one
 Overlapping or retried invocations return `already_claimed` without creating a
 second run. A claimed slot is deliberately retained when workflow start is
 ambiguous, so the day's scheduled draft may be skipped rather than duplicated.
+Each template revision and channel also has one stable durable delivery key.
+Replaying `bounded-authority-v1` reconciles its original receipt instead of
+posting identical copy again, even on a later weekday. Shipping new scheduled
+copy therefore requires a reviewed source change with a new template id; never
+date-salt identical text to manufacture a new delivery.
 
 ### X
 
@@ -493,18 +514,31 @@ After each step, inspect the workflow receipt and the provider's canonical
 surface. A `published` workflow receipt is not a substitute for checking the
 actual X post or Discord channel.
 
-### 7. Enable scheduled drafting
+### 7. Enable bounded scheduled publishing
 
 After at least several successful manual runs, set:
 
 ```text
 OPENZAPS_MARKETING_SCHEDULE_ENABLED=true
-OPENZAPS_MARKETING_SCHEDULE_CHANNELS=x,discord
+OPENZAPS_MARKETING_SCHEDULE_CHANNELS=discord
+OPENZAPS_MARKETING_AUTO_PUBLISH=true
 ```
 
 Redeploy, then verify the next Vercel Cron invocation returns `202` with a run
-id and that the run pauses for approval. Do not approve low-value,
-substantially similar, or stale drafts merely because the cron created them.
+id, records `auto_authorized`, and publishes only the requested providers that
+are ready. Keep production Discord-only while the X automated label and API
+write credits are pending. Written X approval remains an additional requirement
+for AI replies, which are never part of this automatic lane. Verify the
+canonical Discord receipt, then replay the same template and prove it returns
+the stored receipt without a second provider call. Leave all model-generated
+runs and all replies on the approval hook.
+
+To roll back automatic delivery, first set
+`OPENZAPS_MARKETING_SCHEDULE_ENABLED=false`, then set
+`OPENZAPS_MARKETING_AUTO_PUBLISH=false`, and redeploy. This returns production
+to review-only delivery without removing provider credentials or altering the
+append-only ledger. Never delete or rewrite a claimed row to force a retry;
+ambiguous provider outcomes require human reconciliation.
 
 ## Manual operation
 
