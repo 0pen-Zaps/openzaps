@@ -36,7 +36,7 @@
     "resend": "6.18.1",
     "viem": "^2.55.5",
     "workflow": "^4.7.0",
-    "zod": "~4.3.6"
+    "zod": "~4.4.3"
   },
   "devDependencies": {
     "@types/node": "^20",
