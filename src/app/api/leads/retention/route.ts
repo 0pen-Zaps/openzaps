@@ -1,8 +1,12 @@
+import { start } from "workflow/api";
+
 import { isCronAuthorized } from "@/lib/cron-auth";
+import { leadNotificationDeliveryConfigured } from "@/lib/leads/notification-server";
 import {
   LeadStoreError,
   purgeExpiredLeadRequests,
 } from "@/lib/leads/server";
+import { openZapsLeadNotificationWorkflow } from "@/workflows/lead-notification";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -19,10 +23,20 @@ export async function GET(request: Request): Promise<Response> {
     );
   }
 
+  let deliveryQueued = false;
+  try {
+    if (leadNotificationDeliveryConfigured()) {
+      await start(openZapsLeadNotificationWorkflow);
+      deliveryQueued = true;
+    }
+  } catch {
+    // Recovery enqueueing is advisory and must never block retention.
+  }
+
   try {
     const deletedCount = await purgeExpiredLeadRequests();
     return Response.json(
-      { purged: true, deletedCount },
+      { purged: true, deletedCount, deliveryQueued },
       { headers: PRIVATE_HEADERS },
     );
   } catch (error) {

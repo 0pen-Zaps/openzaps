@@ -1,3 +1,6 @@
+import { start } from "workflow/api";
+
+import { leadNotificationDeliveryConfigured } from "@/lib/leads/notification-server";
 import { LeadRequestSchema } from "@/lib/leads/schema";
 import { isSameOriginLeadRequest } from "@/lib/leads/origin";
 import {
@@ -8,6 +11,7 @@ import {
   BoundedJsonBodyError,
   readBoundedJsonBody,
 } from "@/lib/request-body";
+import { openZapsLeadNotificationWorkflow } from "@/workflows/lead-notification";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -89,6 +93,14 @@ export async function POST(request: Request): Promise<Response> {
         429,
         { "retry-after": "86400" },
       );
+    }
+    try {
+      if (leadNotificationDeliveryConfigured()) {
+        await start(openZapsLeadNotificationWorkflow);
+      }
+    } catch {
+      // The accepted lead and its notification outbox row are already durable.
+      // The daily retention cron retries advisory workflow enqueueing.
     }
     return intakeResponse({ accepted: true }, 202);
   } catch (error) {

@@ -72,18 +72,27 @@ export default function LegalPage(): React.JSX.Element {
             <p className={styles.defBody}>
               Authorized operators use this data only to assess the requested
               workflow, prevent form abuse, and reply about that request.
-              Submission does not join a newsletter, authorize automated
-              outreach, or grant any wallet or signing authority.
+              A server-only email delivery provider forwards the submitted
+              details to the designated OpenZaps operator mailbox so new
+              requests can be reviewed promptly. That notification copy is
+              separately processed and retained under the email delivery
+              provider&apos;s and operator mailbox&apos;s policies; the database
+              expiry below does not automatically delete an already-delivered
+              email. Submission does not join a newsletter, authorize
+              automated outreach, or grant any wallet or signing authority.
             </p>
           </div>
           <div className={styles.def}>
             <strong className={styles.defTerm}>How long it remains</strong>
             <p className={styles.defBody}>
-              Unanswered requests expire after 180 days. A human-reviewed active
-              design conversation may be renewed only within a fixed one-year
-              maximum, and a closed request expires within 30 days. A daily
-              retention job removes expired records and short-lived abuse
-              controls.
+              Request-desk database records expire after 180 days. A
+              human-reviewed active design conversation may be renewed only
+              within a fixed one-year maximum, and a closed request expires
+              within 30 days. A daily retention job removes expired database
+              records and short-lived abuse controls. Operators should delete
+              the corresponding mailbox notification when its request is
+              deleted; email-provider service records follow that
+              provider&apos;s retention terms.
             </p>
           </div>
         </div>
