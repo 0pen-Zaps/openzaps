@@ -13,6 +13,7 @@ const TOKEN_STORAGE_KEY = "openzaps:marketing:operator-token";
 const LEAD_TOKEN_STORAGE_KEY = "openzaps:marketing:lead-desk-token";
 const RUN_STORAGE_KEY = "openzaps:marketing:run-id";
 const POLL_INTERVAL_MS = 2_500;
+const POLL_MAX_INTERVAL_MS = 30_000;
 
 const CHANNELS = ["x", "discord", "substack"] as const;
 type Channel = (typeof CHANNELS)[number];
@@ -253,6 +254,26 @@ export function operatorLeads(body: JsonRecord): OperatorLead[] {
   });
 }
 
+export function leadReplyHref(email: string): string {
+  return `mailto:${encodeURIComponent(email)}?subject=${encodeURIComponent(
+    "Your OpenZaps Zap request",
+  )}`;
+}
+
+export function pollRetryDelay(failureCount: number): number {
+  const exponent = Math.max(0, Math.floor(failureCount) - 1);
+  return Math.min(POLL_INTERVAL_MS * 2 ** exponent, POLL_MAX_INTERVAL_MS);
+}
+
+export function shouldRetryPoll(status?: number): boolean {
+  return (
+    status === undefined
+    || status === 408
+    || status === 429
+    || (status >= 500 && status <= 599)
+  );
+}
+
 function leadDate(value: string): string {
   const parsed = new Date(value);
   return Number.isNaN(parsed.valueOf())
@@ -454,7 +475,16 @@ export function MarketingOperator(): React.JSX.Element {
       setLeadActionNotice(`Request marked ${titleCase(status)}.`);
       await loadLeadQueue(leadToken, leadScoreFloor);
     } catch (error) {
-      handleError(error, "The request status could not be updated.");
+      const requestError = error as OperatorError;
+      if (requestError?.status === 401) {
+        handleError(error, "The request status could not be updated.");
+      } else {
+        setLeadActionNotice(
+          error instanceof Error
+            ? error.message
+            : "The request status could not be updated.",
+        );
+      }
     } finally {
       setLeadActionId("");
     }
@@ -472,7 +502,14 @@ export function MarketingOperator(): React.JSX.Element {
       setLeadActionNotice("Request permanently deleted.");
       await loadLeadQueue(leadToken, leadScoreFloor);
     } catch (error) {
-      handleError(error, "The request could not be deleted.");
+      const requestError = error as OperatorError;
+      if (requestError?.status === 401) {
+        handleError(error, "The request could not be deleted.");
+      } else {
+        setLeadActionNotice(
+          error instanceof Error ? error.message : "The request could not be deleted.",
+        );
+      }
     } finally {
       setLeadActionId("");
     }
@@ -518,11 +555,13 @@ export function MarketingOperator(): React.JSX.Element {
 
     let cancelled = false;
     let timeout: ReturnType<typeof setTimeout> | undefined;
+    let failureCount = 0;
 
     const poll = async (): Promise<void> => {
       try {
         const body = await operatorRequest(`/api/marketing/runs/${encodeURIComponent(runId)}`, token);
         if (cancelled) return;
+        failureCount = 0;
         const nextRun = nestedRun(body);
         setRun(nextRun);
         const nextStatus = runStatus(nextRun);
@@ -535,7 +574,13 @@ export function MarketingOperator(): React.JSX.Element {
           timeout = setTimeout(() => void poll(), POLL_INTERVAL_MS);
         }
       } catch (error) {
-        if (!cancelled) handleError(error, "The run could not be refreshed.");
+        if (cancelled) return;
+        const requestError = error as OperatorError;
+        handleError(error, "The run could not be refreshed.");
+        if (shouldRetryPoll(requestError?.status)) {
+          failureCount += 1;
+          timeout = setTimeout(() => void poll(), pollRetryDelay(failureCount));
+        }
       }
     };
 
@@ -805,7 +850,9 @@ export function MarketingOperator(): React.JSX.Element {
                       setLeadScoreFloor(next);
                       void loadLeadQueue(leadToken, next);
                     }}
-                    disabled={leadQueueState === "loading"}
+                    disabled={
+                      leadQueueState === "loading" || Boolean(leadActionId)
+                    }
                   >
                     <option value={0}>All</option>
                     <option value={3}>3+</option>
@@ -817,7 +864,9 @@ export function MarketingOperator(): React.JSX.Element {
                   className={styles.textButton}
                   type="button"
                   onClick={() => void loadLeadQueue(leadToken, leadScoreFloor)}
-                  disabled={leadQueueState === "loading"}
+                  disabled={
+                    leadQueueState === "loading" || Boolean(leadActionId)
+                  }
                 >
                   {leadQueueState === "loading" ? "Loading…" : "Refresh"}
                 </button>
@@ -864,6 +913,12 @@ export function MarketingOperator(): React.JSX.Element {
                           ? "Email verified"
                           : "Email unverified · request-specific reply only"}
                       </span>
+                      <a
+                        href={leadReplyHref(lead.email)}
+                        aria-label={`Reply to ${lead.name} about this Zap request by email`}
+                      >
+                        Reply by email
+                      </a>
                       {lead.projectUrl ? (
                         <a
                           href={lead.projectUrl}
