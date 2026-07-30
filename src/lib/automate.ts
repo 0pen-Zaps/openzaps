@@ -255,6 +255,27 @@ export function fundingReadiness(walletBalance: bigint | null, needed: bigint): 
   return { status: "short", shortfall: needed - walletBalance };
 }
 
+/**
+ * Confirm that a funding transaction both finalized successfully and reached the Zap's remaining
+ * funding target at that exact block. Receipt status alone is insufficient because an ERC-20 can
+ * return success without moving tokens.
+ */
+export async function verifyFundingConfirmation(input: {
+  receiptStatus: "success" | "reverted";
+  receiptBlockNumber: bigint;
+  target: bigint;
+  readBalance: (blockNumber: bigint) => Promise<bigint>;
+}): Promise<bigint> {
+  if (input.receiptStatus !== "success") {
+    throw new Error("The funding transaction reverted. No tokens were deposited.");
+  }
+  const balance = await input.readBalance(input.receiptBlockNumber);
+  if (balance < input.target) {
+    throw new Error("The Zap balance did not reach its remaining-run funding target after confirmation.");
+  }
+  return balance;
+}
+
 export type WethFundingPlan = { status: "unknown" | "sufficient" | "short"; shortfall: bigint; wrapEth: bigint };
 
 /**

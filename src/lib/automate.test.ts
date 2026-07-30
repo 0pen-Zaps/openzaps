@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { parseEther, type Address } from "viem";
 
 import {
@@ -25,6 +25,7 @@ import {
   readAutomationHandoff,
   requiredFunding,
   suggestedSeriesDeadline,
+  verifyFundingConfirmation,
 } from "@/lib/automate";
 import { computeExecutorFeeSplit } from "@/lib/executions";
 import { MAX_EXECUTION_FEE_PER_GAS, MAX_EXECUTION_GAS } from "@/lib/openzap";
@@ -462,6 +463,69 @@ describe("fundingReadiness", () => {
       shortfall: parseEther("0.7"),
     });
     expect(fundingReadiness(0n, 1n)).toEqual({ status: "short", shortfall: 1n });
+  });
+});
+
+describe("verifyFundingConfirmation", () => {
+  const blockNumber = 12_345n;
+  const target = parseEther("1");
+
+  it("rejects a reverted receipt without reading a balance", async () => {
+    const readBalance = vi.fn(async () => target);
+
+    await expect(
+      verifyFundingConfirmation({
+        receiptStatus: "reverted",
+        receiptBlockNumber: blockNumber,
+        target,
+        readBalance,
+      }),
+    ).rejects.toThrow("funding transaction reverted");
+    expect(readBalance).not.toHaveBeenCalled();
+  });
+
+  it("rejects a successful receipt whose receipt-block balance is still below target", async () => {
+    const readBalance = vi.fn(async () => target - 1n);
+
+    await expect(
+      verifyFundingConfirmation({
+        receiptStatus: "success",
+        receiptBlockNumber: blockNumber,
+        target,
+        readBalance,
+      }),
+    ).rejects.toThrow("did not reach its remaining-run funding target");
+    expect(readBalance).toHaveBeenCalledOnce();
+    expect(readBalance).toHaveBeenCalledWith(blockNumber);
+  });
+
+  it.each([target, target + 1n])("accepts a receipt-block balance of %s", async (balance) => {
+    const readBalance = vi.fn(async () => balance);
+
+    await expect(
+      verifyFundingConfirmation({
+        receiptStatus: "success",
+        receiptBlockNumber: blockNumber,
+        target,
+        readBalance,
+      }),
+    ).resolves.toBe(balance);
+    expect(readBalance).toHaveBeenCalledWith(blockNumber);
+  });
+
+  it("propagates a receipt-block balance read failure", async () => {
+    const readBalance = vi.fn(async () => {
+      throw new Error("RPC unavailable");
+    });
+
+    await expect(
+      verifyFundingConfirmation({
+        receiptStatus: "success",
+        receiptBlockNumber: blockNumber,
+        target,
+        readBalance,
+      }),
+    ).rejects.toThrow("RPC unavailable");
   });
 });
 
