@@ -16,6 +16,7 @@ import {
   AdapterManifestVerificationError,
   verifyRouteAdapterManifest,
 } from "./adapter-manifest.mjs";
+import { redactExecutorText } from "./redaction.mjs";
 
 const ACTIVITY_FROM_BLOCK = 15_900_000n;
 const MAX_VERIFIED_CACHE = 4_096;
@@ -90,7 +91,10 @@ function reportWatchOnlyManifestGap(item, result) {
     reportedManifestGaps.delete(oldest);
   }
   console.warn(
-    `[provenance] watch-only adapter manifest gap for ${item.intent.zap}: ${result.detail}`,
+    redactExecutorText(
+      `[provenance] watch-only adapter manifest gap for ${item.intent.zap}: ${result.detail}`,
+      { fallback: "[provenance] watch-only adapter manifest verification unavailable" },
+    ),
   );
 }
 

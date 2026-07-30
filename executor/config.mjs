@@ -1,12 +1,17 @@
-// OpenZaps executor configuration. Everything here is PUBLIC except the executor key, which is
-// only ever read from the environment (or a chmod-600 keyfile referenced by path) and never logged.
-// With no key configured the daemon runs WATCH-ONLY: it evaluates schedules and triggers, logs the
-// runs it would submit, and broadcasts nothing — fail-closed by default.
+// OpenZaps executor configuration. Public settings may live in config.json. Provider credentials
+// come only from the separately permissioned secret config (or legacy process env), and the
+// executor key remains a separate opt-in that is never logged. With no key configured the daemon
+// runs WATCH-ONLY: it evaluates schedules and triggers and broadcasts nothing.
 import { readFileSync, existsSync, mkdirSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { loadAdapterManifestFile } from "./adapter-manifest.mjs";
 import { parseLateBlockRpcUrls } from "./late-block.mjs";
+import {
+  redactExecutorError,
+  registerExecutorSensitiveValues,
+} from "./redaction.mjs";
+import { loadExecutorSecretConfigFromEnv } from "./secret-config.mjs";
 
 export const ROBINHOOD_CHAIN_ID = 4663;
 export const DEFAULT_RPC_URL = "https://rpc.mainnet.chain.robinhood.com";
@@ -28,8 +33,9 @@ function readJsonIfPresent(path) {
   if (!existsSync(path)) return {};
   try {
     return JSON.parse(readFileSync(path, "utf8"));
-  } catch (err) {
-    throw new Error(`Malformed config at ${path}: ${err.message}`);
+  } catch {
+    // JSON parser diagnostics may contain source excerpts, including a mistakenly pasted endpoint.
+    throw new Error(`Malformed executor config JSON at ${path}`);
   }
 }
 
@@ -75,14 +81,116 @@ function privateRelayEndpoints(value) {
     if (!Array.isArray(parsed) || parsed.length > 8) {
       throw new Error("expected an array of at most 8 endpoints");
     }
-    return parsed;
-  } catch (error) {
-    // Endpoint definitions can contain an Authorization header. Never echo the raw value.
-    console.error(
-      `[config] OPENZAPS_PRIVATE_RELAYS_JSON is invalid (${error.message}) — private submission disabled`,
+    registerExecutorSensitiveValues({
+      urls: parsed.map((endpoint) => endpoint?.url),
+      credentials: parsed.map((endpoint) => endpoint?.authorization),
+      labels: parsed.flatMap((endpoint) => [endpoint?.origin, endpoint?.operator]),
+    });
+    return Object.freeze(
+      parsed.map((endpoint) => {
+        // Preserve the compatibility parser's downstream validation behavior, but never retain an
+        // enumerable copy of legacy endpoint material in cfg. Invalid entries become empty
+        // objects and are still rejected by assessPrivateRelaySet before any dispatch.
+        const hidden = {};
+        if (endpoint && typeof endpoint === "object" && !Array.isArray(endpoint)) {
+          for (const key of [
+            "id",
+            "url",
+            "classification",
+            "operator",
+            "authorization",
+          ]) {
+            if (Object.hasOwn(endpoint, key)) {
+              Object.defineProperty(hidden, key, {
+                value: endpoint[key],
+                enumerable: false,
+              });
+            }
+          }
+        }
+        return Object.freeze(hidden);
+      }),
     );
+  } catch {
+    // Modern JSON parser diagnostics can contain source excerpts. Never echo the parser message.
+    console.error("[config] OPENZAPS_PRIVATE_RELAYS_JSON is invalid — private submission disabled");
     return [];
   }
+}
+
+function configured(value) {
+  if (Array.isArray(value)) return value.length > 0;
+  return value !== undefined && value !== null && value !== "";
+}
+
+function credentialFreeRpcRoot(name, value, nodeEnv) {
+  if (typeof value !== "string" || value !== value.trim() || value.length > 2_048) {
+    throw new Error(
+      `[config] ${name} must contain only credential-free HTTPS origins`,
+    );
+  }
+  let url;
+  try {
+    url = new URL(value);
+  } catch {
+    throw new Error(
+      `[config] ${name} must contain only credential-free HTTPS origins`,
+    );
+  }
+  const loopback =
+    url.hostname === "127.0.0.1"
+    || url.hostname === "localhost"
+    || url.hostname === "::1"
+    || url.hostname === "[::1]";
+  const localHttp =
+    nodeEnv !== "production"
+    && url.protocol === "http:"
+    && loopback;
+  if (
+    (url.protocol !== "https:" && !localHttp)
+    || url.username
+    || url.password
+    || url.pathname !== "/"
+    || url.search
+    || url.hash
+  ) {
+    throw new Error(
+      `[config] ${name} must contain only credential-free HTTPS origins`
+        + " (HTTP loopback roots are allowed outside production)",
+    );
+  }
+  return url.origin;
+}
+
+/**
+ * Compatibility parser for ordinary config.json and OPENZAPS_RPC_URL(S). These sources may select
+ * only public, credential-free origins; provider paths/query keys belong in the 0600 secret file.
+ */
+export function resolveCredentialFreeRpcUrls(
+  { rpcUrl, rpcUrls, nodeEnv = process.env.NODE_ENV } = {},
+) {
+  if (configured(rpcUrl) && configured(rpcUrls)) {
+    throw new Error(
+      "[config] use only one of rpcUrl/OPENZAPS_RPC_URL or rpcUrls/OPENZAPS_RPC_URLS",
+    );
+  }
+  const name = configured(rpcUrls) ? "rpcUrls/OPENZAPS_RPC_URLS" : "rpcUrl/OPENZAPS_RPC_URL";
+  const raw = configured(rpcUrls) ? rpcUrls : rpcUrl;
+  if (!configured(raw)) return [];
+  const candidates = Array.isArray(raw)
+    ? raw
+    : configured(rpcUrls) && typeof raw === "string"
+      ? raw.split(",").map((value) => value.trim()).filter(Boolean)
+      : [raw];
+  if (candidates.length < 1 || candidates.length > 8) {
+    throw new Error(`[config] ${name} must contain 1 to 8 credential-free RPC origins`);
+  }
+  const urls = candidates.map((candidate) =>
+    credentialFreeRpcRoot(name, candidate, nodeEnv));
+  if (new Set(urls).size !== urls.length) {
+    throw new Error(`[config] ${name} must contain distinct RPC origins`);
+  }
+  return Object.freeze(urls);
 }
 
 /**
@@ -206,24 +314,67 @@ function executorSignerConfigured() {
 export function loadConfig() {
   const fileCfg = readJsonIfPresent(join(HOME_DIR, "config.json"));
   const fileV3_2Pot = fileCfg.conversionPots?.["v3.2"] ?? {};
+  const providerSecrets = loadExecutorSecretConfigFromEnv(process.env);
 
-  // Comma-separated fallback list; the first entry is the primary. A single flaky endpoint must
-  // not idle the bundler, so every URL is tried in order per request (viem fallback transport).
-  const rpcUrlsRaw = process.env.OPENZAPS_RPC_URLS ?? fileCfg.rpcUrls;
-  const rpcUrls = Array.isArray(rpcUrlsRaw)
-    ? rpcUrlsRaw
-    : typeof rpcUrlsRaw === "string"
-      ? rpcUrlsRaw.split(",").map((u) => u.trim()).filter(Boolean)
-      : [];
-  let lateBlockRpcUrls = [];
-  try {
-    // Quorum endpoints are environment-only because provider URLs commonly contain API
-    // credentials. They must never be persisted in the world-readable public config file.
-    lateBlockRpcUrls = parseLateBlockRpcUrls(process.env.OPENZAPS_LATE_BLOCK_RPC_URLS);
-  } catch (error) {
-    // Do not echo the raw environment value. An empty set keeps signer admission fail closed.
-    console.error(`[config] ${error.message} — late-block admission disabled`);
+  // Validate every ordinary source even when a higher-precedence source wins, so a credential
+  // mistakenly left in config.json or a legacy environment variable is never silently accepted.
+  const envRpcUrls = resolveCredentialFreeRpcUrls({
+    rpcUrl: process.env.OPENZAPS_RPC_URL,
+    rpcUrls: process.env.OPENZAPS_RPC_URLS,
+    nodeEnv: process.env.NODE_ENV,
+  });
+  const fileRpcUrls = resolveCredentialFreeRpcUrls({
+    rpcUrl: fileCfg.rpcUrl,
+    rpcUrls: fileCfg.rpcUrls,
+    nodeEnv: process.env.NODE_ENV,
+  });
+  const ordinaryRpcUrls = envRpcUrls.length > 0 ? envRpcUrls : fileRpcUrls;
+  const rpcUrls = Object.freeze(
+    providerSecrets
+      ? providerSecrets.rpcUrls.map((endpoint) => endpoint.url)
+      : ordinaryRpcUrls.length > 0
+        ? [...ordinaryRpcUrls]
+        : [DEFAULT_RPC_URL],
+  );
+  const rpcSource = providerSecrets
+    ? "secret-file"
+    : ordinaryRpcUrls.length > 0
+      ? "public-config"
+      : "default";
+  registerExecutorSensitiveValues({ urls: rpcUrls });
+
+  let lateBlockRpcUrls = providerSecrets?.lateBlockRpcUrls ?? [];
+  if (!providerSecrets) {
+    try {
+      // Compatibility path for interactive operators. The LaunchAgent uses only the permissioned
+      // file, and setting both sources is rejected by loadExecutorSecretConfigFromEnv.
+      lateBlockRpcUrls = parseLateBlockRpcUrls(process.env.OPENZAPS_LATE_BLOCK_RPC_URLS);
+    } catch (error) {
+      // Do not echo the raw environment value. An empty set keeps signer admission fail closed.
+      console.error(
+        `[config] ${redactExecutorError(error, "late-block provider configuration is invalid")}`
+          + " — late-block admission disabled",
+      );
+    }
   }
+  registerExecutorSensitiveValues({
+    urls: lateBlockRpcUrls.map((endpoint) => endpoint.url),
+  });
+  const privateSubmissionEndpoints =
+    providerSecrets?.privateRelays
+    ?? privateRelayEndpoints(process.env.OPENZAPS_PRIVATE_RELAYS_JSON);
+  const notificationWebhookUrl =
+    process.env.OPENZAPS_NOTIFICATION_WEBHOOK_URL ?? "";
+  const discordWebhookUrl =
+    process.env.OPENZAPS_DISCORD_WEBHOOK_URL ?? "";
+  const telegramBotToken =
+    process.env.OPENZAPS_TELEGRAM_BOT_TOKEN ?? "";
+  const telegramChatId =
+    process.env.OPENZAPS_TELEGRAM_CHAT_ID ?? "";
+  registerExecutorSensitiveValues({
+    urls: [notificationWebhookUrl, discordWebhookUrl],
+    credentials: [telegramBotToken, telegramChatId],
+  });
 
   const lotteryPot =
     process.env.OPENZAPS_LOTTERY_POT ?? fileCfg.lotteryPot ?? DEFAULT_V3_1_LOTTERY_POT;
@@ -283,8 +434,7 @@ export function loadConfig() {
   );
 
   const cfg = {
-    rpcUrl: process.env.OPENZAPS_RPC_URL ?? fileCfg.rpcUrl ?? DEFAULT_RPC_URL,
-    rpcUrls, // empty => single-URL mode on rpcUrl
+    rpcSource,
     chainId: safeNumber("OPENZAPS_CHAIN_ID", process.env.OPENZAPS_CHAIN_ID ?? fileCfg.chainId, ROBINHOOD_CHAIN_ID),
     lateBlock: {
       rpcUrls: lateBlockRpcUrls,
@@ -339,7 +489,7 @@ export function loadConfig() {
     // service. Only endpoints explicitly classified `private-relay` are eligible; executing mode
     // remains fail-closed until at least two distinct origins/operators are configured.
     privateSubmission: {
-      endpoints: privateRelayEndpoints(process.env.OPENZAPS_PRIVATE_RELAYS_JSON),
+      endpoints: privateSubmissionEndpoints,
       minimumDistinctOrigins: boundedInteger(
         "OPENZAPS_PRIVATE_RELAY_MIN_ORIGINS",
         process.env.OPENZAPS_PRIVATE_RELAY_MIN_ORIGINS,
@@ -508,10 +658,6 @@ export function loadConfig() {
     // never echoed. Delivery additionally requires NODE_ENV=production and the explicit send flag.
     notificationsEnabled:
       process.env.NODE_ENV === "production" && process.env.OPENZAPS_NOTIFICATIONS_ENABLED === "true",
-    notificationWebhookUrl: process.env.OPENZAPS_NOTIFICATION_WEBHOOK_URL ?? "",
-    discordWebhookUrl: process.env.OPENZAPS_DISCORD_WEBHOOK_URL ?? "",
-    telegramBotToken: process.env.OPENZAPS_TELEGRAM_BOT_TOKEN ?? "",
-    telegramChatId: process.env.OPENZAPS_TELEGRAM_CHAT_ID ?? "",
     notificationTimeoutMs: boundedInteger(
       "OPENZAPS_NOTIFICATION_TIMEOUT_MS",
       process.env.OPENZAPS_NOTIFICATION_TIMEOUT_MS,
@@ -520,6 +666,34 @@ export function loadConfig() {
       60_000,
     ),
   };
+  // Provider URLs may contain credentials. They remain directly available to the transport, but
+  // generic config serialization, structured logs, and health output cannot enumerate them.
+  Object.defineProperties(cfg, {
+    rpcUrl: {
+      value: rpcUrls[0],
+      enumerable: false,
+    },
+    rpcUrls: {
+      value: rpcUrls,
+      enumerable: false,
+    },
+    notificationWebhookUrl: {
+      value: notificationWebhookUrl,
+      enumerable: false,
+    },
+    discordWebhookUrl: {
+      value: discordWebhookUrl,
+      enumerable: false,
+    },
+    telegramBotToken: {
+      value: telegramBotToken,
+      enumerable: false,
+    },
+    telegramChatId: {
+      value: telegramChatId,
+      enumerable: false,
+    },
+  });
 
   // A release manifest is intentionally local operator input: no approved adapter hash is inferred
   // from the same chain being checked. Missing/malformed manifests remain visible in watch-only

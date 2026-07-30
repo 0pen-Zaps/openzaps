@@ -46,6 +46,7 @@ test("late-block RPC parsing enforces HTTPS and distinct origins without exposin
     endpoints.map(({ origin }) => origin),
     ["https://rpc-a.example", "https://rpc-b.example"],
   );
+  assert.equal(JSON.stringify(endpoints), "[{},{}]");
   assert.throws(
     () => parseLateBlockRpcUrls(JSON.stringify(["https://rpc-a.example/a", "https://rpc-a.example/b"])),
     /distinct origins/,

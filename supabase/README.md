@@ -16,6 +16,25 @@ rows owned by another application. Those rows are outside this repository:
 - verify the relevant tables, grants, triggers, counters, and OpenZaps history
   rows after every production application.
 
+Production application storage is additionally bound in the server to
+`OPENZAPS_SUPABASE_PROJECT_REF`: `SUPABASE_URL` must be exactly
+`https://<OPENZAPS_SUPABASE_PROJECT_REF>.supabase.co`. Identifying a project in
+the dashboard or CLI is not enough; confirm that exact host before running any
+migration or setting a storage-backed feature flag.
+
+Authenticated dashboard verification on 29 July 2026 identified the production
+shared project as `pool-fans-v2` with ref `jhzpyfzkdsyavgnnuzyu`, and
+`20260728230000_bounded_relay_admission.sql` as the latest applied OpenZaps
+migration. Treat that as dated evidence: reverify the project and migration
+ledger before a write. Setting the Vercel project-ref binding does not apply a
+migration or redeploy the app.
+
+`20260729095505_harden_verified_receipt_provenance.sql` deliberately stops if a
+row claims `provenance_verified = true` without the complete canonical
+provenance tuple. Do not delete, relabel, or guess values for immutable receipt
+evidence. Reconcile any such row from independently verified chain evidence,
+then rerun the migration.
+
 Before release, run:
 
 ```sh

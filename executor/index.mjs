@@ -43,6 +43,10 @@ import {
 } from "./receipt-source.mjs";
 import { deliverOperationalNotification, operationalStatus } from "./notifications.mjs";
 import { createPrivateSubmissionProvider } from "./private-submission.mjs";
+import {
+  redactExecutorError,
+  redactExecutorText,
+} from "./redaction.mjs";
 
 let relayWarned = false; // dedupe the relay-poll failure warning to once per outage
 let receiptOutboxController = null;
@@ -226,7 +230,17 @@ async function connectivity() {
 
 /** Append a submission record and prune the map so state.json cannot grow without bound. */
 function recordSubmission(state, key, record) {
-  state.submissions[key] = record;
+  state.submissions[key] = {
+    ...record,
+    ...(typeof record?.detail === "string"
+      ? {
+          detail: redactExecutorText(record.detail, {
+            fallback: "submission diagnostic unavailable",
+            maximum: 500,
+          }),
+        }
+      : {}),
+  };
   const keys = Object.keys(state.submissions);
   if (keys.length > MAX_SUBMISSION_RECORDS) {
     // Insertion order is chronological; drop the oldest overflow.
@@ -254,7 +268,10 @@ async function notifyTransitions(state, events) {
         kind: event.kind,
         nonce: event.nonce,
         txHash: event.txHash ?? null,
-        detail: event.detail ?? `${status} execution receipt`,
+        detail: redactExecutorText(
+          event.detail ?? `${status} execution receipt`,
+          { fallback: `${status} execution receipt`, maximum: 500 },
+        ),
         observedAt: new Date().toISOString(),
         authorityScope: "none",
       },
@@ -725,7 +742,7 @@ async function main() {
   const walletClient = buildWalletClient();
 
   // Provider URLs can contain API credentials. Log only counts, never endpoint text.
-  const endpointLabel = cfg.rpcUrls.length > 0
+  const endpointLabel = cfg.rpcSource !== "default"
     ? `${cfg.rpcUrls.length} configured RPC${cfg.rpcUrls.length === 1 ? "" : "s"} (fallback)`
     : "the default RPC";
   const { block } = await connectivity();
@@ -862,6 +879,12 @@ async function main() {
 }
 
 main().catch((err) => {
-  log("error", err.stack ?? String(err));
+  log(
+    "error",
+    redactExecutorError(err, "executor failed", {
+      includeStack: true,
+      maximum: 4_000,
+    }),
+  );
   process.exitCode = 1;
 });

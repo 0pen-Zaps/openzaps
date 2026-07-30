@@ -19,19 +19,16 @@ The workflow deliberately references this environment, so publishing pauses for 
 rules. A version bump must land through a reviewed pull request before dispatch; the workflow does
 not edit manifests or mint versions.
 
-## First release only
+## Published 0.1.0 baseline and publisher audit
 
-npm cannot configure a trusted publisher for a package that does not exist yet. Bootstrap each
-package once:
+`@openzaps/sdk@0.1.0` and `@openzaps/mcp@0.1.0` already exist on npm with
+provenance attestations. Do not dispatch either version again or repeat the
+token bootstrap. Registry publication does not prove that the trusted
+publisher is configured or that the bootstrap token has been removed; verify
+those account controls separately.
 
-1. Create a short-lived granular npm token that can publish the `@openzaps` package, and store it as
-   the `NPM_TOKEN` secret on the protected `npm-production` GitHub environment. Never commit it or
-   paste it into a workflow input.
-2. From the Actions page on `main`, dispatch `Publish npm package` separately for
-   `@openzaps/sdk@0.1.0` and `@openzaps/mcp@0.1.0`. Confirm the environment approval names the exact
-   package and version intended.
-3. Verify each package page contains the expected version, MIT license, README, and provenance.
-4. Configure each npm package's trusted publisher with these exact claims:
+Each npm package's trusted publisher should have these exact claims:
+
    - repository: `0pen-Zaps/openzaps`;
    - workflow filename: `publish-npm.yml`;
    - environment: `npm-production`;
@@ -44,9 +41,10 @@ npm trust github @openzaps/sdk --file publish-npm.yml --repo 0pen-Zaps/openzaps 
 npm trust github @openzaps/mcp --file publish-npm.yml --repo 0pen-Zaps/openzaps --env npm-production --allow-publish
 ```
 
-After both trusted publishers exist, delete the `NPM_TOKEN` environment secret and revoke the token
-at npm. Later releases authenticate with the workflow's short-lived OIDC identity; do not restore a
-long-lived publish token as a convenience.
+After confirming both trusted publishers exist, verify that the `NPM_TOKEN`
+environment secret is absent and that any bootstrap token was revoked at npm.
+Later releases authenticate with the workflow's short-lived OIDC identity; do
+not restore a long-lived publish token as a convenience.
 
 ## Every release
 

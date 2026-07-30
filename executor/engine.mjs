@@ -7,6 +7,10 @@ import { getAddress, zeroAddress } from "viem";
 import { openZapV3Abi, priceSourceAbi } from "./abi.mjs";
 import { privateSubmissionDetail } from "./private-submission.mjs";
 import { verifyExecutionTargetProvenance } from "./provenance.mjs";
+import {
+  executorJsonReplacer,
+  redactExecutorText,
+} from "./redaction.mjs";
 
 const BPS = 10_000n;
 const MAX_THRESHOLD_BPS = 1_000_000n;
@@ -14,12 +18,16 @@ const MAX_THRESHOLD_BPS = 1_000_000n;
 const PRIORITY_FEE_WEI = 100_000_000n;
 
 export function log(level, msg, extra) {
-  const line = `[${new Date().toISOString()}] ${level.toUpperCase().padEnd(5)} ${msg}`;
-  console.log(extra !== undefined ? `${line} ${JSON.stringify(extra, bigintsAsStrings)}` : line);
-}
-
-function bigintsAsStrings(_key, value) {
-  return typeof value === "bigint" ? value.toString() : value;
+  const safeMessage = redactExecutorText(msg, {
+    fallback: "executor diagnostic unavailable",
+  });
+  const line =
+    `[${new Date().toISOString()}] ${level.toUpperCase().padEnd(5)} ${safeMessage}`;
+  console.log(
+    extra !== undefined
+      ? `${line} ${JSON.stringify(extra, executorJsonReplacer)}`
+      : line,
+  );
 }
 
 /** @returns {{status:"due"|"waiting"|"blocked"|"finished"|"expired", detail:string}} */

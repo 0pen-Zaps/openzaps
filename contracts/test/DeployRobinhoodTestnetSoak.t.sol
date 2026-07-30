@@ -41,6 +41,15 @@ contract DeployRobinhoodTestnetSoakTest is Test {
         new RobinhoodTestnetSoakToken("not deployable", "NOPE", 18, governance, 1 ether);
     }
 
+    function test_explicitDeployerMustMatchScriptSender() public {
+        DeployRobinhoodTestnetSoak deployment = new DeployRobinhoodTestnetSoak();
+        address other = address(0xBEEF);
+        vm.expectRevert(
+            abi.encodeWithSelector(DeployRobinhoodTestnetSoak.DeployerSenderMismatch.selector, other, governance)
+        );
+        deployment.run(other);
+    }
+
     function test_runDeploysFreshBoundedTestnetOnlyLineageAndAssertsPins() public {
         DeployRobinhoodTestnetSoak.Deployed memory d = _deploy();
 

@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { privateKeyToAccount } from "viem/accounts";
 
 import { RECIPES } from "@/lib/blocks";
@@ -26,6 +26,16 @@ import {
 } from "@/lib/policy-template-server";
 
 const chain = RECIPES[0].blocks.map(([block, params]) => ({ block, params: params ?? {} }));
+
+beforeEach(() => {
+  vi.stubEnv("NODE_ENV", "test");
+  vi.stubEnv("SUPABASE_URL", "http://127.0.0.1:54321");
+  vi.stubEnv("SUPABASE_SERVICE_ROLE_KEY", "test-service-role-key");
+});
+
+afterEach(() => {
+  vi.unstubAllEnvs();
+});
 
 describe("public policy template content addressing", () => {
   it("is deterministic across object key order", () => {
@@ -101,6 +111,11 @@ describe("public policy template content addressing", () => {
     expect(policyTemplatePublishingEnabled({
       NODE_ENV: "production",
       OPENZAPS_POLICY_TEMPLATE_PUBLISHING_ENABLED: "true",
+    })).toBe(false);
+    expect(policyTemplatePublishingEnabled({
+      NODE_ENV: "production",
+      OPENZAPS_POLICY_TEMPLATE_PUBLISHING_ENABLED: "true",
+      OPENZAPS_POLICY_TEMPLATE_PUBLISHING_DURABLE_QUOTA_ENABLED: "true",
     })).toBe(true);
     expect(policyTemplatePublishingEnabled({ NODE_ENV: "test" })).toBe(true);
   });

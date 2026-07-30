@@ -83,9 +83,15 @@ Run the exact script first without `--broadcast`:
 
 ```sh
 forge script script/DeployRobinhoodTestnetSoak.s.sol:DeployRobinhoodTestnetSoak \
+  --sig 'run(address)' "$ROBINHOOD_TESTNET_DEPLOYER" \
   --rpc-url "$ROBINHOOD_TESTNET_RPC_A" \
   --sender "$ROBINHOOD_TESTNET_DEPLOYER"
 ```
+
+The script overloads `run()` and `run(address)`, so the explicit signature and deployer positional
+argument are mandatory. The entrypoint reverts unless that argument equals Forge's script sender.
+Keep the deployer argument before the RPC flags exactly as shown; do not rely on Forge to select the
+default entrypoint.
 
 The output must begin with `TESTNET ONLY / NON-PRODUCTION / DISPOSABLE`, report chain ID `46630`,
 show `funded fixed runs 24`, and print nonzero addresses for all eleven artifacts. The script itself
@@ -112,6 +118,7 @@ Example shape for the eventual operator action:
 
 ```sh
 forge script script/DeployRobinhoodTestnetSoak.s.sol:DeployRobinhoodTestnetSoak \
+  --sig 'run(address)' "$ROBINHOOD_TESTNET_DEPLOYER" \
   --rpc-url "$ROBINHOOD_TESTNET_RPC_A" \
   --sender "$ROBINHOOD_TESTNET_DEPLOYER" \
   --account "$ROBINHOOD_TESTNET_FORGE_ACCOUNT" \
@@ -194,7 +201,7 @@ At minimum, isolate and review these overrides before signer mode:
 OPENZAPS_CHAIN_ID=46630
 OPENZAPS_RPC_URL=<RPC A>
 OPENZAPS_RPC_URLS=<RPC A>,<RPC B>
-OPENZAPS_LATE_BLOCK_RPC_URLS=<environment-only JSON; two independent origins>
+OPENZAPS_EXECUTOR_SECRET_CONFIG_FILE=<absolute path to external 0600 provider file>
 OPENZAPS_V3_FACTORY=<fresh testnet factory>
 OPENZAPS_V3_IMPLEMENTATION=<fresh testnet implementation>
 OPENZAPS_ADAPTER_REGISTRY=<fresh testnet adapter registry>
@@ -205,8 +212,14 @@ OPENZAPS_POOL_PRICE_SOURCE=<synthetic testnet source>
 OPENZAPS_FEE_ASSET=<TEST input token>
 OPENZAPS_INTENTS_DIR=<new testnet-only directory>
 OPENZAPS_RECEIPTS_DIR=<new testnet-only directory>
-OPENZAPS_PRIVATE_RELAYS_JSON=<environment-only reviewed test endpoints>
 ```
+
+The external provider file is the canonical hosted configuration and must use the exact
+`rpcUrls`, `lateBlockRpcUrls`, plus `privateRelays` schema in `executor/README.md`. It must contain
+only reviewed, testnet-qualified endpoints, live outside every checkout, be owned by the current
+user, and have permissions exactly `0600`. Validate it with `node executor/secret-config.mjs` before
+installing or starting a service. The legacy JSON environment variables are interactive
+compatibility inputs, not the soak's hosted configuration.
 
 Keep the executor watch-only first:
 

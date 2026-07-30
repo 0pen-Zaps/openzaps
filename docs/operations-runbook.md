@@ -37,8 +37,12 @@ do not copy an address from a broadcast log or an old terminal transcript.
    Vercel commit. Stop if the checkout could roll production backward.
 2. Run the web, executor/MCP, contract, PostgreSQL migration, package, and
    secret-scan gates. Keep hermetic and live-fork results separate.
-3. Apply each new database migration exactly once and verify its schema or
-   function definition with a read query.
+3. Confirm `OPENZAPS_SUPABASE_PROJECT_REF` exactly matches the canonical
+   `https://<ref>.supabase.co` `SUPABASE_URL`, then apply each new database
+   migration exactly once and verify its schema or function definition with a
+   read query. The verified-receipt hardening migration must report zero
+   malformed `provenance_verified` rows; immutable evidence is reconciled from
+   chain, never deleted or guessed.
 4. Rehearse contract scripts without `--broadcast`. Predicted addresses are not
    deployments.
 5. Install the reviewed executor manifest from
@@ -49,13 +53,19 @@ do not copy an address from a broadcast log or an old terminal transcript.
    they agree on a recent canonical block, exact execution simulation, and the
    L2 `finalized` tag derived from L1 before enabling a signer. Ordered fallback
    URLs are availability, not quorum.
-7. Broadcast only with the named local keystore or hardware signer. Never put a
+7. Before enabling any executor signer, configure at least two independently
+   operated, reviewed private-relay origins and operators. Robinhood's public
+   RPC, infrastructure-provider RPCs, sequencer feed, and direct sequencer
+   endpoint do not qualify as that private-relay set. With no qualifying set,
+   keep the executor watch-only.
+8. Broadcast an authorized owner or deployment transaction only with the named
+   local keystore or hardware signer. Never put a
    private key in a command, environment transcript, issue, or chat.
-8. Independently read deployed code, constructor pins, ownership, pending
+9. Independently read deployed code, constructor pins, ownership, pending
    ownership, registry state, and one user-facing route from chain.
-9. Deploy the exact reviewed Git commit. Record the deployment ID, commit,
+10. Deploy the exact reviewed Git commit. Record the deployment ID, commit,
    aliases, and build result.
-10. Exercise the canonical domain in a fresh browser session, inspect server
+11. Exercise the canonical domain in a fresh browser session, inspect server
    error logs, and verify the deployment marker rather than trusting an alias
    timestamp.
 
@@ -134,6 +144,15 @@ No kill switch, owner recovery, or registry mutation was executed. That is a
 tabletop/read-only drill, not evidence that a destructive production action was
 performed.
 
+## ozUSDG one-time seed
+
+The guarded, atomic four-transaction ozUSDG seed procedure is documented in
+[`2026-07-29-ozusdg-seed-runbook.md`](2026-07-29-ozusdg-seed-runbook.md). It pins the helper,
+quoter, route, vault, exact token inputs, empty-vault state, approval recovery, and post-state
+evidence. The source still fails closed, but the fixed 65,000 0xZAPS plan is currently blocked
+because its fresh one-percent quote floor does not cover the USDG shortfall. No signature,
+broadcast, inclusion, or finality is claimed; changing the fixed input requires a new review.
+
 ## Testnet soak
 
 A chain-46630-only bootstrap, executor intent template, and dated evidence worksheet are now source
@@ -155,7 +174,11 @@ Record at least:
 - notification delivery and deduplication;
 - finality/reorg observations and the exact acceptance threshold.
 
-The current governance address had zero Robinhood testnet ETH when checked on
-28 July 2026, so no testnet deployment or 24-hour soak is claimed by this
-release. Obtain faucet funds through the official Robinhood testnet flow before
-starting; never substitute a local fork and call it a testnet soak.
+The dedicated disposable soak deployer
+`0x0a8E3eDA778Ea33CaF0e7AAc693A5C1a13D498E8` and executor
+`0x68FDEb32EBbccE5E20104B10cf6c3097c67e4184` each returned zero testnet ETH from
+the public Robinhood testnet RPC on 30 July 2026. Funding, two-provider RPC
+agreement, and two qualifying private relays are separate outstanding gates, so
+no testnet deployment or 24-hour soak is claimed. Obtain faucet funds through
+the official Robinhood testnet flow before starting; never substitute a local
+fork and call it a testnet soak.

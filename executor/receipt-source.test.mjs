@@ -610,7 +610,7 @@ test("prepared raw bytes are hash-bound, durable, and transition to submitted ev
   );
 });
 
-test("final receipt preserves sanitized private relay evidence and inclusion, never signed bytes", async () => {
+test("final receipt preserves opaque private relay evidence and inclusion, never endpoint identities or signed bytes", async () => {
   const receiptsDir = mkdtempSync(join(tmpdir(), "openzaps-private-receipt-"));
   const raw = "0x0205";
   const hash = keccak256(raw);
@@ -658,11 +658,19 @@ test("final receipt preserves sanitized private relay evidence and inclusion, ne
   assert.equal(document.privateSubmission.status, "accepted-quorum");
   assert.equal(document.privateSubmission.acceptedOrigins, 2);
   assert.equal(document.privateSubmission.inclusion, "finalized");
-  assert.equal(document.privateSubmission.endpoints[0].origin, "https://relay-a.example");
+  assert.deepEqual(document.privateSubmission.endpoints[0], {
+    id: "relay-a",
+    classification: "private-relay",
+    status: "accepted",
+    latencyMs: 10,
+    detail: "accepted",
+  });
   assert.ok(!Object.hasOwn(document, "serializedTransaction"));
   assert.ok(!serializedDocument.includes(raw));
   assert.ok(!serializedDocument.includes(authorization));
   assert.ok(!serializedDocument.includes("credential=must-not-survive"));
+  assert.ok(!serializedDocument.includes("relay-a.example"));
+  assert.ok(!serializedDocument.includes("operator-a"));
 });
 
 test("prepared journal rejects raw bytes that do not match the claimed hash", async () => {

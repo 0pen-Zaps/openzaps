@@ -25,12 +25,14 @@
     <string>__HOME__/Library/Logs/openzaps-executor.log</string>
     <key>StandardErrorPath</key>
     <string>__HOME__/Library/Logs/openzaps-executor.log</string>
-    <!-- The executor key is deliberately NOT set here. Watch-only by default; to enable
-         broadcasting, set OPENZAPS_EXECUTOR_KEYFILE below to a chmod-600 file path. -->
+    <!-- An explicitly validated provider-file reference may be inserted below. The executor key
+         is deliberately NOT set here, so the installed agent remains watch-only. -->
     <key>EnvironmentVariables</key>
     <dict>
         <key>PATH</key>
         <string>/usr/local/bin:/usr/bin:/bin</string>
+__SECRET_CONFIG_KEY__
+__SECRET_CONFIG_VALUE__
     </dict>
 </dict>
 </plist>

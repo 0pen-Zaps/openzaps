@@ -19,6 +19,11 @@ import {
   checkFinalizedBlockQuorum,
   checkFinalizedReceiptQuorum,
 } from "./late-block.mjs";
+import {
+  executorDurableJsonReplacer,
+  redactExecutorError,
+  redactExecutorText,
+} from "./redaction.mjs";
 
 export const RECEIPT_OUTBOX_LIMIT = 256;
 export const RECEIPT_DELIVERY_OUTBOX_LIMIT = 256;
@@ -332,8 +337,6 @@ function relayEvidence(outcome) {
     endpoints: Array.isArray(outcome.endpoints)
       ? outcome.endpoints.slice(0, 8).map((endpoint) => ({
           id: String(endpoint?.id ?? "").slice(0, 64),
-          origin: String(endpoint?.origin ?? "").slice(0, 256),
-          operator: String(endpoint?.operator ?? "").slice(0, 96),
           classification: String(endpoint?.classification ?? "").slice(0, 32),
           status: String(endpoint?.status ?? "unknown").slice(0, 32),
           latencyMs: Number(endpoint?.latencyMs ?? 0),
@@ -428,7 +431,11 @@ export function createReceiptOutboxController(state, persist) {
     } catch (error) {
       persistenceFailure ??= {
         at: new Date().toISOString(),
-        message: error?.message ?? String(error),
+        message: redactExecutorError(
+          error,
+          "receipt outbox persistence failed",
+          { maximum: 500 },
+        ),
       };
       throw new Error(
         `transaction ${txHash} ${action}, but receipt outbox persistence failed; `
@@ -460,7 +467,11 @@ export function createReceiptOutboxController(state, persist) {
     if (!entry) throw new Error(`prepared transaction ${txHash} is missing from the receipt outbox`);
     entry.submissionState = "prepared";
     entry.lastPrivateDispatchAt = new Date().toISOString();
-    entry.lastError = String(error?.message ?? error ?? "private relay dispatch failed").slice(0, 500);
+    entry.lastError = redactExecutorError(
+      error,
+      "private relay dispatch failed",
+      { maximum: 500 },
+    );
     await persistOrOpenCircuit(txHash, "remained prepared after private relay rejection");
     return entry;
   };
@@ -555,7 +566,7 @@ export function persistReceiptDocument(receiptsDir, document) {
   const target = join(receiptsDir, `${document.chainId}-${document.txHash.toLowerCase()}.json`);
   const created = persistExclusiveDocument(
     target,
-    `${JSON.stringify(document, null, 2)}\n`,
+    `${JSON.stringify(document, executorDurableJsonReplacer, 2)}\n`,
     receiptsDir,
     Date.now(),
   );
@@ -609,7 +620,9 @@ async function nominateHostedReceipt(relayUrl, entry, fetchImpl) {
       retryable: true,
       status: null,
       retryAfterMs: null,
-      error: error?.message ?? "hosted receipt request failed",
+      error: redactExecutorError(error, "hosted receipt request failed", {
+        maximum: 500,
+      }),
     };
   }
   if (response.ok) {
@@ -627,7 +640,10 @@ async function nominateHostedReceipt(relayUrl, entry, fetchImpl) {
     retryable,
     status: response.status,
     retryAfterMs: retryAfterMs(response.headers.get("retry-after")),
-    error: body?.error ?? `hosted receipt HTTP ${response.status}`,
+    error: redactExecutorText(
+      body?.error ?? `hosted receipt HTTP ${response.status}`,
+      { fallback: `hosted receipt HTTP ${response.status}`, maximum: 500 },
+    ),
   };
 }
 
@@ -681,7 +697,7 @@ function persistDeadLetterDocument(receiptsDir, chainId, entry, reason, nowMs) {
   const target = deadLetterPath(receiptsDir, chainId, entry.txHash);
   const created = persistExclusiveDocument(
     target,
-    `${JSON.stringify(document, null, 2)}\n`,
+    `${JSON.stringify(document, executorDurableJsonReplacer, 2)}\n`,
     receiptsDir,
     nowMs,
   );
@@ -722,7 +738,11 @@ function moveToReceiptDeadLetter(state, cfg, entry, reason, nowMs) {
   try {
     path = persistDeadLetterDocument(cfg.receiptsDir, cfg.chainId, entry, reason, nowMs);
   } catch (error) {
-    entry.lastError = `${entry.lastError ?? reason}; dead-letter file failed: ${error?.message ?? String(error)}`;
+    entry.lastError = redactExecutorText(
+      `${entry.lastError ?? reason}; dead-letter file failed: `
+        + redactExecutorError(error, "dead-letter persistence failed"),
+      { fallback: "dead-letter persistence failed", maximum: 500 },
+    );
   }
   deadLetters[entry.txHash] = {
     txHash: entry.txHash,
@@ -885,7 +905,9 @@ export async function settleReceiptOutbox({
     try {
       receipt = await publicClient.getTransactionReceipt({ hash });
     } catch (error) {
-      entry.lastError = error?.shortMessage ?? error?.message ?? "receipt not found";
+      entry.lastError = redactExecutorError(error, "receipt not found", {
+        maximum: 500,
+      });
       pending.push(entry);
       continue;
     }
@@ -997,7 +1019,9 @@ export async function settleReceiptOutbox({
       delete receiptOutbox[hash];
       settled.push({ ...document, path: local.path });
     } catch (error) {
-      entry.lastError = error?.shortMessage ?? error?.message ?? String(error);
+      entry.lastError = redactExecutorError(error, "receipt settlement failed", {
+        maximum: 500,
+      });
       pending.push(entry);
     }
   }

@@ -1,7 +1,11 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { buildConversionPots, resolveOptionalV3_2Config } from "./config.mjs";
+import {
+  buildConversionPots,
+  resolveCredentialFreeRpcUrls,
+  resolveOptionalV3_2Config,
+} from "./config.mjs";
 
 const FACTORY = "0x0000000000000000000000000000000000000001";
 const IMPLEMENTATION = "0x0000000000000000000000000000000000000002";
@@ -111,4 +115,73 @@ test("v3.1 and v3.2 conversion targets cannot alias the same one-shot-bound pot"
     /v3\.2 must use its own execution-fee lottery pot/,
   );
   assert.deepEqual(buildConversionPots(v3_1), [v3_1]);
+});
+
+test("ordinary RPC config accepts only canonical credential-free roots", () => {
+  assert.deepEqual(
+    resolveCredentialFreeRpcUrls({
+      rpcUrls: "https://rpc-a.example,https://rpc-b.example:9443/",
+      nodeEnv: "production",
+    }),
+    ["https://rpc-a.example", "https://rpc-b.example:9443"],
+  );
+  assert.deepEqual(
+    resolveCredentialFreeRpcUrls({
+      rpcUrl: "http://127.0.0.1:8545/",
+      nodeEnv: "test",
+    }),
+    ["http://127.0.0.1:8545"],
+  );
+  assert.deepEqual(
+    resolveCredentialFreeRpcUrls({
+      rpcUrl: "http://[::1]:8545",
+      nodeEnv: "development",
+    }),
+    ["http://[::1]:8545"],
+  );
+});
+
+test("ordinary RPC config rejects credentials, paths, queries, fragments, and production HTTP", () => {
+  for (const rpcUrl of [
+    "https://user:password@rpc.example",
+    "https://rpc.example/provider-key",
+    "https://rpc.example/?apiKey=secret",
+    "https://rpc.example/#secret",
+    "http://127.0.0.1:8545",
+    "http://rpc.example",
+  ]) {
+    assert.throws(
+      () =>
+        resolveCredentialFreeRpcUrls({
+          rpcUrl,
+          nodeEnv: "production",
+        }),
+      (error) =>
+        /credential-free HTTPS origins/.test(error.message)
+        && !error.message.includes("password")
+        && !error.message.includes("provider-key")
+        && !error.message.includes("apiKey=secret"),
+    );
+  }
+});
+
+test("ordinary RPC config rejects ambiguous and duplicate endpoint sources", () => {
+  assert.throws(
+    () =>
+      resolveCredentialFreeRpcUrls({
+        rpcUrl: "https://rpc-a.example",
+        rpcUrls: ["https://rpc-b.example"],
+      }),
+    /use only one/,
+  );
+  assert.throws(
+    () =>
+      resolveCredentialFreeRpcUrls({
+        rpcUrls: [
+          "https://rpc-a.example",
+          "https://rpc-a.example/",
+        ],
+      }),
+    /distinct RPC origins/,
+  );
 });

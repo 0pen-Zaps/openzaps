@@ -78,6 +78,29 @@ function psqlFile(file) {
   command("psql", [...psqlArgs, "-c", "begin", "-f", file, "-c", "commit"]);
 }
 
+function psqlFileProbe(file, setupSql) {
+  const result = spawnSync(
+    "psql",
+    [
+      ...psqlArgs,
+      "-c",
+      "begin",
+      "-c",
+      setupSql,
+      "-f",
+      file,
+      "-c",
+      "rollback",
+    ],
+    {
+      cwd: root,
+      encoding: "utf8",
+    },
+  );
+  if (result.error) throw result.error;
+  return result;
+}
+
 function psqlSession(sql) {
   return new Promise((resolveSession, rejectSession) => {
     const child = spawn("psql", [...psqlArgs, "-c", sql], {
@@ -204,6 +227,8 @@ const owner = "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 const firstZap = "0x1111111111111111111111111111111111111111";
 const cappedZap = "0x2222222222222222222222222222222222222222";
 const receiptHash = `0x${"33".repeat(32)}`;
+const lineageMismatchReceiptHash = `0x${"bc".repeat(32)}`;
+const implementationHashMismatchReceiptHash = `0x${"bd".repeat(32)}`;
 const policyHash = `0x${"44".repeat(32)}`;
 const legacyPolicyHash = `0x${"99".repeat(32)}`;
 const legacySubscriberKey = "11111111-1111-4111-8111-111111111111";
@@ -211,8 +236,120 @@ const replaySubscriberKey = "22222222-2222-4222-8222-222222222222";
 const concurrentSubscriberKey = "33333333-3333-4333-8333-333333333333";
 const cappedSubscriberKey = "44444444-4444-4444-8444-444444444444";
 const subscriptionMigration = "20260729010711_wallet_bound_policy_subscriptions.sql";
+const receiptProvenanceMigration =
+  "20260729095505_harden_verified_receipt_provenance.sql";
+const malformedReceiptHash = `0x${"aa".repeat(32)}`;
+const rejectedMalformedReceiptHash = `0x${"bb".repeat(32)}`;
+const v3Factory = "0x70fcfd3615ea6651a670b6c4cd6b8ba1506717e9";
+const v3Implementation = "0x0309e72ffd1c6855ff519d9e923aefc0c52bfdb5";
+const v3ImplementationCodeHash =
+  "0x99c49515bd0a7038c216a0d710676c4c63bb7dd09108de5fddca885542057149";
+const v3CloneRuntimeHash =
+  "0x4cf8ac2dfdd484e091d02d8075be96118aa25b46733e7301d50782f755c5097c";
+const v31Factory = "0xda5f501052fe6f87f547bc21fcaa1f122ed2f2e1";
+const v31Implementation = "0x0fe5bc78b2bac5f09e940c2accc0c3b785d91063";
+const v31ImplementationCodeHash =
+  "0xe18008b64e593526441c989e3ade3b12c056a4dfe9b7e34e59a8f124f4be979c";
+const v31CloneRuntimeHash =
+  "0x60151728f3988403bc5f59f1e6d0987313a26cf182eabf537c1a487cb0507800";
 const intent =
   `'{"executor":"0x0000000000000000000000000000000000000000"}'::jsonb`;
+
+function malformedVerifiedReceiptSql(txHash) {
+  return `
+    insert into public.execution_receipts (
+      chain_id,
+      tx_hash,
+      zap,
+      executor,
+      intent_kind,
+      intent_nonce,
+      outcome,
+      block_number,
+      block_hash,
+      block_time,
+      transaction_index,
+      gas_used,
+      confirmations,
+      provenance_verified,
+      creation_block
+    )
+    values (
+      4663,
+      '${txHash}',
+      '${firstZap}',
+      '${owner}',
+      'trigger',
+      '999',
+      'finalized',
+      100,
+      '0x${"cc".repeat(32)}',
+      '2026-07-29T09:00:00Z',
+      0,
+      123,
+      12,
+      true,
+      90
+    );
+  `;
+}
+
+function mismatchedLineageReceiptSql(
+  txHash,
+  {
+    factory = v31Factory,
+    implementation = v31Implementation,
+    implementationCodeHash = v31ImplementationCodeHash,
+    capsuleRuntimeHash = v31CloneRuntimeHash,
+  } = {},
+) {
+  return `
+    insert into public.execution_receipts (
+      chain_id,
+      tx_hash,
+      zap,
+      executor,
+      intent_kind,
+      intent_nonce,
+      outcome,
+      block_number,
+      block_hash,
+      block_time,
+      transaction_index,
+      gas_used,
+      confirmations,
+      provenance_verified,
+      factory,
+      implementation,
+      implementation_code_hash,
+      capsule_runtime_hash,
+      creation_tx_hash,
+      creation_block
+    )
+    values (
+      4663,
+      '${txHash}',
+      '${firstZap}',
+      '${owner}',
+      'trigger',
+      '998',
+      'finalized',
+      100,
+      '0x${"cd".repeat(32)}',
+      '2026-07-29T09:00:00Z',
+      0,
+      123,
+      12,
+      true,
+      '${factory}',
+      '${implementation}',
+      '${implementationCodeHash}',
+      '${capsuleRuntimeHash}',
+      '0x${"88".repeat(32)}',
+      90
+    );
+  `;
+}
 
 try {
   postgresVersion();
@@ -285,6 +422,69 @@ try {
         assert(
           legacyBefore === "1|1",
           `legacy subscription fixture was not active before migration: ${legacyBefore}`,
+        );
+      }
+      if (pass === 0 && filename === receiptProvenanceMigration) {
+        const malformedProbe = psqlFileProbe(
+          join(migrations, filename),
+          `
+            set role service_role;
+            ${malformedVerifiedReceiptSql(malformedReceiptHash)}
+            reset role;
+          `,
+        );
+        assert(
+          malformedProbe.status !== 0,
+          "verified receipt provenance migration accepted malformed historical evidence",
+        );
+        assert(
+          /execution_receipts contains malformed verified provenance; reconcile before migration/.test(
+            `${malformedProbe.stdout}${malformedProbe.stderr}`,
+          ),
+          "verified receipt provenance migration did not fail on its reconciliation guard",
+        );
+
+        const lineageProbe = psqlFileProbe(
+          join(migrations, filename),
+          `
+            set role service_role;
+            ${mismatchedLineageReceiptSql(lineageMismatchReceiptHash)}
+            reset role;
+          `,
+        );
+        assert(
+          lineageProbe.status !== 0,
+          "verified receipt provenance migration accepted inconsistent historical lineage",
+        );
+        assert(
+          /execution_receipts contains malformed verified provenance; reconcile before migration/.test(
+            `${lineageProbe.stdout}${lineageProbe.stderr}`,
+          ),
+          "verified receipt provenance migration did not reject inconsistent historical lineage",
+        );
+
+        const implementationHashProbe = psqlFileProbe(
+          join(migrations, filename),
+          `
+            set role service_role;
+            ${mismatchedLineageReceiptSql(implementationHashMismatchReceiptHash, {
+              factory: v3Factory,
+              implementation: v3Implementation,
+              implementationCodeHash: `0x${"66".repeat(32)}`,
+              capsuleRuntimeHash: v3CloneRuntimeHash,
+            })}
+            reset role;
+          `,
+        );
+        assert(
+          implementationHashProbe.status !== 0,
+          "verified receipt provenance migration accepted an inconsistent implementation code hash",
+        );
+        assert(
+          /execution_receipts contains malformed verified provenance; reconcile before migration/.test(
+            `${implementationHashProbe.stdout}${implementationHashProbe.stderr}`,
+          ),
+          "verified receipt provenance migration did not reject an inconsistent implementation code hash",
         );
       }
       psqlFile(join(migrations, filename));
@@ -954,10 +1154,10 @@ try {
       123,
       12,
       true,
-      '${firstZap}',
-      '${cappedZap}',
-      '0x${"66".repeat(32)}',
-      '0x${"77".repeat(32)}',
+      '${v3Factory}',
+      '${v3Implementation}',
+      '${v3ImplementationCodeHash}',
+      '${v3CloneRuntimeHash}',
       '0x${"88".repeat(32)}',
       90
     );
@@ -999,10 +1199,10 @@ try {
       123,
       40,
       true,
-      '${firstZap}',
-      '${cappedZap}',
-      '0x${"66".repeat(32)}',
-      '0x${"77".repeat(32)}',
+      '${v3Factory}',
+      '${v3Implementation}',
+      '${v3ImplementationCodeHash}',
+      '${v3CloneRuntimeHash}',
       '0x${"88".repeat(32)}',
       90
     )
@@ -1021,6 +1221,56 @@ try {
   assert(
     protectedRows.join("|") === "hidden|false|1|12",
     `private RPC or insert-only receipt replay regressed: ${protectedRows.join(", ")}`,
+  );
+
+  const malformedReceiptAdmission = await psqlSession(`
+    set role service_role;
+    ${malformedVerifiedReceiptSql(rejectedMalformedReceiptHash)}
+  `);
+  assert(
+    malformedReceiptAdmission.status !== 0,
+    "malformed verified receipt provenance unexpectedly passed database admission",
+  );
+  assert(
+    /execution_receipts_provenance_check/.test(
+      `${malformedReceiptAdmission.stdout}${malformedReceiptAdmission.stderr}`,
+    ),
+    "malformed verified receipt did not fail the provenance constraint",
+  );
+
+  const lineageMismatchAdmission = await psqlSession(`
+    set role service_role;
+    ${mismatchedLineageReceiptSql(lineageMismatchReceiptHash)}
+  `);
+  assert(
+    lineageMismatchAdmission.status !== 0,
+    "intent-kind lineage mismatch unexpectedly passed database admission",
+  );
+  assert(
+    /execution_receipts_provenance_check/.test(
+      `${lineageMismatchAdmission.stdout}${lineageMismatchAdmission.stderr}`,
+    ),
+    "intent-kind lineage mismatch did not fail the provenance constraint",
+  );
+
+  const implementationHashMismatchAdmission = await psqlSession(`
+    set role service_role;
+    ${mismatchedLineageReceiptSql(implementationHashMismatchReceiptHash, {
+      factory: v3Factory,
+      implementation: v3Implementation,
+      implementationCodeHash: `0x${"66".repeat(32)}`,
+      capsuleRuntimeHash: v3CloneRuntimeHash,
+    })}
+  `);
+  assert(
+    implementationHashMismatchAdmission.status !== 0,
+    "implementation code hash mismatch unexpectedly passed database admission",
+  );
+  assert(
+    /execution_receipts_provenance_check/.test(
+      `${implementationHashMismatchAdmission.stdout}${implementationHashMismatchAdmission.stderr}`,
+    ),
+    "implementation code hash mismatch did not fail the provenance constraint",
   );
 
   const initialSubscribe = policySubscriptionMutation(

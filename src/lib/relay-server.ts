@@ -8,6 +8,10 @@ import {
   type RelayRecord,
   type RelayStatus,
 } from "@/lib/relay";
+import {
+  openZapsSupabaseConfiguration,
+  requireOpenZapsSupabaseConfiguration,
+} from "@/lib/supabase-config";
 
 /**
  * Server-only access to the relay's storage.
@@ -22,23 +26,24 @@ import {
  * can do is waste an executor's simulation.
  */
 
-const SUPABASE_URL = process.env.SUPABASE_URL;
-const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
-
 export const RELAY_TABLE = "zap_intents";
 
 export function relayConfigured(): boolean {
-  return Boolean(SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY);
+  return openZapsSupabaseConfiguration() !== null;
 }
 
 export function relayUrl(path: string): string {
-  return `${SUPABASE_URL}/rest/v1/${path}`;
+  return new URL(
+    path,
+    requireOpenZapsSupabaseConfiguration().restUrl,
+  ).toString();
 }
 
 export function relayHeaders(extra: Record<string, string> = {}): Record<string, string> {
+  const { serviceRoleKey } = requireOpenZapsSupabaseConfiguration();
   return {
-    apikey: SUPABASE_SERVICE_ROLE_KEY as string,
-    authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+    apikey: serviceRoleKey,
+    authorization: `Bearer ${serviceRoleKey}`,
     "content-type": "application/json",
     ...extra,
   };

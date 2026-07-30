@@ -471,8 +471,8 @@ Automate handoff:
           </p>
           <p className={styles.prose}>
             The read-only Agent Kit can discover capsules and request exact policy simulations. It holds no key and
-            reads public chain data; it has no credential that could be mistaken for execution authority. Once its
-            scoped npm release is live, point your client at it, ask the agent for its public address, then pin that address in{" "}
+            reads public chain data; it has no credential that could be mistaken for execution authority. Its scoped
+            npm release is live; point your client at it, ask the agent for its public address, then pin that address in{" "}
             <Link href="/zap?view=connect">Connect</Link>.
           </p>
           {OPENZAPS_AGENT_KIT_PUBLISHED ? (
@@ -481,8 +481,7 @@ Automate handoff:
             </div>
           ) : (
             <p className={styles.prose}>
-              Package source is release-ready in this repository; the install snippet remains gated until npm
-              publication is confirmed.
+              The packages are published, but this deployment has not explicitly enabled the install snippet.
             </p>
           )}
           <p className={styles.prose}>
@@ -510,7 +509,7 @@ Automate handoff:
         <section className={styles.section} id="sdk">
           <h2 className={styles.h2}>SDK surface</h2>
           <p className={styles.prose}>
-            The release-ready <code>@openzaps/sdk</code> source lives in <code>packages/sdk</code>. It compiles the
+            The published <code>@openzaps/sdk@0.1.0</code> source lives in <code>packages/sdk</code>. It compiles the
             Solidity policy tuple and prepares unsigned EIP-712 data; its client exposes the exact simulation endpoint
             and has no signing or broadcast method.
           </p>

@@ -69,7 +69,7 @@ test("private relay readiness requires distinct URL origins and declared operato
     },
   ]);
   assert.equal(duplicateOrigin.ready, false);
-  assert.match(duplicateOrigin.detail, /origin .* duplicated/);
+  assert.match(duplicateOrigin.detail, /URL origins must be distinct/);
 
   const duplicateOperator = assessPrivateRelaySet([
     PRIVATE_RELAYS[0],
@@ -79,7 +79,7 @@ test("private relay readiness requires distinct URL origins and declared operato
     },
   ]);
   assert.equal(duplicateOperator.ready, false);
-  assert.match(duplicateOperator.detail, /operator .* duplicated/);
+  assert.match(duplicateOperator.detail, /operators must be distinct/);
 });
 
 test("non-send RPC calls use the public read transport while wallet sends are prohibited", async () => {
@@ -149,20 +149,28 @@ test("authorization and raw bytes never enter readiness or health evidence", asy
     publicRequest: async () => {
       throw new Error("public fallback must never run");
     },
-    fetchImpl: async (_url, init) => {
+    fetchImpl: async (url, init) => {
       assert.equal(init.headers.authorization, secret);
+      const hostname = new URL(url).hostname;
+      const operator = url.includes("relay-a") ? "operator-a" : "operator-b";
       return rpcResponse({
         jsonrpc: "2.0",
         id: 1,
         error: {
-          code: -32000,
-          message: `relay at https://secret.example echoed ${secret} and ${RAW}`,
+          code: `${hostname} ${operator}`,
+          message:
+            `relay at ${hostname} operated by ${operator} echoed `
+            + `https://secret.example, ${secret}, and ${RAW}`,
         },
       });
     },
   });
   const readinessJson = JSON.stringify(provider.readiness);
   assert.ok(!readinessJson.includes(secret));
+  assert.ok(!readinessJson.includes("relay-a.example"));
+  assert.ok(!readinessJson.includes("relay-b.example"));
+  assert.ok(!readinessJson.includes("operator-a"));
+  assert.ok(!readinessJson.includes("operator-b"));
   await assert.rejects(
     () => provider.request({ method: "eth_sendRawTransaction", params: [RAW] }),
     PrivateSubmissionRejectedError,
@@ -171,6 +179,10 @@ test("authorization and raw bytes never enter readiness or health evidence", asy
   assert.ok(!evidenceJson.includes(secret));
   assert.ok(!evidenceJson.includes(RAW));
   assert.ok(!evidenceJson.includes("secret.example"));
+  assert.ok(!evidenceJson.includes("relay-a.example"));
+  assert.ok(!evidenceJson.includes("relay-b.example"));
+  assert.ok(!evidenceJson.includes("operator-a"));
+  assert.ok(!evidenceJson.includes("operator-b"));
 });
 
 test("viem signs locally and exposes only raw transaction bytes to private relays", async () => {
@@ -295,6 +307,7 @@ test("a 200 response that resets mid-body remains uncertain after raw-tx dispatc
   assert.equal(outcome.status, "submission-uncertain");
   assert.equal(outcome.unknownOrigins, 2);
   assert.equal(outcome.rejectedOrigins, 0);
+  assert.ok(!JSON.stringify(outcome).includes("relay response reset after headers"));
 });
 
 test("deterministic rejection by every private relay reports failure without public fallback", async () => {
