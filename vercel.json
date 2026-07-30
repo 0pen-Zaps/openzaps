@@ -4,6 +4,10 @@
     {
       "path": "/api/marketing/cron",
       "schedule": "0 14 * * 1-5"
+    },
+    {
+      "path": "/api/leads/retention",
+      "schedule": "15 9 * * *"
     }
   ]
 }

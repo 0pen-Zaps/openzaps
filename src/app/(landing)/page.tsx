@@ -179,12 +179,16 @@ export default function LandingPage(): React.JSX.Element {
               className={`${styles.heroActions} ${styles.heroEnter}`}
               style={{ "--enter-delay": "460ms" } as React.CSSProperties}
             >
-              <Link href="/zap" className="btn btnPrimary btnLg" data-magnetic>
+              <Link
+                href="/request-a-zap?utm_source=homepage&utm_medium=website&utm_campaign=request_a_zap&utm_content=hero"
+                className="btn btnPrimary btnLg"
+                data-magnetic
+              >
+                <span>Request a Zap</span>
+              </Link>
+              <Link href="/zap" className="btn btnGhost btnLg" data-magnetic>
                 <span>Start Zapping</span>
               </Link>
-              <a href="#zaps" className="btn btnGhost btnLg" data-magnetic>
-                <span>Explore Zaps</span>
-              </a>
             </div>
             <div
               className={`${styles.heroMicro} ${styles.heroEnter}`}
@@ -563,8 +567,12 @@ export default function LandingPage(): React.JSX.Element {
               Execute across DeFi without navigating every layer beneath it.
             </p>
             <div className={styles.finalActions}>
-              <Link href="/zap?view=sign" className="btn btnPrimary btnLg" data-magnetic>
-                <span>Zap now</span>
+              <Link
+                href="/request-a-zap?utm_source=homepage&utm_medium=website&utm_campaign=request_a_zap&utm_content=final_cta"
+                className="btn btnPrimary btnLg"
+                data-magnetic
+              >
+                <span>Request a Zap</span>
               </Link>
               <Link href="/zap" className="btn btnGhost btnLg" data-magnetic>
                 <span>Compose a Zap</span>

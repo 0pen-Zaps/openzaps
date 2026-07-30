@@ -63,6 +63,15 @@ export const STATIC_PAGE_SEO = {
     changeFrequency: "weekly",
     priority: 0.85,
   },
+  requestZap: {
+    title: "Request a Bounded DeFi Zap",
+    description:
+      "Submit one DeFi workflow for a human-reviewed policy sketch covering targets, assets, triggers, limits, and agent authority—without sharing wallet secrets.",
+    path: "/request-a-zap",
+    ogImage: OG_IMAGE,
+    changeFrequency: "weekly",
+    priority: 0.9,
+  },
   roadmap: {
     title: "Executable DeFi Intelligence Roadmap",
     description:

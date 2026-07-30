@@ -1,0 +1,147 @@
+# OpenZaps Lead Engine
+
+The lead engine converts a concrete DeFi workflow into a human-reviewed,
+bounded-authority design conversation. It has two inputs:
+
+1. opted-in requests submitted through `/request-a-zap`; and
+2. organization-level opportunities found by the review-only Lead Scout.
+
+Neither path receives wallet, signing, transaction, publishing, messaging, or
+CRM authority.
+
+## Public request flow
+
+`/request-a-zap` asks an agent builder, protocol team, or DeFi operator for the
+workflow, trigger, protocols/assets, test timeline, and the authority an agent
+must never receive. It explicitly rejects private keys, seed phrases,
+passwords, API keys, signatures, recovery phrases, sensitive balances, and
+wallet access.
+
+The browser sends the form to `POST /api/leads/request`. The route:
+
+- accepts same-origin JSON only;
+- stops reading after 16 KiB;
+- validates a strict schema and an inert honeypot;
+- derives an HMAC abuse-control key from a platform forwarding header without
+  storing the raw network address;
+- keeps that pseudonymous key only in a separate short-lived quota ledger;
+- reduces the referrer to its origin and drops sensitive campaign values;
+- computes a deterministic qualification score; and
+- calls one service-role-only database RPC.
+
+The public response is deliberately minimal. It never returns contact data,
+the qualification score, a database identifier, or quota fingerprint.
+
+## Qualification
+
+The score is one point for each of five signals:
+
+1. an identifiable project or project URL;
+2. a concrete workflow;
+3. named protocols or assets;
+4. explicit safety limits; and
+5. intent to test immediately or within 30 days.
+
+The private operator queue defaults to scores of 3 or higher. The score
+prioritizes human review; it never automatically contacts, rejects, deploys,
+or funds a request.
+
+## Private storage and consent
+
+Apply
+`supabase/migrations/20260730020106_private_lead_intake.sql` before exposing
+the form in a deployment.
+
+The migration stores contact and workflow data in `private.lead_requests` and
+short-lived quota counters in `private.lead_request_quotas`. The two are not
+joined. RLS is enabled, browser roles receive no policies or table grants, and
+only narrow public-schema wrappers are executable by `service_role`. Raw
+network addresses and quota fingerprints are never returned.
+
+Consent version `lead-contact-v1` authorizes a reply only about the submitted
+request. The public notice at `/legal#request-data` discloses the stored
+fields, purpose, minimized attribution, and retention. `marketing_opt_in` is
+fixed to `false`; a submission does not join a newsletter or outbound
+campaign. Email ownership begins unverified; an operator may send only a
+request-specific confirmation or reply until ownership is confirmed.
+
+New requests expire after 180 days. Reviewed lifecycle transitions are
+recorded, may extend an active request only within a hard one-year limit, and
+make `closed` terminal with no more than 30 days remaining. A daily retention
+job deletes expired requests and quota counters. An operator can also
+permanently delete a request through the narrow lead endpoint.
+
+## Operator access
+
+`GET /api/leads?limit=50&minScore=3` and lifecycle mutations use the separate
+`OPENZAPS_LEAD_ADMIN_TOKEN` bearer credential. Marketing drafting and
+publication approval continue to use `OPENZAPS_MARKETING_ADMIN_TOKEN`; neither
+credential grants the other scope. The `/marketing` operator surface requires
+both tokens, displays the scored queue, and supports forward-only status
+changes and two-step permanent deletion. Responses omit fingerprints and all
+network metadata and use `Cache-Control: private, no-store`.
+
+Both operator tokens remain in the current tab's `sessionStorage`. Use a
+dedicated browser profile and select **Forget** before handing the machine to
+another person.
+
+Review the queue every business morning. New qualified requests target a human
+review within two business days. Mark a request `contacted`, `qualified`, or
+`closed` only after the real-world step occurs; never use the status controls
+to send a message. The Lead Scout also reports queue counts at the start of
+each scheduled run without copying personal data into its report.
+
+## Environment
+
+| Variable | Purpose |
+| --- | --- |
+| `SUPABASE_URL` | Canonical server-only Supabase project origin. |
+| `SUPABASE_SERVICE_ROLE_KEY` | Server-only credential for the reviewed lead RPCs. |
+| `OPENZAPS_SUPABASE_PROJECT_REF` | Exact project ref required to bind the configured Supabase origin. |
+| `OPENZAPS_LEAD_FINGERPRINT_SECRET` | At least 32 bytes; HMAC key for the non-reversible daily quota fingerprint. |
+| `OPENZAPS_LEAD_ADMIN_TOKEN` | At least 32 bytes; private lead read/lifecycle credential. |
+| `OPENZAPS_MARKETING_ADMIN_TOKEN` | Separate private drafting/publication credential. |
+| `CRON_SECRET` | Existing Vercel cron credential used for retention. |
+
+All secrets belong in Vercel environment settings. Never place them in a
+tracked file, a lead request, a model prompt, or a client-exposed variable.
+
+## Lead Scout
+
+The active heartbeat automation is named **OpenZaps Lead Scout**. It runs in
+the owner OpenZaps task every Monday, Wednesday, and Friday at 10:00 AM
+Eastern. It reviews the inbound queue first, then may return at most five new
+organizations and must:
+
+- refresh current OpenZaps product truth;
+- use dated, first-party, organization-level public evidence;
+- score fit, evidence, and timing, accepting only totals of 11/15 or higher;
+- deduplicate normalized organization domains and GitHub organizations;
+- keep confirmed facts separate from inference; and
+- label every suggested note `DRAFT ONLY — NOT SENT — OWNER APPROVAL REQUIRED`.
+
+The scout may not collect personal contact data, scrape X or LinkedIn, enrich
+emails, send messages, submit forms, follow accounts, join servers, modify a
+CRM, change production, or use wallet authority.
+
+Pause or resume it from Codex Automations; do not edit a raw schedule string.
+Review failures in the owner task. A failed queue read should identify only
+the high-level configuration or access blocker and must never print or request
+a secret. Re-run only after the blocker is corrected.
+
+## Measurement
+
+`src/lib/analytics.ts` forwards allowlisted anonymous funnel properties to
+Vercel Analytics. Wallet addresses, transaction hashes, email addresses,
+contact details, URLs, secret-like values, unknown keys, and oversized values
+are dropped before transmission. Lead conversion events include only the
+sanitized persona, source, medium, campaign, content label, and HTTP outcome.
+
+Review these metrics weekly:
+
+- qualified Zap requests;
+- request-to-technical-review rate;
+- technical-review-to-pilot rate; and
+- campaign visitor-to-builder activation rate.
+
+Followers and impressions are supporting signals, not the north-star metric.
