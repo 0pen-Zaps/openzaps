@@ -451,16 +451,22 @@
 }
 
 .blockName {
+  flex: 1;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
+.blockProtocols {
+  display: inline-flex;
+  flex: 0 0 auto;
+}
+
 .blockPorts {
   display: flex;
   gap: 3px;
-  margin-left: auto;
+  flex: 0 0 auto;
 }
 
 .blockPorts i {

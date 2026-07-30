@@ -1,6 +1,7 @@
 import Link from "next/link";
 
 import { JsonLd } from "@/components/JsonLd";
+import { ProtocolLogo } from "@/components/ProtocolLogo";
 import { TokenUtilityPanel } from "@/components/TokenUtilityPanel";
 import { ActivityFeed } from "./ActivityFeed";
 import { fetchProtocolActivity } from "@/lib/activity-server";
@@ -79,7 +80,10 @@ export default async function ZapsFeedPage(): Promise<React.JSX.Element> {
           </p>
         </div>
         <aside className={styles.heroCard}>
-          <span className={styles.heroCardLabel}>Pinned pool</span>
+          <span className={styles.heroCardLabel}>
+            <ProtocolLogo protocol="uniswap-v4" size={20} />
+            Pinned pool · Uniswap v4
+          </span>
           <strong className={styles.heroCardName}>aeWETH ↔ 0xZAPS · v4 · {HOOK_FEE_LABEL} hook</strong>
           <code className={styles.heroCardId}>
             {ROBINHOOD_LIQUIDITY.poolId.slice(0, 18)}…{ROBINHOOD_LIQUIDITY.poolId.slice(-8)}

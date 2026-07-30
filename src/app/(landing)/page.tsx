@@ -32,10 +32,11 @@ import { RouteRail } from "./RouteRail";
 import { SecurityPanel } from "./SecurityPanel";
 import { ShareLinks } from "./ShareLinks";
 import { VelocityFx } from "./VelocityFx";
+import { ZapAssembly } from "./ZapAssembly";
 import { ZapCards } from "./ZapCards";
-import { ZapCore } from "./ZapCore";
 import {
   agentPlans,
+  assemblyPlan,
   landingCards,
   landingMetrics,
   landingRails,
@@ -115,6 +116,7 @@ const landingJsonLd = {
 
 export default function LandingPage(): React.JSX.Element {
   const graph = protocolGraph();
+  const assembly = assemblyPlan();
   const plans = agentPlans();
   const metrics = landingMetrics();
   const shareable = shareableCards();
@@ -207,7 +209,7 @@ export default function LandingPage(): React.JSX.Element {
             </div>
           </div>
           <div className={styles.heroVisual}>
-            <ZapCore />
+            <ZapAssembly plan={assembly} />
           </div>
           <div className={styles.scrollCue} aria-hidden="true">
             Scroll

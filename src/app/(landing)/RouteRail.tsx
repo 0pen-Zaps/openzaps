@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { ProtocolStack } from "@/components/ProtocolLogo";
 import type { Rail } from "./data";
 import styles from "./landing.module.css";
 
@@ -49,6 +50,9 @@ export function RouteRail({ rails }: { rails: Rail[] }): React.JSX.Element {
                 </>
               ) : (
                 <>
+                  {stop.protocols?.length ? (
+                    <ProtocolStack protocols={stop.protocols} size={18} decorative />
+                  ) : null}
                   <span className={styles.railHopLabel}>{stop.label}</span>
                   {stop.sublabel ? (
                     <span className={`${styles.railHopSub} mono`}>{stop.sublabel}</span>

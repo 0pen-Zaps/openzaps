@@ -18,5 +18,5 @@ OpenZaps adapters from catalog/design-only protocols.
 The protocol names and marks belong to their respective owners. Their presence
 identifies a venue, catalog option, or asset and does not imply sponsorship or
 endorsement. Before production publication, confirm any permissions required
-by the current brand terms. Uniswap's current trademark guidelines state that
-logo use requires prior written authorization.
+by the current brand terms. In particular, Uniswap and Morpho currently state
+that logo use requires prior authorization.
