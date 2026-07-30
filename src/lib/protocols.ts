@@ -29,6 +29,15 @@ export type ProtocolId =
 
 export type ProtocolInfo = { readonly id: ProtocolId; readonly name: string };
 
+export type ProtocolLogoAsset = {
+  readonly src: string;
+  /**
+   * Compound publishes its icon as the left edge of the official horizontal
+   * lockup. The plate clips that lockup to the mark without editing the asset.
+   */
+  readonly presentation?: "compound-icon";
+};
+
 /**
  * Display names, and — via `Object.keys` below — the runtime enumeration of
  * the union. A `Record` keyed by `ProtocolId` means adding a protocol without
@@ -51,11 +60,28 @@ const PROTOCOL_NAME: Record<ProtocolId, string> = {
   "wrapped-native": "Wrapped native",
 };
 
+/** Official, locally vendored marks. See public/protocols/README.md. */
+const PROTOCOL_LOGO: Record<ProtocolId, ProtocolLogoAsset> = {
+  "uniswap-v4": { src: "/protocols/uniswap.svg" },
+  "uniswap-v3": { src: "/protocols/uniswap.svg" },
+  aerodrome: { src: "/protocols/aerodrome.svg" },
+  "openzaps-vault": { src: "/openzap-mark.svg" },
+  morpho: { src: "/protocols/morpho.svg" },
+  aave: { src: "/protocols/aave.svg" },
+  compound: { src: "/protocols/compound.svg", presentation: "compound-icon" },
+  across: { src: "/protocols/across.svg" },
+  "wrapped-native": { src: "/protocols/ethereum.svg" },
+};
+
 /** Every protocol id, in declaration order — the union, but iterable. */
 export const PROTOCOL_IDS: readonly ProtocolId[] = Object.keys(PROTOCOL_NAME) as ProtocolId[];
 
 export function protocolName(id: ProtocolId): string {
   return PROTOCOL_NAME[id];
+}
+
+export function protocolLogoAsset(id: ProtocolId): ProtocolLogoAsset {
+  return PROTOCOL_LOGO[id];
 }
 
 function info(id: ProtocolId): ProtocolInfo {

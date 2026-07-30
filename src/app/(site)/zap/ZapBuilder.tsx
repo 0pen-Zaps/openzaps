@@ -1511,6 +1511,11 @@ export function ZapBuilder({
                     >
                       <BlockGlyph name={block.glyph} className={styles.blockGlyph} />
                       <span className={styles.blockName}>{block.name}</span>
+                      {chipProtocols.length > 0 ? (
+                        <span className={styles.blockProtocols} aria-hidden>
+                          <ProtocolStack protocols={chipProtocols} size={17} />
+                        </span>
+                      ) : null}
                       <span className={styles.blockPorts} aria-hidden>
                         {block.accepts ? <i style={{ background: SHAPE_COLOR[block.accepts] }} /> : null}
                         {block.emits ? <i style={{ background: SHAPE_COLOR[block.emits] }} /> : null}

@@ -1,0 +1,56 @@
+.plate {
+  position: relative;
+  display: inline-grid;
+  flex: none;
+  place-items: center;
+  overflow: hidden;
+  line-height: 0;
+  background: var(--chip);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-pill);
+  box-sizing: border-box;
+}
+
+.image {
+  width: 78%;
+  height: 78%;
+  object-fit: contain;
+}
+
+.plate[data-protocol="openzaps-vault"] .image,
+.plate[data-protocol="across"] .image,
+.plate[data-protocol="morpho"] .image {
+  width: 100%;
+  height: 100%;
+}
+
+.plate[data-protocol="aerodrome"] .image {
+  width: 88%;
+  height: 88%;
+}
+
+.plate[data-protocol="aave"] .image {
+  width: 84%;
+  height: 58%;
+}
+
+.plate[data-presentation="compound-icon"] .image {
+  position: absolute;
+  top: 9%;
+  left: 8%;
+  width: auto;
+  max-width: none;
+  height: 82%;
+  object-fit: initial;
+}
+
+.stack {
+  display: inline-flex;
+  align-items: center;
+  line-height: 0;
+}
+
+.stackItem {
+  display: inline-flex;
+  line-height: 0;
+}

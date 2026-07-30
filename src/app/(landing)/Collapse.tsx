@@ -1,7 +1,9 @@
 "use client";
 
 import { useEffect, useRef } from "react";
+import { ProtocolStack } from "@/components/ProtocolLogo";
 import { useReducedMotionPreference } from "@/components/useReducedMotionPreference";
+import { protocolsForAction } from "@/lib/protocols";
 import { clamp, scrollBus } from "./motion";
 import styles from "./landing.module.css";
 
@@ -15,12 +17,22 @@ import styles from "./landing.module.css";
  * CSS fallback renders the honest static before/after instead.
  */
 
+const UNISWAP_V4 = protocolsForAction("swap", { venue: "Uniswap v4" });
+
 const MANUAL_STEPS = [
-  { title: "Approve USDG", detail: "allowance for the router" },
-  { title: "Swap USDG → aeWETH", detail: "aeWETH/USDG pool · fee 450" },
-  { title: "Approve aeWETH", detail: "second allowance" },
-  { title: "Swap aeWETH → 0xZAPS", detail: "0xZAPS/aeWETH pool" },
-  { title: "Settle to wallet", detail: "sweep proceeds, check min-out" },
+  { title: "Approve USDG", detail: "allowance for the router", protocols: [] },
+  {
+    title: "Swap USDG → aeWETH",
+    detail: "aeWETH/USDG pool · fee 450",
+    protocols: UNISWAP_V4,
+  },
+  { title: "Approve aeWETH", detail: "second allowance", protocols: [] },
+  {
+    title: "Swap aeWETH → 0xZAPS",
+    detail: "0xZAPS/aeWETH pool",
+    protocols: UNISWAP_V4,
+  },
+  { title: "Settle to wallet", detail: "sweep proceeds, check min-out", protocols: [] },
 ] as const;
 
 // Where each card scatters from (viewport-relative units, hand-placed).
@@ -165,6 +177,11 @@ export function Collapse(): React.JSX.Element {
                 </span>
                 <span className={styles.collapseCardTitle}>{step.title}</span>
                 <span className={`${styles.collapseCardDetail} mono`}>{step.detail}</span>
+                {step.protocols.length > 0 ? (
+                  <span className={styles.collapseCardProtocols}>
+                    <ProtocolStack protocols={[...step.protocols]} size={22} />
+                  </span>
+                ) : null}
               </div>
             ))}
 
@@ -184,7 +201,10 @@ export function Collapse(): React.JSX.Element {
               {MANUAL_STEPS.map((step, i) => (
                 <li key={step.title} className={styles.collapseStaticItem}>
                   <span className="mono">{String(i + 1).padStart(2, "0")}</span>
-                  {step.title}
+                  <span className={styles.collapseStaticLabel}>{step.title}</span>
+                  {step.protocols.length > 0 ? (
+                    <ProtocolStack protocols={[...step.protocols]} size={18} />
+                  ) : null}
                 </li>
               ))}
             </ol>

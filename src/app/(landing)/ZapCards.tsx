@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { ProtocolStack } from "@/components/ProtocolLogo";
 import { Reveal } from "@/components/Reveal";
 import type { RecipeCard } from "./data";
 import styles from "./landing.module.css";
@@ -69,7 +70,8 @@ export function ZapCards({ cards }: { cards: RecipeCard[] }): React.JSX.Element 
                     <span className={styles.cardStepLabel}>{step.label}</span>
                     {step.protocols.length > 0 ? (
                       <span className={`${styles.cardStepVia} mono`}>
-                        via {step.protocols.join(" + ")}
+                        <ProtocolStack protocols={step.protocols} size={16} decorative />
+                        via {step.protocols.map((protocol) => protocol.name).join(" + ")}
                       </span>
                     ) : null}
                   </li>

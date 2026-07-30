@@ -2475,7 +2475,7 @@ export default function AppPage(): React.JSX.Element {
                   >
                     {offered.tokenIn.symbol} → {offered.tokenOut.symbol}
                     <em>
-                      <ProtocolStack protocols={protocolsForRouteKind(offered.kind)} size={12} />{" "}
+                      <ProtocolStack protocols={protocolsForRouteKind(offered.kind)} size={16} />{" "}
                       {ROUTE_KIND_LABEL[offered.kind]}
                     </em>
                   </button>

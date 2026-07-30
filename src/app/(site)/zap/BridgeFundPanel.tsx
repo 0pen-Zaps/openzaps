@@ -26,6 +26,7 @@ import {
   quoteIsStale,
   type BridgeQuote,
 } from "@/lib/bridge";
+import { ProtocolLogo } from "@/components/ProtocolLogo";
 import { getInjectedProvider, robinhoodChain } from "@/lib/robinhood";
 
 type Phase =
@@ -421,7 +422,10 @@ export function BridgeFundPanel({
   if (!fundable) {
     return (
       <section aria-label="Fund from Base">
-        <h3>Fund from Base</h3>
+        <h3 style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <ProtocolLogo protocol="across" size={22} />
+          Fund from Base
+        </h3>
         <p role="note">
           This bridge delivers {ROUTE.outputSymbol}, but this capsule spends a different asset. Bridging it here would
           not fund the signed route, so this action is disabled.
@@ -448,7 +452,10 @@ export function BridgeFundPanel({
 
   return (
     <section aria-label="Fund from Base">
-      <h3>Fund from Base</h3>
+      <h3 style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        <ProtocolLogo protocol="across" size={22} />
+        Fund from Base
+      </h3>
       <p>
         Deliver Base {ROUTE.inputSymbol} as <strong>{ROUTE.outputSymbol}</strong> directly to this capsule over Across.
         The bridge stays outside the policy; the policy takes over only after the destination balance proves arrival.

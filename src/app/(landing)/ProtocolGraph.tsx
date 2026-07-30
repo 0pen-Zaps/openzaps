@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { ProtocolLogo } from "@/components/ProtocolLogo";
 import type { GraphEdge, GraphNode } from "./data";
 import styles from "./landing.module.css";
 
@@ -85,7 +86,9 @@ export function ProtocolGraph({
         </svg>
 
         <span className={styles.graphCore} aria-hidden="true">
-          <span className={styles.graphCoreDot} />
+          <span className={styles.graphCoreDot}>
+            <ProtocolLogo protocol="openzaps-vault" size={30} />
+          </span>
           <span className={`${styles.graphCoreLabel} mono`}>openzaps</span>
         </span>
 
@@ -105,7 +108,9 @@ export function ProtocolGraph({
               onFocus={() => setSelectedId(node.id)}
               aria-pressed={node.id === selected?.id}
             >
-              <span className={styles.graphNodeDot} aria-hidden="true" />
+              <span className={styles.graphNodeDot} aria-hidden="true">
+                <ProtocolLogo protocol={node.id} size={18} />
+              </span>
               {node.name}
             </button>
           );
@@ -115,7 +120,10 @@ export function ProtocolGraph({
       {selected ? (
         <aside className={styles.graphPanel}>
           <div className={styles.graphPanelHead}>
-            <h3 className={styles.graphPanelName}>{selected.name}</h3>
+            <h3 className={styles.graphPanelName}>
+              <ProtocolLogo protocol={selected.id} size={26} />
+              {selected.name}
+            </h3>
             <span
               className={`${styles.cardStatus} mono`}
               data-live={selected.deployed || undefined}
