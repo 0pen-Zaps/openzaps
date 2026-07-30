@@ -1,8 +1,7 @@
-import { createHash, timingSafeEqual } from "node:crypto";
-
 import { NextResponse } from "next/server";
 import { start } from "workflow/api";
 
+import { isCronAuthorized } from "@/lib/cron-auth";
 import {
   readMarketingConfig,
   SCHEDULED_MARKETING_CHANNELS,
@@ -16,21 +15,7 @@ import { openZapsScheduledMarketingWorkflow } from "@/workflows/marketing-agent"
 
 export const dynamic = "force-dynamic";
 
-function digest(value: string): Buffer {
-  return createHash("sha256").update(value, "utf8").digest();
-}
-
-export function isCronAuthorized(request: Pick<Request, "headers">): boolean {
-  const expected = process.env.CRON_SECRET ?? "";
-  const authorization = request.headers.get("authorization") ?? "";
-  const match = authorization.match(/^Bearer[ \t]+([^\s,]+)$/iu);
-  const supplied = match?.[1] ?? "";
-  return (
-    expected.trim().length > 0 &&
-    supplied.length > 0 &&
-    timingSafeEqual(digest(expected), digest(supplied))
-  );
-}
+export { isCronAuthorized } from "@/lib/cron-auth";
 
 function scheduledChannels(
   config: MarketingConfig,

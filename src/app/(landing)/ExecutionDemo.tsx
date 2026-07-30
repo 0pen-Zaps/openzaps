@@ -59,6 +59,30 @@ export function ExecutionDemo(): React.JSX.Element {
   const chain = recipe && amountValid ? buildChain(recipe.id, amount.trim()) : null;
   const compiled = chain ? compileChain(chain) : null;
   const shareHref = chain ? `/zap?d=${encodeChain(chain)}` : "/zap";
+  const protocolsAssets = chain
+    ? [
+        ...new Set(
+          chain.flatMap((node) =>
+            Object.entries(node.params).flatMap(([key, value]) =>
+              ["asset", "into", "venue", "pool", "settle"].includes(key)
+                && typeof value === "string"
+                ? [value]
+                : [],
+            ),
+          ),
+        ),
+      ].join(", ")
+    : inputAsset;
+  const requestHref = recipe
+    ? `/request-a-zap?${new URLSearchParams({
+        workflow: recipe.tagline,
+        protocolsAssets,
+        utm_source: "homepage",
+        utm_medium: "product",
+        utm_campaign: "request_a_zap",
+        utm_content: "execution_demo",
+      }).toString()}`
+    : "/request-a-zap";
 
   const clearTimers = () => {
     timers.current.forEach((t) => window.clearTimeout(t));
@@ -235,10 +259,13 @@ export function ExecutionDemo(): React.JSX.Element {
                 Output amounts are quoted live at sign time, never estimated here.
               </p>
               <div className={styles.demoActions}>
+                <Link href={requestHref} className="btn btnPrimary" data-magnetic>
+                  <span>Request this Zap</span>
+                </Link>
                 <Link href={shareHref} className="btn btnGhost" data-magnetic>
                   <span>Open in builder</span>
                 </Link>
-                <Link href="/zap?view=sign" className="btn btnPrimary" data-magnetic>
+                <Link href="/zap?view=sign" className="btn btnGhost" data-magnetic>
                   <span>Zap now</span>
                 </Link>
               </div>

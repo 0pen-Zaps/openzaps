@@ -13,6 +13,9 @@ operator-selected, verified X replies, plus reviewed Discord broadcasts.
 Discord slash commands return deterministic responses. Substack publication
 always stops at a human editor handoff.
 
+The inbound request queue and separate review-only Lead Scout are documented
+in [lead-engine.md](lead-engine.md).
+
 ## Operating invariants
 
 | Invariant | Enforcement |

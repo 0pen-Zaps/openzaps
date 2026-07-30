@@ -288,6 +288,222 @@
   line-height: 1.5;
 }
 
+.queueControls {
+  display: flex;
+  align-items: end;
+  gap: 7px;
+}
+
+.queueControls label {
+  display: grid;
+  gap: 3px;
+  color: var(--ink-3);
+  font-size: 9.5px;
+  font-weight: 650;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.queueControls select {
+  min-width: 74px;
+  height: 30px;
+  padding: 0 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-ctl-sm);
+  background: var(--sunk);
+  color: var(--ink);
+  font-size: 11.5px;
+}
+
+.leadQueue {
+  display: grid;
+  gap: 10px;
+}
+
+.leadCard {
+  min-width: 0;
+  padding: 15px;
+  border: 1px solid var(--line-2);
+  border-radius: var(--r-card-sm);
+  background: var(--panel-2);
+}
+
+.leadCard > header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.leadPersona {
+  display: block;
+  color: var(--zap-wash-ink);
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.leadCard h3 {
+  margin: 5px 0 0;
+  color: var(--ink);
+  font-family: var(--font-serif), Georgia, serif;
+  font-size: 20px;
+  font-weight: 500;
+  letter-spacing: -0.02em;
+}
+
+.leadCard header p {
+  margin: 3px 0 0;
+  color: var(--ink-3);
+  font-size: 11px;
+}
+
+.leadScore {
+  flex: 0 0 auto;
+  padding: 5px 8px;
+  border-radius: var(--r-chip);
+  background: var(--warn-wash);
+  color: var(--warn-ink);
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-size: 10.5px;
+  font-weight: 750;
+}
+
+.leadScore[data-qualified] {
+  background: var(--ok-wash);
+  color: var(--ok);
+}
+
+.leadContact {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px 13px;
+  margin-top: 11px;
+  color: var(--ink-2);
+  font-size: 11.5px;
+}
+
+.leadContact a {
+  color: var(--zap-wash-ink);
+  font-weight: 650;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.leadContact span[data-email-state="verified"] {
+  color: var(--ok);
+}
+
+.leadContact span[data-email-state="unverified"] {
+  color: var(--warn-ink);
+}
+
+.leadBrief {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 9px;
+  margin: 13px 0 0;
+}
+
+.leadBrief > div {
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--r-ctl-sm);
+  background: var(--sunk);
+}
+
+.leadBrief dt {
+  color: var(--ink-3);
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.leadBrief dd {
+  margin: 5px 0 0;
+  color: var(--ink-prose);
+  font-size: 11.5px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.leadCard > footer {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 11px;
+}
+
+.leadCard > footer span {
+  padding: 3px 7px;
+  border-radius: var(--r-chip);
+  background: var(--chip);
+  color: var(--ink-3);
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-size: 9px;
+}
+
+.leadActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 12px;
+  padding-top: 11px;
+  border-top: 1px solid var(--line-soft);
+}
+
+.leadActions button {
+  min-height: 30px;
+  padding: 5px 9px;
+  border: 1px solid var(--line-2);
+  border-radius: var(--r-ctl-sm);
+  background: var(--sunk);
+  color: var(--ink-2);
+  cursor: pointer;
+  font-size: 10.5px;
+  font-weight: 650;
+}
+
+.leadActions button:hover:not(:disabled) {
+  border-color: var(--line-strong);
+  color: var(--ink);
+}
+
+.leadActions button[data-danger] {
+  border-color: var(--danger-line);
+  background: var(--danger-wash);
+  color: var(--danger-ink);
+}
+
+.leadActions button:disabled {
+  cursor: wait;
+  opacity: 0.55;
+}
+
+.queueNotice {
+  margin: 10px 0 0;
+  color: var(--ink-2);
+  font-size: 11.5px;
+}
+
+.queueError {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px 9px;
+  padding: 12px;
+  border: 1px solid var(--danger-line);
+  border-radius: var(--r-ctl-sm);
+  background: var(--danger-wash);
+  color: var(--danger-ink);
+  font-size: 11.5px;
+}
+
 .formGrid {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1.3fr);
@@ -608,6 +824,7 @@
 @media (max-width: 760px) {
   .readinessGrid,
   .formGrid,
+  .leadBrief,
   .copyGrid,
   .reviewMeta {
     grid-template-columns: 1fr;
@@ -622,6 +839,15 @@
   .inlineControl,
   .channelPicker > div {
     grid-template-columns: 1fr;
+  }
+
+  .sectionHead {
+    align-items: flex-start;
+  }
+
+  .queueControls {
+    align-items: stretch;
+    flex-direction: column;
   }
 
   .actionRow,
