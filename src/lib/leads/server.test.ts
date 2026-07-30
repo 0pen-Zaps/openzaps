@@ -54,14 +54,14 @@ const operatorRow = {
   timeline: "within_30_days",
   consent_to_contact: true,
   consent_version: "lead-contact-v1",
-  consented_at: "2026-07-30T02:00:00.000Z",
+  consented_at: "2026-07-30T02:00:00.0000+00:00",
   email_verified: false,
   attribution: { utmSource: "discord" },
   qualification_score: 5,
   status: "new",
-  created_at: "2026-07-30T02:00:00.000Z",
-  updated_at: "2026-07-30T02:00:00.000Z",
-  expires_at: "2027-01-26T02:00:00.000Z",
+  created_at: "2026-07-30T02:00:00.0000+00:00",
+  updated_at: "2026-07-30T02:00:00.0000+00:00",
+  expires_at: "2027-01-26T02:00:00.0000+00:00",
 } as const;
 
 afterEach(() => {
@@ -259,8 +259,8 @@ describe("updateLeadRequestLifecycle", () => {
       result_code: "updated",
       id: operatorRow.id,
       status: "contacted",
-      updated_at: "2026-07-30T03:00:00.000Z",
-      expires_at: "2027-01-26T03:00:00.000Z",
+      updated_at: "2026-07-30T03:00:00.0000+00:00",
+      expires_at: "2027-01-26T03:00:00.0000+00:00",
     }]));
 
     await expect(
@@ -273,8 +273,8 @@ describe("updateLeadRequestLifecycle", () => {
       result: "updated",
       id: operatorRow.id,
       status: "contacted",
-      updatedAt: "2026-07-30T03:00:00.000Z",
-      expiresAt: "2027-01-26T03:00:00.000Z",
+      updatedAt: "2026-07-30T03:00:00.0000+00:00",
+      expiresAt: "2027-01-26T03:00:00.0000+00:00",
     });
 
     const [url, init] = fetchMock.mock.calls[0] as [URL, RequestInit];

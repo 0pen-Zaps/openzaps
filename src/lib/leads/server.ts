@@ -368,14 +368,14 @@ const OperatorLeadRowSchema = z
     ]),
     consent_to_contact: z.literal(true),
     consent_version: z.literal("lead-contact-v1"),
-    consented_at: z.iso.datetime(),
+    consented_at: z.iso.datetime({ offset: true }),
     email_verified: z.boolean(),
     attribution: LeadAttributionSchema,
     qualification_score: z.number().int().min(0).max(5),
     status: z.enum(["new", "contacted", "qualified", "closed"]),
-    created_at: z.iso.datetime(),
-    updated_at: z.iso.datetime(),
-    expires_at: z.iso.datetime(),
+    created_at: z.iso.datetime({ offset: true }),
+    updated_at: z.iso.datetime({ offset: true }),
+    expires_at: z.iso.datetime({ offset: true }),
   })
   .strict();
 
@@ -467,8 +467,8 @@ const LeadLifecycleRowSchema = z
     ]),
     id: z.string().uuid().nullable(),
     status: LeadStatusSchema.nullable(),
-    updated_at: z.iso.datetime().nullable(),
-    expires_at: z.iso.datetime().nullable(),
+    updated_at: z.iso.datetime({ offset: true }).nullable(),
+    expires_at: z.iso.datetime({ offset: true }).nullable(),
   })
   .strict();
 
