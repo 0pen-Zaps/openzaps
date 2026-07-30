@@ -12,6 +12,7 @@ vi.mock("@/lib/zap-server", () => ({
 import robots from "@/app/robots";
 import sitemap from "@/app/sitemap";
 import { SITE_URL, STATIC_PAGE_SEO } from "@/lib/seo";
+import nextConfig from "../../next.config";
 
 const ZAP_ADDRESS = "0x0000000000000000000000000000000000000001" as Address;
 
@@ -54,6 +55,40 @@ describe("sitemap", () => {
     expect(warning).toHaveBeenCalledWith(
       "[sitemap] Onchain zap enumeration unavailable; serving static routes only.",
     );
+  });
+
+  it("excludes retired game URLs from crawl discovery", async () => {
+    mocks.fetchZapAddresses.mockResolvedValue([]);
+
+    const entries = await sitemap();
+    const urls = entries.map(({ url }) => url);
+
+    expect(urls).toContain(`${SITE_URL}/virtual-trading`);
+    expect(urls).not.toContain(`${SITE_URL}/zapdraw`);
+    expect(urls).not.toContain(`${SITE_URL}/zapdraw/how`);
+    expect(urls).not.toContain(`${SITE_URL}/overdraw`);
+    expect(urls).not.toContain(`${SITE_URL}/overdraw/how`);
+  });
+
+  it("redirects every retired game URL directly to virtual trading", async () => {
+    const resolvedConfig = typeof nextConfig === "function"
+      ? await nextConfig("phase-test", { defaultConfig: {} })
+      : nextConfig;
+    expect(resolvedConfig.redirects).toBeTypeOf("function");
+    const redirects = await resolvedConfig.redirects!();
+    const retiredSources = ["/zapdraw", "/zapdraw/how", "/overdraw", "/overdraw/how"];
+
+    for (const source of retiredSources) {
+      expect(redirects).toContainEqual({
+        source,
+        destination: "/virtual-trading",
+        permanent: true,
+      });
+    }
+
+    const retiredRedirects = redirects.filter(({ source }) => retiredSources.includes(source));
+    expect(retiredRedirects).toHaveLength(retiredSources.length);
+    expect(retiredRedirects.every(({ destination }) => destination === "/virtual-trading")).toBe(true);
   });
 });
 

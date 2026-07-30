@@ -40,6 +40,17 @@ describe("SEO primitives", () => {
     }
   });
 
+  it("indexes virtual trading without reviving retired game URLs", () => {
+    const entries = Object.values(STATIC_PAGE_SEO);
+    const paths = entries.map(({ path }) => path);
+
+    expect(STATIC_PAGE_SEO.virtualTrading.path).toBe("/virtual-trading");
+    expect(paths).not.toContain("/zapdraw");
+    expect(paths).not.toContain("/zapdraw/how");
+    expect(Object.keys(STATIC_PAGE_SEO)).not.toContain("zapdraw");
+    expect(Object.keys(STATIC_PAGE_SEO)).not.toContain("zapdrawHow");
+  });
+
   it("emits canonical, Open Graph, and Twitter metadata from one route definition", () => {
     const entry = STATIC_PAGE_SEO.docs;
     const metadata = pageMetadata(entry);

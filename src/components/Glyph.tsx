@@ -251,7 +251,7 @@ const PATHS: Record<string, React.ReactNode> = {
     </>
   ),
   plus: <path d="M12 5v14M5 12h14" />,
-  /* A rising bar chart — ZapDraw's draws, and the "bars" mark in the handoff. */
+  /* A rising bar chart — virtual trading performance and quantitative views. */
   bars: <path d="M4 18V9M9.5 18v-5M15 18v-8M20.5 18V6" />,
   /* A trace with a spike in it: live protocol activity. */
   pulse: <path d="M3 12h3.5l2-5 3.5 11 3-8 2 2H21" />,

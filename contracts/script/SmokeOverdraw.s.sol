@@ -17,16 +17,15 @@ interface IERC20Meta {
 ///
 ///         Every check below reads the contract itself rather than the broadcast log, because a
 ///         broadcast log proves a transaction was sent and nothing else. This is the gate between
-///         "the deploy script exited 0" and "the game is safe to point people at".
+///         "the deploy script exited 0" and "the contract matches its declared invariants".
 ///
 /// @dev Needs no key and sends nothing. Usage:
 ///
 ///        OVERDRAW_ADDRESS=0x... forge script script/SmokeOverdraw.s.sol:SmokeOverdraw \
 ///          --rpc-url $ROBINHOOD_RPC
 ///
-///      A failed `require` here means DO NOT set `NEXT_PUBLIC_OVERDRAW_ADDRESS`. The web surface
-///      fails closed until that variable is set, so an unverified deployment stays invisible —
-///      which is the entire point of keeping those two steps separate.
+///      HISTORICAL TOOLING ONLY. A failed `require` means the deployment is unverified. A passing
+///      smoke does not authorize restoring `NEXT_PUBLIC_OVERDRAW_ADDRESS` or the retired web routes.
 contract SmokeOverdraw is Script {
     address internal constant ZAPS = 0xDd90bFa4adC7F4401E611AbaC692D939F9F4CB07;
     uint256 internal constant ROBINHOOD = 4663;
@@ -95,6 +94,6 @@ contract SmokeOverdraw is Script {
 
         require(block.timestamp <= commitEnd, "round 1 commit window has already closed");
         console2.log("");
-        console2.log("SMOKE PASSED - safe to set NEXT_PUBLIC_OVERDRAW_ADDRESS");
+        console2.log("SMOKE PASSED - contract invariants verified; web surface remains retired");
     }
 }
