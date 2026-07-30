@@ -108,6 +108,87 @@
   font-size: 12.5px;
 }
 
+/* ── Adjacent entry paths ──────────────────────────────────────────────── */
+
+.entryGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.entryCard {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 13px;
+  min-width: 0;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-card-sm);
+  background: var(--panel-2);
+  color: inherit;
+  transition:
+    border-color var(--dur-2) var(--ease-standard),
+    background var(--dur-2) var(--ease-standard);
+}
+
+.entryCard:hover {
+  border-color: var(--line-hover);
+  background: var(--panel);
+}
+
+.entryTile {
+  display: grid;
+  width: 36px;
+  height: 36px;
+  place-items: center;
+  border-radius: var(--r-card-sm);
+  background: var(--zap-wash);
+  color: var(--zap-wash-ink);
+}
+
+.entryTile svg {
+  width: 17px;
+  height: 17px;
+}
+
+.entryCopy {
+  display: grid;
+  min-width: 0;
+  gap: 5px;
+}
+
+.entryLabel {
+  color: var(--ink-3);
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.entryTitle {
+  color: var(--ink);
+  font-family: var(--font-serif), Newsreader, serif;
+  font-size: 18px;
+  font-weight: 500;
+  line-height: 1.2;
+}
+
+.entryDetail {
+  max-width: 52ch;
+  color: var(--ink-2);
+  font-size: 12.5px;
+  line-height: 1.55;
+}
+
+.entryAction {
+  width: fit-content;
+  margin-top: 4px;
+  color: var(--link);
+  font-size: 12px;
+  font-weight: 600;
+}
+
 /* ── Reuse row ─────────────────────────────────────────────────────────── */
 
 .reuseGrid {
@@ -361,6 +442,7 @@
   }
 
   .reuseGrid,
+  .entryGrid,
   .intentGrid {
     grid-template-columns: minmax(0, 1fr);
   }
@@ -423,16 +505,19 @@
   }
 
   /* The tile stops taking a column from a ~300px card and sits above the copy. */
+  .entryCard,
   .intentCard {
     grid-template-columns: minmax(0, 1fr);
     gap: 10px;
   }
 
+  .entryTile,
   .intentTile {
     width: 34px;
     height: 34px;
   }
 
+  .entryTile svg,
   .intentTile svg {
     width: 16px;
     height: 16px;

@@ -2,7 +2,7 @@
   "id": "/",
   "name": "OpenZaps — One-Transaction DeFi Zaps",
   "short_name": "OpenZaps",
-  "description": "Build one-transaction DeFi Zaps \u2014 immutable policy capsules that lock targets, assets, recipients, and calldata before signing. Live on Robinhood Chain.",
+  "description": "Compose bounded DeFi Zaps whose supported hops settle atomically after required approval, creation, and funding confirmations. Live on Robinhood Chain.",
   "start_url": "/zap",
   "scope": "/",
   "lang": "en-US",
@@ -23,6 +23,18 @@
       "short_name": "Explore",
       "description": "Inspect verified Zaps and their onchain execution history.",
       "url": "/explore"
+    },
+    {
+      "name": "Practice in Virtual Trading",
+      "short_name": "Virtual Trading",
+      "description": "Practice pinned USDG routes with virtual funds and no wallet.",
+      "url": "/virtual-trading"
+    },
+    {
+      "name": "Request a Zap",
+      "short_name": "Request Zap",
+      "description": "Ask for a human-reviewed authority map with no wallet commitment.",
+      "url": "/request-a-zap"
     },
     {
       "name": "Developer Documentation",

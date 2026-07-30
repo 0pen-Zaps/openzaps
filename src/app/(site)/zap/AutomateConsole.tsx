@@ -1831,8 +1831,8 @@ export default function AutomateConsole(): React.JSX.Element {
       <header className={styles.head}>
         <h1 className={styles.title}>Automate</h1>
         <p className={styles.lede}>
-          One signature authorizes a whole series. The Zap enforces the interval and the count onchain, so
-          nothing can run early, twice, or past the end.
+          One signature authorizes a recurring series or one price-triggered execution. The Zap enforces its
+          cadence, count, trigger, and signed bounds onchain, so an executor cannot widen the action.
         </p>
       </header>
 
@@ -1876,7 +1876,7 @@ export default function AutomateConsole(): React.JSX.Element {
                   <BlockGlyph name="check" className={styles.receiptChipGlyph} />
                   Confirmed
                 </span>
-                <h2 className={styles.receiptTitle}>Your automation Zap is live.</h2>
+                <h2 className={styles.receiptTitle}>Your automation Zap contract is deployed.</h2>
                 <span className={styles.receiptLineage}>
                   {automationLineageLabel(creationResult.intentKind)}
                 </span>
@@ -1992,7 +1992,7 @@ export default function AutomateConsole(): React.JSX.Element {
               <span className={styles.stepChip} aria-live="polite">{stepLabel}</span>
               <span className={styles.versionChip}>
                 {activeIntentKind === "recurring-stack"
-                  ? "v3.2 · live floor + signed 0xZAPS slice"
+                  ? "v3.2 candidate · per-run floor from spot + signed 0xZAPS slice"
                   : activeIntentKind === "recurring-relative"
                     ? "v3.1 · per-Zap floor from live spot"
                     : "v3 · floor from a fresh quote at signing"}

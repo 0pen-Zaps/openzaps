@@ -34,6 +34,8 @@ const releaseChecks = [
   ],
 ] as const;
 
+const RECORDED_RELEASE_SHA = "b02fc93637be";
+
 export default function EvalsPage(): React.JSX.Element {
   const sourceCommit = process.env.VERCEL_GIT_COMMIT_SHA?.slice(0, 12) ?? "local build";
   return (
@@ -55,17 +57,22 @@ export default function EvalsPage(): React.JSX.Element {
           Read the security model
         </Link>
         <span className={styles.metaChip}>
-          <b>Rendered commit</b>
+          <b>Current render</b>
           {sourceCommit}
+        </span>
+        <span className={styles.metaChip}>
+          <b>Covered baseline</b>
+          {RECORDED_RELEASE_SHA}
         </span>
       </div>
 
       <section className={styles.section} aria-labelledby="release-evaluation">
         <h2 className={styles.h2} id="release-evaluation">Release-candidate evaluation</h2>
         <p className={styles.prose}>
-          Recorded 29 July 2026 for the release candidate that produced this page. The rendered commit above binds
-          the deployment to its source revision. Commands are reproducible from the repository; opt-in fork checks
-          are reported separately so a hermetic pass is never misrepresented as live-chain coverage.
+          Recorded 29 July 2026 for source baseline <code>{RECORDED_RELEASE_SHA}</code>. The current rendered commit may
+          include later changes and is covered only when it matches that baseline. Commands are reproducible from the
+          repository; opt-in fork checks are reported separately so a hermetic pass is never misrepresented as
+          live-chain coverage.
         </p>
         <div className={styles.steps}>
           {releaseChecks.map(([label, body]) => (

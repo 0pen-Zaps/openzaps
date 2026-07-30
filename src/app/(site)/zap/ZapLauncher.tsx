@@ -66,6 +66,27 @@ const OPTIONS = [
   },
 ] as const;
 
+const ENTRY_PATHS = [
+  {
+    glyph: "bars",
+    label: "No wallet",
+    title: "Practice a deployed route first",
+    detail:
+      "Use 10,000 virtual USDG against canonical-head quotes. Fills, positions, and PnL stay in this browser.",
+    href: "/virtual-trading",
+    action: "Open Virtual Trading",
+  },
+  {
+    glyph: "sparkle",
+    label: "Human review",
+    title: "Need a Zap the catalog does not have?",
+    detail:
+      "Describe the workflow and guardrails. We map its authority boundary before any wallet or integration commitment.",
+    href: "/request-a-zap",
+    action: "Request a Zap",
+  },
+] as const;
+
 /**
  * `idScope` distinguishes the two instances of this screen that coexist on /zap.
  *
@@ -109,6 +130,32 @@ export function ZapLauncher({ idScope }: { idScope?: string } = {}): React.JSX.E
       </div>
 
       <IntentComposer />
+
+      <section className={styles.section} aria-labelledby={`${base}-entry-paths`}>
+        <div className={styles.sectionHead}>
+          <h2 id={`${base}-entry-paths`} className={styles.sectionTitle}>
+            Other ways in
+          </h2>
+          <span className={styles.sectionNote}>Practice or scope the work before committing funds.</span>
+        </div>
+        <div className={styles.entryGrid}>
+          {ENTRY_PATHS.map((path) => (
+            <Link href={path.href} className={styles.entryCard} key={path.title}>
+              <span className={styles.entryTile} aria-hidden="true">
+                <BlockGlyph name={path.glyph} />
+              </span>
+              <span className={styles.entryCopy}>
+                <span className={styles.entryLabel}>{path.label}</span>
+                <strong className={styles.entryTitle}>{path.title}</strong>
+                <span className={styles.entryDetail}>{path.detail}</span>
+                <span className={styles.entryAction}>
+                  {path.action} <span aria-hidden="true">→</span>
+                </span>
+              </span>
+            </Link>
+          ))}
+        </div>
+      </section>
 
       <section className={styles.section} aria-labelledby={reuseId}>
         <div className={styles.sectionHead}>

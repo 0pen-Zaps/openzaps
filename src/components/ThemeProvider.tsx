@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useCallback, useContext, useEffect, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useSyncExternalStore } from "react";
 
 import {
   DEFAULT_THEME,
@@ -14,6 +14,39 @@ import {
 type ThemeSession = { theme: Theme; setTheme: (next: Theme) => void };
 
 const ThemeContext = createContext<ThemeSession>({ theme: DEFAULT_THEME, setTheme: () => {} });
+const THEME_CHANGE_EVENT = "openzaps:theme-change";
+
+function readThemeSnapshot(): Theme {
+  const attr = document.documentElement.dataset.ozTheme;
+  return isTheme(attr) ? attr : DEFAULT_THEME;
+}
+
+function readServerThemeSnapshot(): Theme {
+  return DEFAULT_THEME;
+}
+
+function applyThemeToDocument(theme: Theme): void {
+  const root = document.documentElement;
+  // Write only when something changed. Repeated attribute writes can form a
+  // mutation loop with browser extensions that observe the document.
+  if (root.dataset.ozTheme !== theme) root.dataset.ozTheme = theme;
+  const scheme = THEME_SCHEME[theme];
+  if (root.style.colorScheme !== scheme) root.style.colorScheme = scheme;
+}
+
+function subscribeToTheme(onChange: () => void): () => void {
+  const onStorage = (event: StorageEvent): void => {
+    if (event.key !== null && event.key !== THEME_STORAGE_KEY) return;
+    applyThemeToDocument(isTheme(event.newValue) ? event.newValue : DEFAULT_THEME);
+    onChange();
+  };
+  window.addEventListener(THEME_CHANGE_EVENT, onChange);
+  window.addEventListener("storage", onStorage);
+  return () => {
+    window.removeEventListener(THEME_CHANGE_EVENT, onChange);
+    window.removeEventListener("storage", onStorage);
+  };
+}
 
 /**
  * Holds the picked theme and keeps the document in step with it.
@@ -24,37 +57,27 @@ const ThemeContext = createContext<ThemeSession>({ theme: DEFAULT_THEME, setThem
  * agreeing after a change.
  */
 export function ThemeProvider({ children }: { children: React.ReactNode }): React.JSX.Element {
-  // Seeded from the DOM, which the guard has already stamped — never from
-  // storage here. Reading storage would give the right answer at the wrong
-  // moment: the first client render would disagree with the painted attribute
-  // on any visit where the two could differ.
-  const [theme, setThemeState] = useState<Theme>(() => {
-    if (typeof document === "undefined") return DEFAULT_THEME;
-    const attr = document.documentElement.dataset.ozTheme;
-    return isTheme(attr) ? attr : DEFAULT_THEME;
-  });
+  // Server rendering and the first hydration render must agree. The pre-paint
+  // guard already gives the document its saved colours, but reading that
+  // attribute in the state initializer made ThemePicker render (for example)
+  // "Ivory" against the server's "Voltage" and triggered React #418.
+  //
+  // useSyncExternalStore deliberately uses the default server snapshot during
+  // hydration, then adopts the guard's DOM value immediately afterward.
+  const theme = useSyncExternalStore(subscribeToTheme, readThemeSnapshot, readServerThemeSnapshot);
 
   const setTheme = useCallback((next: Theme): void => {
-    setThemeState(next);
+    applyThemeToDocument(next);
     try {
       localStorage.setItem(THEME_STORAGE_KEY, next);
     } catch {
       // Storage blocked (hardened privacy, embedded webview, quota). The
       // choice still applies for this session; only its persistence is lost.
     }
+    window.dispatchEvent(new Event(THEME_CHANGE_EVENT));
   }, []);
 
   useEffect(() => {
-    const root = document.documentElement;
-    // Write only when it actually changes. Setting an attribute on every
-    // render is how you end up with a mutation loop against anything
-    // observing the document — including the wallet extensions that inject
-    // into this page.
-    if (root.dataset.ozTheme !== theme) root.dataset.ozTheme = theme;
-
-    const scheme = THEME_SCHEME[theme];
-    if (root.style.colorScheme !== scheme) root.style.colorScheme = scheme;
-
     // The static `viewport.themeColor` in the root layout can only advertise
     // one colour per media query; it cannot know which of five themes was
     // picked. Tracking the real choice means writing the tag here.
@@ -66,18 +89,6 @@ export function ThemeProvider({ children }: { children: React.ReactNode }): Reac
     }
     meta.content = THEME_BG[theme];
   }, [theme]);
-
-  // Another tab switched themes. Following it keeps two open windows from
-  // disagreeing about what the app looks like.
-  useEffect(() => {
-    const onStorage = (event: StorageEvent): void => {
-      if (event.key !== null && event.key !== THEME_STORAGE_KEY) return;
-      const next = event.newValue;
-      if (isTheme(next)) setThemeState(next);
-    };
-    window.addEventListener("storage", onStorage);
-    return () => window.removeEventListener("storage", onStorage);
-  }, []);
 
   return <ThemeContext.Provider value={{ theme, setTheme }}>{children}</ThemeContext.Provider>;
 }

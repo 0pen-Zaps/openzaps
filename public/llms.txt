@@ -4,15 +4,19 @@
 
 Key facts:
 - Production v1.1, v3, and v3.1 contracts are live on Robinhood Chain (chain ID 4663). Supported swaps, stitched routes, full-range aeWETH/USDG liquidity, the ozUSDG ERC-4626 receipt, recurring series, and price triggers are exposed through source-backed, allowlisted adapters. The contracts remain pre-external-audit, and deposits carry funds-at-risk warnings. An earlier Base mainnet factory is historical only and is not used by the production app.
+- A separate v3.2 recurring-stack lineage is deployed as a pre-audit candidate with activation canaries pending. The v1.2 exact-owner-pull and permanent-halt lineage remains source-ready and undeployed. Neither is production-cleared or described as live.
 - The token confers no yield, equity, revenue claim, governance, staking, or protocol access guarantee. Live app-level holder utilities exist: wallets holding 100,000+ 0xZAPS unlock auto-refreshing quotes, extended saved-Zap and receipt history, and receipt JSON export in the app (1,000,000+ extends history further). Core workflows are never token-gated.
 - Execution authority is bound in EIP-712-signed policies: fixed adapters, spend ceilings, recipients, deadlines, and postconditions, plus owner-only nonce invalidation and emergency asset recovery.
 
 ## Pages
 
 - [Home](https://www.0xzaps.com): what a Zap is, the authority model, security posture, FAQ
-- [DeFi Zap builder](https://www.0xzaps.com/zap): connect a wallet to design, quote, create, fund, execute, automate, and recover supported policy-bound routes. One route with four surfaces — Start, Compose, Zap now, Automate — selected by `?view=start|design|sign|automate` and reached from the app sidebar
+- [DeFi Zap builder](https://www.0xzaps.com/zap): design, quote, and simulate supported policy-bound routes without a wallet; connect only when owner signing, contract creation, funding, execution, automation, or recovery requires it. One route with five surfaces — Start, Compose, Zap now, Automate, and Connect — selected by `?view=start|design|sign|automate|connect` and reached from the app sidebar. Connect prepares one executor address; it gains no authority until the owner signs matching terms in Automate
+- [Request a Zap](https://www.0xzaps.com/request-a-zap): submit one workflow for a free, human-reviewed authority map covering targets, assets, recipient, trigger, limits, recovery, and forbidden authority. No wallet, deposit, signature, or integration commitment
 - [Explore](https://www.0xzaps.com/explore): the live feed of creations, executions, and recoveries read from Robinhood Chain logs, every Zap the factory deployed, and the verified contract set — one page
+- [My zaps](https://www.0xzaps.com/profile): browser-local designs plus source-backed Zap and automation records associated with the connected owner
 - [Developer docs & security](https://www.0xzaps.com/docs): policy schema, simulation API, templates, execution lifecycle, and the security model (threat model, controls, production gates) at /docs#security
+- [Release evals](https://www.0xzaps.com/evals): dated release-evaluation evidence and its covered source revision
 - [Roadmap](https://www.0xzaps.com/roadmap): current live capabilities, proposed route expansion, submission tooling, and hardening gates
 - [0xZAPS token](https://www.0xzaps.com/token): verified contract, official Clanker market, FAQ
 - [0xZAPS automation fee pot](https://www.0xzaps.com/pot): source-backed pot balances, conversion records, participant credits, rounds, and payouts

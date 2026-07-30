@@ -1,11 +1,11 @@
 {
   "schemaVersion": 1,
-  "updatedAt": "2026-07-27T19:37:00Z",
+  "updatedAt": "2026-07-30T19:15:04Z",
   "project": {
     "name": "OpenZaps",
     "website": "https://www.0xzaps.com",
     "tokenPage": "https://www.0xzaps.com/token",
-    "description": "OpenZaps turn approved DeFi workflows into sealed policy capsules. Hermes can simulate, submit, monitor, alert, and revoke, but it cannot choose arbitrary targets, recipients, assets, or calldata.",
+    "description": "OpenZaps turns supported DeFi workflows into sealed, owner-signed policy capsules. Read-only agent tools may discover and simulate them; an eligible executor may submit only the signed action. No agent receives wallet keys, signing authority, arbitrary calldata, or an automatic revoke right.",
     "x": "https://x.com/0xzaps",
     "farcaster": "https://farcaster.xyz/nodes"
   },
@@ -30,7 +30,7 @@
     "explorer": "https://robinhoodchain.blockscout.com/token/0xDd90bFa4adC7F4401E611AbaC692D939F9F4CB07"
   },
   "disclosures": {
-    "category": "ERC-20 paired with aeWETH in OpenZaps' first bounded live route",
+    "category": "ERC-20 used across bounded buy, sell, stitched-route, Zap-creation fee, and automation-pot flows on Robinhood Chain",
     "noClaims": [
       "revenue",
       "yield",

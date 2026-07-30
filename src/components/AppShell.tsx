@@ -35,7 +35,7 @@ type NavItem = {
   href: string;
   label: string;
   icon: string;
-  /** The `/zap` view this item stands for, when it is one of the four. */
+  /** The `/zap` view this item stands for, when it is one of the five. */
   view?: ZapView;
   chip?: string;
 };
@@ -65,13 +65,13 @@ const GROUPS: readonly NavGroup[] = [
     ],
   },
   {
-    label: "Simulate",
+    label: "Practice",
     items: [
       {
         href: "/virtual-trading",
         label: "Virtual Trading",
         icon: "bars",
-        chip: "paper",
+        chip: "no wallet",
       },
     ],
   },
