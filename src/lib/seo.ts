@@ -28,18 +28,18 @@ type StaticPageSeo = {
  */
 export const STATIC_PAGE_SEO = {
   home: {
-    title: "One-Transaction DeFi Zaps for Agents",
+    title: "Bounded DeFi Zaps for Agents",
     description:
-      "Build one-transaction DeFi Zaps — immutable policy capsules that lock targets, assets, recipients, and calldata before signing. Live on Robinhood Chain.",
+      "Compose bounded DeFi Zaps whose supported hops settle atomically after required approval, creation, and funding confirmations. Live on Robinhood Chain.",
     path: "/",
     ogImage: OG_IMAGE,
     changeFrequency: "weekly",
     priority: 1,
   },
   zap: {
-    title: "Build One-Transaction DeFi Zaps",
+    title: "Build Bounded DeFi Zaps",
     description:
-      "Design, simulate, sign, and run one-transaction DeFi Zaps — bounded policy capsules — on Robinhood Chain. Your wallet keeps control of every action.",
+      "Design, simulate, sign, and run bounded DeFi Zaps on Robinhood Chain. Supported route hops and settlement execute atomically after required setup confirmations.",
     path: "/zap",
     ogImage: "/og/app.png",
     changeFrequency: "weekly",
@@ -111,7 +111,7 @@ export const STATIC_PAGE_SEO = {
   virtualTrading: {
     title: "Virtual DeFi Trading for Agents",
     description:
-      "Paper trade 0xZAPS and aeWETH with 10,000 virtual USDG, canonical Robinhood Chain route quotes, and a browser-local ledger—no wallet or real funds.",
+      "Practice 0xZAPS and aeWETH routes with 10,000 virtual USDG, canonical Robinhood Chain quotes, and a browser-local ledger—no wallet or real funds.",
     path: "/virtual-trading",
     ogImage: "/og/app.png",
     changeFrequency: "daily",
@@ -147,7 +147,7 @@ export const HOME_FAQS = [
   {
     question: "How can an owner stop or recover from an intent?",
     answer:
-      "The owner can invalidate an unused intent nonce and use the contract's emergency-exit path for tracked assets. The deployed policy stays immutable, and the live v1.1 Zap does not expose a generic pause control.",
+      "Recovery is lineage-specific. Live v1.1, v3, and v3.1 owners can invalidate unused signed authority and use the supported emergency-exit path for tracked assets; the v3.2 deployed candidate additionally exposes a one-way permanent policy halt. No control can undo a confirmed execution.",
   },
   {
     question: "Does OpenZaps support every DeFi protocol?",

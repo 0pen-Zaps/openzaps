@@ -2336,7 +2336,7 @@ export default function AppPage(): React.JSX.Element {
       {creationResult ? (
         <CreationWorkspace
           eyebrow={`Creation receipt · ${creationResult.lineage ?? "v1.1"}`}
-          title="Your immutable Zap is live."
+          title="Your immutable Zap contract is deployed."
           detail="The gateway transaction confirmed, the Zap's owner and bytecode were verified through Robinhood RPC, and the reviewed creation-fee floor settled atomically. Funding and execution are separate wallet-confirmed steps."
           facts={[
             {
@@ -2475,7 +2475,7 @@ export default function AppPage(): React.JSX.Element {
                   >
                     {offered.tokenIn.symbol} → {offered.tokenOut.symbol}
                     <em>
-                      <ProtocolStack protocols={protocolsForRouteKind(offered.kind)} size={12} />{" "}
+                      <ProtocolStack protocols={protocolsForRouteKind(offered.kind)} size={16} />{" "}
                       {ROUTE_KIND_LABEL[offered.kind]}
                     </em>
                   </button>

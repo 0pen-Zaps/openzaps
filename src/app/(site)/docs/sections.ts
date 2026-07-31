@@ -8,6 +8,7 @@
  * Renaming one silently degrades an inbound link rather than breaking a build.
  */
 export const DOC_SECTIONS = [
+  { id: "release", label: "Current release map" },
   { id: "authorities", label: "Three authorities" },
   { id: "quickstart", label: "Quickstart" },
   { id: "composer", label: "Execution policy composer" },
@@ -15,7 +16,7 @@ export const DOC_SECTIONS = [
   { id: "policy", label: "Policy schema" },
   { id: "api", label: "Simulation API" },
   { id: "templates", label: "Templates" },
-  { id: "automation", label: "Automation (v3)" },
+  { id: "automation", label: "Automation (v3 / v3.1)" },
   { id: "agents", label: "Connecting an agent" },
   { id: "lifecycle", label: "Execution lifecycle" },
   { id: "sdk", label: "SDK surface" },

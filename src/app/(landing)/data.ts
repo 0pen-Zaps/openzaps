@@ -8,6 +8,7 @@ import {
   encodeChain,
   getBlock,
   makeNode,
+  type BlockKind,
   type ChainNode,
   type FlowShape,
   type ZapRecipe,
@@ -18,6 +19,7 @@ import {
   protocolsForAction,
   protocolsForRouteKind,
   type ProtocolId,
+  type ProtocolInfo,
 } from "@/lib/protocols";
 import { reduceChainToLiveRoute } from "@/lib/deployable";
 import { ROBINHOOD_ADAPTERS, deployedAdapters } from "@/lib/chains";
@@ -36,7 +38,7 @@ export type CardStep = {
   label: string;
   kind: "source" | "action" | "guard" | "sink";
   shape: FlowShape | null;
-  protocols: string[];
+  protocols: ProtocolInfo[];
 };
 
 export type RecipeCard = {
@@ -73,7 +75,7 @@ export function recipeCard(recipe: ZapRecipe): RecipeCard {
       label: block?.name ?? node.blockId,
       kind: block?.kind ?? "action",
       shape: block?.emits ?? block?.accepts ?? null,
-      protocols: protocolsForAction(node.blockId, node.params).map((p) => p.name),
+      protocols: protocolsForAction(node.blockId, node.params),
     };
   });
   return {
@@ -130,6 +132,7 @@ export type RailStop = {
   kind: "asset" | "hop";
   label: string;
   sublabel?: string;
+  protocols?: ProtocolInfo[];
 };
 
 export type Rail = {
@@ -157,9 +160,19 @@ const RAIL_PRESENTATION: Record<
     manualActions: 5,
     stops: [
       { kind: "asset", label: "USDG" },
-      { kind: "hop", label: "Uniswap v4", sublabel: "aeWETH/USDG pool" },
+      {
+        kind: "hop",
+        label: "Uniswap v4",
+        sublabel: "aeWETH/USDG pool",
+        protocols: [{ id: "uniswap-v4", name: protocolName("uniswap-v4") }],
+      },
       { kind: "asset", label: "aeWETH" },
-      { kind: "hop", label: "Uniswap v4", sublabel: "0xZAPS/aeWETH pool" },
+      {
+        kind: "hop",
+        label: "Uniswap v4",
+        sublabel: "0xZAPS/aeWETH pool",
+        protocols: [{ id: "uniswap-v4", name: protocolName("uniswap-v4") }],
+      },
       { kind: "asset", label: "0xZAPS" },
       { kind: "hop", label: "send", sublabel: "owner wallet" },
       { kind: "asset", label: "Token exit" },
@@ -170,9 +183,19 @@ const RAIL_PRESENTATION: Record<
     manualActions: 6,
     stops: [
       { kind: "asset", label: "aeWETH" },
-      { kind: "hop", label: "Uniswap v4", sublabel: "half swapped to USDG" },
+      {
+        kind: "hop",
+        label: "Uniswap v4",
+        sublabel: "half swapped to USDG",
+        protocols: [{ id: "uniswap-v4", name: protocolName("uniswap-v4") }],
+      },
       { kind: "asset", label: "aeWETH + USDG" },
-      { kind: "hop", label: "OpenZaps vault", sublabel: "full-range position" },
+      {
+        kind: "hop",
+        label: "OpenZaps vault",
+        sublabel: "full-range position",
+        protocols: [{ id: "openzaps-vault", name: protocolName("openzaps-vault") }],
+      },
       { kind: "asset", label: "ozRANGE" },
       { kind: "hop", label: "hold", sublabel: "shares to owner" },
       { kind: "asset", label: "LP position" },
@@ -183,9 +206,19 @@ const RAIL_PRESENTATION: Record<
     manualActions: 5,
     stops: [
       { kind: "asset", label: "ozRANGE" },
-      { kind: "hop", label: "OpenZaps vault", sublabel: "burn shares" },
+      {
+        kind: "hop",
+        label: "OpenZaps vault",
+        sublabel: "burn shares",
+        protocols: [{ id: "openzaps-vault", name: protocolName("openzaps-vault") }],
+      },
       { kind: "asset", label: "aeWETH + USDG" },
-      { kind: "hop", label: "Uniswap v4", sublabel: "aeWETH leg to USDG" },
+      {
+        kind: "hop",
+        label: "Uniswap v4",
+        sublabel: "aeWETH leg to USDG",
+        protocols: [{ id: "uniswap-v4", name: protocolName("uniswap-v4") }],
+      },
       { kind: "asset", label: "USDG" },
       { kind: "hop", label: "send", sublabel: "owner wallet" },
       { kind: "asset", label: "Stable exit" },
@@ -211,6 +244,67 @@ export function landingRails(): Rail[] {
       slippageBps: live.deployable ? live.slippageBps : null,
     };
   });
+}
+
+/* ------------------------------------------------------------------ */
+/* Hero assembly: one live recipe rendered as interlocking DeFi bricks. */
+/* ------------------------------------------------------------------ */
+
+export type AssemblyBrick = {
+  key: string;
+  blockId: string;
+  label: string;
+  detail: string;
+  kind: BlockKind;
+  glyph: string;
+  protocols: ProtocolInfo[];
+};
+
+export type AssemblyPlan = {
+  recipeId: string;
+  title: string;
+  result: string;
+  deployable: boolean;
+  bricks: AssemblyBrick[];
+};
+
+/**
+ * Keep the hero honest by deriving it from the same live LP blueprint the
+ * builder opens. The action brick carries both marks because that adapter
+ * swaps in Uniswap v4 and then custodies the position in the OpenZaps range
+ * vault; guards and settlement remain actions, not invented protocols.
+ */
+export function assemblyPlan(): AssemblyPlan {
+  const recipe = RECIPES.find((candidate) => candidate.id === "provide-liquidity");
+  if (!recipe) throw new Error("hero assembly references unknown recipe provide-liquidity");
+  const chain = chainFor(recipe);
+  const live = reduceChainToLiveRoute(chain);
+
+  return {
+    recipeId: recipe.id,
+    title: recipe.name,
+    result: "aeWETH → ozRANGE",
+    deployable: live.deployable,
+    bricks: chain.map((node) => {
+      const block = getBlock(node.blockId);
+      if (!block) throw new Error(`hero assembly references unknown block ${node.blockId}`);
+      const details: Record<string, string> = {
+        "wallet-balance": "fund with aeWETH",
+        "guard-slippage": `${String(node.params.bps ?? 100)} bps maximum`,
+        "add-liquidity": "Uniswap v4 + range vault",
+        "hold-lp": "shares to owner",
+      };
+      return {
+        key: node.uid,
+        blockId: node.blockId,
+        label: block.name,
+        detail: details[node.blockId] ?? block.category,
+        kind: block.kind,
+        glyph: block.glyph,
+        protocols: protocolsForAction(node.blockId, node.params),
+      };
+    }),
+  };
 }
 
 /* ------------------------------------------------------------------ */
@@ -242,7 +336,7 @@ export type GraphEdge = { a: ProtocolId; b: ProtocolId; live: boolean };
 
 export function protocolGraph(): { nodes: GraphNode[]; edges: GraphEdge[] } {
   const deployed = new Set<ProtocolId>();
-  for (const spec of ROBINHOOD_ADAPTERS) {
+  for (const spec of deployedAdapters()) {
     for (const p of protocolsForRouteKind(spec.kind)) deployed.add(p.id);
   }
 

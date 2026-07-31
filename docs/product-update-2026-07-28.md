@@ -4,6 +4,10 @@
 
 *Disclosure: I work on this protocol. Discount accordingly.*
 
+> **Update, 30 July 2026:** This is a historical release snapshot. The ZapDraw web product has since
+> been retired, and its former URLs redirect to Virtual Trading. The immutable ZapOverdraw contract
+> remains onchain, outside the OpenZaps adapter system, with no supported relaunch path.
+
 ---
 
 **tl;dr.** In the last seven days OpenZaps went from single-shot execution — one signed intent, one
@@ -12,9 +16,9 @@ at execution, a reference
 executor, an intent relay, a universal creation-fee gateway, and an agent surface that ships no
 credential because there is nothing to ship. It also shipped a game, discovered the game had quietly
 taken 2,000,000 0xZAPS off two players without telling them, and spent four commits and an
-adversarial review closing every path to that outcome. Everything below is live on chain 4663 and
-**none of it has an external audit.** The most instructive part of the week is section 6, and it is
-not a success story.
+adversarial review closing every path to that outcome. The onchain deployments described below
+existed at this recorded snapshot; current product availability may differ. **None of it has an
+external audit.** The most instructive part of the week is section 6, and it is not a success story.
 
 ---
 

@@ -12,7 +12,7 @@ Bounded Zaps for agent-triggered DeFi. A Zap — the immutable policy capsule th
 [![License: MIT](https://img.shields.io/badge/license-MIT-fffc00.svg)](./LICENSE)
 [![Site](https://img.shields.io/badge/live-0xzaps.com-050505.svg)](https://www.0xzaps.com)
 
-[Website](https://www.0xzaps.com) · [App](https://www.0xzaps.com/zap) · [Docs](https://www.0xzaps.com/docs) · [Token](https://www.0xzaps.com/token) · [X](https://x.com/0xzaps)
+[Website](https://www.0xzaps.com) · [App](https://www.0xzaps.com/zap) · [Virtual Trading](https://www.0xzaps.com/virtual-trading) · [Request a Zap](https://www.0xzaps.com/request-a-zap) · [Docs](https://www.0xzaps.com/docs) · [Token](https://www.0xzaps.com/token) · [X](https://x.com/0xzaps)
 
 </div>
 
@@ -29,7 +29,7 @@ An **OpenZap** is a contract that holds funds and executes exactly one policy it
 - **Execution authority** lives inside the immutable policy, or an EIP-712 typed intent.
 - **Submission authority** is a courier — it picks the moment and nothing else.
 
-The result is pre-committed, tightly bounded authority for a fixed action graph, with an unconditional owner withdraw and revoke path. Not approval-free, and not a universal router — that is the point.
+The result is pre-committed, tightly bounded authority for a fixed action graph. Recovery is lineage-specific: owners can invalidate unused signed authority and recover tracked assets where the deployed lineage supports it; the v3.2 candidate additionally exposes a one-way permanent policy halt. No control can undo a confirmed execution. Not approval-free, and not a universal router — that is the point.
 
 ## What you can Zap today
 
@@ -39,9 +39,11 @@ The result is pre-committed, tightly bounded authority for a fixed action graph,
 | **Recurring Zaps** | One signature authorizes a whole series. The Zap enforces the interval and the total run count onchain, so nothing can run early, twice, or past the end. |
 | **Price triggers** | Fires once when an allowlisted price source crosses the threshold you signed. The Zap re-reads the market itself on every attempt. |
 | **Per-run floors that cannot go stale** | A recurring series derives its minimum output from the price source's spot *for each run*, so a floor signed weeks ago still protects the run happening now. |
-| **Execution policy composition** | Three live blocks bind execution gas, gas price, and executor access. Add the whole stack in one click, edit each bound, and undo the insertion as one canvas change. Gas controls reach one-shot and standing intents; owner-only executor access is enforced by v3/v3.1. |
-| **Anyone can submit** | Each automated run pays a 1% protocol fee from output: 80% to whoever submits it, 20% to the 0xZAPS lottery pot. Owners publish signed intents to a shared pool; executors poll it for work. The pool is untrusted, so the Zap re-verifies every field onchain. |
+| **Execution policy composition** | Three live blocks bind execution gas, gas price, and executor access. Add the whole stack in one click, edit each bound, and undo the insertion as one canvas change. Gas controls reach one-shot and standing intents; owner-only executor access is live in v3/v3.1, while v3.2 remains a deployed candidate. |
+| **Eligible submitters can run automation** | Each automated run pays a 1% protocol fee from output: 80% to whoever is eligible and submits it, 20% to the 0xZAPS lottery pot. An owner may leave submission open, restrict it to the owner, or pin one executor address. The shared intent pool is untrusted, so the Zap re-verifies every field onchain. |
 | **One visible creation fee** | Every Zap created by the current app pays exactly 0.00001 ETH. A gateway calls the existing lineage factory and atomically converts the fee to 0xZAPS through the pinned route; a missed conversion floor reverts creation too. Legacy factories remain directly callable. |
+| **Practice without a wallet** | Virtual Trading starts with 10,000 virtual USDG and uses canonical-head quotes for the same four pinned USDG routes. Fills, positions, and PnL stay in the browser; there is no wallet, deposit, signature, reward, or ranked league. |
+| **Request a missing Zap** | The free request desk turns one proposed workflow into a human-reviewed authority map: targets, assets, recipient, trigger, limits, recovery, and forbidden authority. Submitting a request makes no wallet, funding, signature, or integration commitment. |
 
 The builder at [`/zap`](https://www.0xzaps.com/zap) designs a Zap from typed route and policy blocks,
 tells you which bounds the selected contract can enforce, and hands a deployable design to Zap now
@@ -56,7 +58,7 @@ This is a monorepo. The web app and the Solidity protocol live together.
 
 | Path | What |
 | --- | --- |
-| [`src/app/`](src/app) | The Next.js 16 site, in two route groups. `(landing)` is `/` alone, with its own nav, footer, and token scope; `(site)` is every interior page — `/zap`, `/virtual-trading`, `/explore`, `/profile`, `/pot`, `/docs`, `/evals`, `/token`, `/roadmap`, `/legal` — wrapped in the app shell. `src/app/api/` holds the route handlers; `globals.css` holds the five-theme token layer. |
+| [`src/app/`](src/app) | The Next.js 16 site, in two route groups. `(landing)` is `/` alone, with its own nav, footer, and token scope; `(site)` holds the public product and reference routes — including `/zap`, `/virtual-trading`, `/request-a-zap`, `/explore`, `/profile`, `/pot`, `/docs`, `/evals`, `/token`, `/roadmap`, and `/legal` — wrapped in the app shell. Operator and experimental routes live in the same group but are not implied to be public release surfaces by this inventory. `src/app/api/` holds the route handlers; `globals.css` holds the five-theme token layer. |
 | [`src/components/`](src/components) | UI shared across routes: `AppShell` (sidebar, context bar, and the one `#zapscroll` container that owns the scroll), the theme provider and picker, the `Glyph` set, the wallet session provider, and the footer. |
 | [`src/lib/`](src/lib) | Chain definitions, protocol addresses and ABIs, the block catalog behind the visual builder, the block-pinned exact-policy compiler, the theme registry (`theme.ts`), and the `?view=` contract the sidebar and the consoles both read (`zap-view.ts`). |
 | [`contracts/`](contracts/README.md) | The Solidity protocol, bounded adapters, deploy/smoke scripts, and the Foundry unit / fuzz / invariant / fork suite. The base lineage in [`contracts/src`](contracts/src) is live as v1.1, with the source-only v1.2 owner-pull/halt candidate alongside it; [`v3`](contracts/src/v3/README.md) adds recurring + price-triggered execution and the executor fee/lottery economy; `v3_1` adds per-run floors priced from live spot; the deployed unaudited `v3_2` candidate adds an owner-signed recurring 0xZAPS stack. The v1.2 candidate and v3.2 deployment use isolated exact-fee gateways and creation pots so the active legacy prize round remains untouched. See [`docs/deployments.md`](docs/deployments.md). |

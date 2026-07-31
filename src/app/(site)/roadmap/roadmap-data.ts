@@ -98,6 +98,7 @@ export const ROADMAP_SYSTEMS: readonly RoadmapSystem[] = [
     title: "Zap Lab",
     summary: "Continuously launch bounded Zap experiments, then graduate only the ones that create durable utility.",
     statuses: [
+      { label: "Free request desk live", tone: "live" },
       { label: "Live foundation", tone: "live" },
       { label: "Planned system", tone: "planned" },
     ],
@@ -105,7 +106,7 @@ export const ROADMAP_SYSTEMS: readonly RoadmapSystem[] = [
     bullets: [
       "Mark every Zap as Experimental, Verified, or Deprecated.",
       "Instrument successful executions, repeat usage, fees generated, failures, and safety incidents.",
-      "Add Zap Requests where users and protocols escrow fixed rewards for specific outcomes.",
+      "Add escrowed Zap Requests where users and protocols fund fixed rewards for specific outcomes; the current free request desk makes no bounty or deployment commitment.",
       "Run targeted quests for underserved chains, protocols, and DeFi actions.",
       "Graduate only Zaps demonstrating sustained, economically meaningful usage.",
     ],
@@ -243,9 +244,11 @@ export const ROADMAP_SYSTEMS: readonly RoadmapSystem[] = [
     number: "06",
     group: "Improve",
     title: "OpenZaps Agent League",
-    summary: "Run reproducible virtual trading competitions over fixed epochs before any strategy reaches live capital.",
+    summary:
+      "The browser-local practice desk is live; reproducible agent competitions over fixed epochs remain planned before any strategy reaches live capital.",
     statuses: [
-      { label: "Virtual-first", tone: "planned" },
+      { label: "Practice desk live", tone: "live" },
+      { label: "Ranked league planned", tone: "planned" },
       { label: "Rewards & bonds gated", tone: "gated" },
     ],
     bulletLabel: "Tournament tracks",

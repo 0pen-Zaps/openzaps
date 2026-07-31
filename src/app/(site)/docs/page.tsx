@@ -61,9 +61,40 @@ const executionPolicies = [
   [
     "Executor access",
     "executor",
-    "Automate (v3/v3.1)",
+    "Automate (v3/v3.1 live)",
     "Keeps execution open to anyone or restricts it to the owner. Owner only is the tighter result when blocks are combined.",
   ],
+] as const;
+
+const releaseStates = [
+  {
+    status: "Live · pre-audit",
+    tone: "live",
+    title: "v1.1 / v3 / v3.1",
+    body:
+      "The current one-shot, recurring, and price-triggered lineages are live on Robinhood Chain. v3.1 derives a recurring run floor from an allowlisted spot source at execution.",
+  },
+  {
+    status: "Deployed candidate",
+    tone: "candidate",
+    title: "v3.2 recurring stack",
+    body:
+      "The isolated stack contracts are deployed and configured, but creation, execution, permanent-halt, and evidence canaries remain. Do not treat this lineage as production-cleared.",
+  },
+  {
+    status: "Source-ready · not deployed",
+    tone: "source",
+    title: "v1.2 exact owner pull",
+    body:
+      "The reviewed source path adds exact Permit2 owner pull and an irreversible policy halt. Governance deployment and independent post-deployment canaries have not happened.",
+  },
+  {
+    status: "Public product paths",
+    tone: "live",
+    title: "Practice, request, or connect",
+    body:
+      "Virtual Trading is browser-local and wallet-free. Request a Zap starts a human authority review. Connect pins one executor only inside terms the owner later signs.",
+  },
 ] as const;
 
 // The security model used to be its own page; it now lives here as the last
@@ -102,6 +133,12 @@ function chipFor(production: (typeof POLICY_TEMPLATES)[number]["production"]): s
   return styles.chipMuted;
 }
 
+function releaseChip(tone: (typeof releaseStates)[number]["tone"]): string {
+  if (tone === "live") return styles.chipOk;
+  if (tone === "candidate") return styles.chipWarn;
+  return styles.chipMuted;
+}
+
 export default function DocsPage(): React.JSX.Element {
   return (
     <main className={styles.screen} id="main" data-screen-label="Docs">
@@ -124,8 +161,8 @@ export default function DocsPage(): React.JSX.Element {
             for it. */}
         <p className={styles.lede}>
           A Zap is a contract that holds funds and executes one policy its owner signed. This page documents the policy
-          fields, the simulation API, and the execution lifecycle. Onchain actions are irreversible, so deposit only
-          what you can afford to lose.
+          fields, current release state, the simulation API, and the execution lifecycle. Onchain actions are
+          irreversible, so deposit only what you can afford to lose.
         </p>
         <div className={styles.actions}>
           <Link className={styles.primaryBtn} href="/zap">
@@ -150,11 +187,41 @@ export default function DocsPage(): React.JSX.Element {
             <span className={styles.warnEyebrow}>Audit status</span>
             <strong className={styles.warnTitle}>The contracts have not been externally audited.</strong>
             The contracts are live on {CHAIN.name} and carry bounded swaps through pinned aeWETH ↔ 0xZAPS and aeWETH ↔
-            USDG pools, a stitched USDG → 0xZAPS route, aeWETH/USDG liquidity, and the v3 recurring and price-triggered
-            execution types — with the recipient forced to the owner and the relayer fee cap set to zero. The owner
-            keeps an unconditional withdraw and revoke path. No external audit, formal verification, adapter
-            governance, testnet soak, or live wallet review has completed. Deposited funds are at risk.
+            USDG pools, a stitched USDG → 0xZAPS route, aeWETH/USDG liquidity, and the live v3/v3.1 recurring and
+            price-triggered execution types — with the recipient forced to the owner and the relayer fee cap set to
+            zero. Recovery is lineage-specific: owners can invalidate unused signed authority and recover tracked
+            assets where the deployed lineage supports it. No control can undo a confirmed execution. No external
+            audit, formal verification, adapter governance, testnet soak, or live wallet review has completed.
+            Deposited funds are at risk.
           </p>
+        </section>
+
+        <section className={styles.section} id="release">
+          <h2 className={styles.h2}>Current release map</h2>
+          <p className={styles.prose}>
+            Status belongs to a contract lineage or product path, not to the repository as a whole. Live, deployed
+            candidate, and source-ready are separate states.
+          </p>
+          <div className={styles.cards}>
+            {releaseStates.map((item, index) => (
+              <Reveal as="article" className={styles.card} delay={index * 45} key={item.title}>
+                <h3 className={styles.cardTitle}>{item.title}</h3>
+                <p className={styles.cardBody}>{item.body}</p>
+                <span className={`${styles.chip} ${releaseChip(item.tone)}`}>{item.status}</span>
+              </Reveal>
+            ))}
+          </div>
+          <div className={styles.actions}>
+            <Link className={styles.ghostBtn} href="/virtual-trading">
+              Practice without a wallet
+            </Link>
+            <Link className={styles.ghostBtn} href="/request-a-zap">
+              Request a Zap
+            </Link>
+            <Link className={styles.ghostBtn} href="/roadmap#foundation">
+              Full release map
+            </Link>
+          </div>
         </section>
 
         <section className={styles.section} id="authorities">
@@ -172,12 +239,14 @@ export default function DocsPage(): React.JSX.Element {
         <section className={styles.section} id="quickstart">
           <h2 className={styles.h2}>Quickstart</h2>
           <p className={styles.prose}>
-            The product lives at /zap: Compose is the visual builder, Zap now creates and executes v1.1 Zaps, and
-            Automate creates v3/v3.1 recurring or price-triggered Zaps. The builder compiles a design and names every
-            guard the selected contract does not bind. A deployed route carries its amount, slippage, execution gas,
-            and gas-price cap into Zap now. Automatable designs also carry cadence, Zap count, trigger terms, and
-            executor access into Automate. Anything else saves as a design and cannot deploy today. Simulation never
-            broadcasts a transaction or asks for wallet authority.
+            The product lives at /zap in five surfaces: Start chooses an outcome, Compose builds the route and policy,
+            Zap now creates and executes live v1.1 Zaps, Automate creates live v3/v3.1 recurring or price-triggered
+            Zaps, and Connect prepares an executor address for terms the owner later signs. The builder compiles a
+            design and names every guard the selected contract does not bind. A deployed route carries its amount,
+            slippage, execution gas, and gas-price cap into Zap now. Automatable designs also carry cadence, Zap count,
+            trigger terms, and executor access into Automate. The v3.2 stacking path remains a deployed candidate;
+            anything else saves as a design and cannot deploy today. Simulation never broadcasts a transaction or
+            asks for wallet authority.
           </p>
           <div className={styles.code}>
             <pre>{`curl -X POST ${SITE_URL}/api/policies/simulate \\
@@ -229,10 +298,11 @@ Automate handoff:
   maxGas=3000000&maxFeeGwei=10&executor=owner`}</pre>
           </div>
           <p className={styles.prose}>
-            Gas limit and gas price cap are signed in v1.1 one-shot intents and v3/v3.1 standing intents. Owner-only
-            executor access is enforced by v3/v3.1. The v1.1 one-shot Zap has no submitter restriction, so the builder
-            leaves that field out of its Zap now handoff and shows the limitation before the user proceeds. Invalid or
-            out-of-range handoff values fail closed instead of falling back silently.
+            Gas limit and gas price cap are signed in v1.1 one-shot intents and standing intents. Owner-only executor
+            access is live in v3/v3.1; v3.2 uses the same field but remains a deployed candidate. The v1.1 one-shot Zap
+            has no submitter restriction, so the builder leaves that field out of its Zap now handoff and shows the
+            limitation before the user proceeds. Invalid or out-of-range handoff values fail closed instead of falling
+            back silently.
           </p>
           <div className={styles.actions}>
             <Link className={styles.primaryBtn} href="/zap?view=design">
@@ -257,7 +327,7 @@ Automate handoff:
               ["adapter", "An allowlisted adapter. There is no field for an arbitrary target plus calldata, so there is nothing to point at one."],
               ["allowedSubmitters", "A draft field. The v1.1 policy cannot bind a submitter, so whoever executes the Zap chooses the path."],
               ["maxGas / maxFeePerGas", "Signed execution ceilings carried from the composer into one-shot and standing intents. A run outside either cap reverts."],
-              ["executor", "A v3/v3.1 standing-intent field. Zero address leaves submission open; owner-only pins the connected owner wallet. v1.1 does not bind a submitter."],
+              ["executor", "A standing-intent field: live in v3/v3.1 and present in the v3.2 deployed candidate. Zero address leaves submission open; a nonzero address pins one eligible submitter. v1.1 does not bind a submitter."],
               ["postconditions", "Balance-delta, allowance-reset, recipient, and tracked-asset assertions, checked after the adapter returns. A failed assertion reverts the execution."],
             ].map(([field, detail], i) => (
               <Reveal className={styles.def} delay={i * 45} key={field}>
@@ -275,7 +345,8 @@ Automate handoff:
             cap, a gas envelope, and broadcast: false. It never submits anything, so it is safe to run in CI or as an
             agent preflight. The hash is a local checksum that tells two drafts apart; it is not the onchain policy
             hash. The estimate is computed from fixed rates held in this app, not read from a pool, so it is not a
-            price.
+            price. In production the endpoint fails closed unless both the exact-policy API and durable-quota gates are
+            active; an unavailable response is not a simulated pass.
           </p>
           <div className={styles.code}>
             <pre>{`type SimulationResponse = {
@@ -299,6 +370,12 @@ Automate handoff:
 
         <section className={styles.section} id="templates">
           <h2 className={styles.h2}>Policy templates</h2>
+          <p className={styles.prose}>
+            The cards below are built-in draft starters. The public registry is readable only when configured;
+            wallet-attributed publication and exact-version subscriptions are separate production-gated writes. A
+            subscription is convenience metadata, not execution authority, reputation, or permission to follow an
+            unreviewed latest version.
+          </p>
           <div className={styles.cards}>
             {POLICY_TEMPLATES.map((template) => (
               <article className={styles.card} key={template.id}>
@@ -313,11 +390,16 @@ Automate handoff:
         </section>
 
         <section className={styles.section} id="automation">
-          <h2 className={styles.h2}>Automation &amp; the executor economy (v3)</h2>
+          <h2 className={styles.h2}>Automation &amp; the executor economy (v3 / v3.1)</h2>
           <p className={styles.prose}>
             The v3 Zap adds two standing execution types to the one-shot policy. Both are owner-signed once and
             condition-gated <em>by the contract</em>, so an eligible executor can submit a run the Zap owes, and the
             chain rejects every run it does not.
+          </p>
+          <p className={styles.prose}>
+            v3.2 adds an owner-signed post-fee output slice that stacks 0xZAPS, two spot-derived floors, and a one-way
+            permanent policy halt. Its contracts are deployed and pre-audit, but the lineage remains a candidate until
+            its production creation, execution, halt, and evidence canaries pass.
           </p>
           <div className={styles.cards}>
             <article className={styles.card}>
@@ -367,7 +449,7 @@ Automate handoff:
             Build one in <Link href="/zap?view=design">Compose</Link>, then review it in{" "}
             <Link href="/zap?view=automate">Automate</Link>. The signed intent exports as a JSON file an eligible
             executor can serve; the reference executor daemon lives in <code>executor/</code> in the repository. The v3
-            contracts are live on Robinhood Chain.
+            and v3.1 contracts are live on Robinhood Chain.
           </p>
         </section>
 
@@ -468,8 +550,9 @@ if (artifact.status === "warn") reviewStressCases(artifact)`}</pre>
           <p className={styles.prose}>
             Bounded aeWETH ↔ 0xZAPS creation is open on {CHAIN.name}, and the funds a Zap holds are real. Production
             use still needs external audit, formal verification, adapter governance, and a monitored launch path.
-            Onchain actions are irreversible: once an execution lands, nothing here can undo it. The owner keeps an
-            unconditional withdraw and revoke path. Deposit only what you can afford to lose.
+            Onchain actions are irreversible: once an execution lands, nothing here can undo it. Owners retain
+            lineage-specific nonce or series invalidation and tracked-asset recovery controls; the v3.2 candidate also
+            exposes a one-way permanent policy halt. Deposit only what you can afford to lose.
           </p>
           <div className={styles.code}>
             <pre>{`User / Safe
@@ -478,10 +561,10 @@ if (artifact.status === "warn") reviewStressCases(artifact)`}</pre>
   -> allowlisted adapter
   -> recipient-bound postcondition
 
-Hermes:
-  simulate -> submit -> monitor -> alert -> revoke escalation
-  no discretionary custody
-  no arbitrary calldata`}</pre>
+Agent / executor:
+  discover -> simulate -> eligible submission -> public evidence
+  no wallet key or signing authority
+  no arbitrary calldata or automatic revoke right`}</pre>
           </div>
         </section>
 

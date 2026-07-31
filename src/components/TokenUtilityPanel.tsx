@@ -1,6 +1,7 @@
 import Link from "next/link";
 
 import { BuyButton } from "./BuyButton";
+import { ProtocolLogo } from "./ProtocolLogo";
 import { TOKEN } from "@/lib/config";
 import styles from "./TokenUtilityPanel.module.css";
 
@@ -35,7 +36,10 @@ export function TokenUtilityPanel({ className = "", id }: TokenUtilityPanelProps
 
       <div className={styles.utility} aria-label={`Where ${TOKEN.symbol} is used and what holding it unlocks`}>
         <div>
-          <span>Live route</span>
+          <span className={styles.protocolLabel}>
+            <ProtocolLogo protocol="uniswap-v4" size={20} />
+            <em>Live route</em>
+          </span>
           <strong>aeWETH → {TOKEN.symbol}</strong>
           <p>Pinned Uniswap v4 pool, one bounded policy execution.</p>
         </div>

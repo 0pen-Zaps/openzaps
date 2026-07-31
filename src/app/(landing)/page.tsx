@@ -32,10 +32,11 @@ import { RouteRail } from "./RouteRail";
 import { SecurityPanel } from "./SecurityPanel";
 import { ShareLinks } from "./ShareLinks";
 import { VelocityFx } from "./VelocityFx";
+import { ZapAssembly } from "./ZapAssembly";
 import { ZapCards } from "./ZapCards";
-import { ZapCore } from "./ZapCore";
 import {
   agentPlans,
+  assemblyPlan,
   landingCards,
   landingMetrics,
   landingRails,
@@ -84,6 +85,49 @@ const EXECUTION_POLICIES = [
   },
 ] as const;
 
+const RECENT_PATHS = [
+  {
+    glyph: "bars",
+    status: "Available · no wallet",
+    tone: "live",
+    title: "Practice with virtual USDG",
+    detail:
+      "Trade the four pinned USDG routes with 10,000 virtual USDG. Quotes are pinned to one canonical chain head; fills and PnL stay in this browser.",
+    href: "/virtual-trading",
+    action: "Open Virtual Trading",
+  },
+  {
+    glyph: "sparkle",
+    status: "Available · human review",
+    tone: "live",
+    title: "Request a bounded Zap",
+    detail:
+      "Describe one workflow. We map its targets, assets, recipient, trigger, limits, recovery, and forbidden authority—with no wallet or integration commitment.",
+    href: "/request-a-zap",
+    action: "Request a Zap",
+  },
+  {
+    glyph: "plug",
+    status: "Live · owner-signed",
+    tone: "live",
+    title: "Connect one executor",
+    detail:
+      "Pin an executor address inside a standing intent. The agent may choose when to submit an eligible run; it cannot change the route or its terms.",
+    href: "/zap?view=connect",
+    action: "Connect an agent",
+  },
+  {
+    glyph: "repeat",
+    status: "Candidate · canaries pending",
+    tone: "candidate",
+    title: "Recurring 0xZAPS stack",
+    detail:
+      "The v3.2 stack is deployed and pre-audit. It remains a release candidate until its creation, execution, permanent-halt, and evidence canaries pass.",
+    href: "/roadmap#foundation",
+    action: "See the release map",
+  },
+] as const;
+
 export const metadata: Metadata = pageMetadata({
   ...STATIC_PAGE_SEO.home,
   keywords: [
@@ -115,6 +159,7 @@ const landingJsonLd = {
 
 export default function LandingPage(): React.JSX.Element {
   const graph = protocolGraph();
+  const assembly = assemblyPlan();
   const plans = agentPlans();
   const metrics = landingMetrics();
   const shareable = shareableCards();
@@ -207,7 +252,7 @@ export default function LandingPage(): React.JSX.Element {
             </div>
           </div>
           <div className={styles.heroVisual}>
-            <ZapCore />
+            <ZapAssembly plan={assembly} />
           </div>
           <div className={styles.scrollCue} aria-hidden="true">
             Scroll
@@ -219,6 +264,56 @@ export default function LandingPage(): React.JSX.Element {
 
         {/* ======================== THE PROBLEM ============================= */}
         <Problem />
+
+        {/* ======================== RECENTLY SHIPPED ======================== */}
+        <section className={styles.section} aria-labelledby="recent-title">
+          <span
+            className={styles.ghostWord}
+            data-depth="1.08"
+            style={{ top: "1%", right: "1%" }}
+            aria-hidden="true"
+          >
+            ENTER
+          </span>
+          <div className="container">
+            <Reveal as="header" className={styles.sectionHead}>
+              <p className={styles.kicker}>Recently shipped</p>
+              <h2 id="recent-title" className={styles.sectionTitle}>
+                More ways in. The same hard boundary.
+              </h2>
+              <p className={styles.sectionLead}>
+                Practice without a wallet, ask for a workflow before committing,
+                or connect one executor to terms you sign. Every surface says
+                exactly when authority begins—and what remains a candidate.
+              </p>
+            </Reveal>
+
+            <div className={styles.recentGrid}>
+              {RECENT_PATHS.map((path, index) => (
+                <Reveal
+                  as="article"
+                  className={styles.recentCard}
+                  delay={index * 70}
+                  key={path.title}
+                >
+                  <div className={styles.recentCardTop}>
+                    <span className={styles.recentGlyph} aria-hidden="true">
+                      <BlockGlyph name={path.glyph} />
+                    </span>
+                    <span className={styles.recentStatus} data-tone={path.tone}>
+                      {path.status}
+                    </span>
+                  </div>
+                  <h3>{path.title}</h3>
+                  <p>{path.detail}</p>
+                  <Link href={path.href} className={styles.recentLink}>
+                    {path.action} <span aria-hidden="true">→</span>
+                  </Link>
+                </Reveal>
+              ))}
+            </div>
+          </div>
+        </section>
 
         {/* ================= ONE ACTION, MANY PROTOCOLS ===================== */}
         <section className={styles.section} aria-labelledby="routes-title">
@@ -303,8 +398,9 @@ export default function LandingPage(): React.JSX.Element {
 
             <p className={styles.executionPolicyCaveat}>
               Gas limit and gas price cap bind Zap now and Automate intents. Owner-only
-              executor access is enforced by v3/v3.1 automation; the v1.1 one-shot handoff
-              discloses that it cannot restrict the submitter.
+              executor access is live in v3/v3.1 automation; v3.2 remains a deployed
+              candidate. The v1.1 one-shot handoff discloses that it cannot restrict
+              the submitter.
             </p>
           </div>
         </section>

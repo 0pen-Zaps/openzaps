@@ -52,7 +52,7 @@
   flex-direction: column;
   gap: 2px;
   /* A sticky box with no height ceiling has no room to pin — this repo has
-     already shipped one that never pinned. Fourteen entries is taller than a
+     already shipped one that never pinned. The full outline is taller than a
      short laptop viewport; 106px is the context bar plus the shell's own top
      padding. */
   max-height: calc(100vh - 106px);

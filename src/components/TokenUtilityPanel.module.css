@@ -99,6 +99,16 @@
   font-variant-numeric: tabular-nums;
 }
 
+.utility .protocolLabel {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.protocolLabel em {
+  font-style: normal;
+}
+
 .utility strong {
   color: var(--ink);
   font-size: 0.9rem;
