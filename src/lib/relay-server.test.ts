@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   RelayQueryError,
@@ -15,8 +15,15 @@ const AGENT = "0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC" as const;
 const ZAP = "0x9941dD72373429C36F82D888dbcbab080038f033" as const;
 const ID = "123e4567-e89b-42d3-a456-426614174000";
 
+beforeEach(() => {
+  vi.stubEnv("NODE_ENV", "test");
+  vi.stubEnv("SUPABASE_URL", "http://127.0.0.1:54321");
+  vi.stubEnv("SUPABASE_SERVICE_ROLE_KEY", "test-service-role-key");
+});
+
 afterEach(() => {
   vi.unstubAllGlobals();
+  vi.unstubAllEnvs();
 });
 
 describe("relayListFilter", () => {

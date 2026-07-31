@@ -14,6 +14,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { basename, dirname, join } from "node:path";
+import { executorDurableJsonReplacer } from "./redaction.mjs";
 
 const HEX_ADDR = /^0x[0-9a-fA-F]{40}$/;
 const HEX_32 = /^0x[0-9a-fA-F]{64}$/;
@@ -202,7 +203,10 @@ export function writeState(stateFile, state, fsOps = DEFAULT_STATE_FS) {
   let renamed = false;
   try {
     temporaryFd = fsOps.openSync(tmp, "w", 0o600);
-    fsOps.writeFileSync(temporaryFd, `${JSON.stringify(state, null, 2)}\n`);
+    fsOps.writeFileSync(
+      temporaryFd,
+      `${JSON.stringify(state, executorDurableJsonReplacer, 2)}\n`,
+    );
     fsOps.fsyncSync(temporaryFd);
     fsOps.closeSync(temporaryFd);
     temporaryFd = undefined;

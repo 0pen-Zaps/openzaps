@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 
+import { registerExecutorSensitiveValues } from "./redaction.mjs";
 import { readState, writeState } from "./store.mjs";
 
 test("writeState fsyncs the temporary file before rename and the parent directory after", () => {
@@ -99,4 +100,35 @@ test("durable state round-trips pending receipt evidence", () => {
 
   writeState(stateFile, state);
   assert.deepEqual(readState(stateFile), state);
+});
+
+test("durable state preserves signed bytes when they collide with a registered credential", () => {
+  const dir = mkdtempSync(join(tmpdir(), "openzaps-state-redaction-collision-"));
+  const stateFile = join(dir, "state.json");
+  const serializedTransaction = "0x02f00dfacecafebabe";
+  const txHash = `0x${"f00dface".repeat(8)}`;
+  registerExecutorSensitiveValues({
+    credentials: ["Bearer f00dface"],
+  });
+  const state = {
+    receiptOutbox: {
+      [txHash]: {
+        txHash,
+        serializedTransaction,
+        lastError: "relay rejected Bearer f00dface",
+      },
+    },
+  };
+
+  writeState(stateFile, state);
+  const persisted = readState(stateFile);
+  assert.equal(persisted.receiptOutbox[txHash].txHash, txHash);
+  assert.equal(
+    persisted.receiptOutbox[txHash].serializedTransaction,
+    serializedTransaction,
+  );
+  assert.equal(
+    persisted.receiptOutbox[txHash].lastError,
+    "relay rejected [redacted]",
+  );
 });

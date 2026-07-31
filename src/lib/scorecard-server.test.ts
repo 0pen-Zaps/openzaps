@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   buildExecutorScorecard,
@@ -11,6 +11,16 @@ import {
 
 const EXECUTOR = "0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC";
 const ASSET = "0xDd90bFa4adC7F4401E611AbaC692D939F9F4CB07";
+
+beforeEach(() => {
+  vi.stubEnv("NODE_ENV", "test");
+  vi.stubEnv("SUPABASE_URL", "http://127.0.0.1:54321");
+  vi.stubEnv("SUPABASE_SERVICE_ROLE_KEY", "test-service-role-key");
+});
+
+afterEach(() => {
+  vi.unstubAllEnvs();
+});
 
 describe("executor scorecard", () => {
   it("aggregates only verified receipt evidence and never confers authority", () => {

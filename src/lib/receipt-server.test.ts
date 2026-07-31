@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { encodeFunctionData, keccak256, type Hex, type PublicClient } from "viem";
 
 import {
@@ -15,11 +15,21 @@ import {
   type RelayReceiptBinding,
 } from "@/lib/receipt-server";
 import { expectedCloneRuntime } from "@/lib/openzap";
-import { OPENZAP_V3_CONTRACTS } from "@/lib/robinhood";
+import { OPENZAP_V3_CONTRACTS, OPENZAP_V3_1_CONTRACTS } from "@/lib/robinhood";
 
 const ID = "123e4567-e89b-42d3-a456-426614174000";
 const ZAP = "0x9941dD72373429C36F82D888dbcbab080038f033";
 const OWNER = "0x70997970C51812dc3A010C7d01b50e0d17dc79C8";
+
+beforeEach(() => {
+  vi.stubEnv("NODE_ENV", "test");
+  vi.stubEnv("SUPABASE_URL", "http://127.0.0.1:54321");
+  vi.stubEnv("SUPABASE_SERVICE_ROLE_KEY", "test-service-role-key");
+});
+
+afterEach(() => {
+  vi.unstubAllEnvs();
+});
 
 describe("receipt request and calldata verification", () => {
   it("accepts only a transaction hash plus relay UUID", () => {
@@ -190,6 +200,61 @@ describe("receipt request and calldata verification", () => {
 });
 
 describe("receipt storage immutability", () => {
+  it("rejects a verified storage row with incomplete provenance before Guardian can consume it", async () => {
+    const fetchMock = vi.fn().mockResolvedValueOnce(
+      new Response(JSON.stringify([
+        receiptRow({
+          factory: null,
+          implementation: null,
+          implementation_code_hash: null,
+          capsule_runtime_hash: null,
+          creation_tx_hash: null,
+        }),
+      ]), { status: 200 }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    try {
+      await expect(latestReceiptForIntent(ID, 123n)).rejects.toMatchObject({
+        code: "storage",
+        message: "Stored verified receipt has malformed capsule provenance.",
+      });
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it.each([
+    {
+      name: "factory assigned to a different intent kind",
+      overrides: { intent_kind: "recurring-relative" },
+    },
+    {
+      name: "implementation outside the factory lineage",
+      overrides: { implementation: OPENZAP_V3_1_CONTRACTS.implementation.toLowerCase() },
+    },
+    {
+      name: "implementation runtime hash outside the factory commitment",
+      overrides: { implementation_code_hash: `0x${"34".repeat(32)}` },
+    },
+    {
+      name: "noncanonical EIP-1167 clone runtime hash",
+      overrides: { capsule_runtime_hash: `0x${"56".repeat(32)}` },
+    },
+  ])("rejects verified storage provenance with $name", async ({ overrides }) => {
+    const fetchMock = vi.fn().mockResolvedValueOnce(
+      new Response(JSON.stringify([receiptRow(overrides)]), { status: 200 }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    try {
+      await expect(latestReceiptForIntent(ID, 123n)).rejects.toMatchObject({
+        code: "storage",
+        message: "Stored verified receipt does not match its configured capsule lineage.",
+      });
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   it("replays by ignoring the conflict and returning the unchanged stored evidence", async () => {
     const stored = receiptRow({ confirmations: 12 });
     const fetchMock = vi
@@ -263,8 +328,8 @@ function executionReceipt(confirmations: number): ExecutionReceiptRecord {
       lineage: "v3",
       factory: OPENZAP_V3_CONTRACTS.factory,
       implementation: OPENZAP_V3_CONTRACTS.implementation,
-      implementationCodeHash: `0x${"34".repeat(32)}`,
-      capsuleRuntimeHash: `0x${"56".repeat(32)}`,
+      implementationCodeHash: "0x99c49515bd0a7038c216a0d710676c4c63bb7dd09108de5fddca885542057149",
+      capsuleRuntimeHash: keccak256(expectedCloneRuntime(OPENZAP_V3_CONTRACTS.implementation)),
       creationTxHash: `0x${"78".repeat(32)}`,
       creationBlock: "90",
     },
@@ -296,8 +361,8 @@ function receiptRow(overrides: Record<string, unknown> = {}): Record<string, unk
     event_name: receipt.eventName,
     event_payload: receipt.eventPayload,
     provenance_verified: true,
-    factory: receipt.provenance?.factory,
-    implementation: receipt.provenance?.implementation,
+    factory: receipt.provenance?.factory.toLowerCase(),
+    implementation: receipt.provenance?.implementation.toLowerCase(),
     implementation_code_hash: receipt.provenance?.implementationCodeHash,
     capsule_runtime_hash: receipt.provenance?.capsuleRuntimeHash,
     creation_tx_hash: receipt.provenance?.creationTxHash,

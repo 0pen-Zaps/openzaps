@@ -20,9 +20,11 @@ import {
   type PublicPolicyTemplate,
 } from "@/lib/policy-templates";
 import { readBoundedJsonBody } from "@/lib/request-body";
+import {
+  openZapsSupabaseConfiguration,
+  requireOpenZapsSupabaseConfiguration,
+} from "@/lib/supabase-config";
 
-const SUPABASE_URL = process.env.SUPABASE_URL;
-const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const TEMPLATE_TABLE = "policy_templates";
 const SUBSCRIPTION_RPC = "set_policy_template_subscription";
 const SUBSCRIPTION_SNAPSHOT_RPC = "get_policy_template_subscription_snapshot";
@@ -112,17 +114,21 @@ export class PolicyTemplateSubscriptionAdmissionError extends Error {
 }
 
 export function policyRegistryConfigured(): boolean {
-  return Boolean(SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY);
+  return openZapsSupabaseConfiguration() !== null;
 }
 
 export function policyTemplatePublishingEnabled(
   env: {
     NODE_ENV?: string;
     OPENZAPS_POLICY_TEMPLATE_PUBLISHING_ENABLED?: string;
+    OPENZAPS_POLICY_TEMPLATE_PUBLISHING_DURABLE_QUOTA_ENABLED?: string;
   } = process.env,
 ): boolean {
-  return env.NODE_ENV !== "production"
-    || env.OPENZAPS_POLICY_TEMPLATE_PUBLISHING_ENABLED === "true";
+  if (env.NODE_ENV !== "production") return true;
+  return (
+    env.OPENZAPS_POLICY_TEMPLATE_PUBLISHING_ENABLED === "true"
+    && env.OPENZAPS_POLICY_TEMPLATE_PUBLISHING_DURABLE_QUOTA_ENABLED === "true"
+  );
 }
 
 export function policyTemplateSubscriptionsEnabled(
@@ -671,13 +677,17 @@ function validCursorFields(cursor: PolicyTemplateCursor): boolean {
 }
 
 function registryUrl(path: string): string {
-  return `${SUPABASE_URL}/rest/v1/${path}`;
+  return new URL(
+    path,
+    requireOpenZapsSupabaseConfiguration().restUrl,
+  ).toString();
 }
 
 function registryHeaders(extra: Record<string, string> = {}): Record<string, string> {
+  const { serviceRoleKey } = requireOpenZapsSupabaseConfiguration();
   return {
-    apikey: SUPABASE_SERVICE_ROLE_KEY as string,
-    authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+    apikey: serviceRoleKey,
+    authorization: `Bearer ${serviceRoleKey}`,
     "content-type": "application/json",
     ...extra,
   };

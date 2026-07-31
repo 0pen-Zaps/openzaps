@@ -65,9 +65,16 @@ export function parseLateBlockRpcUrls(value) {
       throw new Error("late-block RPC URLs must use distinct origins");
     }
     origins.add(url.origin);
-    endpoints.push({ url: candidate, origin: url.origin });
+    const endpoint = {};
+    Object.defineProperties(endpoint, {
+      // Provider URLs may carry credentials. Callers can access the exact transport material, but
+      // generic config serialization and structured diagnostics cannot enumerate it.
+      url: { value: candidate, enumerable: false },
+      origin: { value: url.origin, enumerable: false },
+    });
+    endpoints.push(Object.freeze(endpoint));
   }
-  return endpoints;
+  return Object.freeze(endpoints);
 }
 
 /**

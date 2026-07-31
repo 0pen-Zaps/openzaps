@@ -28,6 +28,9 @@ export const EXECUTION_RECEIPTS_TABLE = "execution_receipts";
 
 const TX_HASH = /^0x[0-9a-fA-F]{64}$/;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const STORED_ADDRESS = /^0x[0-9a-f]{40}$/;
+const STORED_HASH = /^0x[0-9a-f]{64}$/;
+const STORED_UINT = /^(0|[1-9][0-9]{0,77})$/;
 
 /**
  * The receipt verifier deliberately owns a small, exact ABI. Decoding calldata and emitted logs
@@ -208,6 +211,7 @@ type ExpectedCapsuleLineage = {
   lineage: ExecutionReceiptProvenance["lineage"];
   factory: Address;
   implementation: Address;
+  implementationCodeHash: Hex;
 };
 
 function expectedCapsuleLineage(kind: RelayIntentKind): ExpectedCapsuleLineage {
@@ -216,6 +220,7 @@ function expectedCapsuleLineage(kind: RelayIntentKind): ExpectedCapsuleLineage {
       lineage: "v3.1",
       factory: OPENZAP_V3_1_CONTRACTS.factory,
       implementation: OPENZAP_V3_1_CONTRACTS.implementation,
+      implementationCodeHash: "0xe18008b64e593526441c989e3ade3b12c056a4dfe9b7e34e59a8f124f4be979c",
     };
   }
   if (kind === "recurring-stack") {
@@ -223,6 +228,7 @@ function expectedCapsuleLineage(kind: RelayIntentKind): ExpectedCapsuleLineage {
       lineage: "v3.2",
       factory: OPENZAP_V3_2_CONTRACTS.factory,
       implementation: OPENZAP_V3_2_CONTRACTS.implementation,
+      implementationCodeHash: "0xe271b762131d9e198769ed44124fa52eef4051e00da517716136dae5bfcef321",
     };
   }
   if (kind === "recurring" || kind === "trigger") {
@@ -230,21 +236,10 @@ function expectedCapsuleLineage(kind: RelayIntentKind): ExpectedCapsuleLineage {
       lineage: "v3",
       factory: OPENZAP_V3_CONTRACTS.factory,
       implementation: OPENZAP_V3_CONTRACTS.implementation,
+      implementationCodeHash: "0x99c49515bd0a7038c216a0d710676c4c63bb7dd09108de5fddca885542057149",
     };
   }
   throw new ReceiptVerificationError("Intent kind has no configured capsule lineage.", "mismatch");
-}
-
-function lineageForFactory(factory: Address): ExecutionReceiptProvenance["lineage"] {
-  if (isAddressEqual(factory, OPENZAP_V3_CONTRACTS.factory)) return "v3";
-  if (isAddressEqual(factory, OPENZAP_V3_1_CONTRACTS.factory)) return "v3.1";
-  if (
-    OPENZAP_V3_2_CONTRACTS.factory !== zeroAddress
-    && isAddressEqual(factory, OPENZAP_V3_2_CONTRACTS.factory)
-  ) {
-    return "v3.2";
-  }
-  throw new ReceiptVerificationError("Stored receipt names an unknown capsule factory.", "storage");
 }
 
 const capsuleProvenanceAbi = parseAbi([
@@ -629,27 +624,75 @@ function receiptToRow(receipt: ExecutionReceiptRecord) {
   };
 }
 
+function verifiedProvenanceFromRow(
+  row: Record<string, unknown>,
+): ExecutionReceiptProvenance | null {
+  if (row.provenance_verified !== true) return null;
+
+  const creationBlock = String(row.creation_block ?? "");
+  const receiptBlock = String(row.block_number ?? "");
+  const intentKind = row.intent_kind;
+  if (
+    (
+      intentKind !== "recurring"
+      && intentKind !== "recurring-relative"
+      && intentKind !== "recurring-stack"
+      && intentKind !== "trigger"
+    )
+    || typeof row.factory !== "string"
+    || !STORED_ADDRESS.test(row.factory)
+    || typeof row.implementation !== "string"
+    || !STORED_ADDRESS.test(row.implementation)
+    || typeof row.implementation_code_hash !== "string"
+    || !STORED_HASH.test(row.implementation_code_hash)
+    || typeof row.capsule_runtime_hash !== "string"
+    || !STORED_HASH.test(row.capsule_runtime_hash)
+    || typeof row.creation_tx_hash !== "string"
+    || !STORED_HASH.test(row.creation_tx_hash)
+    || !STORED_UINT.test(creationBlock)
+    || !STORED_UINT.test(receiptBlock)
+    || BigInt(creationBlock) > BigInt(receiptBlock)
+  ) {
+    throw new ReceiptVerificationError(
+      "Stored verified receipt has malformed capsule provenance.",
+      "storage",
+    );
+  }
+
+  const expected = expectedCapsuleLineage(intentKind);
+  const factory = getAddress(row.factory);
+  const implementation = getAddress(row.implementation);
+  const expectedCapsuleRuntimeHash = keccak256(
+    expectedCloneRuntime(expected.implementation),
+  );
+  if (
+    expected.factory === zeroAddress
+    || expected.implementation === zeroAddress
+    || !isAddressEqual(factory, expected.factory)
+    || !isAddressEqual(implementation, expected.implementation)
+    || row.implementation_code_hash.toLowerCase() !== expected.implementationCodeHash.toLowerCase()
+    || row.capsule_runtime_hash.toLowerCase() !== expectedCapsuleRuntimeHash.toLowerCase()
+  ) {
+    throw new ReceiptVerificationError(
+      "Stored verified receipt does not match its configured capsule lineage.",
+      "storage",
+    );
+  }
+
+  return {
+    verified: true,
+    lineage: expected.lineage,
+    factory,
+    implementation,
+    implementationCodeHash: row.implementation_code_hash as Hex,
+    capsuleRuntimeHash: row.capsule_runtime_hash as Hex,
+    creationTxHash: row.creation_tx_hash as Hex,
+    creationBlock,
+  };
+}
+
 function rowToReceipt(row: Record<string, unknown>): ExecutionReceiptRecord {
-  const provenance =
-    row.provenance_verified === true
-    && typeof row.factory === "string"
-    && typeof row.implementation === "string"
-    && typeof row.implementation_code_hash === "string"
-    && typeof row.capsule_runtime_hash === "string"
-    && typeof row.creation_tx_hash === "string"
-    && row.creation_block !== null
-    && row.creation_block !== undefined
-      ? {
-          verified: true as const,
-          lineage: lineageForFactory(getAddress(row.factory)),
-          factory: getAddress(row.factory),
-          implementation: getAddress(row.implementation),
-          implementationCodeHash: row.implementation_code_hash as Hex,
-          capsuleRuntimeHash: row.capsule_runtime_hash as Hex,
-          creationTxHash: row.creation_tx_hash as Hex,
-          creationBlock: String(row.creation_block),
-        }
-      : null;
+  const provenance = verifiedProvenanceFromRow(row);
   return {
     id: String(row.id),
     receiptVersion: 1,

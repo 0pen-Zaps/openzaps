@@ -37,7 +37,8 @@ node executor/index.mjs once     # one evaluation pass
 node executor/index.mjs start    # the loop (what launchd runs)
 ```
 
-Host it on this machine (macOS LaunchAgent, restarts on crash and at login):
+Host it on this machine (macOS LaunchAgent, restarts on crash and at login). With no provider file
+or signer key supplied, this installs a safe watch-only agent:
 
 ```bash
 ./executor/install-launchd.sh          # install + start
@@ -53,7 +54,8 @@ tail -f ~/Library/Logs/openzaps-executor.log
   0x-prefixed private key (or inject `OPENZAPS_EXECUTOR_PRIVATE_KEY` through a secret manager).
   The key alone does **not** enable writes: an approved adapter manifest and the private-relay
   quorum described below must also pass. This wallet only pays gas and receives fees. Never reuse
-  a wallet that holds anything you care about.
+  a wallet that holds anything you care about. The supplied LaunchAgent template deliberately sets
+  neither signer variable, so installing it leaves broadcasting off.
 
 ## Intent store
 
@@ -66,12 +68,16 @@ codehash, immutable `FACTORY`/policy reads, and the indexed `ZapCreated` log mus
 Unknown lineages or uncertain RPC reads fail closed. Consumed, cancelled, or expired intents are
 archived to `~/.openzaps/executor/done/`, never deleted.
 
-Configuration lives in `~/.openzaps/executor/config.json` or env:
+Non-secret configuration lives in `~/.openzaps/executor/config.json` or env:
 `OPENZAPS_RPC_URL`, `OPENZAPS_CHAIN_ID`, `OPENZAPS_POLL_MS`, `OPENZAPS_INTENTS_DIR`,
 `OPENZAPS_LOTTERY_POT`, `OPENZAPS_MAX_FEE_PER_GAS`. Defaults target Robinhood Chain (4663) via
 `https://rpc.mainnet.chain.robinhood.com`. Set `OPENZAPS_RPC_URLS` (comma-separated) to run on a
 fallback transport — every request tries the endpoints in order, so one flaky RPC never idles the
-bundler. That transport is availability only; it is not signer quorum. `OPENZAPS_CONFIRMATIONS`
+bundler. These legacy/non-secret RPC settings accept only credential-free HTTPS origins with no
+path, query, fragment, or embedded username/password; non-production local/test processes may use
+an HTTP loopback root. Authenticated hosted primary/fallback endpoints belong only in the protected
+`rpcUrls` array described below. That transport is availability only; it is not signer quorum.
+`OPENZAPS_CONFIRMATIONS`
 (default 12) and `OPENZAPS_RECEIPT_TIMEOUT_MS` control the initial receipt wait. Canonical v3/v3.1
 pins default to the documented Robinhood deployments and may be
 overridden with `OPENZAPS_V3_FACTORY` / `OPENZAPS_V3_IMPLEMENTATION` and
@@ -81,7 +87,9 @@ operator until its executor and fee-conversion unit is configured all at once:
 `OPENZAPS_V3_2_POOL_PRICE_SOURCE`, and `OPENZAPS_V3_2_FEE_ASSET`. A partial set, a zero/malformed
 address, or an invalid v3.2 conversion bound fails config loading; it never enables an execution
 lineage whose non-0xZAPS fees the keeper cannot service. The v3.2 execution pot must also differ from
-v3.1's one-shot-bound pot.
+v3.1's one-shot-bound pot. Authenticated primary/fallback RPC, late-block RPC, and private-relay
+definitions are never accepted from this public config file; the canonical hosted path uses the
+separate 0600 provider file below.
 
 Signer mode also requires `OPENZAPS_ADAPTER_MANIFEST_FILE` (default
 `~/.openzaps/executor/adapter-manifest.json`) to cover every route adapter with an independently
@@ -98,9 +106,14 @@ observed onchain hash into approval.
 
 ## Late-block admission and L1-derived finality
 
-Signer admission requires `OPENZAPS_LATE_BLOCK_RPC_URLS`, an environment-only JSON array containing
-at least two HTTPS RPC URLs on distinct origins. Provider URLs often contain credentials, so this
-list is never accepted from `config.json` and endpoint text is never logged. Distinct origins are
+The canonical hosted LaunchAgent signer path requires both `rpcUrls` and `lateBlockRpcUrls` in the
+file referenced by `OPENZAPS_EXECUTOR_SECRET_CONFIG_FILE`. Each must contain 2–8 HTTPS RPC URLs on
+distinct origins. `rpcUrls` is the primary/fallback read and simulation transport;
+`lateBlockRpcUrls` is queried independently for pre-write admission and finality. A legacy
+interactive process may supply the equivalent late-block environment-only JSON when no file source
+is selected, as described below; neither authenticated source is accepted from `config.json`.
+Provider URLs often contain credentials, so exact URL/credential values plus generic endpoint
+patterns are removed at every log and durable error-serialization boundary. Distinct origins are
 only a mechanical floor: the operator must verify that the endpoints are run by independent node
 operators.
 
@@ -147,31 +160,68 @@ sequencer endpoints therefore do **not** satisfy this gate:
 - [Robinhood Chain architecture and transaction ordering](https://docs.robinhood.com/chain/)
 - [Robinhood Chain endpoints](https://docs.robinhood.com/chain/connecting/)
 
-`OPENZAPS_PRIVATE_RELAYS_JSON` is an environment-only JSON array. Each endpoint must declare a
-stable `id`, an HTTPS `url`, its `operator`, and one of the explicit classifications
-`private-relay`, `direct-sequencer`, or `public-rpc`. Only `private-relay` is eligible. At least two
-distinct HTTPS origins **and** two distinct declared operators are required by default:
+The provider file contains exactly three keys: `rpcUrls`, `lateBlockRpcUrls`, and `privateRelays`.
+The primary/fallback and late-block arrays each require 2–8 distinct HTTPS origins. Each private
+relay must declare a stable `id`, an HTTPS `url`, its `operator`, and the exact classification
+`private-relay`. At least two distinct private-relay HTTPS origins **and** two distinct declared
+operators are required:
 
 ```json
-[
-  {
-    "id": "relay-a",
-    "url": "https://private-a.example/rpc",
-    "classification": "private-relay",
-    "operator": "provider-a"
-  },
-  {
-    "id": "relay-b",
-    "url": "https://private-b.example/rpc",
-    "classification": "private-relay",
-    "operator": "provider-b"
-  }
-]
+{
+  "rpcUrls": [
+    "https://hosted-primary.example/rpc/provider-key",
+    "https://hosted-fallback.example/rpc/provider-key"
+  ],
+  "lateBlockRpcUrls": [
+    "https://independent-rpc-a.example/rpc",
+    "https://independent-rpc-b.example/rpc"
+  ],
+  "privateRelays": [
+    {
+      "id": "relay-a",
+      "url": "https://private-a.example/rpc",
+      "classification": "private-relay",
+      "operator": "provider-a",
+      "authorization": "Bearer replace-through-your-secret-editor"
+    },
+    {
+      "id": "relay-b",
+      "url": "https://private-b.example/rpc",
+      "classification": "private-relay",
+      "operator": "provider-b"
+    }
+  ]
+}
 ```
 
+Create it in the dedicated operator directory shown below, outside every source checkout, and make
+it an exact `0600` regular file owned by the current user. The validator rejects any path beneath
+an ancestor containing a normal repository `.git/` directory or linked-worktree `.git` file.
+Symlinks, files larger than 64 KiB, unknown JSON fields, malformed values, duplicate RPC origins,
+and duplicate relay ids/origins/operators abort configuration without echoing the JSON:
+
+```bash
+mkdir -p ~/.openzaps/executor
+umask 077
+${EDITOR:-vi} ~/.openzaps/executor/provider-secrets.json
+chmod 600 ~/.openzaps/executor/provider-secrets.json
+
+export OPENZAPS_EXECUTOR_SECRET_CONFIG_FILE="$HOME/.openzaps/executor/provider-secrets.json"
+node executor/secret-config.mjs
+./executor/install-launchd.sh
+```
+
+When the file variable is explicitly supplied, the installer validates it before replacing the
+plist and inserts only its path alongside `PATH`. A watch-only install with no file omits the
+variable entirely. Neither generated form contains a provider URL, Authorization value, raw JSON,
+or signer key; the installed service therefore remains watch-only.
+`OPENZAPS_LATE_BLOCK_RPC_URLS` and `OPENZAPS_PRIVATE_RELAYS_JSON` remain available only as a legacy
+interactive compatibility path when the file variable is absent. Setting either legacy variable
+alongside `OPENZAPS_EXECUTOR_SECRET_CONFIG_FILE` fails closed instead of choosing precedence.
+
 An optional `authorization` value is sent as the HTTP `Authorization` header and is never included
-in health output; inject the whole JSON through a process secret manager, not a tracked file or
-shell history. `OPENZAPS_PRIVATE_RELAY_MIN_ORIGINS` defaults to 2 and cannot be lowered below 2.
+in readiness or health output. `OPENZAPS_PRIVATE_RELAY_MIN_ORIGINS` defaults to 2 and cannot be
+lowered below 2.
 `OPENZAPS_PRIVATE_RELAY_TIMEOUT_MS` defaults to 8000. Different URLs or operator labels are
 operator declarations, not cryptographic proof of independent control: operators must verify the
 actual relay trust domains and privacy contract before enabling a signer.
@@ -216,9 +266,10 @@ pass and written as versioned JSON to
 sent to `/api/executions/receipts`, which independently decodes the signed calldata, transaction
 sender, receipt, confirmations, and execution event before an idempotent database upsert. Receipt
 and scorecard data are evidence only and never grant execution rights. Hosted persistence requires
-`SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, and the execution-operations plus
-security-attribution migrations; without them local receipt files remain the durable record and the
-hosted operations APIs fail closed.
+the exact `OPENZAPS_SUPABASE_PROJECT_REF` / `SUPABASE_URL` binding,
+`SUPABASE_SERVICE_ROLE_KEY`, and the execution-operations plus
+security-attribution migrations; without them local receipt files remain the durable record and
+the hosted operations APIs fail closed.
 
 New pot-conversion outbox rows and local receipts bind the lineage id, pot address, fee asset, price
 source, input amount, and signed minimum 0xZAPS output. Successful canonical settlement advances both

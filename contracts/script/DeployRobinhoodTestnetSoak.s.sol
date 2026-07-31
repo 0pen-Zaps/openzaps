@@ -33,7 +33,12 @@ import {
 ///      Rehearse first, without `--broadcast`:
 ///
 ///        forge script script/DeployRobinhoodTestnetSoak.s.sol:DeployRobinhoodTestnetSoak \
+///          --sig 'run(address)' <testnet-only-deployer> \
 ///          --rpc-url <robinhood-testnet-rpc> --sender <testnet-only-deployer>
+///
+///      The explicit signature and positional deployer are mandatory for operator commands because
+///      this script overloads `run()` and `run(address)`. Do not rely on Forge to choose an
+///      entrypoint or infer the deployment owner.
 ///
 ///      A future operator may add `--broadcast` only after completing the dated soak runbook. This
 ///      source contains no key material and intentionally has no mainnet fallback.
@@ -57,6 +62,7 @@ contract DeployRobinhoodTestnetSoak is Script {
 
     error WrongChain(uint256 actualChainId);
     error ZeroDeployer();
+    error DeployerSenderMismatch(address deployer, address sender);
     error TestTokenTransferFailed(address token, address recipient, uint256 amount);
     error DeploymentAssertionFailed(bytes32 check);
 
@@ -79,10 +85,12 @@ contract DeployRobinhoodTestnetSoak is Script {
         return _run(msg.sender);
     }
 
-    /// @notice Explicit-sender entrypoint used by deterministic deployment tests and by operators
-    ///         who prefer `--sig "run(address)"`. It carries the identical chain guard and assertions
-    ///         as `run()`; `deployer` must be the testnet signer configured in Forge.
+    /// @notice Explicit-sender entrypoint used by deterministic deployment tests and required for
+    ///         operator commands as `--sig 'run(address)' <deployer>`. It carries the identical
+    ///         chain guard and assertions as `run()`; `deployer` must be the testnet signer
+    ///         configured in Forge.
     function run(address deployer) external returns (Deployed memory d) {
+        if (deployer != msg.sender) revert DeployerSenderMismatch(deployer, msg.sender);
         return _run(deployer);
     }
 

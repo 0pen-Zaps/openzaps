@@ -4,6 +4,10 @@ import type {
   MarketingDailyCaps,
   MarketingDailyCounters,
 } from "@/lib/marketing/types";
+import {
+  isBoundSupabaseUrl,
+  isSupabaseProjectRef,
+} from "@/lib/supabase-config";
 
 export const DEFAULT_MARKETING_DAILY_CAPS: Readonly<MarketingDailyCaps> = {
   xPosts: 2,
@@ -27,9 +31,6 @@ const DISCORD_PUBLIC_KEY = /^[0-9a-f]{64}$/iu;
 const DISCORD_WEBHOOK_HOSTS = new Set(["discord.com", "discordapp.com"]);
 const X_ACCOUNT_ID = /^\d{1,30}$/u;
 const X_CANONICAL_USERNAME = /^[a-z0-9_]{1,15}$/u;
-const SUPABASE_PROJECT_REF =
-  /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/u;
-
 type Environment = Readonly<Record<string, string | undefined>>;
 
 interface ParsedBoolean {
@@ -117,30 +118,7 @@ export function isMarketingLedgerSupabaseUrl(
   expectedProjectRef?: string,
   allowLoopback = true,
 ): boolean {
-  if (!raw || raw !== raw.trim()) return false;
-  try {
-    const url = new URL(raw);
-    const localHttp =
-      allowLoopback &&
-      url.protocol === "http:" &&
-      ["localhost", "127.0.0.1", "[::1]"].includes(url.hostname);
-    const canonicalProject =
-      url.protocol === "https:" &&
-      !url.port &&
-      typeof expectedProjectRef === "string" &&
-      SUPABASE_PROJECT_REF.test(expectedProjectRef) &&
-      url.hostname === `${expectedProjectRef}.supabase.co`;
-    return (
-      (canonicalProject || localHttp) &&
-      !url.username &&
-      !url.password &&
-      !url.search &&
-      !url.hash &&
-      (url.pathname === "" || url.pathname === "/")
-    );
-  } catch {
-    return false;
-  }
+  return isBoundSupabaseUrl(raw, expectedProjectRef, allowLoopback);
 }
 
 /**
@@ -269,8 +247,7 @@ export function readMarketingConfig(env: Environment = process.env): MarketingCo
   const expectedSupabaseProjectRef =
     env.OPENZAPS_MARKETING_SUPABASE_PROJECT_REF;
   const expectedSupabaseProjectRefValid =
-    typeof expectedSupabaseProjectRef === "string"
-    && SUPABASE_PROJECT_REF.test(expectedSupabaseProjectRef);
+    isSupabaseProjectRef(expectedSupabaseProjectRef);
   if (
     expectedSupabaseProjectRef !== undefined
     && !expectedSupabaseProjectRefValid

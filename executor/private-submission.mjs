@@ -1,4 +1,8 @@
 import { keccak256 } from "viem";
+import {
+  redactExecutorText,
+  registerExecutorSensitiveValues,
+} from "./redaction.mjs";
 
 const RAW_TRANSACTION = /^0x(?:[0-9a-fA-F]{2})+$/;
 const HASH = /^0x[0-9a-fA-F]{64}$/;
@@ -36,22 +40,11 @@ export class PrivateSubmissionRejectedError extends Error {
 }
 
 function shortText(value) {
-  return String(value ?? "")
-    .replace(/https?:\/\/[^\s"'<>]+/gi, "[endpoint]")
-    .replace(/\bBearer\s+[^\s"'<>]+/gi, "Bearer [redacted]")
+  return redactExecutorText(value, { fallback: "", maximum: 1_000 })
     .replace(/0x[0-9a-fA-F]{64,}/g, "[hex]")
     .replace(/\s+/g, " ")
     .trim()
     .slice(0, 240);
-}
-
-function redactExact(value, secrets) {
-  let redacted = String(value ?? "");
-  for (const secret of secrets) {
-    if (typeof secret !== "string" || secret.length === 0) continue;
-    redacted = redacted.split(secret).join("[redacted]");
-  }
-  return redacted;
 }
 
 function endpointOrigin(url) {
@@ -84,17 +77,25 @@ function normalizeEndpoint(endpoint, index) {
       valid: false,
       id,
       reason:
-        `endpoint ${id} classification must be private-relay, direct-sequencer, or public-rpc`,
+        `endpoint ${index + 1} classification must be private-relay, direct-sequencer, or public-rpc`,
     };
   }
   if (!operator || operator.length > 96) {
-    return { valid: false, id, reason: `endpoint ${id} must declare its relay operator` };
+    return {
+      valid: false,
+      id,
+      reason: `endpoint ${index + 1} must declare its relay operator`,
+    };
   }
   let origin;
   try {
     origin = endpointOrigin(url);
   } catch (error) {
-    return { valid: false, id, reason: `endpoint ${id}: ${error.message}` };
+    return {
+      valid: false,
+      id,
+      reason: `endpoint ${index + 1}: ${error.message}`,
+    };
   }
   const normalized = {
     valid: true,
@@ -120,13 +121,20 @@ function normalizeEndpoint(endpoint, index) {
  * by one provider do not become two censorship domains merely because they have different names.
  */
 export function assessPrivateRelaySet(endpoints, minimumDistinctOrigins = 2) {
+  const configuredEndpoints = Array.isArray(endpoints) ? endpoints : [];
+  registerExecutorSensitiveValues({
+    urls: configuredEndpoints.map((endpoint) => endpoint?.url),
+    credentials: configuredEndpoints.map((endpoint) => endpoint?.authorization),
+    labels: configuredEndpoints.flatMap((endpoint) => [
+      endpoint?.origin,
+      endpoint?.operator,
+    ]),
+  });
   const minimum =
     Number.isInteger(minimumDistinctOrigins) && minimumDistinctOrigins >= 2
       ? minimumDistinctOrigins
       : 2;
-  const normalized = Array.isArray(endpoints)
-    ? endpoints.map(normalizeEndpoint)
-    : [];
+  const normalized = configuredEndpoints.map(normalizeEndpoint);
   const configurationErrors = normalized
     .filter((endpoint) => !endpoint.valid)
     .map((endpoint) => endpoint.reason);
@@ -139,16 +147,16 @@ export function assessPrivateRelaySet(endpoints, minimumDistinctOrigins = 2) {
   const eligible = [];
   for (const endpoint of declaredPrivate) {
     if (ids.has(endpoint.id)) {
-      configurationErrors.push(`private relay id ${endpoint.id} is duplicated`);
+      configurationErrors.push("private relay ids must be unique");
       continue;
     }
     ids.add(endpoint.id);
     if (origins.has(endpoint.origin)) {
-      configurationErrors.push(`private relay origin ${endpoint.origin} is duplicated`);
+      configurationErrors.push("private relay URL origins must be distinct");
       continue;
     }
     if (operators.has(endpoint.operator.toLowerCase())) {
-      configurationErrors.push(`private relay operator ${endpoint.operator} is duplicated`);
+      configurationErrors.push("private relay operators must be distinct");
       continue;
     }
     origins.add(endpoint.origin);
@@ -158,10 +166,8 @@ export function assessPrivateRelaySet(endpoints, minimumDistinctOrigins = 2) {
 
   const excluded = normalized
     .filter((endpoint) => endpoint.valid && endpoint.classification !== PRIVATE_CLASSIFICATION)
-    .map(({ id, origin, operator, classification }) => ({
+    .map(({ id, classification }) => ({
       id,
-      origin,
-      operator,
       classification,
     }));
   const ready =
@@ -173,16 +179,22 @@ export function assessPrivateRelaySet(endpoints, minimumDistinctOrigins = 2) {
     : configurationErrors[0]
       ?? `need ${minimum} distinct private relay origins/operators; configured ${origins.size}/${operators.size}`;
 
-  return {
+  const result = {
     ready,
     detail,
     minimumDistinctOrigins: minimum,
     distinctOrigins: origins.size,
     distinctOperators: operators.size,
-    eligible,
     excluded,
     configurationErrors,
   };
+  // Eligible definitions carry authenticated URLs. Keep them available to the transport without
+  // allowing readiness serialization, structured logs, or health responses to expose endpoints.
+  Object.defineProperty(result, "eligible", {
+    value: eligible,
+    enumerable: false,
+  });
+  return result;
 }
 
 async function readBoundedResponse(response) {
@@ -210,8 +222,6 @@ async function readBoundedResponse(response) {
 function endpointResult(endpoint, status, latencyMs, detail, extra = {}) {
   return {
     id: endpoint.id,
-    origin: endpoint.origin,
-    operator: endpoint.operator,
     classification: endpoint.classification,
     status,
     latencyMs,
@@ -224,6 +234,10 @@ function deterministicHttpRejection(status) {
   return status >= 400 && status < 500;
 }
 
+function boundedRpcCode(value) {
+  return Number.isSafeInteger(value) ? { rpcCode: value } : {};
+}
+
 async function dispatch(endpoint, serializedTransaction, expectedHash, timeoutMs, fetchImpl) {
   const startedAt = Date.now();
   const controller = new AbortController();
@@ -233,7 +247,7 @@ async function dispatch(endpoint, serializedTransaction, expectedHash, timeoutMs
       endpoint,
       status,
       Date.now() - startedAt,
-      redactExact(detail, [serializedTransaction, endpoint.authorization]),
+      shortText(detail),
       extra,
     );
   try {
@@ -256,24 +270,26 @@ async function dispatch(endpoint, serializedTransaction, expectedHash, timeoutMs
     } catch (error) {
       return result(
         "unknown",
-        error?.name === "AbortError" ? "request timed out after dispatch" : error?.message,
+        error?.name === "AbortError"
+          ? "request timed out after dispatch"
+          : "relay request failed after dispatch",
       );
     }
 
     let text;
     try {
       text = await readBoundedResponse(response);
-    } catch (error) {
+    } catch {
       return result(
         deterministicHttpRejection(response.status) ? "rejected" : "unknown",
-        error.message,
+        "relay response body failed after dispatch",
         { httpStatus: response.status },
       );
     }
     if (!response.ok) {
       return result(
         deterministicHttpRejection(response.status) ? "rejected" : "unknown",
-        `HTTP ${response.status}: ${text}`,
+        `relay returned HTTP ${response.status} after dispatch`,
         { httpStatus: response.status },
       );
     }
@@ -303,15 +319,15 @@ async function dispatch(endpoint, serializedTransaction, expectedHash, timeoutMs
     if (rpcMessage && ALREADY_KNOWN.test(rpcMessage)) {
       return result(
         "already-known",
-        rpcMessage,
-        { httpStatus: response.status, rpcCode: body?.error?.code },
+        "relay reported the transaction as already known",
+        { httpStatus: response.status, ...boundedRpcCode(body?.error?.code) },
       );
     }
     if (body?.error) {
       return result(
         "rejected",
-        rpcMessage || "relay rejected the raw transaction",
-        { httpStatus: response.status, rpcCode: body.error.code },
+        "relay rejected the raw transaction",
+        { httpStatus: response.status, ...boundedRpcCode(body.error.code) },
       );
     }
     return result(

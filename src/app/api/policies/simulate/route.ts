@@ -1,4 +1,3 @@
-import { createPublicClient, http } from "viem";
 import { NextResponse, type NextRequest } from "next/server";
 
 import {
@@ -8,39 +7,70 @@ import {
   compileExactPolicy,
   jsonSafePolicyArtifact,
   type ExactPolicyRequest,
-  type PolicyChainReader,
 } from "@/lib/policy-exact";
+import {
+  createExactPolicyChainReader,
+  resolveExactPolicyProvider,
+  type ExactPolicyProviderEnvironment,
+  type ExactPolicyProviderResolution,
+} from "@/lib/policy-exact-provider";
 import { serverRateLimited } from "@/lib/relay-rate-limit";
 import { BoundedJsonBodyError, readBoundedJsonBody } from "@/lib/request-body";
-import { ROBINHOOD_RPC_URL, robinhoodChain } from "@/lib/robinhood";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-
-const client = createPublicClient({
-  chain: robinhoodChain,
-  transport: http(ROBINHOOD_RPC_URL, { retryCount: 2, timeout: 15_000 }),
-});
 
 const noStore = { "cache-control": "no-store" };
 const MAX_BODY_BYTES = 16_384;
 const RATE_LIMIT_MAX = 6;
 const RATE_LIMIT_WINDOW_MS = 60_000;
 const MAX_IN_FLIGHT = 4;
+const PUBLIC_STRESS_RPC_ERROR =
+  "The RPC provider could not serve this stress quote; no output was synthesized.";
 let inFlight = 0;
 
+type ExactPolicyApiEnvironment = ExactPolicyProviderEnvironment & {
+  readonly OPENZAPS_EXACT_POLICY_API_ENABLED?: string;
+  readonly OPENZAPS_EXACT_POLICY_DURABLE_QUOTA_ENABLED?: string;
+};
+
+type ReadyProvider = Extract<ExactPolicyProviderResolution, { ready: true }>;
+
+export type ExactPolicyApiReadiness =
+  | { readonly ready: true; readonly provider: ReadyProvider }
+  | { readonly ready: false; readonly reason: "feature-disabled" }
+  | {
+      readonly ready: false;
+      readonly reason: "provider-unavailable";
+      readonly providerIssue: Extract<ExactPolicyProviderResolution, { ready: false }>["reason"];
+    };
+
+export function exactPolicyApiReadiness(
+  env: ExactPolicyApiEnvironment = process.env,
+): ExactPolicyApiReadiness {
+  const featureEnabled = env.NODE_ENV !== "production"
+    ? env.OPENZAPS_EXACT_POLICY_API_ENABLED !== "false"
+    : (
+        env.OPENZAPS_EXACT_POLICY_API_ENABLED === "true"
+        && env.OPENZAPS_EXACT_POLICY_DURABLE_QUOTA_ENABLED === "true"
+      );
+  if (!featureEnabled) return { ready: false, reason: "feature-disabled" };
+
+  const provider = resolveExactPolicyProvider(env);
+  if (!provider.ready) {
+    return {
+      ready: false,
+      reason: "provider-unavailable",
+      providerIssue: provider.reason,
+    };
+  }
+  return { ready: true, provider };
+}
+
 export function exactPolicyApiEnabled(
-  env: {
-    NODE_ENV?: string;
-    OPENZAPS_EXACT_POLICY_API_ENABLED?: string;
-    OPENZAPS_EXACT_POLICY_DURABLE_QUOTA_ENABLED?: string;
-  } = process.env,
+  env: ExactPolicyApiEnvironment = process.env,
 ): boolean {
-  if (env.NODE_ENV !== "production") return env.OPENZAPS_EXACT_POLICY_API_ENABLED !== "false";
-  return (
-    env.OPENZAPS_EXACT_POLICY_API_ENABLED === "true"
-    && env.OPENZAPS_EXACT_POLICY_DURABLE_QUOTA_ENABLED === "true"
-  );
+  return exactPolicyApiReadiness(env).ready;
 }
 
 /** Warm-instance concurrency guard; durable WAF quota remains the production boundary. */
@@ -75,17 +105,49 @@ export class ExactPolicyBodyError extends Error {
   }
 }
 
+function unavailableResponse(
+  readiness: Exclude<ExactPolicyApiReadiness, { ready: true }>,
+  includeBroadcast: boolean,
+): NextResponse {
+  const disabled = readiness.reason === "feature-disabled";
+  return NextResponse.json(
+    {
+      error: disabled
+        ? "The chain-exact policy API is disabled on this deployment."
+        : "The chain-exact policy RPC provider is unavailable on this deployment.",
+      code: disabled ? "FEATURE_DISABLED" : "PROVIDER_UNAVAILABLE",
+      ...(includeBroadcast ? { broadcast: false } : {}),
+    },
+    {
+      status: 503,
+      headers: { ...noStore, "retry-after": disabled ? "3600" : "300" },
+    },
+  );
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+/**
+ * Upstream error objects can include their request URL. Keep the public artifact
+ * useful while replacing nonessential stress-quote diagnostics at the API edge.
+ */
+export function publicExactPolicyArtifact(artifact: unknown): unknown {
+  const safe = jsonSafePolicyArtifact(artifact);
+  if (!isRecord(safe) || !Array.isArray(safe.stressCases)) return safe;
+  return {
+    ...safe,
+    stressCases: safe.stressCases.map((entry) => {
+      if (!isRecord(entry) || entry.rpcFailure !== true) return entry;
+      return { ...entry, error: PUBLIC_STRESS_RPC_ERROR };
+    }),
+  };
+}
+
 export async function POST(request: NextRequest): Promise<NextResponse> {
-  if (!exactPolicyApiEnabled()) {
-    return NextResponse.json(
-      {
-        error: "The chain-exact policy API is disabled on this deployment.",
-        code: "FEATURE_DISABLED",
-        broadcast: false,
-      },
-      { status: 503, headers: { ...noStore, "retry-after": "3600" } },
-    );
-  }
+  const readiness = exactPolicyApiReadiness();
+  if (!readiness.ready) return unavailableResponse(readiness, true);
   if (serverRateLimited(request, "exact-policy", RATE_LIMIT_MAX, RATE_LIMIT_WINDOW_MS)) {
     return NextResponse.json(
       { error: "Too many policy simulations.", code: "RATE_LIMITED", broadcast: false },
@@ -102,8 +164,9 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
   try {
     const body = await readExactPolicyBody(request);
-    const artifact = await compileExactPolicy(client as unknown as PolicyChainReader, body);
-    return NextResponse.json(jsonSafePolicyArtifact(artifact), { headers: noStore });
+    const client = createExactPolicyChainReader(readiness.provider);
+    const artifact = await compileExactPolicy(client, body);
+    return NextResponse.json(publicExactPolicyArtifact(artifact), { headers: noStore });
   } catch (error) {
     if (error instanceof ExactPolicyBodyError) {
       return NextResponse.json(
@@ -131,11 +194,10 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     if (error instanceof PolicyRpcError) {
       return NextResponse.json(
         {
-          error: error.message,
+          error: "The chain-exact policy RPC could not complete this simulation.",
           code: error.code,
           rpcFailure: true,
           stage: error.stage,
-          detail: error.detail,
           broadcast: false,
           note: "No synthetic quote was substituted. Retry when the RPC can serve one canonical block.",
         },
@@ -157,12 +219,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 }
 
 export function GET(): NextResponse {
-  if (!exactPolicyApiEnabled()) {
-    return NextResponse.json(
-      { error: "The chain-exact policy API is disabled on this deployment.", code: "FEATURE_DISABLED" },
-      { status: 503, headers: { ...noStore, "retry-after": "3600" } },
-    );
-  }
+  const readiness = exactPolicyApiReadiness();
+  if (!readiness.ready) return unavailableResponse(readiness, false);
   return NextResponse.json(
     {
       endpoint: "/api/policies/simulate",

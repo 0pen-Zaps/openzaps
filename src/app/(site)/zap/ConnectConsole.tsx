@@ -369,8 +369,8 @@ export default function ConnectConsole({ proposedAgent }: { proposedAgent?: stri
                 Agent Kit release
               </h2>
               <p className={styles.sideNote}>
-                The read-only SDK and MCP packages are release-ready, but the install command stays hidden until the
-                scoped npm packages are published. Connecting an existing executor address still works normally.
+                The read-only SDK and MCP packages are published, but this deployment has not explicitly enabled the
+                install command. Connecting an existing executor address still works normally.
               </p>
             </section>
           )}

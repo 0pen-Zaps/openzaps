@@ -3,8 +3,9 @@
 Pure OpenZap policy compilation plus a read-only client for the block-pinned
 simulation API.
 
-Use the import below only for a release that is visible and provenance-verified on npm. Before the
-first release, validate the package directly from the repository checkout.
+`@openzaps/sdk@0.1.0` is published with an npm provenance attestation. Verify the
+registry version and attestation again before installing it or publishing a
+later release.
 
 ```ts
 import { OpenZapsClient } from "@openzaps/sdk";

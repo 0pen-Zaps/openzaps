@@ -1,14 +1,15 @@
 # `@openzaps/mcp`
 
-Use the configuration below only for a release that is visible and provenance-verified on npm.
-Before the first release, validate the packaged entrypoint directly from the repository checkout.
+`@openzaps/mcp@0.1.0` is published with an npm provenance attestation. Verify the
+registry version and attestation again before changing the install command or
+publishing a later release.
 
 ```json
 {
   "mcpServers": {
     "openzaps": {
       "command": "npx",
-      "args": ["-y", "@openzaps/mcp"]
+      "args": ["-y", "@openzaps/mcp@0.1.0"]
     }
   }
 }
@@ -33,8 +34,10 @@ profile, capsule, intent, and connection results are then projected into
 bounded validated shapes before entering model context.
 
 From a repository checkout, validate the packaged entrypoint with
-`node packages/mcp/index.mjs tools`; do not set
-`NEXT_PUBLIC_OPENZAPS_AGENT_KIT_PUBLISHED=true` merely because the local package works.
+`node packages/mcp/index.mjs tools`. Set
+`NEXT_PUBLIC_OPENZAPS_AGENT_KIT_PUBLISHED=true` on a web deployment only after
+verifying the registry version and provenance; absent or any other value keeps
+that deployment's install surface hidden.
 
 Optional environment variables:
 
