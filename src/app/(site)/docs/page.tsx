@@ -212,13 +212,31 @@ export default function DocsPage(): React.JSX.Element {
             ))}
           </div>
           <div className={styles.actions}>
-            <Link className={styles.ghostBtn} href="/virtual-trading">
+            <Link
+              className={styles.ghostBtn}
+              href="/virtual-trading"
+              data-analytics-event="virtual_trading_clicked"
+              data-analytics-cta="virtual_trading"
+              data-analytics-content="docs_release"
+            >
               Practice without a wallet
             </Link>
-            <Link className={styles.ghostBtn} href="/request-a-zap">
+            <Link
+              className={styles.ghostBtn}
+              href="/request-a-zap"
+              data-analytics-event="request_zap_clicked"
+              data-analytics-cta="request_zap"
+              data-analytics-content="docs_release"
+            >
               Request a Zap
             </Link>
-            <Link className={styles.ghostBtn} href="/roadmap#foundation">
+            <Link
+              className={styles.ghostBtn}
+              href="/roadmap#foundation"
+              data-analytics-event="growth_link_clicked"
+              data-analytics-cta="release_map"
+              data-analytics-content="docs_release"
+            >
               Full release map
             </Link>
           </div>

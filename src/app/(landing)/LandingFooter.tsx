@@ -24,7 +24,14 @@ export function LandingFooter({ githubUrl }: { githubUrl: string }): React.JSX.E
             <h3 className={`${styles.footerColTitle} mono`}>Product</h3>
             <Link href="/zap">Zap</Link>
             <Link href="/virtual-trading">Virtual Trading</Link>
-            <Link href="/request-a-zap">Request a Zap</Link>
+            <Link
+              href="/request-a-zap"
+              data-analytics-event="request_zap_clicked"
+              data-analytics-cta="request_zap"
+              data-analytics-content="landing_footer"
+            >
+              Request a Zap
+            </Link>
             <Link href="/explore">Explore</Link>
             <Link href="/token">{TOKEN.symbol} token</Link>
             <Link href={LINKS.buyWithOpenZaps}>Zap in with OpenZaps</Link>
@@ -33,7 +40,14 @@ export function LandingFooter({ githubUrl }: { githubUrl: string }): React.JSX.E
           <div className={styles.footerCol}>
             <h3 className={`${styles.footerColTitle} mono`}>Developers</h3>
             <Link href="/docs">Docs</Link>
-            <a href={githubUrl} target="_blank" rel="noreferrer noopener">
+            <a
+              href={githubUrl}
+              target="_blank"
+              rel="noreferrer noopener"
+              data-analytics-event="growth_link_clicked"
+              data-analytics-cta="github"
+              data-analytics-content="landing_footer"
+            >
               GitHub ↗
             </a>
             <a href={LINKS.contractSource} target="_blank" rel="noreferrer noopener">
@@ -42,16 +56,44 @@ export function LandingFooter({ githubUrl }: { githubUrl: string }): React.JSX.E
           </div>
           <div className={styles.footerCol}>
             <h3 className={`${styles.footerColTitle} mono`}>Community</h3>
-            <a href={LINKS.x} target="_blank" rel="noreferrer noopener">
+            <a
+              href={LINKS.x}
+              target="_blank"
+              rel="noreferrer noopener"
+              data-analytics-event="growth_link_clicked"
+              data-analytics-cta="x"
+              data-analytics-content="landing_footer"
+            >
               X ↗
             </a>
-            <a href={LINKS.farcaster} target="_blank" rel="noreferrer noopener">
+            <a
+              href={LINKS.farcaster}
+              target="_blank"
+              rel="noreferrer noopener"
+              data-analytics-event="growth_link_clicked"
+              data-analytics-cta="farcaster"
+              data-analytics-content="landing_footer"
+            >
               Farcaster ↗
             </a>
-            <a href={LINKS.discord} target="_blank" rel="noreferrer noopener">
+            <a
+              href={LINKS.discord}
+              target="_blank"
+              rel="noreferrer noopener"
+              data-analytics-event="growth_link_clicked"
+              data-analytics-cta="discord"
+              data-analytics-content="landing_footer"
+            >
               Discord ↗
             </a>
-            <a href={LINKS.substack} target="_blank" rel="noreferrer noopener">
+            <a
+              href={LINKS.substack}
+              target="_blank"
+              rel="noreferrer noopener"
+              data-analytics-event="growth_link_clicked"
+              data-analytics-cta="substack"
+              data-analytics-content="landing_footer"
+            >
               DeFi Tutorials ↗
             </a>
             <a href={LINKS.dexscreener} target="_blank" rel="noreferrer noopener">

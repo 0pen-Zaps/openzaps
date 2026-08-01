@@ -845,6 +845,8 @@ export function ZapBuilder({
     if (compiled.status === "block" || chain.length === 0) return;
     window.clearInterval(runTimer.current);
     const reduced = reducedMotionEnabled();
+    announce(`Previewing ${chain.length} step${chain.length === 1 ? "" : "s"} in order.`);
+    trackEvent("builder_preview_run", { blocks: chain.length });
     if (reduced) {
       setRunIndex(chain.length - 1);
       runTimer.current = window.setTimeout(() => setRunIndex(-1), 900) as unknown as number;
@@ -862,8 +864,6 @@ export function ZapBuilder({
       }
       setRunIndex(step);
     }, 380);
-    announce(`Previewing ${chain.length} step${chain.length === 1 ? "" : "s"} in order.`);
-    trackEvent("builder_preview_run", { blocks: chain.length });
   }, [announce, chain.length, compiled.status]);
 
   const scrollRecipes = useCallback((direction: -1 | 1): void => {

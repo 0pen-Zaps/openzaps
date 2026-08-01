@@ -4,7 +4,48 @@ const { track } = vi.hoisted(() => ({ track: vi.fn() }));
 
 vi.mock("@vercel/analytics", () => ({ track }));
 
-import { sanitizeAnalyticsPayload, trackEvent } from "@/lib/analytics";
+import {
+  captureAnalyticsAttribution,
+  claimAnalyticsCampaignArrival,
+  providerAnalyticsPayload,
+  sanitizeAnalyticsPayload,
+  trackEvent,
+  type AnalyticsPayload,
+} from "@/lib/analytics";
+
+function memoryStorage(): Storage {
+  const values = new Map<string, string>();
+  return {
+    get length() {
+      return values.size;
+    },
+    clear: () => values.clear(),
+    getItem: (key) => values.get(key) ?? null,
+    key: (index) => Array.from(values.keys())[index] ?? null,
+    removeItem: (key) => void values.delete(key),
+    setItem: (key, value) => void values.set(key, value),
+  };
+}
+
+function stubBrowser(search = ""): { dispatchEvent: ReturnType<typeof vi.fn>; storage: Storage } {
+  const dispatchEvent = vi.fn();
+  const storage = memoryStorage();
+  vi.stubGlobal("window", {
+    dispatchEvent,
+    location: { pathname: "/request-a-zap", search },
+    sessionStorage: storage,
+  });
+  vi.stubGlobal(
+    "CustomEvent",
+    class TestCustomEvent {
+      constructor(
+        public type: string,
+        public init: { detail: unknown },
+      ) {}
+    },
+  );
+  return { dispatchEvent, storage };
+}
 
 describe("analytics privacy boundary", () => {
   beforeEach(() => {
@@ -20,21 +61,22 @@ describe("analytics privacy boundary", () => {
       sanitizeAnalyticsPayload({
         source: "x",
         medium: "social",
-        campaign: "launch-week",
+        campaign: "openzaps-virtual-trading-2026-07-30",
+        content: "feed_update",
         persona: "agent_builder",
         blocks: 3,
         published: false,
         account: "0x1111111111111111111111111111111111111111",
         tx: `0x${"a".repeat(64)}`,
         contact: "builder@example.com",
-        content: "https://example.com/private?email=builder@example.com",
         status: Number.NaN,
         unknown: "not-forwarded",
       }),
     ).toEqual({
       source: "x",
       medium: "social",
-      campaign: "launch-week",
+      campaign: "product_update",
+      content: "feed_update",
       persona: "agent_builder",
       blocks: 3,
       published: false,
@@ -45,6 +87,7 @@ describe("analytics privacy boundary", () => {
     expect(
       sanitizeAnalyticsPayload({
         route: "0x1111111111111111111111111111111111111111",
+        guard: "0XAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
         campaign: "person@example.com",
         content: "sk-proj-this-is-not-safe-to-forward",
         source: "https://private.example",
@@ -54,54 +97,121 @@ describe("analytics privacy boundary", () => {
     ).toEqual({ mode: "bounded" });
   });
 
-  it("forwards sanitized events to Vercel and the local event bridge", () => {
-    const dispatchEvent = vi.fn();
-    vi.stubGlobal("window", {
-      dispatchEvent,
-      location: { pathname: "/request-a-zap" },
-    });
-    vi.stubGlobal(
-      "CustomEvent",
-      class TestCustomEvent {
-        constructor(
-          public type: string,
-          public init: { detail: unknown },
-        ) {}
-      },
+  it("drops unowned attribution rather than forwarding arbitrary query text", () => {
+    expect(
+      sanitizeAnalyticsPayload({
+        source: "personal-handle",
+        medium: "2125550100",
+        campaign: "550e8400-e29b-41d4-a716-446655440000",
+        content: "private-note",
+        persona: "protocol_team",
+      }),
+    ).toEqual({ persona: "protocol_team" });
+  });
+
+  it("drops nested runtime values even if TypeScript callers are bypassed", () => {
+    expect(
+      sanitizeAnalyticsPayload({
+        mode: { nested: true },
+        blocks: [1, 2],
+        published: true,
+      } as unknown as AnalyticsPayload),
+    ).toEqual({ published: true });
+  });
+
+  it("forwards at most two properties with a coarse first-touch label", () => {
+    const { dispatchEvent } = stubBrowser(
+      "?utm_source=discord&utm_medium=community&utm_campaign=openzaps-virtual-trading-2026-07-30&utm_content=feed_update",
     );
 
-    trackEvent("lead_request_submitted", {
+    trackEvent("lead_request_submit", {
       persona: "protocol_team",
       source: "discord",
-      account: "0x1111111111111111111111111111111111111111",
+      medium: "community",
+      campaign: "openzaps-virtual-trading-2026-07-30",
+      content: "feed_update",
     });
 
-    expect(track).toHaveBeenCalledWith("lead_request_submitted", {
+    expect(track).toHaveBeenCalledWith("lead_request_submit", {
+      acquisition: "discord|community|product_update|feed_update",
       persona: "protocol_team",
-      source: "discord",
     });
+    expect(Object.keys(track.mock.calls[0]?.[1] ?? {})).toHaveLength(2);
     expect(dispatchEvent).toHaveBeenCalledOnce();
     expect(dispatchEvent.mock.calls[0]?.[0]).toMatchObject({
       type: "openzaps:analytics",
       init: {
         detail: {
-          event: "lead_request_submitted",
+          event: "lead_request_submit",
           path: "/request-a-zap",
           payload: {
+            acquisition: "discord|community|product_update|feed_update",
             persona: "protocol_team",
             source: "discord",
+            medium: "community",
+            campaign: "product_update",
+            content: "feed_update",
           },
         },
       },
     });
   });
 
-  it("rejects invalid event names without forwarding them", () => {
-    const dispatchEvent = vi.fn();
-    vi.stubGlobal("window", {
-      dispatchEvent,
-      location: { pathname: "/" },
+  it("keeps the first safe touch for the tab and never stores raw values", () => {
+    const { storage } = stubBrowser();
+
+    expect(
+      captureAnalyticsAttribution(
+        "?utm_source=x&utm_medium=social&utm_campaign=openzaps-release&utm_content=feed_update",
+      ),
+    ).toBe("x|social|product_update|feed_update");
+    expect(
+      captureAnalyticsAttribution(
+        "?utm_source=discord&utm_medium=community&utm_campaign=request_a_zap&utm_content=hero",
+      ),
+    ).toBe("x|social|product_update|feed_update");
+    expect(storage.length).toBe(1);
+    expect(Array.from({ length: storage.length }, (_, index) => storage.key(index))).not.toContain(
+      "openzaps-release",
+    );
+    expect(claimAnalyticsCampaignArrival("x|social|product_update|feed_update")).toBe(true);
+    expect(claimAnalyticsCampaignArrival("x|social|product_update|feed_update")).toBe(false);
+    expect(storage.length).toBe(2);
+  });
+
+  it("uses two intentional properties when no acquisition is available", () => {
+    expect(
+      providerAnalyticsPayload(
+        sanitizeAnalyticsPayload({
+          status: 503,
+          source: "x",
+          persona: "protocol_team",
+          campaign: "request_a_zap",
+        }),
+        null,
+      ),
+    ).toEqual({ status: 503, source: "x" });
+  });
+
+  it("does not let provider failures interrupt product flows", () => {
+    stubBrowser();
+    track.mockImplementationOnce(() => {
+      throw new Error("provider unavailable");
     });
+
+    expect(() => trackEvent("builder_preview_run", { blocks: 3 })).not.toThrow();
+  });
+
+  it("is a no-op during server rendering", () => {
+    vi.stubGlobal("window", undefined);
+
+    trackEvent("builder_preview_run", { blocks: 3 });
+
+    expect(track).not.toHaveBeenCalled();
+  });
+
+  it("rejects invalid event names without forwarding them", () => {
+    const { dispatchEvent } = stubBrowser();
 
     trackEvent("Unsafe Event", { source: "x" });
 

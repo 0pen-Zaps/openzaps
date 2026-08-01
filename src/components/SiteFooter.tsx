@@ -43,23 +43,58 @@ export function SiteFooter(): React.JSX.Element {
           <div className={styles.col}>
             <h2>Product</h2>
             <Link href="/zap">Zap</Link>
-            <Link href="/request-a-zap">Request a Zap</Link>
+            <Link
+              href="/request-a-zap"
+              data-analytics-event="request_zap_clicked"
+              data-analytics-cta="request_zap"
+              data-analytics-content="site_footer"
+            >
+              Request a Zap
+            </Link>
             <Link href="/explore">Explore</Link>
             <Link href="/docs">Developer docs</Link>
             <Link href="/roadmap">Roadmap</Link>
           </div>
           <div className={styles.col}>
             <h2>Build</h2>
-            <a href={LINKS.contractSource} target="_blank" rel="noreferrer">
+            <a
+              href={LINKS.contractSource}
+              target="_blank"
+              rel="noreferrer"
+              data-analytics-event="growth_link_clicked"
+              data-analytics-cta="github"
+              data-analytics-content="site_footer"
+            >
               Contract source
             </a>
-            <a href={LINKS.x} target="_blank" rel="noreferrer">
+            <a
+              href={LINKS.x}
+              target="_blank"
+              rel="noreferrer"
+              data-analytics-event="growth_link_clicked"
+              data-analytics-cta="x"
+              data-analytics-content="site_footer"
+            >
               X @0xzaps
             </a>
-            <a href={LINKS.discord} target="_blank" rel="noreferrer">
+            <a
+              href={LINKS.discord}
+              target="_blank"
+              rel="noreferrer"
+              data-analytics-event="growth_link_clicked"
+              data-analytics-cta="discord"
+              data-analytics-content="site_footer"
+            >
               Discord
             </a>
-            <a href={LINKS.substack} target="_blank" rel="noreferrer">
+            <a
+              href={LINKS.substack}
+              target="_blank"
+              rel="noreferrer"
+              data-analytics-event="growth_link_clicked"
+              data-analytics-cta="substack"
+              data-analytics-content="site_footer"
+            >
               DeFi Tutorials
             </a>
             <Link href="/docs#security">Security</Link>

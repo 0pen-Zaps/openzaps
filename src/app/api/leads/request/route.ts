@@ -1,6 +1,9 @@
 import { start } from "workflow/api";
+import { track } from "@vercel/analytics/server";
+import { after } from "next/server";
 
 import { leadNotificationDeliveryConfigured } from "@/lib/leads/notification-server";
+import { qualificationScore } from "@/lib/leads/qualification";
 import { LeadRequestSchema } from "@/lib/leads/schema";
 import { isSameOriginLeadRequest } from "@/lib/leads/origin";
 import {
@@ -24,6 +27,33 @@ const READINESS_RATE_LIMIT_WINDOW_MS = 60_000;
 const PRIVATE_HEADERS = {
   "cache-control": "private, no-store",
 } as const;
+const LEAD_ANALYTICS_SOURCES = new Set([
+  "discord",
+  "farcaster",
+  "github",
+  "homepage",
+  "newsletter",
+  "rss",
+  "substack",
+  "x",
+]);
+const LEAD_ANALYTICS_REFERRER = "https://www.0xzaps.com/request-a-zap";
+
+function leadAnalyticsSource(value: string | undefined): string {
+  const normalized = value?.trim().toLowerCase() ?? "";
+  return LEAD_ANALYTICS_SOURCES.has(normalized) ? normalized : "other";
+}
+
+function leadAnalyticsHeaders(requestHeaders: Headers): Headers {
+  const headers = new Headers({ referer: LEAD_ANALYTICS_REFERRER });
+  const userAgent = requestHeaders.get("user-agent");
+  const forwardedFor =
+    requestHeaders.get("x-forwarded-for")
+    ?? requestHeaders.get("x-vercel-forwarded-for");
+  if (userAgent) headers.set("user-agent", userAgent);
+  if (forwardedFor) headers.set("x-forwarded-for", forwardedFor);
+  return headers;
+}
 
 function intakeResponse(
   body: { accepted: boolean; error?: string },
@@ -134,6 +164,24 @@ export async function POST(request: Request): Promise<Response> {
     } catch {
       // The accepted lead and its notification outbox row are already durable.
       // The daily retention cron retries advisory workflow enqueueing.
+    }
+    try {
+      after(async () => {
+        try {
+          await track(
+            "lead_request_accepted",
+            {
+              source: leadAnalyticsSource(parsed.data.attribution.utmSource),
+              score_band: qualificationScore(parsed.data) >= 3 ? "3_5" : "0_2",
+            },
+            { headers: leadAnalyticsHeaders(request.headers) },
+          );
+        } catch {
+          // Conversion telemetry is advisory; durable intake must remain 202.
+        }
+      });
+    } catch {
+      // Background registration is advisory too. The lead is already durable.
     }
     return intakeResponse({ accepted: true }, 202);
   } catch (error) {

@@ -75,6 +75,8 @@ const ENTRY_PATHS = [
       "Use 10,000 virtual USDG against canonical-head quotes. Fills, positions, and PnL stay in this browser.",
     href: "/virtual-trading",
     action: "Open Virtual Trading",
+    analyticsEvent: "virtual_trading_clicked",
+    analyticsCta: "virtual_trading",
   },
   {
     glyph: "sparkle",
@@ -84,6 +86,8 @@ const ENTRY_PATHS = [
       "Describe the workflow and guardrails. We map its authority boundary before any wallet or integration commitment.",
     href: "/request-a-zap",
     action: "Request a Zap",
+    analyticsEvent: "request_zap_clicked",
+    analyticsCta: "request_zap",
   },
 ] as const;
 
@@ -140,7 +144,14 @@ export function ZapLauncher({ idScope }: { idScope?: string } = {}): React.JSX.E
         </div>
         <div className={styles.entryGrid}>
           {ENTRY_PATHS.map((path) => (
-            <Link href={path.href} className={styles.entryCard} key={path.title}>
+            <Link
+              href={path.href}
+              className={styles.entryCard}
+              key={path.title}
+              data-analytics-event={path.analyticsEvent}
+              data-analytics-cta={path.analyticsCta}
+              data-analytics-content="app_nav"
+            >
               <span className={styles.entryTile} aria-hidden="true">
                 <BlockGlyph name={path.glyph} />
               </span>
@@ -181,6 +192,9 @@ export function ZapLauncher({ idScope }: { idScope?: string } = {}): React.JSX.E
               href={option.href}
               className={styles.intentCard}
               data-accent={option.accent}
+              data-analytics-event="builder_cta_clicked"
+              data-analytics-cta={option.accent}
+              data-analytics-content="app_nav"
               key={option.label}
             >
               <span className={styles.intentTile}>
