@@ -3,8 +3,8 @@
   "publication": "https://defitutorials.substack.com",
   "feed": "https://defitutorials.substack.com/feed",
   "statusDefinitions": {
-    "draft": "Source-controlled Markdown that still requires owner approval. It is not authorized for the editor handoff and is not public.",
-    "approved_handoff": "The owner approved the exact draft and an official-editor handoff was prepared. This does not mean the tutorial is public.",
+    "draft": "Source-controlled Markdown that still requires owner approval. It is excluded from the Learn catalog and is not authorized for the editor handoff.",
+    "approved_handoff": "The owner approved the exact draft and an official-editor handoff was prepared. It remains excluded from the Learn catalog until RSS confirmation.",
     "rss_confirmed": "The exact canonical DeFi Tutorials URL and approved title were found together in the public RSS feed."
   },
   "tutorials": [

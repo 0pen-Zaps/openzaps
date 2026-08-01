@@ -216,7 +216,7 @@ describe("source-reviewed marketing campaigns", () => {
         ),
       ).toBe(false);
       if (channel === "x") {
-        expect(Array.from(campaign.body)).toHaveLength(255);
+        expect(Array.from(campaign.body)).toHaveLength(265);
       }
     },
   );

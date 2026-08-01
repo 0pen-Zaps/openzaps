@@ -149,7 +149,7 @@ const LEARN_HUB_FACTS: ReviewedMarketingFactRequirement[] = [
 const LEARN_HUB_CLAIMS: MarketingClaim[] = [
   {
     text:
-      "OpenZaps Learn publishes source-reviewed product updates and only RSS-confirmed DeFi Tutorials, keeps drafts and editor handoffs private, and links to Request a Zap for a human-reviewed authority map.",
+      "OpenZaps Learn publishes source-reviewed product updates and only RSS-confirmed DeFi Tutorials, withholds drafts and editor handoffs from its catalog until RSS confirmation, and links to Request a Zap for a human-reviewed authority map.",
     factKeys: ["product.learn_hub"],
     treatment: "asserted",
   },
@@ -216,7 +216,7 @@ const CAMPAIGNS: readonly ReviewedMarketingCampaign[] = [
     queueOrder: 30,
     notBefore: "2026-08-04T14:00:00.000Z",
     body:
-      "OpenZaps Learn is live.\n\nSource-reviewed product updates and RSS-confirmed DeFi Tutorials in one hub. Drafts stay private until evidence exists.\n\nRead—or request a bounded authority map:\nhttps://www.0xzaps.com/learn\n\nPre-audit software. Verify before use.",
+      "OpenZaps Learn is live.\n\nSource-reviewed product updates and RSS-confirmed DeFi Tutorials in one hub. Drafts stay off this catalog until RSS confirmation.\n\nRead—or request a bounded authority map:\nhttps://www.0xzaps.com/learn\n\nPre-audit software. Verify before use.",
     links: ["https://www.0xzaps.com/learn"],
     topics: ["protocol"],
     disclosures: ["pre_audit"],
@@ -225,7 +225,7 @@ const CAMPAIGNS: readonly ReviewedMarketingCampaign[] = [
     requiredFacts: LEARN_HUB_FACTS,
     canonicalSourceUrls: LEARN_HUB_FACTS.map((fact) => fact.sourceUrl),
     contentHash:
-      "0f3f9bd4b0b4950f55749a194d98a4fbeb87e16d33274b6f7640c35c499efd82",
+      "d1582813d0f9c4a53385e75082bd6d3fba90a5ea0edd2ce86bed873ca7289717",
   },
   {
     id: LEARN_HUB_MARKETING_CAMPAIGN_ID,
@@ -233,7 +233,7 @@ const CAMPAIGNS: readonly ReviewedMarketingCampaign[] = [
     queueOrder: 31,
     notBefore: "2026-08-04T14:00:00.000Z",
     body:
-      "**OpenZaps Learn is live.**\n\nThe new hub collects source-reviewed OpenZaps product updates and DeFi Tutorials whose title and canonical URL are RSS-confirmed. Drafts and editor handoffs stay private until that publication evidence exists.\n\nUse it to follow what shipped, read why the bounds matter, or request a human-reviewed authority map for one workflow:\nhttps://www.0xzaps.com/learn\n\nPre-audit software. Verify before use.",
+      "**OpenZaps Learn is live.**\n\nThe new hub collects source-reviewed OpenZaps product updates and DeFi Tutorials whose title and canonical URL are RSS-confirmed. Drafts and editor handoffs are withheld from the Learn catalog until RSS confirmation.\n\nUse it to follow what shipped, read why the bounds matter, or request a human-reviewed authority map for one workflow:\nhttps://www.0xzaps.com/learn\n\nPre-audit software. Verify before use.",
     links: ["https://www.0xzaps.com/learn"],
     topics: ["protocol"],
     disclosures: ["pre_audit"],
@@ -242,7 +242,7 @@ const CAMPAIGNS: readonly ReviewedMarketingCampaign[] = [
     requiredFacts: LEARN_HUB_FACTS,
     canonicalSourceUrls: LEARN_HUB_FACTS.map((fact) => fact.sourceUrl),
     contentHash:
-      "e4e5576c60c5d08e1e874875b15ac82aa9a9f1db016132ee682bc95d124529d8",
+      "4f091100fe08207167569a2233d0c6ebe4910c64efd4161347277986478042c9",
   },
 ];
 

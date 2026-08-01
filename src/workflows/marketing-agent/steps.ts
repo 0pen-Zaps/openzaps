@@ -632,7 +632,7 @@ export async function collectMarketingSourcesStep(
       "product.learn_hub",
       "OpenZaps Learn publication boundary",
       learnPageReady
-        ? "OpenZaps Learn publishes source-reviewed product updates and only RSS-confirmed DeFi Tutorials, keeps drafts and editor handoffs private, and links to Request a Zap for a human-reviewed authority map."
+        ? "OpenZaps Learn publishes source-reviewed product updates and only RSS-confirmed DeFi Tutorials, withholds drafts and editor handoffs from its catalog until RSS confirmation, and links to Request a Zap for a human-reviewed authority map."
         : null,
       learnUrl,
       observedAt,

@@ -336,9 +336,9 @@ const agentKitCampaignContentHash =
   "516443309a2b558c1335bb4f672a649a1f728ddc643bb0a762564835c6ff59ca";
 const learnHubCampaignId = "learn-hub-launched-v1";
 const learnHubXContentHash =
-  "0f3f9bd4b0b4950f55749a194d98a4fbeb87e16d33274b6f7640c35c499efd82";
-const learnHubDiscordContentHash =
-  "e4e5576c60c5d08e1e874875b15ac82aa9a9f1db016132ee682bc95d124529d8";
+  "d1582813d0f9c4a53385e75082bd6d3fba90a5ea0edd2ce86bed873ca7289717";
+const learnHubCommunityContentHash =
+  "4f091100fe08207167569a2233d0c6ebe4910c64efd4161347277986478042c9";
 const reviewedCampaignMonday = "2026-07-27T15:00:00Z";
 const reviewedCampaignTuesday = "2026-07-28T15:00:00Z";
 const reviewedCampaignWednesday = "2026-07-29T15:00:00Z";
@@ -1965,7 +1965,7 @@ Pre-audit software. Verify before use.$campaign$)::text
       (not_before = '2026-08-04T14:00:00Z'::timestamptz)::text || '|' ||
       (body = $campaign$OpenZaps Learn is live.
 
-Source-reviewed product updates and RSS-confirmed DeFi Tutorials in one hub. Drafts stay private until evidence exists.
+Source-reviewed product updates and RSS-confirmed DeFi Tutorials in one hub. Drafts stay off this catalog until RSS confirmation.
 
 Read—or request a bounded authority map:
 https://www.0xzaps.com/learn
@@ -2036,7 +2036,7 @@ Pre-audit software. Verify before use.$campaign$)::text
       (not_before = '2026-08-04T14:00:00Z'::timestamptz)::text || '|' ||
       (body = $campaign$**OpenZaps Learn is live.**
 
-The new hub collects source-reviewed OpenZaps product updates and DeFi Tutorials whose title and canonical URL are RSS-confirmed. Drafts and editor handoffs stay private until that publication evidence exists.
+The new hub collects source-reviewed OpenZaps product updates and DeFi Tutorials whose title and canonical URL are RSS-confirmed. Drafts and editor handoffs are withheld from the Learn catalog until RSS confirmation.
 
 Use it to follow what shipped, read why the bounds matter, or request a human-reviewed authority map for one workflow:
 https://www.0xzaps.com/learn
@@ -2049,7 +2049,7 @@ Pre-audit software. Verify before use.$campaign$)::text
   `);
   assert(
     learnHubDiscordClaim ===
-      `claimed|${learnHubCampaignId}|discord|31|${learnHubDiscordContentHash}|true|true`,
+      `claimed|${learnHubCampaignId}|discord|31|${learnHubCommunityContentHash}|true|true`,
     `OpenZaps Learn Discord campaign claim drifted: ${learnHubDiscordClaim}`,
   );
 
@@ -2059,7 +2059,7 @@ Pre-audit software. Verify before use.$campaign$)::text
       '${learnHubCampaignId}',
       'discord',
       '2026-08-05'::date,
-      '${learnHubDiscordContentHash}',
+      '${learnHubCommunityContentHash}',
       '2026-08-05T15:05:00Z'::timestamptz
     );
   `);
@@ -2086,7 +2086,7 @@ Pre-audit software. Verify before use.$campaign$)::text
       'scheduled:${learnHubCampaignId}:discord',
       'marketing-learn-hub-discord-harness',
       'marketing-learn-hub-discord-harness-candidate',
-      '${learnHubDiscordContentHash}',
+      '${learnHubCommunityContentHash}',
       'discord',
       'broadcast',
       'discordPosts',

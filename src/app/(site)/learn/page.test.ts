@@ -21,7 +21,9 @@ describe("Learn page", () => {
     expect(html).toContain("utm_source=openzaps");
     expect(html).toContain("utm_content=learn_hub");
     expect(html).toContain("Pre-audit software");
-    expect(html).toContain("Drafts and editor handoffs stay private");
+    expect(html).toContain(
+      "Drafts and editor handoffs are withheld from this catalog until",
+    );
     expect(html).toContain(
       'data-publication-boundary="reviewed-feed-and-rss-confirmed"',
     );

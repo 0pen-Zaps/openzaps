@@ -74,9 +74,9 @@ function tutorialManifestEntries(raw: unknown): unknown[] {
 
 /**
  * The source manifest is also the publication boundary. Drafts and prepared
- * editor handoffs remain invisible until a canonical URL and title have been
- * read back from the public DeFi Tutorials RSS feed and recorded as
- * `rss_confirmed`.
+ * editor handoffs remain absent from the public Learn catalog until a canonical
+ * URL and title have been read back from the public DeFi Tutorials RSS feed and
+ * recorded as `rss_confirmed`.
  */
 export function normalizeConfirmedTutorialManifest(
   raw: unknown,

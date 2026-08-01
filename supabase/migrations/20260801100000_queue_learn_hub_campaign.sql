@@ -25,7 +25,7 @@ values
   '2026-08-04T14:00:00.000Z'::timestamptz,
   $campaign$OpenZaps Learn is live.
 
-Source-reviewed product updates and RSS-confirmed DeFi Tutorials in one hub. Drafts stay private until evidence exists.
+Source-reviewed product updates and RSS-confirmed DeFi Tutorials in one hub. Drafts stay off this catalog until RSS confirmation.
 
 Read—or request a bounded authority map:
 https://www.0xzaps.com/learn
@@ -36,7 +36,7 @@ Pre-audit software. Verify before use.$campaign$,
   '["pre_audit"]'::jsonb,
   '[
     {
-      "text": "OpenZaps Learn publishes source-reviewed product updates and only RSS-confirmed DeFi Tutorials, keeps drafts and editor handoffs private, and links to Request a Zap for a human-reviewed authority map.",
+      "text": "OpenZaps Learn publishes source-reviewed product updates and only RSS-confirmed DeFi Tutorials, withholds drafts and editor handoffs from its catalog until RSS confirmation, and links to Request a Zap for a human-reviewed authority map.",
       "factKeys": ["product.learn_hub"],
       "treatment": "asserted"
     }
@@ -56,7 +56,7 @@ Pre-audit software. Verify before use.$campaign$,
     }
   ]'::jsonb,
   '["https://www.0xzaps.com/learn"]'::jsonb,
-  '0f3f9bd4b0b4950f55749a194d98a4fbeb87e16d33274b6f7640c35c499efd82'
+  'd1582813d0f9c4a53385e75082bd6d3fba90a5ea0edd2ce86bed873ca7289717'
 ),
 (
   'learn-hub-launched-v1',
@@ -65,7 +65,7 @@ Pre-audit software. Verify before use.$campaign$,
   '2026-08-04T14:00:00.000Z'::timestamptz,
   $campaign$**OpenZaps Learn is live.**
 
-The new hub collects source-reviewed OpenZaps product updates and DeFi Tutorials whose title and canonical URL are RSS-confirmed. Drafts and editor handoffs stay private until that publication evidence exists.
+The new hub collects source-reviewed OpenZaps product updates and DeFi Tutorials whose title and canonical URL are RSS-confirmed. Drafts and editor handoffs are withheld from the Learn catalog until RSS confirmation.
 
 Use it to follow what shipped, read why the bounds matter, or request a human-reviewed authority map for one workflow:
 https://www.0xzaps.com/learn
@@ -76,7 +76,7 @@ Pre-audit software. Verify before use.$campaign$,
   '["pre_audit"]'::jsonb,
   '[
     {
-      "text": "OpenZaps Learn publishes source-reviewed product updates and only RSS-confirmed DeFi Tutorials, keeps drafts and editor handoffs private, and links to Request a Zap for a human-reviewed authority map.",
+      "text": "OpenZaps Learn publishes source-reviewed product updates and only RSS-confirmed DeFi Tutorials, withholds drafts and editor handoffs from its catalog until RSS confirmation, and links to Request a Zap for a human-reviewed authority map.",
       "factKeys": ["product.learn_hub"],
       "treatment": "asserted"
     }
@@ -96,5 +96,5 @@ Pre-audit software. Verify before use.$campaign$,
     }
   ]'::jsonb,
   '["https://www.0xzaps.com/learn"]'::jsonb,
-  'e4e5576c60c5d08e1e874875b15ac82aa9a9f1db016132ee682bc95d124529d8'
+  '4f091100fe08207167569a2233d0c6ebe4910c64efd4161347277986478042c9'
 );

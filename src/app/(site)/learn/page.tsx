@@ -137,7 +137,10 @@ export default function LearnPage(): React.JSX.Element {
             DeFi Tutorials RSS feed.
           </p>
           <ul>
-            <li>Drafts and editor handoffs stay private.</li>
+            <li>
+              Drafts and editor handoffs are withheld from this catalog until
+              RSS confirmation.
+            </li>
             <li>No post is evidence of an audit or partnership.</li>
             <li>Every workflow remains subject to its encoded limits.</li>
           </ul>
