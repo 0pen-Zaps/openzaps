@@ -4,6 +4,7 @@ import {
   Analytics,
   type BeforeSendEvent,
 } from "@vercel/analytics/next";
+import { usePathname, useSearchParams } from "next/navigation";
 import { useEffect } from "react";
 
 import {
@@ -54,18 +55,29 @@ export function analyticsClickEvent(
   };
 }
 
+export function recordAnalyticsCampaignArrival(search?: string): boolean {
+  const attribution = captureAnalyticsAttribution(search);
+  if (!attribution || !claimAnalyticsCampaignArrival(attribution)) return false;
+
+  trackEvent("campaign_arrival");
+  return true;
+}
+
 /**
  * One client island owns both privacy-filtered Vercel pageviews and delegated
  * CTA measurement. Server-rendered links only carry anonymous data labels, so
  * they do not need to become client components themselves.
  */
 export function OpenZapsAnalytics(): React.JSX.Element {
-  useEffect(() => {
-    const attribution = captureAnalyticsAttribution();
-    if (attribution && claimAnalyticsCampaignArrival(attribution)) {
-      trackEvent("campaign_arrival");
-    }
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const search = searchParams.toString();
 
+  useEffect(() => {
+    recordAnalyticsCampaignArrival(search);
+  }, [pathname, search]);
+
+  useEffect(() => {
     const onClick = (event: MouseEvent): void => {
       if (!(event.target instanceof Element)) return;
       const marked = event.target.closest<HTMLElement>("[data-analytics-event]");
