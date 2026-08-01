@@ -655,6 +655,24 @@ describe("the server-side Across boundary", () => {
     ).rejects.toThrow(/changed/);
   });
 
+  it("redacts provider credentials from SpokePool read failures", async () => {
+    const credential = "base-provider-password-must-not-escape";
+    const providerFailure = new Error(
+      `RPC request failed at https://provider.example/v1/${credential}`,
+    );
+
+    const error = await readAcrossProtocolEvidence(
+      protocolReader(PROTOCOL, { fail: providerFailure }),
+      NOW,
+    ).catch((cause: unknown) => cause);
+
+    expect(error).toBeInstanceOf(Error);
+    expect((error as Error).message).toBe(
+      "The pinned Across limits could not be read from the Base RPC.",
+    );
+    expect((error as Error).message).not.toContain(credential);
+  });
+
   it("keeps the direct production API off until flags and complete credentials are explicit", () => {
     expect(acrossBridgeApiEnabled({ NODE_ENV: "production" })).toBe(false);
     expect(acrossBridgeApiEnabled({
@@ -737,6 +755,27 @@ describe("the server-side Across boundary", () => {
       ),
     ).rejects.toThrow(/both an API key and an integrator ID/);
     expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it("redacts provider credentials from Across transport failures", async () => {
+    const credential = "across-provider-password-must-not-escape";
+    const fetchFailure = vi.fn().mockRejectedValue(
+      new Error(`request failed with Authorization: Bearer ${credential}`),
+    ) as unknown as typeof fetch;
+
+    const error = await fetchAcrossBridgeQuote(
+      { routeId: ROUTE.id, outputAmount: REQUESTED_OUTPUT, depositor: DEPOSITOR, recipient: CAPSULE },
+      fetchFailure,
+      { ACROSS_API_KEY: credential, ACROSS_INTEGRATOR_ID: "0xbeef" },
+      NOW,
+      protocolReader(),
+    ).catch((cause: unknown) => cause);
+
+    expect(error).toBeInstanceOf(Error);
+    expect((error as Error).message).toBe(
+      "Across could not be reached; no deposit transaction was accepted.",
+    );
+    expect((error as Error).message).not.toContain(credential);
   });
 
   it("fails closed without authenticated credentials in production", async () => {
