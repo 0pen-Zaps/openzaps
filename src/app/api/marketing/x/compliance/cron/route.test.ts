@@ -5,7 +5,9 @@ vi.mock("server-only", () => ({}));
 const mocks = vi.hoisted(() => ({
   authorized: vi.fn(() => true),
   lookupSubjects: vi.fn(),
+  verifyIdentity: vi.fn(),
   configured: vi.fn(() => true),
+  initializeAccount: vi.fn(),
   listSubjects: vi.fn(),
   recordCheckpoint: vi.fn(),
 }));
@@ -15,8 +17,10 @@ vi.mock("@/lib/cron-auth", () => ({
 }));
 vi.mock("@/lib/marketing/channels/x", () => ({
   lookupXComplianceSubjects: mocks.lookupSubjects,
+  verifyXAuthenticatedIdentity: mocks.verifyIdentity,
 }));
 vi.mock("@/lib/marketing/x-compliance-server", () => ({
+  initializeMarketingXComplianceAccount: mocks.initializeAccount,
   listMarketingXComplianceSubjects: mocks.listSubjects,
   marketingXComplianceConfigured: mocks.configured,
   recordMarketingXComplianceCheckpoint: mocks.recordCheckpoint,
@@ -39,6 +43,16 @@ beforeEach(() => {
   vi.stubEnv("X_EXPECTED_ACCOUNT_ID", ACCOUNT_ID);
   mocks.authorized.mockReturnValue(true);
   mocks.configured.mockReturnValue(true);
+  mocks.verifyIdentity.mockResolvedValue({
+    authenticatedAccountId: ACCOUNT_ID,
+    authenticatedUsername: "openzaps",
+    observedAt: CHECKED_AT,
+  });
+  mocks.initializeAccount.mockResolvedValue({
+    result: "created",
+    accountId: ACCOUNT_ID,
+    eligibilityCutoffAt: CHECKED_AT,
+  });
   mocks.listSubjects.mockResolvedValue({
     result: "listed",
     accountId: ACCOUNT_ID,
@@ -128,6 +142,8 @@ describe("X compliance cron", () => {
       providerWritesAttempted: false,
     });
     expect(mocks.listSubjects).toHaveBeenCalledWith(ACCOUNT_ID, 5_000);
+    expect(mocks.verifyIdentity).not.toHaveBeenCalled();
+    expect(mocks.initializeAccount).not.toHaveBeenCalled();
     expect(mocks.lookupSubjects).toHaveBeenCalledTimes(3);
     for (const [input] of mocks.lookupSubjects.mock.calls as Array<[
       { postIds: string[]; userIds: string[] },
@@ -158,6 +174,69 @@ describe("X compliance cron", () => {
       subjectId: posts[0]?.subjectId,
       outcome: "present",
     });
+  });
+
+  it("binds a fresh store to the official identity before its first checkpoint", async () => {
+    mocks.listSubjects
+      .mockResolvedValueOnce({
+        result: "account_not_found",
+        accountId: ACCOUNT_ID,
+        subjectCount: 0,
+        subjects: [],
+      })
+      .mockResolvedValueOnce({
+        result: "listed",
+        accountId: ACCOUNT_ID,
+        subjectCount: 1,
+        subjects: [{ subjectKind: "account", subjectId: ACCOUNT_ID }],
+      });
+
+    const result = await GET(request());
+
+    expect(result.status).toBe(200);
+    expect(await result.json()).toMatchObject({
+      healthy: true,
+      result: "recorded",
+      bootstrapped: true,
+      subjectCount: 1,
+      providerWritesAttempted: false,
+    });
+    expect(mocks.verifyIdentity).toHaveBeenCalledWith({
+      requestTimeoutMs: 8_000,
+    });
+    expect(mocks.initializeAccount).toHaveBeenCalledWith({
+      accountId: ACCOUNT_ID,
+      verifiedAt: CHECKED_AT,
+    });
+    expect(mocks.listSubjects).toHaveBeenCalledTimes(2);
+    expect(mocks.verifyIdentity).toHaveBeenCalledBefore(mocks.initializeAccount);
+    expect(mocks.initializeAccount).toHaveBeenCalledBefore(mocks.lookupSubjects);
+    expect(mocks.lookupSubjects).toHaveBeenCalledBefore(mocks.recordCheckpoint);
+  });
+
+  it("fails closed before initialization when the official identity differs", async () => {
+    mocks.listSubjects.mockResolvedValue({
+      result: "account_not_found",
+      accountId: ACCOUNT_ID,
+      subjectCount: 0,
+      subjects: [],
+    });
+    mocks.verifyIdentity.mockResolvedValue({
+      authenticatedAccountId: "123456",
+      authenticatedUsername: "different",
+      observedAt: CHECKED_AT,
+    });
+
+    const result = await GET(request());
+
+    expect(result.status).toBe(503);
+    expect(await result.json()).toEqual({
+      error: "X compliance reconciliation failed closed.",
+      providerWritesAttempted: false,
+    });
+    expect(mocks.initializeAccount).not.toHaveBeenCalled();
+    expect(mocks.lookupSubjects).not.toHaveBeenCalled();
+    expect(mocks.recordCheckpoint).not.toHaveBeenCalled();
   });
 
   it("records provider protection as action-required and fails closed", async () => {

@@ -3,8 +3,12 @@ import { randomUUID } from "node:crypto";
 import { NextResponse } from "next/server";
 
 import { isCronAuthorized } from "@/lib/cron-auth";
-import { lookupXComplianceSubjects } from "@/lib/marketing/channels/x";
 import {
+  lookupXComplianceSubjects,
+  verifyXAuthenticatedIdentity,
+} from "@/lib/marketing/channels/x";
+import {
+  initializeMarketingXComplianceAccount,
   listMarketingXComplianceSubjects,
   marketingXComplianceConfigured,
   recordMarketingXComplianceCheckpoint,
@@ -128,16 +132,34 @@ export async function GET(request: Request): Promise<Response> {
     return response({ error: "X compliance monitoring is not ready." }, 503);
   }
 
-  const providerRunId = randomUUID();
-  const startedAt = new Date().toISOString();
   try {
-    const list = await listMarketingXComplianceSubjects(accountId, SUBJECT_LIMIT);
+    let list = await listMarketingXComplianceSubjects(accountId, SUBJECT_LIMIT);
+    let bootstrapped = false;
     if (list.result === "account_not_found") {
-      return response({ error: "The bound X compliance account is absent." }, 503);
+      const identity = await verifyXAuthenticatedIdentity({
+        requestTimeoutMs: 8_000,
+      });
+      if (identity.authenticatedAccountId !== accountId) {
+        throw new Error("The X compliance identity changed.");
+      }
+      const initialized = await initializeMarketingXComplianceAccount({
+        accountId,
+        verifiedAt: identity.observedAt,
+      });
+      if (initialized.accountId !== accountId) {
+        throw new Error("The durable X compliance identity changed.");
+      }
+      list = await listMarketingXComplianceSubjects(accountId, SUBJECT_LIMIT);
+      if (list.result === "account_not_found") {
+        throw new Error("The durable X compliance boundary is absent.");
+      }
+      bootstrapped = true;
     }
     if (list.result === "limit_exceeded") {
       return response({ error: "The X compliance subject limit was exceeded." }, 503);
     }
+    const providerRunId = randomUUID();
+    const startedAt = new Date().toISOString();
     const observations = await observeSubjects(accountId, list.subjects);
     const completedAt = new Date().toISOString();
     const checkpoint = await recordMarketingXComplianceCheckpoint({
@@ -158,6 +180,7 @@ export async function GET(request: Request): Promise<Response> {
         validUntil: checkpoint.validUntil,
         subjectCount: checkpoint.subjectCount,
         suppressedCount: checkpoint.nonPresentCount,
+        bootstrapped,
         providerWritesAttempted: false,
       },
       healthy ? 200 : 503,

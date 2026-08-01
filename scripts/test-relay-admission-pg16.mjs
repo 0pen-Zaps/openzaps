@@ -767,6 +767,7 @@ try {
     "public.erase_marketing_x_compliance_data(text,text,text,text)",
     "public.clear_marketing_x_compliance_hold(text,text)",
     "public.get_marketing_x_interaction_reference(text,text)",
+    "public.initialize_marketing_x_compliance_account(text,timestamp with time zone)",
     "public.list_marketing_x_compliance_subjects(text,integer)",
     "public.record_marketing_x_compliance_checkpoint(text,uuid,timestamp with time zone,timestamp with time zone,jsonb)",
     "public.get_marketing_x_compliance_health(text)",
@@ -838,6 +839,280 @@ try {
   assert(
     xMentionPrivileges === "t|f|t|f|t",
     `unexpected X mention inbox privileges: ${xMentionPrivileges}`,
+  );
+
+  const bootstrapXAccountId = "1910000000000000888";
+  const absentBootstrapAccount = psqlScalar(`
+    select result_code
+    from public.list_marketing_x_compliance_subjects(
+      '${bootstrapXAccountId}',
+      5000
+    );
+  `);
+  assert(
+    absentBootstrapAccount === "account_not_found",
+    `fresh X account was unexpectedly initialized: ${absentBootstrapAccount}`,
+  );
+
+  const unauthorizedXBootstrap = await psqlSession(`
+    set role anon;
+    select result_code
+    from public.initialize_marketing_x_compliance_account(
+      '${bootstrapXAccountId}',
+      pg_catalog.clock_timestamp()
+    );
+  `);
+  assert(
+    unauthorizedXBootstrap.status !== 0
+      && /permission denied/.test(
+        `${unauthorizedXBootstrap.stdout}${unauthorizedXBootstrap.stderr}`,
+      ),
+    "anonymous role unexpectedly initialized the X compliance boundary",
+  );
+
+  const staleXBootstrap = await psqlSession(`
+    select result_code
+    from public.initialize_marketing_x_compliance_account(
+      '${bootstrapXAccountId}',
+      pg_catalog.clock_timestamp() - interval '11 minutes'
+    );
+  `);
+  assert(
+    staleXBootstrap.status !== 0,
+    "stale X identity evidence unexpectedly initialized an account",
+  );
+  assert(
+    psqlScalar(`
+      select count(*)
+      from public.marketing_x_mention_accounts
+      where account_id = '${bootstrapXAccountId}';
+    `) === "0",
+    "rejected X bootstrap left an account boundary behind",
+  );
+
+  const initializedXBoundary = psqlScalar(`
+    select
+      result_code,
+      account_id,
+      eligibility_cutoff_at::text
+    from public.initialize_marketing_x_compliance_account(
+      '${bootstrapXAccountId}',
+      pg_catalog.clock_timestamp()
+    );
+  `).split("|");
+  assert(
+    initializedXBoundary[0] === "created"
+      && initializedXBoundary[1] === bootstrapXAccountId
+      && initializedXBoundary[2].length > 0,
+    `X compliance boundary was not initialized: ${initializedXBoundary.join("|")}`,
+  );
+
+  const pristineXBoundary = psqlScalar(`
+    select
+      initialized_at is null,
+      since_id is null,
+      cursor_set_at is null,
+      continuation_until_id is null,
+      continuation_base_since_id is null,
+      continuation_newest_id is null,
+      continuation_started_at is null,
+      poll_lease_token is null,
+      poll_lease_expires_at is null,
+      last_poll_started_at is null,
+      last_poll_finished_at is null,
+      last_success_at is null,
+      compliance_checkpoint_id is null,
+      compliance_checked_at is null,
+      compliance_valid_until is null,
+      compliance_hold_at is null,
+      eligibility_cutoff_at = next_poll_at,
+      eligibility_cutoff_at = created_at,
+      eligibility_cutoff_at = updated_at
+    from public.marketing_x_mention_accounts
+    where account_id = '${bootstrapXAccountId}';
+  `);
+  assert(
+    pristineXBoundary === Array(19).fill("t").join("|"),
+    `X bootstrap mutated mention state: ${pristineXBoundary}`,
+  );
+  const bootstrapChildRows = psqlScalar(`
+    select
+      (select count(*) from public.marketing_x_mentions
+       where account_id = '${bootstrapXAccountId}'),
+      (select count(*) from public.marketing_x_mention_opt_outs
+       where account_id = '${bootstrapXAccountId}'),
+      (select count(*) from public.marketing_x_compliance_checkpoints
+       where account_id = '${bootstrapXAccountId}'),
+      (select count(*) from public.marketing_x_reply_subjects
+       where account_id = '${bootstrapXAccountId}'),
+      (select count(*) from public.marketing_x_outbound_admissions
+       where account_id = '${bootstrapXAccountId}');
+  `);
+  assert(
+    bootstrapChildRows === "0|0|0|0|0",
+    `X bootstrap created child records: ${bootstrapChildRows}`,
+  );
+
+  const replayedXBoundary = psqlScalar(`
+    select
+      result_code,
+      account_id,
+      eligibility_cutoff_at::text
+    from public.initialize_marketing_x_compliance_account(
+      '${bootstrapXAccountId}',
+      pg_catalog.clock_timestamp()
+    );
+  `).split("|");
+  assert(
+    replayedXBoundary[0] === "already_exists"
+      && replayedXBoundary[1] === bootstrapXAccountId
+      && replayedXBoundary[2] === initializedXBoundary[2],
+    `X bootstrap replay changed its immutable cutoff: ${replayedXBoundary.join("|")}`,
+  );
+
+  const concurrentBootstrapXAccountId = "1910000000000000777";
+  const concurrentXBootstrapA = psqlScalarSession(`
+    select result_code || '|' || eligibility_cutoff_at::text
+    from public.initialize_marketing_x_compliance_account(
+      '${concurrentBootstrapXAccountId}',
+      pg_catalog.clock_timestamp()
+    );
+  `);
+  const concurrentXBootstrapB = psqlScalarSession(`
+    select result_code || '|' || eligibility_cutoff_at::text
+    from public.initialize_marketing_x_compliance_account(
+      '${concurrentBootstrapXAccountId}',
+      pg_catalog.clock_timestamp()
+    );
+  `);
+  const concurrentXBootstraps = await Promise.all([
+    concurrentXBootstrapA,
+    concurrentXBootstrapB,
+  ]);
+  assert(
+    concurrentXBootstraps.every((result) => result.status === 0),
+    "concurrent X compliance bootstrap call failed",
+  );
+  const concurrentXBootstrapRows = concurrentXBootstraps.map(
+    (result) => result.stdout.trim().split("|"),
+  );
+  assert(
+    concurrentXBootstrapRows.map((row) => row[0]).sort().join("|")
+      === "already_exists|created"
+      && concurrentXBootstrapRows[0][1] === concurrentXBootstrapRows[1][1],
+    `concurrent X bootstrap was not idempotent: ${concurrentXBootstrapRows.map((row) => row.join("|")).join(",")}`,
+  );
+  const concurrentXBootstrapState = psqlScalar(`
+    select
+      count(*),
+      bool_and(initialized_at is null),
+      bool_and(since_id is null),
+      bool_and(cursor_set_at is null),
+      bool_and(continuation_until_id is null),
+      bool_and(continuation_base_since_id is null),
+      bool_and(continuation_newest_id is null),
+      bool_and(continuation_started_at is null),
+      bool_and(poll_lease_token is null),
+      bool_and(poll_lease_expires_at is null),
+      bool_and(last_poll_started_at is null),
+      bool_and(last_poll_finished_at is null),
+      bool_and(last_success_at is null),
+      bool_and(last_defer_reason is null),
+      bool_and(compliance_checkpoint_id is null),
+      bool_and(compliance_checked_at is null),
+      bool_and(compliance_valid_until is null),
+      bool_and(compliance_hold_at is null),
+      bool_and(compliance_hold_reason is null)
+    from public.marketing_x_mention_accounts
+    where account_id = '${concurrentBootstrapXAccountId}';
+  `);
+  assert(
+    concurrentXBootstrapState === `1|${Array(18).fill("t").join("|")}`,
+    `concurrent X bootstrap mutated timeline state: ${concurrentXBootstrapState}`,
+  );
+
+  const racingBootstrapXAccountId = "1910000000000000666";
+  const racingXBootstrap = psqlScalarSession(`
+    select result_code || '|' || eligibility_cutoff_at::text
+    from public.initialize_marketing_x_compliance_account(
+      '${racingBootstrapXAccountId}',
+      pg_catalog.clock_timestamp()
+    );
+  `);
+  const racingXPoll = psqlScalarSession(`
+    select result_code
+    from public.claim_marketing_x_mention_poll(
+      '${racingBootstrapXAccountId}'
+    );
+  `);
+  const [racingXBootstrapResult, racingXPollResult] = await Promise.all([
+    racingXBootstrap,
+    racingXPoll,
+  ]);
+  assert(
+    racingXBootstrapResult.status === 0
+      && ["created", "already_exists"].includes(
+        racingXBootstrapResult.stdout.trim().split("|")[0],
+      )
+      && racingXPollResult.status === 0
+      && racingXPollResult.stdout.trim() === "compliance_stale",
+    `X bootstrap/poll race did not fail closed: ${racingXBootstrapResult.stdout.trim()}|${racingXPollResult.stdout.trim()}`,
+  );
+  const racingXBoundary = psqlScalar(`
+    select
+      count(*),
+      min(eligibility_cutoff_at)::text,
+      bool_and(initialized_at is null),
+      bool_and(since_id is null),
+      bool_and(cursor_set_at is null),
+      bool_and(poll_lease_token is null),
+      bool_and(poll_lease_expires_at is null),
+      bool_and(last_poll_started_at is null),
+      bool_and(last_poll_finished_at is null),
+      bool_and(last_success_at is null),
+      bool_and(compliance_checkpoint_id is null)
+    from public.marketing_x_mention_accounts
+    where account_id = '${racingBootstrapXAccountId}';
+  `).split("|");
+  assert(
+    racingXBoundary[0] === "1"
+      && racingXBoundary[1].length > 0
+      && racingXBoundary.slice(2).join("|") === Array(9).fill("t").join("|"),
+    `X bootstrap/poll race left mutable state: ${racingXBoundary.join("|")}`,
+  );
+  const replayedRacingXBoundary = psqlScalar(`
+    select result_code || '|' || eligibility_cutoff_at::text
+    from public.initialize_marketing_x_compliance_account(
+      '${racingBootstrapXAccountId}',
+      pg_catalog.clock_timestamp()
+    );
+  `).split("|");
+  assert(
+    replayedRacingXBoundary[0] === "already_exists"
+      && replayedRacingXBoundary[1] === racingXBoundary[1],
+    `X bootstrap/poll race changed the immutable cutoff: ${replayedRacingXBoundary.join("|")}`,
+  );
+
+  refreshXComplianceCheckpoint(bootstrapXAccountId);
+  const healthyUninitializedXBoundary = psqlScalar(`
+    select result_code || '|' || (checkpoint_id is not null) || '|'
+      || (checked_at is not null) || '|' || (valid_until is not null) || '|'
+      || (select initialized_at is null
+          from public.marketing_x_mention_accounts
+          where account_id = '${bootstrapXAccountId}')
+    from public.get_marketing_x_compliance_health('${bootstrapXAccountId}');
+  `);
+  assert(
+    healthyUninitializedXBoundary === "healthy|true|true|true|true",
+    `fresh checkpoint did not unlock a safe first baseline: ${healthyUninitializedXBoundary}`,
+  );
+  const bootstrapXLease = psqlScalar(`
+    select result_code || '|' || baseline_required || '|' || (since_id is null)
+    from public.claim_marketing_x_mention_poll('${bootstrapXAccountId}');
+  `);
+  assert(
+    bootstrapXLease === "claimed|true|true",
+    `initialized X boundary did not admit only a baseline poll: ${bootstrapXLease}`,
   );
 
   const emptyXAccountId = "1910000000000000999";
