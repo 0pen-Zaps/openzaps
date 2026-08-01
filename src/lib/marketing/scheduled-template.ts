@@ -32,17 +32,28 @@ const SAFE_FLAGS: MarketingPolicyFlags = {
   usesUnavailableAsZero: false,
 };
 
-const AUTHORITY_CLAIMS: MarketingClaim[] = [
+const FEATURE_CLAIMS: MarketingClaim[] = [
   {
     text:
-      "The immutable Zap policy and owner-signed intent define what may execute.",
-    factKeys: ["authority.execution"],
+      "Virtual Trading is a browser-local paper-trading sandbox with 10,000 virtual USDG; it does not use a wallet, approval, signature, transaction, or real funds.",
+    factKeys: ["product.virtual_trading"],
     treatment: "asserted",
   },
   {
     text:
-      "An agent may submit a due run but cannot widen its signed execution terms.",
-    factKeys: ["authority.submission"],
+      "Virtual Trading exposes current marks for the deployed 0xZAPS/USDG and aeWETH/USDG routes.",
+    factKeys: ["product.virtual_trading_markets"],
+    treatment: "asserted",
+  },
+  {
+    text: "Virtual Trading returned a fresh read-only paper-trade quote.",
+    factKeys: ["product.virtual_trading_quote"],
+    treatment: "asserted",
+  },
+  {
+    text:
+      "Request a Zap accepts a workflow request for human review and a bounded authority map rather than automatic deployment.",
+    factKeys: ["product.request_a_zap", "product.request_a_zap_intake"],
     treatment: "asserted",
   },
 ];
@@ -54,22 +65,25 @@ const TEMPLATES: Readonly<
     id: SCHEDULED_MARKETING_TEMPLATE_ID,
     channel: "x",
     body:
-      "Give an agent the trigger, never broad wallet authority. OpenZaps seals recipient, amount, cadence, floor, adapter, asset, and calldata in owner-signed intent. Explore https://www.0xzaps.com\n\nPre-audit software. Verify before use.",
+      "New on OpenZaps:\n\n→ Virtual Trading: paper trades with 10,000 virtual USDG and live read-only quotes. No wallet. No real funds.\n\n→ Request a Zap: submit one workflow to request a human-reviewed authority map.\n\nhttps://www.0xzaps.com\n\nPre-audit software. Verify before use.",
     links: ["https://www.0xzaps.com"],
-    topics: ["protocol"],
+    topics: ["simulation", "protocol"],
     disclosures: ["pre_audit"],
-    claims: AUTHORITY_CLAIMS,
+    claims: FEATURE_CLAIMS,
     flags: SAFE_FLAGS,
   },
   discord: {
     id: SCHEDULED_MARKETING_TEMPLATE_ID,
     channel: "discord",
     body:
-      "Give an agent the trigger, never broad wallet authority.\n\nOpenZaps turns an owner-signed intent into a sealed policy capsule: recipient, amount, cadence, floor, adapter, asset, and calldata stay bounded. An agent may submit a due run, but it cannot widen those terms.\n\nExplore: https://www.0xzaps.com\n\nPre-audit software. Verify before use.",
-    links: ["https://www.0xzaps.com"],
-    topics: ["protocol"],
+      "New on OpenZaps:\n\n**Virtual Trading** lets you paper-trade deployed 0xZAPS/USDG and aeWETH/USDG routes with 10,000 virtual USDG and live read-only quotes. No wallet, approval, signature, transaction, or real funds.\n\n**Request a Zap** lets you submit one workflow for human review and request a bounded authority map: what the agent may trigger and what it can never change. A review is not an automatic deployment promise.\n\nTry Virtual Trading: https://www.0xzaps.com/virtual-trading\nRequest a Zap: https://www.0xzaps.com/request-a-zap\n\nPre-audit software. Verify before use.",
+    links: [
+      "https://www.0xzaps.com/virtual-trading",
+      "https://www.0xzaps.com/request-a-zap",
+    ],
+    topics: ["simulation", "protocol"],
     disclosures: ["pre_audit"],
-    claims: AUTHORITY_CLAIMS,
+    claims: FEATURE_CLAIMS,
     flags: SAFE_FLAGS,
   },
 };

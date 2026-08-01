@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { MarketingLedgerError } from "@/lib/marketing/ledger-server";
+import { MAX_VOLATILE_MARKETING_SOURCE_AGE_MS } from "@/lib/marketing/policy";
 import type { MarketingDraftBundle } from "@/workflows/marketing-agent/contracts";
 
 const mocks = vi.hoisted(() => ({
@@ -60,6 +61,10 @@ import {
 } from "@/workflows/marketing-agent/steps";
 
 const CREATED_AT = new Date().toISOString();
+const VIRTUAL_TRADING_PAGE_HTML =
+  "Virtual Trading starts with 10,000 virtual USDG. Nothing here can move money. No wallet required. No deposit or approval. No signature or transaction.";
+const REQUEST_ZAP_PAGE_HTML =
+  "Request a Zap is human-reviewed. Get its authority map.";
 
 function bundle(): MarketingDraftBundle {
   const sourcePacket = {
@@ -175,11 +180,104 @@ function zeroSnapshot() {
   };
 }
 
+function virtualMarketSnapshot() {
+  return {
+    chainId: 4663,
+    blockNumber: "23258886",
+    blockHash: `0x${"cd".repeat(32)}`,
+    blockTimestamp: String(Math.floor(Date.parse(CREATED_AT) / 1_000)),
+    readAt: CREATED_AT,
+    source: "canonical Robinhood Chain head eth_call",
+    markets: [
+      {
+        marketId: "zaps",
+        symbol: "0xZAPS",
+        routeId: "robinhood-v4-route-zaps-usdg",
+        sampleInputRaw: "1000000000000000000000000",
+        sampleOutputRaw: "733800",
+        priceWad: "733800000000",
+      },
+      {
+        marketId: "weth",
+        symbol: "aeWETH",
+        routeId: "robinhood-v4-weth-usdg",
+        sampleInputRaw: "10000000000000000",
+        sampleOutputRaw: "19180000",
+        priceWad: "1918000000000000000000",
+      },
+    ],
+  };
+}
+
+function virtualQuote() {
+  return {
+    clientOrderId: "marketing-readiness",
+    portfolioRevision: 0,
+    marketId: "weth",
+    side: "buy",
+    routeId: "robinhood-v4-usdg-weth",
+    inputRaw: "1000000",
+    outputRaw: "500000000000000",
+    gasEstimate: "12345",
+    chainId: 4663,
+    blockNumber: "23258886",
+    blockHash: `0x${"ef".repeat(32)}`,
+    blockTimestamp: String(Math.floor(Date.parse(CREATED_AT) / 1_000)),
+    quotedAt: CREATED_AT,
+    expiresAt: new Date(Date.parse(CREATED_AT) + 45_000).toISOString(),
+  };
+}
+
 function scheduledSourcePacket() {
   const sourcePacket = bundle().sourcePacket;
   return {
     ...sourcePacket,
     facts: [
+      {
+        key: "product.virtual_trading",
+        label: "Virtual Trading",
+        value:
+          "Browser-local paper trading starts with 10,000 virtual USDG without a wallet, approval, signature, transaction, or real funds.",
+        status: "confirmed" as const,
+        sourceUrl: "https://www.0xzaps.com/virtual-trading",
+        observedAt: CREATED_AT,
+      },
+      {
+        key: "product.virtual_trading_markets",
+        label: "Virtual Trading market marks",
+        value:
+          "Current read-only canonical-head marks are available for the deployed 0xZAPS/USDG and aeWETH/USDG routes.",
+        status: "confirmed" as const,
+        sourceUrl: "https://www.0xzaps.com/api/virtual-trading/markets",
+        observedAt: CREATED_AT,
+      },
+      {
+        key: "product.virtual_trading_quote",
+        label: "Virtual Trading quote readiness",
+        value:
+          "The read-only paper-trade quote endpoint returned a fresh canonical-head quote without a wallet or transaction.",
+        status: "confirmed" as const,
+        sourceUrl: "https://www.0xzaps.com/api/virtual-trading/quote",
+        observedAt: CREATED_AT,
+      },
+      {
+        key: "product.request_a_zap",
+        label: "Request a Zap page",
+        value:
+          "The Request a Zap page describes a human-reviewed authority map for one workflow; the review is not an automatic deployment promise.",
+        status: "confirmed" as const,
+        sourceUrl: "https://www.0xzaps.com/request-a-zap",
+        observedAt: CREATED_AT,
+      },
+      {
+        key: "product.request_a_zap_intake",
+        label: "Request a Zap intake readiness",
+        value:
+          "The non-mutating readiness probe confirmed authenticated access to the deployed lead-intake RPC.",
+        status: "confirmed" as const,
+        sourceUrl: "https://www.0xzaps.com/api/leads/request",
+        observedAt: CREATED_AT,
+      },
       {
         key: "authority.execution",
         label: "Execution authority",
@@ -275,6 +373,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  vi.useRealTimers();
   vi.resetAllMocks();
   vi.unstubAllEnvs();
   vi.unstubAllGlobals();
@@ -719,7 +818,9 @@ describe("durable marketing delivery admission", () => {
       scheduledSourcePacket(),
       "scheduled-run-1",
     );
-    expect(draft.model).toBe("deterministic/bounded-authority-v1");
+    expect(draft.model).toBe(
+      "deterministic/virtual-trading-request-zap-v2",
+    );
     expect(draft.policy).toEqual([
       expect.objectContaining({
         disposition: "allow",
@@ -737,8 +838,8 @@ describe("durable marketing delivery admission", () => {
     ]);
     expect(mocks.claim).toHaveBeenCalledWith(
       expect.objectContaining({
-        idempotencyKey: "scheduled:bounded-authority-v1:x",
-        approvedBy: "system:bounded-authority-v1",
+        idempotencyKey: "scheduled:virtual-trading-request-zap-v2:x",
+        approvedBy: "system:virtual-trading-request-zap-v2",
         channel: "x",
         action: "broadcast",
       }),
@@ -746,6 +847,44 @@ describe("durable marketing delivery admission", () => {
     expect(mocks.xBroadcast).toHaveBeenCalledWith(
       expect.objectContaining({ madeWithAi: false }),
     );
+  });
+
+  it("rechecks volatile evidence after provider preflight", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(CREATED_AT));
+    setLiveEnvironment();
+    vi.stubEnv("OPENZAPS_MARKETING_AUTO_PUBLISH", "true");
+    mocks.getSnapshot.mockResolvedValue(zeroSnapshot());
+    mocks.verifyXIdentity.mockImplementation(async () => {
+      vi.setSystemTime(
+        new Date(
+          Date.parse(CREATED_AT)
+            + MAX_VOLATILE_MARKETING_SOURCE_AGE_MS
+            + 1,
+        ),
+      );
+      return {
+        authenticatedAccountId: "100",
+        authenticatedUsername: "0xzaps",
+        observedAt: CREATED_AT,
+      };
+    });
+
+    const draft = await buildScheduledMarketingDraftStep(
+      { channels: ["x"] },
+      scheduledSourcePacket(),
+      "scheduled-run-delayed",
+    );
+    await expect(
+      publishScheduledMarketingBundleStep(draft),
+    ).resolves.toMatchObject([
+      {
+        status: "blocked",
+        error: expect.stringContaining("final provider admission"),
+      },
+    ]);
+    expect(mocks.claim).not.toHaveBeenCalled();
+    expect(mocks.xBroadcast).not.toHaveBeenCalled();
   });
 
   it("uses the same bounded path for a verified Discord destination", async () => {
@@ -784,23 +923,24 @@ describe("durable marketing delivery admission", () => {
     expect(mocks.verifyDiscordDestination).toHaveBeenCalledOnce();
     expect(mocks.claim).toHaveBeenCalledWith(
       expect.objectContaining({
-        idempotencyKey: "scheduled:bounded-authority-v1:discord",
+        idempotencyKey:
+          "scheduled:virtual-trading-request-zap-v2:discord",
         channel: "discord",
       }),
     );
     expect(mocks.discord).toHaveBeenCalledOnce();
   });
 
-  it("uses one durable key per template revision and channel across runs", async () => {
+  it("fails closed when a later run reuses a claimed template key", async () => {
     setLiveEnvironment();
     vi.stubEnv("OPENZAPS_MARKETING_AUTO_PUBLISH", "true");
     mocks.getSnapshot.mockResolvedValue(zeroSnapshot());
     mocks.claim.mockResolvedValue({
-      result: "already_claimed",
+      result: "idempotency_conflict",
       status: "published",
-      providerMessageId: "777",
-      providerUrl: "https://x.com/i/web/status/777",
-      currentCount: 1,
+      providerMessageId: null,
+      providerUrl: null,
+      currentCount: null,
       day: zeroSnapshot().usage.day,
     });
 
@@ -816,11 +956,19 @@ describe("durable marketing delivery admission", () => {
     );
     expect(second.id).toBe(first.id);
 
-    await publishScheduledMarketingBundleStep(second);
+    await expect(
+      publishScheduledMarketingBundleStep(second),
+    ).resolves.toMatchObject([
+      {
+        channel: "x",
+        status: "blocked",
+        error: expect.stringContaining("idempotency_conflict"),
+      },
+    ]);
 
     expect(mocks.claim).toHaveBeenCalledWith(
       expect.objectContaining({
-        idempotencyKey: "scheduled:bounded-authority-v1:x",
+        idempotencyKey: "scheduled:virtual-trading-request-zap-v2:x",
       }),
     );
     expect(mocks.xBroadcast).not.toHaveBeenCalled();
@@ -925,6 +1073,204 @@ describe("bounded source collection", () => {
     expect(JSON.stringify(result)).not.toContain("target post text");
   });
 
+  it("confirms feature facts only from live page markers and canonical market marks", async () => {
+    const fetchMock = vi.fn().mockImplementation((input: string) => {
+      if (input.endsWith("/api/virtual-trading/markets")) {
+        return Promise.resolve(Response.json(virtualMarketSnapshot()));
+      }
+      if (input.endsWith("/api/virtual-trading/quote")) {
+        return Promise.resolve(Response.json(virtualQuote()));
+      }
+      if (input.endsWith("/api/leads/request")) {
+        return Promise.resolve(Response.json({ ready: true }));
+      }
+      if (input.endsWith("/virtual-trading")) {
+        return Promise.resolve(
+          new Response(VIRTUAL_TRADING_PAGE_HTML, {
+            headers: { "content-type": "text/html; charset=utf-8" },
+          }),
+        );
+      }
+      if (input.endsWith("/request-a-zap")) {
+        return Promise.resolve(
+          new Response(REQUEST_ZAP_PAGE_HTML, {
+            headers: { "content-type": "text/html; charset=utf-8" },
+          }),
+        );
+      }
+      return Promise.resolve(Response.json({}));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await collectMarketingSourcesStep({
+      kind: "product_update",
+      brief: "Collect a verified product update.",
+      channels: ["x"],
+      sourceUrls: [],
+    });
+
+    expect(fetchMock).toHaveBeenCalledTimes(8);
+    expect(result.facts).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          key: "product.virtual_trading",
+          status: "confirmed",
+          sourceUrl: "https://www.0xzaps.com/virtual-trading",
+        }),
+        expect.objectContaining({
+          key: "product.virtual_trading_markets",
+          status: "confirmed",
+          sourceUrl:
+            "https://www.0xzaps.com/api/virtual-trading/markets",
+        }),
+        expect.objectContaining({
+          key: "product.virtual_trading_quote",
+          status: "confirmed",
+          sourceUrl: "https://www.0xzaps.com/api/virtual-trading/quote",
+        }),
+        expect.objectContaining({
+          key: "product.request_a_zap",
+          status: "confirmed",
+          sourceUrl: "https://www.0xzaps.com/request-a-zap",
+        }),
+        expect.objectContaining({
+          key: "product.request_a_zap_intake",
+          status: "confirmed",
+          sourceUrl: "https://www.0xzaps.com/api/leads/request",
+        }),
+      ]),
+    );
+  });
+
+  it.each([
+    ["stale", -6 * 60 * 1_000],
+    ["future-skewed", 2 * 60 * 1_000],
+  ])("rejects %s market and quote evidence", async (_label, offsetMs) => {
+    const evidenceAt = new Date(Date.parse(CREATED_AT) + offsetMs);
+    const blockTimestamp = String(Math.floor(evidenceAt.getTime() / 1_000));
+    const fetchMock = vi.fn().mockImplementation((input: string) => {
+      if (input.endsWith("/api/virtual-trading/markets")) {
+        return Promise.resolve(
+          Response.json({
+            ...virtualMarketSnapshot(),
+            readAt: evidenceAt.toISOString(),
+            blockTimestamp,
+          }),
+        );
+      }
+      if (input.endsWith("/api/virtual-trading/quote")) {
+        return Promise.resolve(
+          Response.json({
+            ...virtualQuote(),
+            quotedAt: evidenceAt.toISOString(),
+            expiresAt: new Date(evidenceAt.getTime() + 45_000).toISOString(),
+            blockTimestamp,
+          }),
+        );
+      }
+      if (input.endsWith("/api/leads/request")) {
+        return Promise.resolve(Response.json({ ready: true }));
+      }
+      if (input.endsWith("/virtual-trading")) {
+        return Promise.resolve(
+          new Response(VIRTUAL_TRADING_PAGE_HTML, {
+            headers: { "content-type": "text/html" },
+          }),
+        );
+      }
+      if (input.endsWith("/request-a-zap")) {
+        return Promise.resolve(
+          new Response(REQUEST_ZAP_PAGE_HTML, {
+            headers: { "content-type": "text/html" },
+          }),
+        );
+      }
+      return Promise.resolve(Response.json({}));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await collectMarketingSourcesStep({
+      kind: "product_update",
+      brief: "Collect a verified product update.",
+      channels: ["x"],
+      sourceUrls: [],
+    });
+    const facts = new Map(result.facts.map((fact) => [fact.key, fact]));
+
+    expect(facts.get("product.virtual_trading_markets")).toMatchObject({
+      status: "unavailable",
+      value: null,
+    });
+    expect(facts.get("product.virtual_trading_quote")).toMatchObject({
+      status: "unavailable",
+      value: null,
+    });
+  });
+
+  it.each([
+    ["reversed", 0, -1],
+    ["expired", -60_000, 45_000],
+    ["overlong", 0, 60_000],
+  ])(
+    "rejects a %s quote expiry",
+    async (_label, quotedOffsetMs, expiryOffsetMs) => {
+      const quotedAt = new Date(Date.parse(CREATED_AT) + quotedOffsetMs);
+      const expiresAt = new Date(quotedAt.getTime() + expiryOffsetMs);
+      const fetchMock = vi.fn().mockImplementation((input: string) => {
+        if (input.endsWith("/api/virtual-trading/markets")) {
+          return Promise.resolve(Response.json(virtualMarketSnapshot()));
+        }
+        if (input.endsWith("/api/virtual-trading/quote")) {
+          return Promise.resolve(
+            Response.json({
+              ...virtualQuote(),
+              quotedAt: quotedAt.toISOString(),
+              expiresAt: expiresAt.toISOString(),
+              blockTimestamp: String(
+                Math.floor(quotedAt.getTime() / 1_000),
+              ),
+            }),
+          );
+        }
+        if (input.endsWith("/api/leads/request")) {
+          return Promise.resolve(Response.json({ ready: true }));
+        }
+        if (input.endsWith("/virtual-trading")) {
+          return Promise.resolve(
+            new Response(VIRTUAL_TRADING_PAGE_HTML, {
+              headers: { "content-type": "text/html" },
+            }),
+          );
+        }
+        if (input.endsWith("/request-a-zap")) {
+          return Promise.resolve(
+            new Response(REQUEST_ZAP_PAGE_HTML, {
+              headers: { "content-type": "text/html" },
+            }),
+          );
+        }
+        return Promise.resolve(Response.json({}));
+      });
+      vi.stubGlobal("fetch", fetchMock);
+
+      const result = await collectMarketingSourcesStep({
+        kind: "product_update",
+        brief: "Collect a verified product update.",
+        channels: ["x"],
+        sourceUrls: [],
+      });
+      const facts = new Map(result.facts.map((fact) => [fact.key, fact]));
+
+      expect(facts.get("product.virtual_trading_markets")).toMatchObject({
+        status: "confirmed",
+      });
+      expect(facts.get("product.virtual_trading_quote")).toMatchObject({
+        status: "unavailable",
+        value: null,
+      });
+    },
+  );
+
   it("rejects redirects and cancels streamed JSON once its byte cap is crossed", async () => {
     const cancelled = vi.fn();
     const fetchMock = vi.fn().mockImplementation(() => {
@@ -954,14 +1300,19 @@ describe("bounded source collection", () => {
       sourceUrls: [],
     });
 
-    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(fetchMock).toHaveBeenCalledTimes(8);
     for (const [, init] of fetchMock.mock.calls as Array<[string, RequestInit]>) {
       expect(init.redirect).toBe("error");
     }
-    expect(cancelled).toHaveBeenCalledTimes(3);
+    expect(cancelled).toHaveBeenCalledTimes(6);
     expect(
       result.facts
         .filter((fact) => fact.key.startsWith("protocol."))
+        .every((fact) => fact.status === "unavailable"),
+    ).toBe(true);
+    expect(
+      result.facts
+        .filter((fact) => fact.key.startsWith("product."))
         .every((fact) => fact.status === "unavailable"),
     ).toBe(true);
   });
@@ -970,6 +1321,20 @@ describe("bounded source collection", () => {
     const cancelled = vi.fn();
     const fetchMock = vi.fn().mockImplementation((input: string) => {
       if (input.includes("/api/")) return Promise.resolve(Response.json({}));
+      if (input.endsWith("/virtual-trading")) {
+        return Promise.resolve(
+          new Response(VIRTUAL_TRADING_PAGE_HTML, {
+            headers: { "content-type": "text/html" },
+          }),
+        );
+      }
+      if (input.endsWith("/request-a-zap")) {
+        return Promise.resolve(
+          new Response(REQUEST_ZAP_PAGE_HTML, {
+            headers: { "content-type": "text/html" },
+          }),
+        );
+      }
       let chunk = 0;
       return Promise.resolve(
         new Response(
@@ -996,7 +1361,7 @@ describe("bounded source collection", () => {
       sourceUrls: ["https://defitutorials.substack.com/p/openzaps"],
     });
 
-    expect(fetchMock).toHaveBeenCalledTimes(4);
+    expect(fetchMock).toHaveBeenCalledTimes(9);
     for (const [, init] of fetchMock.mock.calls as Array<[string, RequestInit]>) {
       expect(init.redirect).toBe("error");
     }
@@ -1005,15 +1370,28 @@ describe("bounded source collection", () => {
   });
 
   it("drops allowlisted external evidence that contains credential-like data", async () => {
-    const fetchMock = vi.fn().mockImplementation((input: string) =>
-      Promise.resolve(
-        input.includes("/api/")
-          ? Response.json({})
-          : new Response(
-              "Leaked webhook https://discord.com/api/webhooks/123456789/example-secret-token",
-            ),
-      ),
-    );
+    const fetchMock = vi.fn().mockImplementation((input: string) => {
+      if (input.includes("/api/")) return Promise.resolve(Response.json({}));
+      if (input.endsWith("/virtual-trading")) {
+        return Promise.resolve(
+          new Response(VIRTUAL_TRADING_PAGE_HTML, {
+            headers: { "content-type": "text/html" },
+          }),
+        );
+      }
+      if (input.endsWith("/request-a-zap")) {
+        return Promise.resolve(
+          new Response(REQUEST_ZAP_PAGE_HTML, {
+            headers: { "content-type": "text/html" },
+          }),
+        );
+      }
+      return Promise.resolve(
+        new Response(
+          "Leaked webhook https://discord.com/api/webhooks/123456789/example-secret-token",
+        ),
+      );
+    });
     vi.stubGlobal("fetch", fetchMock);
 
     const result = await collectMarketingSourcesStep({
@@ -1023,7 +1401,7 @@ describe("bounded source collection", () => {
       sourceUrls: ["https://defitutorials.substack.com/p/openzaps"],
     });
 
-    expect(fetchMock).toHaveBeenCalledTimes(4);
+    expect(fetchMock).toHaveBeenCalledTimes(9);
     expect(result.externalData).toEqual([]);
     expect(JSON.stringify(result)).not.toContain("example-secret-token");
   });

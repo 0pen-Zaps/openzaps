@@ -5,7 +5,8 @@ Vercel. Model-generated copy is **review-only**: the agent collects evidence
 and drafts channel-specific copy, deterministic policy evaluates it, and an
 authenticated operator approves or rejects every generated outbound bundle.
 There is one narrower automatic lane for exact, versioned, server-rendered
-tier-1 education templates on ready X and Discord broadcast providers.
+tier-1 educational or wallet-free simulation templates on ready X and Discord
+broadcast providers.
 
 The agent does not receive wallet authority. It cannot create, fund, sign, or
 execute a Zap. Its only external write surfaces are reviewed X broadcasts and
@@ -20,12 +21,13 @@ in [lead-engine.md](lead-engine.md).
 
 | Invariant | Enforcement |
 | --- | --- |
-| Evidence before copy | Each run reads the production health, protocol activity, and pot APIs. Optional source URLs are restricted to OpenZaps, DeFi Tutorials, and the canonical GitHub repository. |
+| Evidence before copy | Each run reads the production health, protocol activity, pot, Virtual Trading markets, a fresh read-only quote, and lead-intake readiness, then verifies bounded markers on the two promoted feature pages. Optional source URLs are restricted to OpenZaps, DeFi Tutorials, and the canonical GitHub repository. |
 | External text is data | Fetched text is marked `instructionsTrusted: false` and cannot widen the operator brief or policy. |
 | Claims cite facts | Every asserted or qualified generated claim must cite a source-packet fact key. Unavailable data is `null`, never zero. |
 | Pre-audit disclosure | Public copy includes `Pre-audit software. Verify before use.` while the protocol remains pre-audit. |
 | Canonical links only | Outbound links are restricted to `0xzaps.com`, `www.0xzaps.com`, `defitutorials.substack.com`, and `github.com/0pen-Zaps/openzaps`. |
 | Human review | Every model-generated item and every reply remains review-only. Tutorials, incidents, security, token/trading, partnerships, roadmaps, and new deployments always require approval. |
+| Paper simulation | The `simulation` topic is reserved for wallet-free, no-real-funds practice surfaces. Live or token trading remains `trading` and always requires approval. |
 | Bounded scheduled templates | Automatic delivery accepts only the exact public fields of the current versioned server template, only for tier-1 X/Discord broadcasts, and rechecks configuration, source freshness, provider identity/destination, caps, and the durable claim immediately before writing. A changed body, claim, or channel—or missing, stale, or internally inconsistent source evidence—cannot inherit that authority. |
 | Prohibited means prohibited | A human cannot override credential exposure, guaranteed-return claims, impersonation, policy bypasses, unsolicited bulk messaging, unavailable-as-zero claims, or non-canonical links. |
 | No unverified X replies | An operator supplies only a canonical `x.com/<user>/status/<id>` URL and a paraphrase. The agent verifies the author and explicit mention/owned quote through X's API, stores metadata but not post text, requires human approval, and enforces one lifetime reply per interaction. There is no polling or browser scraping. |
@@ -67,6 +69,7 @@ not invoke the model or the approval workflow.
 | `POST /api/marketing/approvals` | Resume the one-shot approval hook | Operator bearer token |
 | `GET /api/marketing/cron` | Start the bounded scheduled-template workflow | `Authorization: Bearer <CRON_SECRET>` |
 | `POST /api/marketing/discord/interactions` | Receive Discord application commands | Discord Ed25519 request signature and a five-minute freshness window |
+| `GET /api/leads/request` | Return non-secret, non-mutating lead-intake RPC readiness for fail-closed campaign evidence | Public; private/no-store response, with `503` while unavailable |
 
 The operator token is held in browser `sessionStorage`, scoped to the current
 tab. Use a dedicated browser profile, never paste the token into a brief or
@@ -148,9 +151,9 @@ adapter; setting the legacy DM flag does not enable it.
 `vercel.json` invokes the route at `0 14 * * 1-5`: 14:00 UTC every weekday.
 That is 10:00 Eastern during daylight-saving time and 09:00 Eastern during
 standard time. Vercel schedules use UTC. The route never invokes a model. It
-renders the exact `bounded-authority-v1` education template and can publish it
-only when `OPENZAPS_MARKETING_AUTO_PUBLISH=true` and every fresh gate passes.
-Substack, replies, and arbitrary copy are outside this lane.
+renders the exact `virtual-trading-request-zap-v2` feature template and can
+publish it only when `OPENZAPS_MARKETING_AUTO_PUBLISH=true` and every fresh gate
+passes. Substack, replies, and arbitrary copy are outside this lane.
 
 Keep the schedule disabled during previews and initial production rollout.
 Before starting a workflow, cron atomically claims one
@@ -158,11 +161,12 @@ Before starting a workflow, cron atomically claims one
 Overlapping or retried invocations return `already_claimed` without creating a
 second run. A claimed slot is deliberately retained when workflow start is
 ambiguous, so the day's scheduled draft may be skipped rather than duplicated.
-Each template revision and channel also has one stable durable delivery key.
-Replaying `bounded-authority-v1` reconciles its original receipt instead of
-posting identical copy again, even on a later weekday. Shipping new scheduled
-copy therefore requires a reviewed source change with a new template id; never
-date-salt identical text to manufacture a new delivery.
+Each template revision and channel also has one stable durable delivery key. A
+retry inside the same workflow run can reconcile its original receipt. Once
+`virtual-trading-request-zap-v2` has been claimed, a later weekday run has a new
+run id and fails closed with `idempotency_conflict` before any provider write.
+Shipping new scheduled copy therefore requires a reviewed source change with a
+new template id; never date-salt identical text to manufacture a new delivery.
 
 ### X
 

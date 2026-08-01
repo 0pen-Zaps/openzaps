@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { readMarketingConfig } from "@/lib/marketing/config";
 import {
   CANONICAL_OUTBOUND_HOSTS,
+  MAX_VOLATILE_MARKETING_SOURCE_AGE_MS,
   PRE_AUDIT_DISCLOSURE,
   MAX_MARKETING_SOURCE_AGE_MS,
   UNAVAILABLE_DATA_DISCLOSURE,
@@ -128,23 +129,49 @@ function scheduledCandidate(
       ...draft.sourcePacket,
       facts: [
         {
-          key: "authority.execution",
-          label: "Execution authority",
+          key: "product.virtual_trading",
+          label: "Virtual Trading",
           value:
-            "The immutable Zap policy and owner-signed intent define what may execute.",
+            "Browser-local paper trading starts with 10,000 virtual USDG without a wallet, approval, signature, transaction, or real funds.",
           status: "confirmed",
-          sourceUrl:
-            "https://github.com/0pen-Zaps/openzaps/blob/main/docs/adr/0006-agent-connection-and-mcp-surface.md",
+          sourceUrl: "https://www.0xzaps.com/virtual-trading",
           observedAt: NOW,
         },
         {
-          key: "authority.submission",
-          label: "Submission authority",
+          key: "product.virtual_trading_markets",
+          label: "Virtual Trading market marks",
           value:
-            "An agent may submit a due run but cannot widen its signed terms.",
+            "Current read-only canonical-head marks are available for the deployed 0xZAPS/USDG and aeWETH/USDG routes.",
           status: "confirmed",
           sourceUrl:
-            "https://github.com/0pen-Zaps/openzaps/blob/main/docs/adr/0006-agent-connection-and-mcp-surface.md",
+            "https://www.0xzaps.com/api/virtual-trading/markets",
+          observedAt: NOW,
+        },
+        {
+          key: "product.virtual_trading_quote",
+          label: "Virtual Trading quote readiness",
+          value:
+            "The read-only paper-trade quote endpoint returned a fresh canonical-head quote without a wallet or transaction.",
+          status: "confirmed",
+          sourceUrl: "https://www.0xzaps.com/api/virtual-trading/quote",
+          observedAt: NOW,
+        },
+        {
+          key: "product.request_a_zap",
+          label: "Request a Zap page",
+          value:
+            "The Request a Zap page describes a human-reviewed authority map for one workflow; the review is not an automatic deployment promise.",
+          status: "confirmed",
+          sourceUrl: "https://www.0xzaps.com/request-a-zap",
+          observedAt: NOW,
+        },
+        {
+          key: "product.request_a_zap_intake",
+          label: "Request a Zap intake readiness",
+          value:
+            "The non-mutating readiness probe confirmed authenticated access to the deployed lead-intake RPC.",
+          status: "confirmed",
+          sourceUrl: "https://www.0xzaps.com/api/leads/request",
           observedAt: NOW,
         },
       ],
@@ -173,6 +200,7 @@ describe("bounded marketing state and risk", () => {
   it("classifies internal, routine, review, sensitive, and prohibited content", () => {
     expect(classifyMarketingRisk(candidate({ action: "draft" }))).toBe(0);
     expect(classifyMarketingRisk(candidate())).toBe(1);
+    expect(classifyMarketingRisk(candidate({ topics: ["simulation"] }))).toBe(1);
     expect(classifyMarketingRisk(candidate({ kind: "tutorial" }))).toBe(2);
     expect(classifyMarketingRisk(candidate({ topics: ["security"] }))).toBe(3);
     expect(
@@ -410,6 +438,30 @@ describe("deterministic marketing policy", () => {
       approvalRequired: false,
       approvalReasons: [],
     });
+
+    const delayed = evaluateMarketingPolicy(scheduledCandidate(), {
+      ...automaticContext,
+      now: new Date(
+        Date.parse(NOW) + MAX_VOLATILE_MARKETING_SOURCE_AGE_MS + 1,
+      ).toISOString(),
+    });
+    expect(delayed.disposition).toBe("blocked");
+    expect(delayed.issues.map((issue) => issue.code)).toContain(
+      "volatile_source_stale",
+    );
+
+    const reviewedDelayed = evaluateMarketingPolicy(
+      scheduledCandidate(),
+      context({
+        config,
+        humanApproved: true,
+        now: new Date(
+          Date.parse(NOW) + MAX_VOLATILE_MARKETING_SOURCE_AGE_MS + 1,
+        ).toISOString(),
+      }),
+    );
+    expect(reviewedDelayed.disposition).toBe("allow");
+    expect(reviewedDelayed.issues).toEqual([]);
 
     const generated = evaluateMarketingPolicy(candidate(), automaticContext);
     expect(generated.disposition).toBe("require_approval");

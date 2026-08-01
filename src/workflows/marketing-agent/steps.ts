@@ -41,6 +41,11 @@ import {
 } from "@/lib/marketing/ledger-server";
 import { containsCredentialLikeData } from "@/lib/marketing/source-url";
 import {
+  parseVirtualFill,
+  parseVirtualMarketSnapshot,
+  VIRTUAL_QUOTE_TTL_MS,
+} from "@/lib/virtual-trading";
+import {
   GeneratedMarketingDraftSchema,
   DeployedMarketingCandidateSchema,
   MarketingApprovalPayloadSchema,
@@ -64,11 +69,14 @@ const DEFAULT_MODEL = "openai/gpt-5-mini";
 const SCHEDULED_MODEL =
   `deterministic/${SCHEDULED_MARKETING_TEMPLATE_ID}` as const;
 const SCHEDULED_BRIEF =
-  "Publish the versioned bounded-authority education template.";
+  "Publish the versioned Virtual Trading and Request a Zap feature template.";
 const DEFAULT_SITE_URL = "https://www.0xzaps.com";
 const SOURCE_TIMEOUT_MS = 12_000;
 const JSON_SOURCE_LIMIT = 1_000_000;
 const EXTERNAL_SOURCE_LIMIT = 24_000;
+const FEATURE_PAGE_LIMIT = 200_000;
+const PRODUCT_EVIDENCE_MAX_AGE_MS = 5 * 60 * 1_000;
+const PRODUCT_EVIDENCE_MAX_FUTURE_SKEW_MS = 60 * 1_000;
 const LEDGER_FINALIZATION_MAX_ATTEMPTS = 2;
 
 interface JsonRecord {
@@ -113,6 +121,58 @@ async function fetchJson(url: string): Promise<unknown | null> {
     return JSON.parse(body) as unknown;
   } catch {
     return null;
+  }
+}
+
+async function fetchVirtualQuote(url: string): Promise<unknown | null> {
+  try {
+    const response = await fetch(url, {
+      method: "POST",
+      body: JSON.stringify({
+        clientOrderId: "marketing-readiness",
+        inputRaw: "1000000",
+        marketId: "weth",
+        portfolioRevision: 0,
+        side: "buy",
+      }),
+      cache: "no-store",
+      headers: {
+        accept: "application/json",
+        "content-type": "application/json",
+      },
+      redirect: "error",
+      signal: AbortSignal.timeout(SOURCE_TIMEOUT_MS),
+    });
+    if (!response.ok) return null;
+    const body = await readBoundedTextBody(response, JSON_SOURCE_LIMIT);
+    return JSON.parse(body) as unknown;
+  } catch {
+    return null;
+  }
+}
+
+async function fetchFeaturePage(
+  url: string,
+  markers: readonly string[],
+): Promise<boolean> {
+  try {
+    const response = await fetch(url, {
+      cache: "no-store",
+      headers: { accept: "text/html" },
+      redirect: "error",
+      signal: AbortSignal.timeout(SOURCE_TIMEOUT_MS),
+    });
+    if (!response.ok) return false;
+    const contentType = response.headers
+      .get("content-type")
+      ?.split(";", 1)[0]
+      ?.trim()
+      .toLowerCase();
+    if (contentType !== "text/html") return false;
+    const body = await readBoundedTextBody(response, FEATURE_PAGE_LIMIT);
+    return markers.every((marker) => body.includes(marker));
+  } catch {
+    return false;
   }
 }
 
@@ -181,6 +241,29 @@ function knownOrUnavailable(
   );
 }
 
+function evidenceTimestampIsFresh(
+  isoTimestamp: string,
+  unixSeconds: string,
+  observedAt: string,
+): boolean {
+  const observedMs = Date.parse(observedAt);
+  const readMs = Date.parse(isoTimestamp);
+  const blockMs = Number(unixSeconds) * 1_000;
+  if (
+    !Number.isFinite(observedMs)
+    || !Number.isFinite(readMs)
+    || !Number.isFinite(blockMs)
+  ) {
+    return false;
+  }
+  const minimum = observedMs - PRODUCT_EVIDENCE_MAX_AGE_MS;
+  const maximum = observedMs + PRODUCT_EVIDENCE_MAX_FUTURE_SKEW_MS;
+  return readMs >= minimum
+    && readMs <= maximum
+    && blockMs >= minimum
+    && blockMs <= maximum;
+}
+
 function repositorySource(path: string): string {
   const sha = process.env.VERCEL_GIT_COMMIT_SHA?.trim();
   const revision = sha && /^[0-9a-f]{40}$/iu.test(sha) ? sha : "main";
@@ -198,10 +281,42 @@ export async function collectMarketingSourcesStep(
   const healthUrl = `${siteUrl}/api/health`;
   const activityUrl = `${siteUrl}/api/protocol/activity`;
   const potUrl = `${siteUrl}/api/protocol/pot`;
-  const [healthValue, activityValue, potValue, externalData, interaction] = await Promise.all([
+  const virtualTradingUrl = `${siteUrl}/virtual-trading`;
+  const virtualMarketsUrl = `${siteUrl}/api/virtual-trading/markets`;
+  const virtualQuoteUrl = `${siteUrl}/api/virtual-trading/quote`;
+  const requestZapUrl = `${siteUrl}/request-a-zap`;
+  const leadReadinessUrl = `${siteUrl}/api/leads/request`;
+  const [
+    healthValue,
+    activityValue,
+    potValue,
+    virtualMarketsValue,
+    virtualQuoteValue,
+    leadReadinessValue,
+    virtualTradingPageReady,
+    requestZapPageReady,
+    externalData,
+    interaction,
+  ] = await Promise.all([
     fetchJson(healthUrl),
     fetchJson(activityUrl),
     fetchJson(potUrl),
+    fetchJson(virtualMarketsUrl),
+    fetchVirtualQuote(virtualQuoteUrl),
+    fetchJson(leadReadinessUrl),
+    fetchFeaturePage(virtualTradingUrl, [
+      "Virtual Trading",
+      "10,000 virtual USDG",
+      "Nothing here can move money.",
+      "No wallet required",
+      "No deposit or approval",
+      "No signature or transaction",
+    ]),
+    fetchFeaturePage(requestZapUrl, [
+      "Request a Zap",
+      "human-reviewed",
+      "Get its authority map.",
+    ]),
     fetchExternalData(request.sourceUrls, observedAt),
     request.kind === "community_reply" && request.interactionUrl
       ? verifyXReplyTarget(request.interactionUrl)
@@ -214,6 +329,24 @@ export async function collectMarketingSourcesStep(
   const activity = record(activityValue);
   const stats = record(activity?.stats);
   const pot = record(potValue);
+  const virtualMarkets = parseVirtualMarketSnapshot(virtualMarketsValue);
+  const virtualQuote = parseVirtualFill(virtualQuoteValue);
+  const leadReadiness = record(leadReadinessValue);
+  const virtualMarketsFresh = virtualMarkets !== null
+    && evidenceTimestampIsFresh(
+      virtualMarkets.readAt,
+      virtualMarkets.blockTimestamp,
+      observedAt,
+    );
+  const virtualQuoteFresh = virtualQuote !== null
+    && evidenceTimestampIsFresh(
+      virtualQuote.quotedAt,
+      virtualQuote.blockTimestamp,
+      observedAt,
+    )
+    && Date.parse(virtualQuote.expiresAt) > Date.parse(observedAt)
+    && Date.parse(virtualQuote.expiresAt) - Date.parse(virtualQuote.quotedAt)
+      === VIRTUAL_QUOTE_TTL_MS;
   const pots = Array.isArray(pot?.pots) ? pot.pots.map(record).filter(Boolean) : [];
   const historyStatuses = pots
     .map((entry) => entry?.historyStatus)
@@ -306,6 +439,51 @@ export async function collectMarketingSourcesStep(
       "Pot history availability",
       historyStatuses.length > 0 ? [...new Set(historyStatuses)].join(", ") : null,
       potUrl,
+      observedAt,
+    ),
+    knownOrUnavailable(
+      "product.virtual_trading",
+      "Virtual Trading",
+      virtualTradingPageReady
+        ? "Browser-local paper trading starts with 10,000 virtual USDG without a wallet, approval, signature, transaction, or real funds."
+        : null,
+      virtualTradingUrl,
+      observedAt,
+    ),
+    knownOrUnavailable(
+      "product.virtual_trading_markets",
+      "Virtual Trading market marks",
+      virtualMarketsFresh
+        ? "Current read-only canonical-head marks are available for the deployed 0xZAPS/USDG and aeWETH/USDG routes."
+        : null,
+      virtualMarketsUrl,
+      observedAt,
+    ),
+    knownOrUnavailable(
+      "product.virtual_trading_quote",
+      "Virtual Trading quote readiness",
+      virtualQuoteFresh
+        ? "The read-only paper-trade quote endpoint returned a fresh canonical-head quote without a wallet or transaction."
+        : null,
+      virtualQuoteUrl,
+      observedAt,
+    ),
+    knownOrUnavailable(
+      "product.request_a_zap",
+      "Request a Zap page",
+      requestZapPageReady
+        ? "The Request a Zap page describes a human-reviewed authority map for one workflow; the review is not an automatic deployment promise."
+        : null,
+      requestZapUrl,
+      observedAt,
+    ),
+    knownOrUnavailable(
+      "product.request_a_zap_intake",
+      "Request a Zap intake readiness",
+      leadReadiness?.ready === true
+        ? "The non-mutating readiness probe confirmed authenticated access to the deployed lead-intake RPC."
+        : null,
+      leadReadinessUrl,
       observedAt,
     ),
     fact(
@@ -948,6 +1126,22 @@ async function deliverMarketingBundle(
         });
         continue;
       }
+    }
+
+    const finalDecision = evaluateMarketingPolicy(candidate, {
+      ...context,
+      now: new Date().toISOString(),
+    });
+    if (finalDecision.disposition !== "allow") {
+      deliveries.push({
+        channel: candidate.channel,
+        candidateId: candidate.id,
+        status: "blocked",
+        idempotencyKey,
+        error:
+          "Deterministic policy blocked delivery at final provider admission.",
+      });
+      continue;
     }
 
     let claim;
