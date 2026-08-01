@@ -200,9 +200,9 @@ receipt and is not represented as one. A later append-only migration queues the
 distinct Discord-only Agent Kit announcement for the first eligible weekday;
 no duplicate row or fabricated historical delivery receipt is created. The
 OpenZaps Learn release adds a second append-only migration with one X row and
-one Discord row. Both remain ineligible until the deployed `/learn` page proves
-the reviewed catalog boundary, and each has its own immutable content hash and
-delivery key.
+one Discord row. Both rows may exist in the durable queue, but automatic
+delivery remains blocked until the deployed `/learn` page proves the reviewed
+catalog boundary. Each row has its own immutable content hash and delivery key.
 
 The separate feed-discovery route runs at `30 13 * * *`: 13:30 UTC every
 day. It becomes operational only after the syndication migration is applied
