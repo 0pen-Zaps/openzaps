@@ -152,9 +152,10 @@ export async function readAcrossProtocolEvidence(
     };
   } catch (error) {
     if (error instanceof BridgeQuoteError) throw error;
-    throw new BridgeQuoteError(
-      `The pinned Across limits could not be read: ${error instanceof Error ? error.message : String(error)}`,
-    );
+    // viem provider errors can include the complete RPC URL. That URL may
+    // contain a project credential, so it must never cross the public route
+    // boundary through BridgeQuoteError.message.
+    throw new BridgeQuoteError("The pinned Across limits could not be read from the Base RPC.");
   }
 }
 
@@ -244,10 +245,11 @@ export async function fetchAcrossBridgeQuote(
       cache: "no-store",
       signal: AbortSignal.timeout(10_000),
     });
-  } catch (error) {
-    throw new BridgeQuoteError(
-      `Across could not be reached: ${error instanceof Error ? error.message : String(error)}`,
-    );
+  } catch {
+    // Fetch/proxy diagnostics can echo request URLs or headers. The API key is
+    // carried in Authorization, so keep the public failure independent of the
+    // underlying transport error.
+    throw new BridgeQuoteError("Across could not be reached; no deposit transaction was accepted.");
   }
   if (!response.ok) {
     throw new BridgeQuoteError(`Across answered ${response.status}; no deposit transaction was accepted.`);
