@@ -39,7 +39,7 @@ vi.mock("@/lib/leads/server", async (importOriginal) => ({
 }));
 
 import { submitLeadRequest } from "@/lib/leads/server";
-import { GET, POST } from "./route";
+import { GET, POST, leadQuotaRetryAfterSeconds } from "./route";
 
 const mockedSubmit = vi.mocked(submitLeadRequest);
 
@@ -91,6 +91,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  vi.useRealTimers();
   vi.resetAllMocks();
 });
 
@@ -244,18 +245,22 @@ describe("POST /api/leads/request", () => {
   it("surfaces the durable quota without exposing its fingerprint", async () => {
     mockedSubmit.mockResolvedValue("quota_reached");
 
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-08-01T08:30:00.500Z"));
+
     const response = await POST(request());
     const raw = await response.text();
 
     expect(response.status).toBe(429);
-    expect(response.headers.get("retry-after")).toBe("86400");
+    expect(response.headers.get("retry-after")).toBe("55800");
     expect(JSON.parse(raw)).toEqual({
       accepted: false,
-      error: "Please try again later.",
+      error: "Daily request limit reached.",
     });
     expect(raw).not.toContain("fingerprint");
     expect(mocks.start).not.toHaveBeenCalled();
     expect(mocks.track).not.toHaveBeenCalled();
+
   });
 
   it("fails closed when durable storage is unavailable", async () => {
@@ -269,5 +274,20 @@ describe("POST /api/leads/request", () => {
     });
     expect(mocks.start).not.toHaveBeenCalled();
     expect(mocks.track).not.toHaveBeenCalled();
+  });
+});
+
+describe("leadQuotaRetryAfterSeconds", () => {
+  it("returns the ceiling to the next UTC day", () => {
+    expect(
+      leadQuotaRetryAfterSeconds(
+        new Date("2026-08-01T23:59:59.250Z").getTime(),
+      ),
+    ).toBe(1);
+    expect(
+      leadQuotaRetryAfterSeconds(
+        new Date("2026-08-01T00:00:00.000Z").getTime(),
+      ),
+    ).toBe(86_400);
   });
 });
