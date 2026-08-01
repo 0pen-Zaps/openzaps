@@ -1,13 +1,13 @@
-# ozUSDG atomic one-time seed — 29 July 2026 operator runbook
+# ozUSDG atomic one-time seed — revised 1 August 2026 operator runbook
 
-> **STATUS: LIVE PREFLIGHT BLOCKED, NOT BROADCAST.** The guarded source still fails closed, but the
-> reviewed `65,000` 0xZAPS input no longer covers the fixed USDG shortfall at the current pool price.
-> At Robinhood block `23,530,970`
-> (`0x35262e2b94adede272347b6da626f4381a84618d0db08c11a31f0f91739b2bd3`) the final quote was
-> `43,313` USDG base units and its one-percent floor was `42,879`, below the required `53,540`.
-> A later no-broadcast run at block `23,535,848` independently failed with a `43,312` quote and
-> `42,878` floor. Do not sign, broadcast, reuse the July 29 nonce packet, or increase the token input
-> as an operational retry. Any new fixed amount is a new reviewed design decision.
+> **STATUS: REVISED 110K/V2 SOURCE VERIFIED, NOT OWNER-AUTHORIZED, NOT BROADCAST.** At Robinhood
+> block `25,314,000`
+> (`0x830b20fcfc286ad925cb28880add9f73949ec5b00bd7e6779aba93482b6c2166`), the revised exact
+> `110,000` 0xZAPS input quoted `57,897` USDG base units. Its one-percent floor was `57,318`, which
+> covers the fixed `53,540`-unit shortfall with `3,778` units of floor margin and leaves an expected
+> `4,357`-unit USDG refund after the exact deposit. This pinned result is test evidence, not a live
+> execution quote, approval to spend, or broadcast authorization. The prior `65,000`/v1 plan and
+> nonce packet are invalid. Source review, merge, and deployment do not authorize the owner spend.
 
 ## Scope and fixed amounts
 
@@ -15,10 +15,10 @@
 already-deployed, empty ozUSDG vault on Robinhood Chain mainnet (`4663`). The source reads no private
 key, mnemonic, provider credential, or signer secret.
 
-The reviewed plan is fixed:
+The revised review-candidate plan is fixed:
 
 - pull exactly `946,460` USDG base units (`0.946460` USDG) from the pinned owner;
-- swap exactly `65,000e18` 0xZAPS through the pinned `0xZAPS -> aeWETH -> USDG` route;
+- swap exactly `110,000e18` 0xZAPS through the pinned `0xZAPS -> aeWETH -> USDG` route;
 - require a fresh one-percent-below-quote floor of at least the fixed `53,540`-unit USDG shortfall;
 - deposit exactly `1,000,000` USDG base units (`1.000000` USDG); and
 - mint exactly `1,000,000,000` ozUSDG base units (`1.000000000` ozUSDG) to `0x...dEaD`.
@@ -31,7 +31,7 @@ must hold at least `946,460` units. Any additional owner USDG remains untouched.
 The script records exactly four owner transactions:
 
 1. deploy the no-admin, one-use `OzUSDGAtomicSeeder`;
-2. approve exactly `65,000e18` 0xZAPS to that helper;
+2. approve exactly `110,000e18` 0xZAPS to that helper;
 3. approve exactly `946,460` USDG units to that helper; and
 4. call `helper.seed(946_460, freshMinimumUsdG)`.
 
@@ -84,13 +84,15 @@ The script or helper stops unless each code-enforceable check passes:
   `0xa072ee627b548f6da96b55e2d3730273fe040cf7fa136019223b21a8c87faff4`;
 - ozUSDG runtime code hash is exactly
   `0x2b0866418c3563cffc10778552b98eef1d4eb3c3a9a654c32949fb4ce7b13618`;
+- the deployed v2 helper runtime hash matches its compiled runtime, whose reviewed build hash is
+  `0x129db32bd7ce9e29e0ebe12897181ca9b7d4859f4e2cfe58eaef3e11a1bd5a59`;
 - adapter and token registries are owned by the pinned owner, with no pending ownership transfer;
 - the route adapter and all route/vault tokens remain allowlisted;
 - router, Permit2, token path, both pool IDs, fees, tick spacings, directions, and hook pins match;
 - ozUSDG has zero total assets, zero total supply, and zero dead-address shares;
 - legacy owner-to-adapter, owner-to-vault, adapter-to-Permit2, and Permit2-to-router allowances are
   zero;
-- the owner holds at least `65,000e18` 0xZAPS and `946,460` USDG units; and
+- the owner holds at least `110,000e18` 0xZAPS and `946,460` USDG units; and
 - transactions two and three create exact, not larger, owner-to-helper allowances.
 
 The script checks the quoter runtime before recording transaction one. The helper constructor checks
@@ -145,7 +147,7 @@ public RPC may reject historical account-proof requests:
 
 ```sh
 RUN_ROBINHOOD_OZUSDG_SEED_FORK=true \
-ROBINHOOD_OZUSDG_SEED_FORK_BLOCK=22303042 \
+ROBINHOOD_OZUSDG_SEED_FORK_BLOCK=25314000 \
 ROBINHOOD_RPC_URL="$ROBINHOOD_ARCHIVE_RPC_URL" \
 forge test --match-path test/SeedOzUSDGRobinhood.fork.t.sol -vv
 ```
@@ -164,7 +166,7 @@ forge script script/SeedOzUSDGRobinhood.s.sol:SeedOzUSDGRobinhood \
 Confirm the generated sequence contains exactly:
 
 1. helper CREATE;
-2. 0xZAPS approval to that helper for `65,000e18`;
+2. 0xZAPS approval to that helper for `110,000e18`;
 3. USDG approval to that helper for `946,460`; and
 4. `helper.seed(946_460, freshMinimumUsdG)`.
 
@@ -180,6 +182,10 @@ fixed amount, or reuse an earlier floor to make a rehearsal pass.
 This runbook does not authorize a broadcast. If the owner separately authorizes execution after a
 fresh successful rehearsal, use a named Forge keystore, hardware signer, or external signer. Never
 put a private key in the command or environment transcript.
+
+Publishing, reviewing, merging, or deploying this source is not approval to spend the owner's
+tokens. Broadcast requires a separate, explicit owner decision that names the revised `110,000e18`
+0xZAPS input after the owner reviews a fresh quote, floor, and predicted helper address.
 
 No other process, wallet session, automation, or operator may submit transactions from the owner
 during the four-transaction sequence. Confirm the owner's latest and pending nonce immediately
@@ -218,7 +224,7 @@ Required final state:
   zero;
 - route-adapter balances of 0xZAPS, aeWETH, and USDG equal their pre-run balances;
 - both RPCs still report the preflight USDG and aeWETH implementation addresses and runtime hashes;
-- owner 0xZAPS equals its balance immediately before transaction four minus `65,000e18`, plus any
+- owner 0xZAPS equals its balance immediately before transaction four minus `110,000e18`, plus any
   preexisting helper 0xZAPS refunded by transaction four;
 - owner USDG equals its balance immediately before transaction four minus `946,460`, plus all
   residual helper USDG refunded by transaction four; owner USDG received before transaction four
@@ -241,7 +247,7 @@ before transaction four. There is never a persisted “swap succeeded, deposit f
 
 Depending on where the sequence stopped:
 
-- after transaction two, the helper may retain exactly `65,000e18` 0xZAPS allowance; or
+- after transaction two, the helper may retain exactly `110,000e18` 0xZAPS allowance; or
 - after transaction three, it may retain both that 0xZAPS allowance and exactly `946,460` USDG
   allowance.
 

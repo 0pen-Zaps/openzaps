@@ -56,7 +56,7 @@ interface IOzSeedVault {
 ///         arguments, setters, generic calls, alternate receivers, or recovery authority.
 ///
 /// @dev The owner grants this helper exactly two bounded ERC-20 allowances before calling `seed`:
-///      65,000 0xZAPS and the pinned 946,460-unit USDG input. `seed` rechecks every external pin and
+///      110,000 0xZAPS and the pinned 946,460-unit USDG input. `seed` rechecks every external pin and
 ///      the empty vault BEFORE either pull. Preexisting balances at this helper (including prefunding
 ///      of its predicted CREATE address) are snapshotted and excluded from measured deltas; they are
 ///      refunded only if `seed` succeeds. Never intentionally prefund this no-recovery helper. Once
@@ -65,9 +65,9 @@ interface IOzSeedVault {
 contract OzUSDGAtomicSeeder {
     using SafeApprove for address;
 
-    string public constant VERSION = "ozUSDG-atomic-seeder-1";
+    string public constant VERSION = "ozUSDG-atomic-seeder-2";
     uint256 public constant ROBINHOOD_CHAIN_ID = 4663;
-    uint256 public constant ZAPS_INPUT = 65_000 ether;
+    uint256 public constant ZAPS_INPUT = 110_000 ether;
     uint256 public constant OWNER_USDG_INPUT = 946_460;
     uint256 public constant SEED_ASSETS = 1_000_000;
     uint256 public constant EXPECTED_SEED_SHARES = 1_000_000_000;

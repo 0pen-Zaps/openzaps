@@ -33,7 +33,7 @@ interface IOzSeedV4Quoter {
 ///
 /// @dev Exactly four owner transactions are recorded:
 ///        1. deploy the compiled, no-admin OzUSDGAtomicSeeder;
-///        2. approve exactly 65,000 0xZAPS to that helper;
+///        2. approve exactly 110,000 0xZAPS to that helper;
 ///        3. approve exactly the pinned 946,460-unit USDG input to that helper; and
 ///        4. call helper.seed(946_460, fresh one-percent swap floor).
 ///
@@ -48,7 +48,7 @@ contract SeedOzUSDGRobinhood is Script {
     uint256 public constant ROBINHOOD_CHAIN_ID = 4663;
     uint256 public constant BPS = 10_000;
     uint256 public constant SLIPPAGE_BPS = 100;
-    uint256 public constant ZAPS_INPUT = 65_000 ether;
+    uint256 public constant ZAPS_INPUT = 110_000 ether;
     uint256 public constant OWNER_USDG_INPUT = 946_460;
     uint256 public constant SEED_ASSETS = 1_000_000;
 
