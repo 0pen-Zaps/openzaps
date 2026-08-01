@@ -362,9 +362,9 @@ const syndicationInboxMigration =
 const xMentionInboxMigration =
   "20260801143000_marketing_x_mentions.sql";
 const subscriptionGrantHardeningMigration =
-  "20260801214552_harden_subscription_authorization_grants.sql";
+  "20260801224100_harden_subscription_authorization_grants.sql";
 const retentionSequenceHardeningMigration =
-  "20260801223000_harden_marketing_retention_sequence_grants.sql";
+  "20260801224202_harden_marketing_retention_sequence_grants.sql";
 const reviewedCampaignFixture = "pg16-reviewed-campaign";
 const reviewedCampaignContentHash = "de".repeat(32);
 const agentKitCampaignId = "agent-kit-published-v1";

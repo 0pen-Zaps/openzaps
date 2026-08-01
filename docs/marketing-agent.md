@@ -662,7 +662,9 @@ supabase/migrations/20260801100000_queue_learn_hub_campaign.sql
 supabase/migrations/20260801143000_marketing_x_mentions.sql
 supabase/migrations/20260801170000_marketing_x_compliance_operations.sql
 supabase/migrations/20260801180000_marketing_discord_delivery_receipts.sql
-supabase/migrations/20260801223000_harden_marketing_retention_sequence_grants.sql
+supabase/migrations/20260801221910_marketing_x_compliance_bootstrap.sql
+supabase/migrations/20260801224100_harden_subscription_authorization_grants.sql
+supabase/migrations/20260801224202_harden_marketing_retention_sequence_grants.sql
 ```
 
 If any file is already recorded remotely, apply only the missing exact files

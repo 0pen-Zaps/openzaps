@@ -10,7 +10,7 @@ const migration = readFileSync(
 );
 const retentionSequenceMigration = readFileSync(
   new URL(
-    "../../../supabase/migrations/20260801223000_harden_marketing_retention_sequence_grants.sql",
+    "../../../supabase/migrations/20260801224202_harden_marketing_retention_sequence_grants.sql",
     import.meta.url,
   ),
   "utf8",
