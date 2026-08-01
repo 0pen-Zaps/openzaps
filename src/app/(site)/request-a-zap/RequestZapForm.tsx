@@ -241,27 +241,36 @@ export function RequestZapForm({
           Which path describes you? <span aria-hidden>*</span>
         </legend>
         <div className={styles.personaGrid}>
-          {PERSONAS.map((option) => (
-            <label className={styles.personaCard} key={option.value}>
-              <input
-                type="radio"
-                name="persona"
-                value={option.value}
-                checked={persona === option.value}
-                required
-                onChange={() => {
-                  setPersona(option.value);
-                  trackEvent("lead_persona_selected", {
-                    ...analyticsAttribution,
-                    persona: option.value,
-                  });
-                }}
-              />
-              <span className={styles.personaIndex}>{option.index}</span>
-              <strong>{option.title}</strong>
-              <span>{option.detail}</span>
-            </label>
-          ))}
+          {PERSONAS.map((option) => {
+            const inputId = `lead-persona-${option.value}`;
+
+            return (
+              <label
+                className={styles.personaCard}
+                htmlFor={inputId}
+                key={option.value}
+              >
+                <input
+                  id={inputId}
+                  type="radio"
+                  name="persona"
+                  value={option.value}
+                  checked={persona === option.value}
+                  required
+                  onChange={() => {
+                    setPersona(option.value);
+                    trackEvent("lead_persona_selected", {
+                      ...analyticsAttribution,
+                      persona: option.value,
+                    });
+                  }}
+                />
+                <span className={styles.personaIndex}>{option.index}</span>
+                <strong>{option.title}</strong>
+                <span>{option.detail}</span>
+              </label>
+            );
+          })}
         </div>
       </fieldset>
 
@@ -420,6 +429,9 @@ export function RequestZapForm({
             name="website"
             tabIndex={-1}
             autoComplete="off"
+            data-1p-ignore="true"
+            data-lpignore="true"
+            data-bwignore="true"
             maxLength={200}
           />
         </label>

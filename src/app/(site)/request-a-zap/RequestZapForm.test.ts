@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
@@ -12,6 +14,11 @@ const PROPS = {
   attribution: { landingPath: "/request-a-zap" as const },
   initialValues: {},
 };
+
+const styles = readFileSync(
+  fileURLToPath(new URL("./request-a-zap.module.css", import.meta.url)),
+  "utf8",
+);
 
 describe("RequestZapForm deployment boundary", () => {
   it("sends preview visitors to the canonical production form", () => {
@@ -37,6 +44,21 @@ describe("RequestZapForm deployment boundary", () => {
     expect(markup).toContain('name="email"');
     expect(markup).toContain("noValidate");
     expect(markup).not.toContain("Preview deployment");
+  });
+
+  it("keeps persona cards directly selectable and the honeypot out of autofill", () => {
+    const markup = renderToStaticMarkup(createElement(RequestZapForm, PROPS));
+    const personaInputRule = styles.match(/\.personaCard input\s*\{([^}]*)\}/u)?.[1];
+
+    expect(markup).toContain('for="lead-persona-agent_builder"');
+    expect(markup).toContain('id="lead-persona-agent_builder"');
+    expect(markup).toContain('data-1p-ignore="true"');
+    expect(markup).toContain('data-lpignore="true"');
+    expect(markup).toContain('data-bwignore="true"');
+    expect(personaInputRule).toMatch(/inset:\s*0/u);
+    expect(personaInputRule).toMatch(/width:\s*100%/u);
+    expect(personaInputRule).toMatch(/height:\s*100%/u);
+    expect(personaInputRule).toMatch(/opacity:\s*0/u);
   });
 
   it("returns actionable validation messages for the first invalid field", () => {
