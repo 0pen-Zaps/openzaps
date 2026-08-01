@@ -2,13 +2,17 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("server-only", () => ({}));
 
+import { renderXMentionReply } from "@/lib/marketing/x-mentions";
+
 import { ChannelAdapterError } from "./shared";
 import {
   createXOAuth1AuthorizationHeader,
+  fetchXMentionsPage,
   postXBroadcast,
+  postXDeterministicMentionReply,
   postXReply,
-  publishXPost,
   verifyXAuthenticatedIdentity,
+  verifyXMentionById,
   verifyXReplyTarget,
 } from "./x";
 
@@ -155,6 +159,32 @@ describe("X channel adapter", () => {
     });
   });
 
+  it("marks only a versioned deterministic mention reply as not AI-generated", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(xUserResponse())
+      .mockResolvedValueOnce(
+        Response.json({ data: { id: "200" } }, { status: 201 }),
+      );
+
+    await postXDeterministicMentionReply(
+      {
+        templateId: "docs-v1",
+        inReplyToTweetId: "100",
+        authenticatedAccountId: "100",
+        idempotencyKey: "mention:deterministic",
+      },
+      { ...X_IDENTITY, userAccessToken: "token", fetchImpl: fetchMock },
+    );
+
+    const [, init] = fetchMock.mock.calls[1] as [string, RequestInit];
+    expect(JSON.parse(init.body as string)).toEqual({
+      text: renderXMentionReply("docs-v1"),
+      made_with_ai: false,
+      reply: { in_reply_to_tweet_id: "100" },
+    });
+  });
+
   it("refuses a reply when current identity differs from immutable verification", async () => {
     const fetchMock = vi.fn().mockResolvedValueOnce(xUserResponse());
 
@@ -242,11 +272,10 @@ describe("X channel adapter", () => {
   it("rejects invalid and oversized posts before a request", async () => {
     const fetchMock = vi.fn();
     await expect(
-      publishXPost(
+      postXBroadcast(
         {
           text: "x".repeat(281),
           idempotencyKey: "oversized",
-          replyToTweetId: "not-a-post-id",
         },
         { userAccessToken: "token", fetchImpl: fetchMock },
       ),
@@ -396,6 +425,313 @@ function xTargetResponse(input: {
     },
   });
 }
+
+function xMentionData(input: {
+  id?: string;
+  authorId?: string;
+  conversationId?: string;
+  text?: string;
+  username?: string;
+  createdAt?: string;
+  possiblySensitive?: boolean;
+  urls?: boolean;
+  media?: boolean;
+  repost?: boolean;
+  withheld?: boolean;
+} = {}) {
+  return {
+    id: input.id ?? "123456789",
+    author_id: input.authorId ?? "200",
+    conversation_id: input.conversationId ?? "123456789",
+    text: input.text ?? "@0xzaps /docs",
+    created_at: input.createdAt ?? "2026-08-01T15:55:00.000Z",
+    possibly_sensitive: input.possiblySensitive ?? false,
+    entities: {
+      mentions: [{ username: input.username ?? "0xzaps" }],
+      ...(input.urls
+        ? { urls: [{ url: "https://t.co/link", expanded_url: "https://example.com" }] }
+        : {}),
+    },
+    ...(input.media ? { attachments: { media_keys: ["3_123"] } } : {}),
+    ...(input.repost
+      ? { referenced_tweets: [{ type: "retweeted", id: "987654321" }] }
+      : {}),
+    ...(input.withheld ? { withheld: { country_codes: ["US"] } } : {}),
+  };
+}
+
+function xMentionResponse(
+  data = xMentionData(),
+  meta: Record<string, unknown> = {
+    result_count: 1,
+    newest_id: "123456789",
+    oldest_id: "123456789",
+  },
+): Record<string, unknown> {
+  return {
+    data: [data],
+    includes: {
+      users: [{ id: data.author_id, username: "community", protected: false }],
+    },
+    meta,
+  };
+}
+
+describe("X official mention discovery", () => {
+  it("reads a bounded mentions page with cursor parameters and returns transient text", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(xUserResponse())
+      .mockResolvedValueOnce(
+        Response.json(
+          {
+            ...xMentionResponse(xMentionData(), {
+              result_count: 1,
+              newest_id: "123456789",
+              oldest_id: "123456789",
+              next_token: "opaque-next",
+            }),
+          },
+          {
+            headers: {
+              "x-rate-limit-limit": "450",
+              "x-rate-limit-remaining": "449",
+              "x-rate-limit-reset": "1800000000",
+            },
+          },
+        ),
+      );
+
+    await expect(
+      fetchXMentionsPage(
+        {
+          sinceId: "100",
+          untilId: "200000000",
+          paginationToken: "opaque-current",
+          maxResults: 100,
+        },
+        {
+          ...X_IDENTITY,
+          userAccessToken: "token",
+          fetchImpl: fetchMock,
+        },
+      ),
+    ).resolves.toEqual({
+      authenticatedAccountId: "100",
+      authenticatedUsername: "0xzaps",
+      mentions: [
+        {
+          id: "123456789",
+          authorId: "200",
+          conversationId: "123456789",
+          text: "@0xzaps /docs",
+          createdAt: "2026-08-01T15:55:00.000Z",
+          possiblySensitive: false,
+          authorProtected: false,
+          isWithheld: false,
+          hasMedia: false,
+          hasExternalLink: false,
+          isRepost: false,
+        },
+      ],
+      newestId: "123456789",
+      oldestId: "123456789",
+      nextToken: "opaque-next",
+      rateLimit: {
+        limit: 450,
+        remaining: 449,
+        resetAt: "2027-01-15T08:00:00.000Z",
+      },
+    });
+
+    const [url, init] = fetchMock.mock.calls[1] as [string, RequestInit];
+    const parsed = new URL(url);
+    expect(parsed.pathname).toBe("/2/users/100/mentions");
+    expect(parsed.searchParams.get("since_id")).toBe("100");
+    expect(parsed.searchParams.get("until_id")).toBe("200000000");
+    expect(parsed.searchParams.get("pagination_token")).toBe("opaque-current");
+    expect(parsed.searchParams.get("max_results")).toBe("100");
+    expect(init.method).toBe("GET");
+    expect(init.redirect).toBe("error");
+  });
+
+  it("fails the entire page on partial errors or malformed mention metadata", async () => {
+    const partialFetch = vi
+      .fn()
+      .mockResolvedValueOnce(xUserResponse())
+      .mockResolvedValueOnce(Response.json({
+        ...xMentionResponse(),
+        errors: [{ title: "Partial Error" }],
+      }));
+    await expect(
+      fetchXMentionsPage({}, {
+        ...X_IDENTITY,
+        userAccessToken: "token",
+        fetchImpl: partialFetch,
+      }),
+    ).rejects.toMatchObject({ code: "invalid-response" });
+
+    const malformedFetch = vi
+      .fn()
+      .mockResolvedValueOnce(xUserResponse())
+      .mockResolvedValueOnce(Response.json(xMentionResponse(
+        xMentionData({ username: "someone_else" }),
+      )));
+    await expect(
+      fetchXMentionsPage({}, {
+        ...X_IDENTITY,
+        userAccessToken: "token",
+        fetchImpl: malformedFetch,
+      }),
+    ).rejects.toMatchObject({ code: "invalid-response" });
+
+    const malformedSafetyFields = [
+      {
+        ...xMentionData(),
+        entities: { mentions: [{ username: "0xzaps" }], urls: "not-an-array" },
+      },
+      { ...xMentionData(), attachments: { media_keys: [123] } },
+      { ...xMentionData(), referenced_tweets: [{ type: "quoted" }] },
+    ];
+    for (const malformed of malformedSafetyFields) {
+      const safetyFetch = vi
+        .fn()
+        .mockResolvedValueOnce(xUserResponse())
+        .mockResolvedValueOnce(
+          Response.json(xMentionResponse(malformed as never)),
+        );
+      await expect(
+        fetchXMentionsPage({}, {
+          ...X_IDENTITY,
+          userAccessToken: "token",
+          fetchImpl: safetyFetch,
+        }),
+      ).rejects.toMatchObject({ code: "invalid-response" });
+    }
+  });
+
+  it("rejects inconsistent page boundaries and X object IDs longer than 19 digits", async () => {
+    const inconsistentFetch = vi
+      .fn()
+      .mockResolvedValueOnce(xUserResponse())
+      .mockResolvedValueOnce(Response.json(xMentionResponse(
+        xMentionData({ id: "200", conversationId: "200" }),
+        { result_count: 1, newest_id: "201", oldest_id: "200" },
+      )));
+    await expect(fetchXMentionsPage({}, {
+      ...X_IDENTITY,
+      userAccessToken: "token",
+      fetchImpl: inconsistentFetch,
+    })).rejects.toMatchObject({ code: "invalid-response" });
+
+    const outOfRangeFetch = vi
+      .fn()
+      .mockResolvedValueOnce(xUserResponse())
+      .mockResolvedValueOnce(Response.json(xMentionResponse(
+        xMentionData({ id: "200", conversationId: "200" }),
+        { result_count: 1, newest_id: "200", oldest_id: "200" },
+      )));
+    await expect(fetchXMentionsPage({ sinceId: "200" }, {
+      ...X_IDENTITY,
+      userAccessToken: "token",
+      fetchImpl: outOfRangeFetch,
+    })).rejects.toMatchObject({ code: "invalid-response" });
+
+    const invalidIdFetch = vi.fn();
+    await expect(fetchXMentionsPage({
+      sinceId: "12345678901234567890",
+    }, {
+      ...X_IDENTITY,
+      userAccessToken: "token",
+      fetchImpl: invalidIdFetch,
+    })).rejects.toMatchObject({ code: "invalid-input" });
+    expect(invalidIdFetch).not.toHaveBeenCalled();
+  });
+
+  it("accepts a valid page above the receipt bound and rejects an oversized page", async () => {
+    const largeData = Array.from({ length: 10 }, (_, index) =>
+      xMentionData({
+        id: String(123456700 + index),
+        conversationId: String(123456700 + index),
+        text: `@0xzaps ${"a".repeat(8_000)}`,
+      }));
+    const validLargeFetch = vi
+      .fn()
+      .mockResolvedValueOnce(xUserResponse())
+      .mockResolvedValueOnce(Response.json({
+        data: largeData,
+        includes: {
+          users: [{ id: "200", username: "community", protected: false }],
+        },
+        meta: {
+          result_count: largeData.length,
+          newest_id: "123456709",
+          oldest_id: "123456700",
+        },
+      }));
+    await expect(fetchXMentionsPage({}, {
+      ...X_IDENTITY,
+      userAccessToken: "token",
+      fetchImpl: validLargeFetch,
+    })).resolves.toMatchObject({ mentions: { length: 10 } });
+
+    const oversizedFetch = vi
+      .fn()
+      .mockResolvedValueOnce(xUserResponse())
+      .mockResolvedValueOnce(new Response(
+        JSON.stringify({ padding: "x".repeat(2 * 1_024 * 1_024) }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      ));
+    await expect(fetchXMentionsPage({}, {
+      ...X_IDENTITY,
+      userAccessToken: "token",
+      fetchImpl: oversizedFetch,
+    })).rejects.toMatchObject({ code: "invalid-response" });
+  });
+
+  it("revalidates the exact author and explicit mention immediately before reply", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(xUserResponse())
+      .mockResolvedValueOnce(Response.json({
+        data: xMentionData(),
+        includes: {
+          users: [{ id: "200", username: "community", protected: false }],
+        },
+      }));
+
+    const verified = await verifyXMentionById("123456789", "200", {
+      ...X_IDENTITY,
+      userAccessToken: "token",
+      fetchImpl: fetchMock,
+    });
+    expect(verified.authenticatedAccountId).toBe("100");
+    expect(verified.mention).toMatchObject({
+      id: "123456789",
+      authorId: "200",
+      text: "@0xzaps /docs",
+    });
+
+    const changedFetch = vi
+      .fn()
+      .mockResolvedValueOnce(xUserResponse())
+      .mockResolvedValueOnce(
+        Response.json({
+          data: xMentionData({ authorId: "999" }),
+          includes: {
+            users: [{ id: "999", username: "other", protected: false }],
+          },
+        }),
+      );
+    await expect(
+      verifyXMentionById("123456789", "200", {
+        ...X_IDENTITY,
+        userAccessToken: "token",
+        fetchImpl: changedFetch,
+      }),
+    ).rejects.toMatchObject({ code: "invalid-input" });
+  });
+});
 
 describe("X authenticated identity binding", () => {
   it("returns only the verified current identity", async () => {

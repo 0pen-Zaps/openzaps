@@ -19,6 +19,8 @@
     "build": "next build",
     "start": "next start",
     "audit:production": "node scripts/audit-production.mjs",
+    "discord:commands": "node scripts/reconcile-discord-commands.mjs",
+    "discord:commands:apply": "node scripts/reconcile-discord-commands.mjs --apply",
     "lint": "eslint",
     "validate:workflow": "workflow validate",
     "verify:token": "node scripts/verify-token-metadata.mjs",

@@ -4,6 +4,10 @@ import { createHmac, randomBytes } from "node:crypto";
 
 import type { MarketingInteraction } from "@/lib/marketing/types";
 import { parseCanonicalXStatusUrl } from "@/lib/marketing/x-interaction";
+import {
+  renderXMentionReply,
+  type XMentionTemplateId,
+} from "@/lib/marketing/x-mentions";
 
 import {
   ChannelAdapterError,
@@ -20,8 +24,9 @@ const X_CREATE_POST_URL = "https://api.x.com/2/tweets";
 const X_CURRENT_USER_URL = "https://api.x.com/2/users/me";
 const X_STATUS_URL = "https://x.com/i/web/status";
 const X_POST_MAX_CODE_POINTS = 280;
+const X_MENTIONS_RESPONSE_MAX_BYTES = 2 * 1_024 * 1_024;
 const X_POST_ID = /^\d{1,19}$/u;
-const X_ACCOUNT_ID = /^\d{1,30}$/u;
+const X_ACCOUNT_ID = /^\d{1,19}$/u;
 const X_USERNAME = /^[A-Za-z0-9_]{1,15}$/u;
 
 export interface XPublishInput {
@@ -69,6 +74,39 @@ export interface XAdapterDependencies {
 export type XPublishDependencies = XAdapterDependencies;
 export type XVerificationDependencies = XAdapterDependencies;
 
+export interface XMentionObservation {
+  id: string;
+  authorId: string;
+  conversationId: string;
+  /** Transient provider data. Callers must never persist or log this field. */
+  text: string;
+  createdAt: string;
+  possiblySensitive: boolean;
+  authorProtected: boolean;
+  isWithheld: boolean;
+  hasMedia: boolean;
+  hasExternalLink: boolean;
+  isRepost: boolean;
+}
+
+export interface XMentionsPage {
+  authenticatedAccountId: string;
+  authenticatedUsername: string;
+  mentions: XMentionObservation[];
+  newestId: string | null;
+  oldestId: string | null;
+  nextToken: string | null;
+  rateLimit?: ProviderRateLimit;
+}
+
+export interface XMentionsPageInput {
+  sinceId?: string;
+  untilId?: string;
+  startTime?: string;
+  paginationToken?: string;
+  maxResults?: number;
+}
+
 export interface XAuthenticatedIdentity {
   authenticatedAccountId: string;
   authenticatedUsername: string;
@@ -93,6 +131,112 @@ function record(value: unknown): JsonRecord | null {
   return value && typeof value === "object" && !Array.isArray(value)
     ? (value as JsonRecord)
     : null;
+}
+
+function optionalOpaquePaginationToken(value: unknown): string | null {
+  return typeof value === "string"
+    && value.length >= 1
+    && value.length <= 2_048
+    && !/[\s\r\n]/u.test(value)
+    ? value
+    : null;
+}
+
+function compareXIds(left: string, right: string): number {
+  if (left.length !== right.length) return left.length < right.length ? -1 : 1;
+  return left < right ? -1 : left > right ? 1 : 0;
+}
+
+function parseXMentionObservation(
+  value: unknown,
+  expectedUsername: string,
+  authorProtected: boolean,
+): XMentionObservation | null {
+  const tweet = record(value);
+  if (!tweet) return null;
+  const id = tweet.id;
+  const authorId = tweet.author_id;
+  const conversationId = tweet.conversation_id;
+  const text = tweet.text;
+  const createdAt = tweet.created_at;
+  const possiblySensitive = tweet.possibly_sensitive;
+  if (
+    typeof id !== "string"
+    || !X_POST_ID.test(id)
+    || typeof authorId !== "string"
+    || !X_ACCOUNT_ID.test(authorId)
+    || typeof conversationId !== "string"
+    || !X_POST_ID.test(conversationId)
+    || typeof text !== "string"
+    || text.length < 1
+    || text.length > 10_000
+    || typeof createdAt !== "string"
+    || !Number.isFinite(Date.parse(createdAt))
+    || typeof possiblySensitive !== "boolean"
+  ) return null;
+
+  const entities = record(tweet.entities);
+  if (!entities || !Array.isArray(entities.mentions)) return null;
+  const mentions = entities.mentions.map(record);
+  if (
+    mentions.some(
+      (mention) =>
+        !mention
+        || typeof mention.username !== "string"
+        || !X_USERNAME.test(mention.username),
+    )
+  ) return null;
+  const explicitlyMentionsAccount = mentions.some(
+    (mention) =>
+      typeof mention?.username === "string"
+      && mention.username.toLowerCase() === expectedUsername,
+  );
+  if (!explicitlyMentionsAccount) return null;
+
+  const rawUrls = entities.urls;
+  if (rawUrls !== undefined && !Array.isArray(rawUrls)) return null;
+  const urls = Array.isArray(rawUrls) ? rawUrls.map(record) : [];
+  if (urls.some((url) => !url)) return null;
+
+  const attachments = tweet.attachments === undefined
+    ? null
+    : record(tweet.attachments);
+  if (tweet.attachments !== undefined && !attachments) return null;
+  const rawMediaKeys = attachments?.media_keys;
+  if (rawMediaKeys !== undefined && !Array.isArray(rawMediaKeys)) return null;
+  const mediaKeys = Array.isArray(rawMediaKeys) ? rawMediaKeys : [];
+  if (mediaKeys.some((key) => typeof key !== "string" || !key)) return null;
+
+  const rawReferences = tweet.referenced_tweets;
+  if (rawReferences !== undefined && !Array.isArray(rawReferences)) return null;
+  const references = Array.isArray(rawReferences)
+    ? rawReferences.map(record)
+    : [];
+  if (
+    references.some(
+      (reference) =>
+        !reference
+        || typeof reference.id !== "string"
+        || !X_POST_ID.test(reference.id)
+        || !["retweeted", "quoted", "replied_to"].includes(
+          String(reference.type),
+        ),
+    )
+  ) return null;
+
+  return {
+    id,
+    authorId,
+    conversationId,
+    text,
+    createdAt: new Date(createdAt).toISOString(),
+    possiblySensitive,
+    authorProtected,
+    isWithheld: tweet.withheld !== undefined,
+    hasMedia: mediaKeys.length > 0,
+    hasExternalLink: urls.length > 0,
+    isRepost: references.some((reference) => reference?.type === "retweeted"),
+  };
 }
 
 function cleanSecret(value: string | undefined): string | null {
@@ -279,6 +423,7 @@ async function xJsonRequest(
   url: string,
   dependencies: XAdapterDependencies,
   body?: string,
+  maxResponseBytes?: number,
 ): Promise<{ payload: unknown; response: Response }> {
   const response = await safelyFetch(
     "x",
@@ -299,7 +444,7 @@ async function xJsonRequest(
   );
   if (!response.ok) throw providerError("x", response, dependencies.nowMs);
   return {
-    payload: await readBoundedJsonResponse("x", response),
+    payload: await readBoundedJsonResponse("x", response, maxResponseBytes),
     response,
   };
 }
@@ -308,7 +453,7 @@ async function xJsonRequest(
  * Publish through X API v2 only. The idempotency key is deliberately retained
  * in the workflow result but is not sent as a made-up provider header.
  */
-export async function publishXPost(
+async function publishXPost(
   input: XPublishInput,
   dependencies: XPublishDependencies = {},
 ): Promise<XPublishResult> {
@@ -325,7 +470,7 @@ export async function publishXPost(
   const body = input.replyToTweetId
     ? {
         text: input.text,
-        made_with_ai: true,
+        made_with_ai: input.madeWithAi ?? true,
         reply: { in_reply_to_tweet_id: input.replyToTweetId },
       }
     : { text: input.text, made_with_ai: input.madeWithAi ?? true };
@@ -513,6 +658,263 @@ export async function verifyXReplyTarget(
   };
 }
 
+/**
+ * Read one official mentions-timeline page. Post text is returned only as
+ * transient adapter data so the caller can classify and HMAC it; it must not
+ * enter logs, database rows, workflow arguments, or API responses.
+ */
+export async function fetchXMentionsPage(
+  input: XMentionsPageInput = {},
+  dependencies: XVerificationDependencies = {},
+): Promise<XMentionsPage> {
+  if (input.sinceId !== undefined && !X_POST_ID.test(input.sinceId)) {
+    throw invalidVerification("X mentions since_id must be a 1-19 digit post ID.");
+  }
+  if (input.untilId !== undefined && !X_POST_ID.test(input.untilId)) {
+    throw invalidVerification("X mentions until_id must be a 1-19 digit post ID.");
+  }
+  if (
+    input.startTime !== undefined
+    && (
+      !Number.isFinite(Date.parse(input.startTime))
+      || new Date(input.startTime).toISOString() !== input.startTime
+    )
+  ) {
+    throw invalidVerification("X mentions start_time must be an ISO timestamp.");
+  }
+  if (
+    input.paginationToken !== undefined
+    && optionalOpaquePaginationToken(input.paginationToken) === null
+  ) {
+    throw invalidVerification("X mentions pagination token is invalid.");
+  }
+  const maxResults = input.maxResults ?? 100;
+  if (!Number.isSafeInteger(maxResults) || maxResults < 5 || maxResults > 100) {
+    throw invalidVerification("X mentions max_results must be from 5 to 100.");
+  }
+
+  const identity = await verifyXAuthenticatedIdentity(dependencies);
+  const query = new URLSearchParams({
+    max_results: String(maxResults),
+    expansions: "author_id",
+    "tweet.fields":
+      "author_id,conversation_id,created_at,entities,attachments,possibly_sensitive,referenced_tweets,withheld",
+    "user.fields": "username,protected",
+    ...(input.sinceId ? { since_id: input.sinceId } : {}),
+    ...(input.untilId ? { until_id: input.untilId } : {}),
+    ...(input.startTime ? { start_time: input.startTime } : {}),
+    ...(input.paginationToken
+      ? { pagination_token: input.paginationToken }
+      : {}),
+  });
+  const url =
+    `https://api.x.com/2/users/${identity.authenticatedAccountId}/mentions?${query.toString()}`;
+  const { payload, response } = await xJsonRequest(
+    "GET",
+    url,
+    dependencies,
+    undefined,
+    X_MENTIONS_RESPONSE_MAX_BYTES,
+  );
+  const root = record(payload);
+  const errors = Array.isArray(root?.errors) ? root.errors : [];
+  const rawData = root?.data;
+  const data = rawData === undefined ? [] : Array.isArray(rawData) ? rawData : null;
+  const meta = record(root?.meta);
+  const resultCount = meta?.result_count;
+  const newestId = meta?.newest_id;
+  const oldestId = meta?.oldest_id;
+  const rawNextToken = meta?.next_token;
+  const nextToken = rawNextToken === undefined
+    ? null
+    : optionalOpaquePaginationToken(rawNextToken);
+  if (
+    !root
+    || errors.length > 0
+    || data === null
+    || !Number.isSafeInteger(resultCount)
+    || Number(resultCount) !== data.length
+    || (
+      data.length === 0
+      && (
+        newestId !== undefined
+        || oldestId !== undefined
+        || rawNextToken !== undefined
+      )
+    )
+    || (
+      data.length > 0
+      && (
+        typeof newestId !== "string"
+        || !X_POST_ID.test(newestId)
+        || typeof oldestId !== "string"
+        || !X_POST_ID.test(oldestId)
+      )
+    )
+    || (rawNextToken !== undefined && nextToken === null)
+  ) {
+    throw new ChannelAdapterError(
+      "x",
+      "invalid-response",
+      "X returned an invalid mentions response.",
+      { status: response.status },
+    );
+  }
+
+  const includedUsers = Array.isArray(record(root?.includes)?.users)
+    ? (record(root?.includes)?.users as unknown[]).map(record)
+    : [];
+  if (includedUsers.some((user) => !user)) {
+    throw new ChannelAdapterError(
+      "x",
+      "invalid-response",
+      "X returned invalid mention author metadata.",
+      { status: response.status },
+    );
+  }
+  const protectedAuthors = new Map<string, boolean>();
+  for (const user of includedUsers) {
+    if (
+      typeof user?.id !== "string"
+      || !X_ACCOUNT_ID.test(user.id)
+      || typeof user.protected !== "boolean"
+    ) {
+      throw new ChannelAdapterError(
+        "x",
+        "invalid-response",
+        "X returned invalid mention author metadata.",
+        { status: response.status },
+      );
+    }
+    if (protectedAuthors.has(user.id)) {
+      throw new ChannelAdapterError(
+        "x",
+        "invalid-response",
+        "X returned duplicate mention author metadata.",
+        { status: response.status },
+      );
+    }
+    protectedAuthors.set(user.id, user.protected);
+  }
+  const mentions = data.map((item) => {
+    const authorId = record(item)?.author_id;
+    const authorProtected = typeof authorId === "string"
+      ? protectedAuthors.get(authorId)
+      : undefined;
+    return typeof authorProtected === "boolean"
+      ? parseXMentionObservation(
+          item,
+          identity.authenticatedUsername.toLowerCase(),
+          authorProtected,
+        )
+      : null;
+  });
+  if (mentions.some((mention) => mention === null)) {
+    throw new ChannelAdapterError(
+      "x",
+      "invalid-response",
+      "X returned invalid mention metadata.",
+      { status: response.status },
+    );
+  }
+  const parsedMentions = mentions as XMentionObservation[];
+  const postIds = parsedMentions.map((mention) => mention.id);
+  const uniquePostIds = new Set(postIds);
+  const actualNewestId = postIds.reduce<string | null>(
+    (current, id) => current === null || compareXIds(id, current) > 0 ? id : current,
+    null,
+  );
+  const actualOldestId = postIds.reduce<string | null>(
+    (current, id) => current === null || compareXIds(id, current) < 0 ? id : current,
+    null,
+  );
+  if (
+    uniquePostIds.size !== postIds.length
+    || (postIds.length > 0 && (
+      newestId !== actualNewestId
+      || oldestId !== actualOldestId
+      || (input.sinceId !== undefined
+        && postIds.some((id) => compareXIds(id, input.sinceId as string) <= 0))
+      || (input.untilId !== undefined
+        && postIds.some((id) => compareXIds(id, input.untilId as string) >= 0))
+    ))
+  ) {
+    throw new ChannelAdapterError(
+      "x",
+      "invalid-response",
+      "X returned inconsistent mention page boundaries.",
+      { status: response.status },
+    );
+  }
+  return {
+    authenticatedAccountId: identity.authenticatedAccountId,
+    authenticatedUsername: identity.authenticatedUsername,
+    mentions: parsedMentions,
+    newestId: data.length === 0 ? null : (newestId as string),
+    oldestId: data.length === 0 ? null : (oldestId as string),
+    nextToken,
+    rateLimit: parseXRateLimit(response.headers),
+  };
+}
+
+/** Re-read one claimed mention immediately before durable delivery admission. */
+export async function verifyXMentionById(
+  postId: string,
+  expectedAuthorId: string,
+  dependencies: XVerificationDependencies = {},
+): Promise<{
+  authenticatedAccountId: string;
+  authenticatedUsername: string;
+  mention: XMentionObservation;
+}> {
+  if (!X_POST_ID.test(postId) || !X_ACCOUNT_ID.test(expectedAuthorId)) {
+    throw invalidVerification("X mention verification identity is invalid.");
+  }
+  const identity = await verifyXAuthenticatedIdentity(dependencies);
+  const query = new URLSearchParams({
+    expansions: "author_id",
+    "tweet.fields":
+      "author_id,conversation_id,created_at,entities,attachments,possibly_sensitive,referenced_tweets,withheld",
+    "user.fields": "username,protected",
+  });
+  const url = `https://api.x.com/2/tweets/${postId}?${query.toString()}`;
+  const { payload, response } = await xJsonRequest("GET", url, dependencies);
+  const root = record(payload);
+  if (Array.isArray(root?.errors) && root.errors.length > 0) {
+    throw new ChannelAdapterError(
+      "x",
+      "invalid-response",
+      "X mention revalidation failed.",
+      { status: response.status },
+    );
+  }
+  const authorId = record(root?.data)?.author_id;
+  const includedUsers = Array.isArray(record(root?.includes)?.users)
+    ? (record(root?.includes)?.users as unknown[]).map(record).filter(Boolean)
+    : [];
+  const author = includedUsers.find((user) => user?.id === authorId);
+  const mention = author && typeof author.protected === "boolean"
+    ? parseXMentionObservation(
+        root?.data,
+        identity.authenticatedUsername.toLowerCase(),
+        author.protected,
+      )
+    : null;
+  if (!mention || mention.id !== postId || mention.authorId !== expectedAuthorId) {
+    throw invalidVerification(
+      "X mention metadata changed or no longer identifies the claimed author.",
+    );
+  }
+  if (mention.authorId === identity.authenticatedAccountId) {
+    throw invalidVerification("The authenticated OpenZaps account cannot reply to itself.");
+  }
+  return {
+    authenticatedAccountId: identity.authenticatedAccountId,
+    authenticatedUsername: identity.authenticatedUsername,
+    mention,
+  };
+}
+
 export function postXBroadcast(
   input: Omit<XPublishInput, "replyToTweetId">,
   dependencies?: XPublishDependencies,
@@ -523,7 +925,7 @@ export function postXBroadcast(
 export function postXReply(
   input: Omit<
     XPublishInput,
-    "replyToTweetId" | "expectedAuthenticatedAccountId" | "madeWithAi"
+    "madeWithAi" | "replyToTweetId" | "expectedAuthenticatedAccountId"
   > & {
     inReplyToTweetId: string;
     authenticatedAccountId: string;
@@ -537,6 +939,27 @@ export function postXReply(
       replyToTweetId: input.inReplyToTweetId,
       expectedAuthenticatedAccountId: input.authenticatedAccountId,
       madeWithAi: true,
+    },
+    dependencies,
+  );
+}
+
+export function postXDeterministicMentionReply(
+  input: {
+    templateId: XMentionTemplateId;
+    inReplyToTweetId: string;
+    authenticatedAccountId: string;
+    idempotencyKey: string;
+  },
+  dependencies?: XPublishDependencies,
+): Promise<XPublishResult> {
+  return publishXPost(
+    {
+      text: renderXMentionReply(input.templateId),
+      idempotencyKey: input.idempotencyKey,
+      replyToTweetId: input.inReplyToTweetId,
+      expectedAuthenticatedAccountId: input.authenticatedAccountId,
+      madeWithAi: false,
     },
     dependencies,
   );

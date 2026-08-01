@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import {
   verifyDiscordInteractionSignature,
 } from "@/lib/marketing/channels";
+import { isSupportedDiscordCommandName } from "@/lib/marketing/discord-commands";
 import { answerOpenZapsFaq } from "@/lib/marketing/discord-faq";
 import { BoundedTextBodyError, readBoundedTextBody } from "@/lib/request-body";
 
@@ -118,7 +119,7 @@ export async function POST(request: Request): Promise<Response> {
     typeof interaction.data?.name === "string"
       ? interaction.data.name.toLowerCase()
       : "";
-  if (!["ask", "openzaps", "status"].includes(command)) {
+  if (!isSupportedDiscordCommandName(command)) {
     return interactionMessage(
       "This bot only responds to /ask, /openzaps, and /status.",
     );

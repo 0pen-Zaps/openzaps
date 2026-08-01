@@ -28,7 +28,7 @@ const MAX_RPC_RESPONSE_BYTES = 64 * 1024;
 const RPC_TIMEOUT_MS = 12_000;
 const IDEMPOTENCY_KEY = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$/u;
 const CONTENT_HASH = /^[0-9a-f]{64}$/u;
-const X_INTERACTION_ID = /^\d{1,30}$/u;
+const X_INTERACTION_ID = /^[1-9]\d{0,18}$/u;
 const UTC_DAY = /^\d{4}-\d{2}-\d{2}$/u;
 const FAILURE_CODE = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,99}$/u;
 const X_PROVIDER_MESSAGE_ID = /^\d{1,19}$/u;
@@ -314,7 +314,7 @@ function validateInteractionIds(interactionIds: readonly string[]): string[] {
   ) {
     throw new MarketingLedgerError(
       "invalid-input",
-      "Marketing interaction IDs must be 1-30 digit X post IDs.",
+      "Marketing interaction IDs must be 1-19 digit X post IDs.",
     );
   }
   return unique;

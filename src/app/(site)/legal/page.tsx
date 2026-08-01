@@ -99,6 +99,48 @@ export default function LegalPage(): React.JSX.Element {
             </p>
           </div>
           <div className={styles.def}>
+            <strong className={styles.defTerm}>X mention automation</strong>
+            <p className={styles.defBody}>
+              Automated X mention ingestion is not active unless OpenZaps has
+              separately enabled its official X API integration and compliance
+              process. If activated, the service may process the
+              numeric account, post, author, and conversation identifiers,
+              source timestamp, a keyed one-way digest of the post text, a
+              bounded policy classification, opt-out state, and delivery
+              receipt. It does not retain the raw post text, username, display
+              name, profile, link, or media. This data is used only to baseline
+              the official mentions feed, suppress opted-out accounts, prevent
+              duplicate replies, route ambiguous content to human review, and
+              satisfy X deletion, protection, suspension, and withholding
+              events. Protected and withheld observations are not retained.
+            </p>
+          </div>
+          <div className={styles.def}>
+            <strong className={styles.defTerm}>X deletion and opt-out requests</strong>
+            <p className={styles.defBody}>
+              Reply <b>@0xzaps stop</b> to an eligible mention to suppress
+              automatic replies without receiving a public confirmation. To
+              request deletion or correction of X-derived metadata, contact the
+              official <a href="https://x.com/0xzaps">@0xzaps X account</a> and
+              ask to arrange a private channel. X compliance events are handled
+              through the official provider path; automation remains paused
+              after an erasure until absence is verified.
+            </p>
+          </div>
+          <div className={styles.def}>
+            <strong className={styles.defTerm}>X storage and retention status</strong>
+            <p className={styles.defBody}>
+              X mention ingestion remains disabled until OpenZaps has deployed
+              an enforceable retention schedule and cleanup job, an official X
+              compliance consumer, and deletion coverage for both Supabase
+              records and deployment-pinned Vercel Workflow records. If the
+              feature is activated later, X supplies the public source data,
+              Supabase stores the minimized inbox and suppression records, and
+              Vercel runs the API and workflow infrastructure. This notice will
+              be updated with the enforced retention period before activation.
+            </p>
+          </div>
+          <div className={styles.def}>
             <strong className={styles.defTerm}>How long it remains</strong>
             <p className={styles.defBody}>
               Request-desk database records expire after 180 days. A

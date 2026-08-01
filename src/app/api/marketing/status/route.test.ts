@@ -1,5 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+vi.mock("server-only", () => ({}));
+
 import { GET } from "./route";
 
 function request(token?: string): Request {
@@ -42,7 +44,8 @@ describe("marketing status route", () => {
     const raw = await response.text();
     const body = JSON.parse(raw) as {
       config: { readiness: { channels: { x: boolean; discordBroadcast: boolean } } };
-      policy: { xReplyScope: string };
+      xMentionAutomation: { ingestReady: boolean; hashSecretConfigured: boolean };
+      policy: { xReplyScope: string; xAutomaticReplyScope: string };
     };
 
     expect(response.status).toBe(200);
@@ -52,6 +55,11 @@ describe("marketing status route", () => {
       discordBroadcast: true,
     });
     expect(body.policy.xReplyScope).toMatch(/^operator-selected canonical status URLs/u);
+    expect(body.policy.xAutomaticReplyScope).toContain("official mentions timeline only");
+    expect(body.xMentionAutomation).toMatchObject({
+      ingestReady: false,
+      hashSecretConfigured: false,
+    });
     expect(raw).not.toContain("operator-secret");
     expect(raw).not.toContain("x-provider-secret");
     expect(raw).not.toContain("discord-provider-secret");

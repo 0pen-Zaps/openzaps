@@ -329,6 +329,8 @@ const learnHubCampaignMigration =
   "20260801100000_queue_learn_hub_campaign.sql";
 const syndicationInboxMigration =
   "20260801041508_marketing_syndication_inbox.sql";
+const xMentionInboxMigration =
+  "20260801143000_marketing_x_mentions.sql";
 const reviewedCampaignFixture = "pg16-reviewed-campaign";
 const reviewedCampaignContentHash = "de".repeat(32);
 const agentKitCampaignId = "agent-kit-published-v1";
@@ -504,15 +506,20 @@ try {
       }
       if (
         pass === 1 &&
-        [reviewedCampaignQueueMigration, syndicationInboxMigration].includes(
+        [
+          reviewedCampaignQueueMigration,
+          syndicationInboxMigration,
+          xMentionInboxMigration,
+        ].includes(
           filename,
         )
       ) {
         const replayProbe = psqlFileProbe(join(migrations, filename), "select 1;");
-        const expectedRelation =
-          filename === reviewedCampaignQueueMigration
-            ? "marketing_reviewed_campaigns"
-            : "marketing_syndication_sources";
+        const expectedRelation = filename === reviewedCampaignQueueMigration
+          ? "marketing_reviewed_campaigns"
+          : filename === syndicationInboxMigration
+            ? "marketing_syndication_sources"
+            : "marketing_x_mention_accounts";
         assert(
           replayProbe.status !== 0 &&
             new RegExp(`relation "${expectedRelation}" already exists`).test(
@@ -671,6 +678,567 @@ try {
   assert(
     replayState.join("|") === "0|0|0|5",
     `full-chain replay left unexpected relay state: ${replayState.join(", ")}`,
+  );
+
+  const xMentionRpcs = [
+    "public.claim_marketing_x_mention_poll(text)",
+    "public.commit_marketing_x_mention_discovery(text,uuid,text,text,text,text,boolean,jsonb)",
+    "public.defer_marketing_x_mention_poll(text,uuid,timestamp with time zone,text)",
+    "public.list_marketing_x_mention_inbox(text,integer)",
+    "public.claim_next_marketing_x_mention(text,integer)",
+    "public.complete_marketing_x_mention_reply(text,text,uuid)",
+    "public.fail_marketing_x_mention_reply(text,text,uuid,text)",
+    "public.record_marketing_x_mention_opt_out(text,text,text)",
+    "public.erase_marketing_x_compliance_data(text,text,text,text)",
+    "public.clear_marketing_x_compliance_hold(text,text)",
+    "public.get_marketing_x_interaction_reference(text,text)",
+  ];
+  const xMentionRpcArray = xMentionRpcs
+    .map((signature) => `'${signature}'`)
+    .join(",");
+  const xMentionPrivileges = psqlScalar(`
+    select
+      (
+        select bool_and(relrowsecurity)
+        from pg_catalog.pg_class
+        where oid in (
+          'public.marketing_x_mention_accounts'::regclass,
+          'public.marketing_x_mentions'::regclass,
+          'public.marketing_x_mention_opt_outs'::regclass,
+          'public.marketing_x_compliance_events'::regclass
+        )
+      ),
+      has_table_privilege(
+        'service_role',
+        'public.marketing_x_mentions',
+        'select'
+      ),
+      (
+        select bool_and(
+          has_function_privilege('service_role', rpc.signature, 'execute')
+        )
+        from pg_catalog.unnest(
+          array[${xMentionRpcArray}]::text[]
+        ) as rpc(signature)
+      ),
+      (
+        select bool_or(
+          has_function_privilege('anon', rpc.signature, 'execute')
+        )
+        from pg_catalog.unnest(
+          array[${xMentionRpcArray}]::text[]
+        ) as rpc(signature)
+      );
+  `);
+  assert(
+    xMentionPrivileges === "t|f|t|f",
+    `unexpected X mention inbox privileges: ${xMentionPrivileges}`,
+  );
+
+  const emptyXAccountId = "1910000000000000999";
+  const emptyXLease = psqlScalar(`
+    select lease_token::text
+    from public.claim_marketing_x_mention_poll('${emptyXAccountId}');
+  `);
+  const emptyXBaseline = psqlScalar(`
+    select
+      result_code,
+      resulting_since_id is null,
+      initialized_at is not null,
+      last_success_at is not null
+    from public.commit_marketing_x_mention_discovery(
+      '${emptyXAccountId}',
+      '${emptyXLease}'::uuid,
+      null,
+      null,
+      null,
+      null,
+      true,
+      '[]'::jsonb
+    );
+  `);
+  assert(
+    emptyXBaseline === "baseline_empty|t|t|t",
+    `empty X first-run baseline did not initialize safely: ${emptyXBaseline}`,
+  );
+
+  const xAccountId = "1910000000000000001";
+  const xObservedAt = new Date(Date.now() - 60_000).toISOString();
+  const firstXLease = psqlScalar(`
+    select result_code || '|' || lease_token::text || '|' || baseline_required
+    from public.claim_marketing_x_mention_poll('${xAccountId}');
+  `).split("|");
+  assert(
+    firstXLease.length === 3
+      && firstXLease[0] === "claimed"
+      && /^[0-9a-f-]{36}$/.test(firstXLease[1])
+      && firstXLease[2] === "true",
+    `first X mention poll was not a leased baseline: ${firstXLease.join("|")}`,
+  );
+
+  const duplicateXLease = psqlScalar(`
+    select result_code
+    from public.claim_marketing_x_mention_poll('${xAccountId}');
+  `);
+  assert(
+    duplicateXLease === "leased",
+    `concurrent X mention poll escaped the account lease: ${duplicateXLease}`,
+  );
+
+  const baselineXCommit = psqlScalar(`
+    select
+      result_code,
+      inserted_count,
+      resulting_since_id,
+      initialized_at is not null,
+      last_success_at is not null
+    from public.commit_marketing_x_mention_discovery(
+      '${xAccountId}',
+      '${firstXLease[1]}'::uuid,
+      null,
+      '1910000000000000201',
+      null,
+      null,
+      true,
+      ${sqlJson([
+        {
+          post_id: "1910000000000000200",
+          author_id: "1910000000000000300",
+          conversation_id: "1910000000000000400",
+          created_at: xObservedAt,
+          content_hmac: "12".repeat(32),
+          classification: "auto_reply",
+          eligibility_reason: "bounded_faq",
+        },
+        {
+          post_id: "1910000000000000201",
+          author_id: "1910000000000000301",
+          conversation_id: "1910000000000000401",
+          created_at: xObservedAt,
+          content_hmac: "13".repeat(32),
+          classification: "opt_out",
+          eligibility_reason: "explicit_opt_out",
+        },
+      ])}
+    );
+  `);
+  assert(
+    baselineXCommit === "committed|2|1910000000000000201|t|t",
+    `X mention baseline did not commit atomically: ${baselineXCommit}`,
+  );
+
+  const baselineReplyClaim = psqlScalar(`
+    select result_code
+    from public.claim_next_marketing_x_mention('${xAccountId}', 5);
+  `);
+  assert(
+    baselineReplyClaim === "no_eligible",
+    `first-run X mention baseline became replyable: ${baselineReplyClaim}`,
+  );
+
+  psql(`
+    update public.marketing_x_mention_accounts
+    set next_poll_at = pg_catalog.clock_timestamp() - interval '1 second'
+    where account_id = '${xAccountId}';
+  `);
+  const partialXLease = psqlScalar(`
+    select lease_token::text
+    from public.claim_marketing_x_mention_poll('${xAccountId}');
+  `);
+  const pendingXItems = [
+    {
+      post_id: "1910000000000000202",
+      author_id: "1910000000000000302",
+      conversation_id: "1910000000000000402",
+      created_at: xObservedAt,
+      content_hmac: "14".repeat(32),
+      classification: "auto_reply",
+      eligibility_reason: "bounded_faq",
+    },
+    {
+      post_id: "1910000000000000203",
+      author_id: "1910000000000000303",
+      conversation_id: "1910000000000000402",
+      created_at: xObservedAt,
+      content_hmac: "15".repeat(32),
+      classification: "auto_reply",
+      eligibility_reason: "bounded_faq",
+    },
+    {
+      post_id: "1910000000000000204",
+      author_id: "1910000000000000304",
+      conversation_id: "1910000000000000404",
+      created_at: xObservedAt,
+      content_hmac: "16".repeat(32),
+      classification: "review",
+      eligibility_reason: "needs_review",
+    },
+    {
+      post_id: "1910000000000000205",
+      author_id: "1910000000000000302",
+      conversation_id: "1910000000000000405",
+      created_at: xObservedAt,
+      content_hmac: "17".repeat(32),
+      classification: "auto_reply",
+      eligibility_reason: "bounded_faq",
+    },
+    {
+      post_id: "1910000000000000206",
+      author_id: "1910000000000000306",
+      conversation_id: "1910000000000000406",
+      created_at: xObservedAt,
+      content_hmac: "18".repeat(32),
+      classification: "auto_reply",
+      eligibility_reason: "bounded_faq",
+    },
+  ];
+  const partialXCommit = psqlScalar(`
+    select result_code || '|' || resulting_since_id
+    from public.commit_marketing_x_mention_discovery(
+      '${xAccountId}',
+      '${partialXLease}'::uuid,
+      '1910000000000000201',
+      '1910000000000000206',
+      null,
+      '1910000000000000202',
+      false,
+      ${sqlJson(pendingXItems)}
+    );
+  `);
+  assert(
+    partialXCommit === "partial_committed|1910000000000000201",
+    `partial X mention page advanced its cursor: ${partialXCommit}`,
+  );
+
+  const incompleteXReplyClaim = psqlScalar(`
+    select result_code
+    from public.claim_next_marketing_x_mention('${xAccountId}', 5);
+  `);
+  assert(
+    incompleteXReplyClaim === "poll_incomplete",
+    `partial X discovery became replyable: ${incompleteXReplyClaim}`,
+  );
+
+  psql(`
+    update public.marketing_x_mention_accounts
+    set next_poll_at = pg_catalog.clock_timestamp() - interval '1 second'
+    where account_id = '${xAccountId}';
+  `);
+  const completeXLease = psqlScalar(`
+    select
+      lease_token::text,
+      since_id,
+      continuation_until_id,
+      continuation_base_since_id,
+      continuation_newest_id
+    from public.claim_marketing_x_mention_poll('${xAccountId}');
+  `).split("|");
+  assert(
+    completeXLease.length === 5
+      && /^[0-9a-f-]{36}$/.test(completeXLease[0])
+      && completeXLease.slice(1).join("|") ===
+        "1910000000000000201|1910000000000000202|1910000000000000201|1910000000000000206",
+    `X continuation lease did not preserve stable bounds: ${completeXLease.join("|")}`,
+  );
+  const completeXCommit = psqlScalar(`
+    select
+      result_code,
+      inserted_count,
+      existing_count,
+      resulting_since_id
+    from public.commit_marketing_x_mention_discovery(
+      '${xAccountId}',
+      '${completeXLease[0]}'::uuid,
+      '1910000000000000201',
+      '1910000000000000206',
+      '1910000000000000202',
+      null,
+      true,
+      ${sqlJson(pendingXItems)}
+    );
+  `);
+  assert(
+    completeXCommit === "committed|0|5|1910000000000000206",
+    `complete X mention page did not dedupe/advance: ${completeXCommit}`,
+  );
+
+  const firstXReplyClaim = psqlScalar(`
+    select
+      result_code,
+      post_id,
+      claim_token::text,
+      delivery_reference::text,
+      interaction_reference
+    from public.claim_next_marketing_x_mention('${xAccountId}', 1);
+  `).split("|");
+  assert(
+    firstXReplyClaim[0] === "claimed"
+      && firstXReplyClaim[1] === "1910000000000000202"
+      && /^[0-9a-f-]{36}$/.test(firstXReplyClaim[2])
+      && /^[0-9a-f-]{36}$/.test(firstXReplyClaim[3])
+      && /^[1-9][0-9]{29}$/.test(firstXReplyClaim[4])
+      && firstXReplyClaim[4] !== firstXReplyClaim[1],
+    `oldest eligible X mention was not claimed: ${firstXReplyClaim.join("|")}`,
+  );
+
+  const firstXInteractionLookup = psqlScalar(`
+    select result_code || '|' || interaction_reference
+    from public.get_marketing_x_interaction_reference(
+      '${xAccountId}',
+      '${firstXReplyClaim[1]}'
+    );
+  `);
+  assert(
+    firstXInteractionLookup === `found|${firstXReplyClaim[4]}`,
+    `manual reply lane did not resolve the durable X interaction reference: ${firstXInteractionLookup}`,
+  );
+
+  psql(`
+    begin;
+    do $cross_lane$
+    declare
+      auto_result text;
+      manual_result text;
+    begin
+      select result_code into auto_result
+      from public.claim_marketing_delivery(
+        'x-mention:${firstXReplyClaim[3]}',
+        'x-mention-auto-run',
+        'x-mention-auto-candidate',
+        '${"19".repeat(32)}',
+        'x',
+        'reply',
+        '${firstXReplyClaim[4]}',
+        'x-template-v1',
+        5
+      );
+      select result_code into manual_result
+      from public.claim_marketing_delivery(
+        'x-manual:${firstXReplyClaim[1]}',
+        'x-mention-manual-run',
+        'x-mention-manual-candidate',
+        '${"20".repeat(32)}',
+        'x',
+        'reply',
+        '${firstXReplyClaim[4]}',
+        'integration-test',
+        5
+      );
+      if auto_result <> 'claimed'
+        or manual_result <> 'interaction_already_claimed'
+      then
+        raise exception 'auto-to-manual X cross-lane dedupe failed: %|%',
+          auto_result,
+          manual_result;
+      end if;
+    end;
+    $cross_lane$;
+    rollback;
+  `);
+
+  psql(`
+    begin;
+    do $compliance$
+    declare
+      delivery_result text;
+      erase_result record;
+      poll_result text;
+      clear_result text;
+      redacted_interaction text;
+      stored_mention_count integer;
+      compliance_event_count integer;
+    begin
+      select result_code into delivery_result
+      from public.claim_marketing_delivery(
+        'x-compliance:${firstXReplyClaim[1]}',
+        'x-compliance-run',
+        'x-compliance-candidate',
+        '${"23".repeat(32)}',
+        'x',
+        'reply',
+        '${firstXReplyClaim[1]}',
+        'integration-test',
+        100
+      );
+      select * into erase_result
+      from public.erase_marketing_x_compliance_data(
+        '${xAccountId}',
+        '${firstXReplyClaim[1]}',
+        null,
+        'source_deleted'
+      );
+      select interaction_id into redacted_interaction
+      from public.marketing_delivery_ledger
+      where idempotency_key = 'x-compliance:${firstXReplyClaim[1]}';
+      select count(*)::integer into stored_mention_count
+      from public.marketing_x_mentions
+      where account_id = '${xAccountId}'
+        and post_id = '${firstXReplyClaim[1]}';
+      select count(*)::integer into compliance_event_count
+      from public.marketing_x_compliance_events
+      where account_id = '${xAccountId}'
+        and erase_scope = 'post'
+        and reason_code = 'source_deleted';
+      select result_code into poll_result
+      from public.claim_marketing_x_mention_poll('${xAccountId}');
+      select result_code into clear_result
+      from public.clear_marketing_x_compliance_hold(
+        '${xAccountId}',
+        'official_source_absence_verified'
+      );
+
+      if delivery_result <> 'claimed'
+        or erase_result.result_code <> 'erased'
+        or erase_result.deleted_mention_count <> 1
+        or erase_result.redacted_delivery_count <> 1
+        or redacted_interaction <> '${firstXReplyClaim[4]}'
+        or stored_mention_count <> 0
+        or compliance_event_count <> 1
+        or poll_result <> 'compliance_hold'
+        or clear_result <> 'cleared'
+      then
+        raise exception
+          'X compliance hold/clear failed: %|%|%|%|%|%|%|%|%',
+          delivery_result,
+          erase_result.result_code,
+          erase_result.deleted_mention_count,
+          erase_result.redacted_delivery_count,
+          redacted_interaction,
+          stored_mention_count,
+          compliance_event_count,
+          poll_result,
+          clear_result;
+      end if;
+    end;
+    $compliance$;
+    rollback;
+  `);
+
+  const cappedXReplyClaim = psqlScalar(`
+    select result_code
+    from public.claim_next_marketing_x_mention('${xAccountId}', 1);
+  `);
+  assert(
+    cappedXReplyClaim === "daily_cap_reached",
+    `X mention daily cap did not run before the next claim: ${cappedXReplyClaim}`,
+  );
+
+  const failedXReply = psqlScalar(`
+    select result_code || '|' || state
+    from public.fail_marketing_x_mention_reply(
+      '${xAccountId}',
+      '${firstXReplyClaim[1]}',
+      '${firstXReplyClaim[2]}'::uuid,
+      'provider_ambiguous'
+    );
+  `);
+  assert(
+    failedXReply === "failed|failed",
+    `X mention failure did not remain terminal: ${failedXReply}`,
+  );
+
+  const secondXReplyClaim = psqlScalar(`
+    select
+      result_code,
+      post_id,
+      claim_token::text,
+      delivery_reference::text,
+      interaction_reference
+    from public.claim_next_marketing_x_mention('${xAccountId}', 5);
+  `).split("|");
+  assert(
+    secondXReplyClaim[0] === "claimed"
+      && secondXReplyClaim[1] === "1910000000000000206"
+      && /^[0-9a-f-]{36}$/.test(secondXReplyClaim[3])
+      && /^[1-9][0-9]{29}$/.test(secondXReplyClaim[4]),
+    `author/conversation daily guards admitted the wrong mention: ${secondXReplyClaim.join("|")}`,
+  );
+
+  psql(`
+    begin;
+    do $cross_lane$
+    declare
+      manual_result text;
+      auto_result text;
+    begin
+      select result_code into manual_result
+      from public.claim_marketing_delivery(
+        'x-manual:${secondXReplyClaim[1]}',
+        'x-mention-manual-run',
+        'x-mention-manual-candidate',
+        '${"21".repeat(32)}',
+        'x',
+        'reply',
+        '${secondXReplyClaim[4]}',
+        'integration-test',
+        5
+      );
+      select result_code into auto_result
+      from public.claim_marketing_delivery(
+        'x-mention:${secondXReplyClaim[3]}',
+        'x-mention-auto-run',
+        'x-mention-auto-candidate',
+        '${"22".repeat(32)}',
+        'x',
+        'reply',
+        '${secondXReplyClaim[4]}',
+        'x-template-v1',
+        5
+      );
+      if manual_result <> 'claimed'
+        or auto_result <> 'interaction_already_claimed'
+      then
+        raise exception 'manual-to-auto X cross-lane dedupe failed: %|%',
+          manual_result,
+          auto_result;
+      end if;
+    end;
+    $cross_lane$;
+    rollback;
+  `);
+
+  const completedXReply = psqlScalar(`
+    select result_code || '|' || state
+    from public.complete_marketing_x_mention_reply(
+      '${xAccountId}',
+      '${secondXReplyClaim[1]}',
+      '${secondXReplyClaim[2]}'::uuid
+    );
+  `);
+  assert(
+    completedXReply === "completed|replied",
+    `X mention completion did not become terminal: ${completedXReply}`,
+  );
+
+  const reviewInboxBeforeOptOut = psqlScalar(`
+    select review_required_count
+    from public.list_marketing_x_mention_inbox('${xAccountId}', 100);
+  `);
+  assert(
+    reviewInboxBeforeOptOut === "1",
+    `X mention review inbox lost its bounded review item: ${reviewInboxBeforeOptOut}`,
+  );
+
+  const recordedXOptOut = psqlScalar(`
+    select result_code || '|' || blocked_count
+    from public.record_marketing_x_mention_opt_out(
+      '${xAccountId}',
+      '1910000000000000304',
+      '1910000000000000204'
+    );
+  `);
+  assert(
+    recordedXOptOut === "recorded|1",
+    `X mention opt-out did not block the review item: ${recordedXOptOut}`,
+  );
+
+  const reviewInboxAfterOptOut = psqlScalar(`
+    select review_required_count
+    from public.list_marketing_x_mention_inbox('${xAccountId}', 100);
+  `);
+  assert(
+    reviewInboxAfterOptOut === "0",
+    `X mention opt-out remained reviewable: ${reviewInboxAfterOptOut}`,
   );
 
   const syndicationRpcs = [
