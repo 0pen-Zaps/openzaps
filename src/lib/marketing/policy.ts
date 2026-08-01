@@ -27,6 +27,9 @@ const VOLATILE_SOURCE_FACT_KEYS = new Set([
   "product.virtual_trading_markets",
   "product.virtual_trading_quote",
   "product.request_a_zap_intake",
+  "product.agent_kit_sdk_release",
+  "product.agent_kit_mcp_release",
+  "product.agent_kit_boundaries",
 ]);
 
 export const CANONICAL_OUTBOUND_HOSTS = [

@@ -267,6 +267,26 @@
   line-height: 1.55;
 }
 
+.readinessEvidence {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 0 12px;
+}
+
+.readinessEvidenceText,
+.readinessEvidenceError {
+  margin: 0;
+  color: var(--ink-3);
+  font-size: 11.5px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.readinessEvidenceError {
+  color: var(--danger);
+}
+
 .readinessCard {
   min-width: 0;
   padding: 12px;
@@ -1214,6 +1234,7 @@
 
   .actionRow,
   .decisionButtons,
+  .readinessEvidence,
   .substackActions {
     align-items: stretch;
     flex-direction: column;

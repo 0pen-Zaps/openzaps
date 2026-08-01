@@ -14,6 +14,9 @@ export const MARKETING_POLICY_VERSION = 2 as const;
 export const SCHEDULED_MARKETING_TEMPLATE_ID =
   "virtual-trading-request-zap-v2" as const;
 
+export const AGENT_KIT_MARKETING_CAMPAIGN_ID =
+  "agent-kit-published-v1" as const;
+
 export const MARKETING_RUN_STATES = [
   "queued",
   "drafting",

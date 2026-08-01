@@ -57,10 +57,84 @@ import {
   buildScheduledMarketingDraftStep,
   collectMarketingSourcesStep,
   generateMarketingDraftStep,
+  npmReleaseHasProvenance,
   notifyMarketingReviewStep,
   publishMarketingBundleStep,
   publishScheduledMarketingBundleStep,
 } from "@/workflows/marketing-agent/steps";
+
+const VALID_NPM_RELEASE = {
+  name: "@openzaps/sdk",
+  version: "0.1.0",
+  repository: {
+    type: "git",
+    url: "git+https://github.com/0pen-Zaps/openzaps.git",
+    directory: "packages/sdk",
+  },
+  publishConfig: { access: "public", provenance: true },
+  dist: {
+    integrity: `sha512-${Buffer.alloc(64, 97).toString("base64")}`,
+    attestations: {
+      url: "https://registry.npmjs.org/-/npm/v1/attestations/@openzaps%2fsdk@0.1.0",
+      provenance: {
+        predicateType: "https://slsa.dev/provenance/v1",
+      },
+    },
+  },
+};
+
+describe("npm release provenance evidence", () => {
+  it("requires the exact package, version, repository, directory, and attestation", () => {
+    expect(
+      npmReleaseHasProvenance(
+        VALID_NPM_RELEASE,
+        "@openzaps/sdk",
+        "0.1.0",
+        "packages/sdk",
+      ),
+    ).toBe(true);
+
+    for (const invalid of [
+      { ...VALID_NPM_RELEASE, name: "@openzaps/lookalike" },
+      { ...VALID_NPM_RELEASE, version: "0.1.1" },
+      {
+        ...VALID_NPM_RELEASE,
+        repository: { ...VALID_NPM_RELEASE.repository, directory: "packages/mcp" },
+      },
+      {
+        ...VALID_NPM_RELEASE,
+        publishConfig: { access: "public", provenance: false },
+      },
+      {
+        ...VALID_NPM_RELEASE,
+        dist: { ...VALID_NPM_RELEASE.dist, attestations: undefined },
+      },
+      {
+        ...VALID_NPM_RELEASE,
+        dist: { ...VALID_NPM_RELEASE.dist, integrity: "sha512-YWJjZA==" },
+      },
+      {
+        ...VALID_NPM_RELEASE,
+        dist: {
+          ...VALID_NPM_RELEASE.dist,
+          attestations: {
+            ...VALID_NPM_RELEASE.dist.attestations,
+            url: "https://registry.npmjs.org/-/npm/v1/attestations/@openzaps%2fmcp@0.1.0",
+          },
+        },
+      },
+    ]) {
+      expect(
+        npmReleaseHasProvenance(
+          invalid,
+          "@openzaps/sdk",
+          "0.1.0",
+          "packages/sdk",
+        ),
+      ).toBe(false);
+    }
+  });
+});
 
 const CREATED_AT = new Date().toISOString();
 const VIRTUAL_TRADING_PAGE_HTML =
@@ -1321,6 +1395,40 @@ describe("bounded source collection", () => {
           }),
         );
       }
+      if (input.endsWith("/docs")) {
+        return Promise.resolve(
+          new Response(
+            "@openzaps/sdk@0.1.0 @openzaps/mcp@0.1.0 read-only Agent Kit can discover capsules no signing or broadcast method Stays with your wallet or Safe. Lives inside the immutable policy",
+            { headers: { "content-type": "text/html; charset=utf-8" } },
+          ),
+        );
+      }
+      if (input.includes("@openzaps%2fsdk/0.1.0")) {
+        return Promise.resolve(
+          Response.json({
+            ...VALID_NPM_RELEASE,
+          }),
+        );
+      }
+      if (input.includes("@openzaps%2fmcp/0.1.0")) {
+        return Promise.resolve(
+          Response.json({
+            ...VALID_NPM_RELEASE,
+            name: "@openzaps/mcp",
+            repository: {
+              ...VALID_NPM_RELEASE.repository,
+              directory: "packages/mcp",
+            },
+            dist: {
+              ...VALID_NPM_RELEASE.dist,
+              attestations: {
+                ...VALID_NPM_RELEASE.dist.attestations,
+                url: "https://registry.npmjs.org/-/npm/v1/attestations/@openzaps%2fmcp@0.1.0",
+              },
+            },
+          }),
+        );
+      }
       return Promise.resolve(Response.json({}));
     });
     vi.stubGlobal("fetch", fetchMock);
@@ -1332,7 +1440,7 @@ describe("bounded source collection", () => {
       sourceUrls: [],
     });
 
-    expect(fetchMock).toHaveBeenCalledTimes(8);
+    expect(fetchMock).toHaveBeenCalledTimes(11);
     expect(result.facts).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -1360,6 +1468,23 @@ describe("bounded source collection", () => {
           key: "product.request_a_zap_intake",
           status: "confirmed",
           sourceUrl: "https://www.0xzaps.com/api/leads/request",
+        }),
+        expect.objectContaining({
+          key: "product.agent_kit_sdk_release",
+          status: "confirmed",
+          sourceUrl:
+            "https://registry.npmjs.org/@openzaps%2fsdk/0.1.0",
+        }),
+        expect.objectContaining({
+          key: "product.agent_kit_mcp_release",
+          status: "confirmed",
+          sourceUrl:
+            "https://registry.npmjs.org/@openzaps%2fmcp/0.1.0",
+        }),
+        expect.objectContaining({
+          key: "product.agent_kit_boundaries",
+          status: "confirmed",
+          sourceUrl: "https://www.0xzaps.com/docs",
         }),
       ]),
     );
@@ -1523,11 +1648,11 @@ describe("bounded source collection", () => {
       sourceUrls: [],
     });
 
-    expect(fetchMock).toHaveBeenCalledTimes(8);
+    expect(fetchMock).toHaveBeenCalledTimes(11);
     for (const [, init] of fetchMock.mock.calls as Array<[string, RequestInit]>) {
       expect(init.redirect).toBe("error");
     }
-    expect(cancelled).toHaveBeenCalledTimes(6);
+    expect(cancelled).toHaveBeenCalledTimes(8);
     expect(
       result.facts
         .filter((fact) => fact.key.startsWith("protocol."))
@@ -1558,6 +1683,16 @@ describe("bounded source collection", () => {
           }),
         );
       }
+      if (input.endsWith("/docs")) {
+        return Promise.resolve(
+          new Response("Agent Kit docs", {
+            headers: { "content-type": "text/html" },
+          }),
+        );
+      }
+      if (input.startsWith("https://registry.npmjs.org/")) {
+        return Promise.resolve(Response.json({}));
+      }
       let chunk = 0;
       return Promise.resolve(
         new Response(
@@ -1584,7 +1719,7 @@ describe("bounded source collection", () => {
       sourceUrls: ["https://defitutorials.substack.com/p/openzaps"],
     });
 
-    expect(fetchMock).toHaveBeenCalledTimes(9);
+    expect(fetchMock).toHaveBeenCalledTimes(12);
     for (const [, init] of fetchMock.mock.calls as Array<[string, RequestInit]>) {
       expect(init.redirect).toBe("error");
     }
@@ -1609,6 +1744,16 @@ describe("bounded source collection", () => {
           }),
         );
       }
+      if (input.endsWith("/docs")) {
+        return Promise.resolve(
+          new Response("Agent Kit docs", {
+            headers: { "content-type": "text/html" },
+          }),
+        );
+      }
+      if (input.startsWith("https://registry.npmjs.org/")) {
+        return Promise.resolve(Response.json({}));
+      }
       return Promise.resolve(
         new Response(
           "Leaked webhook https://discord.com/api/webhooks/123456789/example-secret-token",
@@ -1624,7 +1769,7 @@ describe("bounded source collection", () => {
       sourceUrls: ["https://defitutorials.substack.com/p/openzaps"],
     });
 
-    expect(fetchMock).toHaveBeenCalledTimes(9);
+    expect(fetchMock).toHaveBeenCalledTimes(12);
     expect(result.externalData).toEqual([]);
     expect(JSON.stringify(result)).not.toContain("example-secret-token");
   });
