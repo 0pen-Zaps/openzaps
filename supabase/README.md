@@ -24,7 +24,7 @@ migration or setting a storage-backed feature flag.
 
 Authenticated CLI verification on 1 August 2026 identified the production
 shared project as `pool-fans-v2` with ref `jhzpyfzkdsyavgnnuzyu`, and
-`20260801143000_marketing_x_mentions.sql` as the latest applied OpenZaps
+`20260801180000_marketing_discord_delivery_receipts.sql` as the latest applied OpenZaps
 migration before this release. The forward-only
 `20260801214552_harden_subscription_authorization_grants.sql` migration must be
 recorded separately after it is reviewed and applied. Treat all of this as
