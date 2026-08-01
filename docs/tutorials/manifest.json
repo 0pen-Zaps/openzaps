@@ -3,8 +3,8 @@
   "publication": "https://defitutorials.substack.com",
   "feed": "https://defitutorials.substack.com/feed",
   "statusDefinitions": {
-    "draft": "Source-controlled Markdown that still requires owner approval. It is excluded from the Learn catalog and is not authorized for the editor handoff.",
-    "approved_handoff": "The owner approved the exact draft and an official-editor handoff was prepared. It remains excluded from the Learn catalog until RSS confirmation.",
+    "draft": "Source-controlled Markdown whose complete source and exact editor-body hashes are pinned. It remains excluded from Learn and requires an owner approval matching both hashes before an editor handoff.",
+    "approved_handoff": "The owner approved the exact pinned source and editor-body hashes and an official-editor handoff was prepared. It remains excluded from Learn until RSS confirmation.",
     "rss_confirmed": "The exact canonical DeFi Tutorials URL and approved title were found together in the public RSS feed."
   },
   "tutorials": [
@@ -19,7 +19,35 @@
     {
       "id": "paper-trade-first-authority-map",
       "title": "Paper Trade First, Then Draw the Authority Map",
+      "subtitle": "Test an agentic DeFi workflow without a wallet, then turn it into a human-reviewed OpenZaps authority map",
+      "tags": ["DeFi", "AI agents", "OpenZaps", "Risk management"],
       "sourcePath": "docs/tutorials/paper-trade-first-authority-map.md",
+      "sourceSha256": "59b6319bddf143010a3ce3563a1a6ff5a4715b52452360db0cab06144f84606d",
+      "bodySha256": "6398a978bbdfd4e419c40d5f6f145e200a8d325a4f462dbbd7499d37e00a3628",
+      "topics": ["protocol", "simulation", "trading", "security"],
+      "disclosures": ["pre_audit"],
+      "claims": [
+        {
+          "text": "Virtual Trading is a browser-local paper-trading surface with virtual funds and no wallet, approval, signature, or transaction.",
+          "factKeys": ["product.virtual_trading"],
+          "treatment": "asserted"
+        },
+        {
+          "text": "Request a Zap provides a human-reviewed authority map and is not an automatic deployment promise.",
+          "factKeys": ["product.request_a_zap"],
+          "treatment": "asserted"
+        },
+        {
+          "text": "An agent may submit a due run but cannot widen the signed recipient, amount, cadence, floor, adapter, asset, or calldata.",
+          "factKeys": ["authority.submission"],
+          "treatment": "asserted"
+        },
+        {
+          "text": "OpenZaps has not completed an external audit.",
+          "factKeys": ["protocol.pre_audit"],
+          "treatment": "asserted"
+        }
+      ],
       "status": "draft",
       "preparedAt": "2026-07-31",
       "canonicalUrl": null,

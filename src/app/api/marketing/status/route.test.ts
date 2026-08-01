@@ -1,6 +1,16 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("server-only", () => ({}));
+
+const compliance = vi.hoisted(() => ({
+  configured: vi.fn(() => false),
+  health: vi.fn(),
+}));
+
+vi.mock("@/lib/marketing/x-compliance-server", () => ({
+  getMarketingXComplianceHealth: compliance.health,
+  marketingXComplianceConfigured: compliance.configured,
+}));
 
 import { GET } from "./route";
 
@@ -10,7 +20,12 @@ function request(token?: string): Request {
   });
 }
 
+beforeEach(() => {
+  compliance.configured.mockReturnValue(false);
+});
+
 afterEach(() => {
+  vi.clearAllMocks();
   vi.unstubAllEnvs();
 });
 
@@ -18,7 +33,7 @@ describe("marketing status route", () => {
   it("requires the operator bearer token and fails closed without configuration", async () => {
     vi.stubEnv("OPENZAPS_MARKETING_ADMIN_TOKEN", "");
 
-    const response = GET(request("anything"));
+    const response = await GET(request("anything"));
 
     expect(response.status).toBe(401);
     expect(response.headers.get("cache-control")).toBe("no-store, private");
@@ -39,12 +54,30 @@ describe("marketing status route", () => {
     );
     vi.stubEnv("OPENZAPS_DISCORD_GUILD_ID", "456");
     vi.stubEnv("DISCORD_MARKETING_CHANNEL_ID", "789");
+    compliance.configured.mockReturnValue(true);
+    compliance.health.mockResolvedValue({
+      result: "healthy",
+      checkpointId: "00000000-0000-4000-8000-000000000099",
+      checkedAt: "2026-08-01T15:55:00.000Z",
+      validUntil: "2026-08-01T16:25:00.000Z",
+      subjectCount: 3,
+      nonPresentCount: 0,
+      hold: false,
+    });
 
-    const response = GET(request("operator-secret"));
+    const response = await GET(request("operator-secret"));
     const raw = await response.text();
     const body = JSON.parse(raw) as {
       config: { readiness: { channels: { x: boolean; discordBroadcast: boolean } } };
       xMentionAutomation: { ingestReady: boolean; hashSecretConfigured: boolean };
+      xComplianceHealth: {
+        result: string;
+        checkedAt: string;
+        validUntil: string;
+        subjectCount: number;
+        nonPresentCount: number;
+        hold: boolean;
+      } | null;
       policy: { xReplyScope: string; xAutomaticReplyScope: string };
     };
 
@@ -60,8 +93,45 @@ describe("marketing status route", () => {
       ingestReady: false,
       hashSecretConfigured: false,
     });
+    expect(body.xComplianceHealth).toEqual({
+      result: "healthy",
+      checkedAt: "2026-08-01T15:55:00.000Z",
+      validUntil: "2026-08-01T16:25:00.000Z",
+      subjectCount: 3,
+      nonPresentCount: 0,
+      hold: false,
+    });
+    expect(compliance.health).toHaveBeenCalledWith("100");
+    expect(raw).not.toContain("00000000-0000-4000-8000-000000000099");
     expect(raw).not.toContain("operator-secret");
     expect(raw).not.toContain("x-provider-secret");
     expect(raw).not.toContain("discord-provider-secret");
+  });
+
+  it("fails compliance readiness closed when the durable health read fails", async () => {
+    vi.stubEnv("OPENZAPS_MARKETING_ADMIN_TOKEN", "operator-secret");
+    vi.stubEnv("X_EXPECTED_ACCOUNT_ID", "100");
+    compliance.configured.mockReturnValue(true);
+    compliance.health.mockRejectedValue(
+      new Error("database response included service-role-secret"),
+    );
+
+    const response = await GET(request("operator-secret"));
+    const raw = await response.text();
+    const body = JSON.parse(raw) as {
+      xComplianceHealth: unknown;
+      xMentionAutomation: {
+        complianceHealth: string;
+        complianceReady: boolean;
+      };
+    };
+
+    expect(response.status).toBe(200);
+    expect(body.xComplianceHealth).toBeNull();
+    expect(body.xMentionAutomation).toMatchObject({
+      complianceHealth: "unavailable",
+      complianceReady: false,
+    });
+    expect(raw).not.toContain("service-role-secret");
   });
 });

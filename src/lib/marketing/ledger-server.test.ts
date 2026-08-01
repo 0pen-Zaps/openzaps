@@ -738,6 +738,23 @@ describe("completeMarketingDeliveryClaim", () => {
         action: "reply" as const,
         status: "published" as const,
         providerMessageId: "123",
+        providerUrl: "https://discord.com/channels/456/789/123",
+      },
+      {
+        idempotencyKey: "draft:abc:discord",
+        channel: "discord" as const,
+        action: "broadcast" as const,
+        status: "published" as const,
+        providerMessageId: "123",
+        providerUrl: "https://discord.com/channels/456/789/999",
+      },
+      {
+        idempotencyKey: "draft:abc:discord",
+        channel: "discord" as const,
+        action: "broadcast" as const,
+        status: "published" as const,
+        providerMessageId: "123",
+        providerUrl: "https://discord.com/channels/456/789/123?token=secret",
       },
       {
         idempotencyKey: "draft:abc:substack",
@@ -766,6 +783,29 @@ describe("completeMarketingDeliveryClaim", () => {
   });
 
   it("accepts only semantically matching terminal and replay results", async () => {
+    const discordFetch = vi.fn().mockResolvedValue(
+      responseRow({ result_code: "finalized", resulting_status: "published" }),
+    );
+    await expect(
+      completeMarketingDeliveryClaim(
+        {
+          idempotencyKey: "draft:abc:discord",
+          channel: "discord",
+          action: "broadcast",
+          status: "published",
+          providerMessageId: "123",
+          providerUrl: "https://discord.com/channels/456/789/123",
+        },
+        { env: ENV, fetchImpl: discordFetch },
+      ),
+    ).resolves.toEqual({ result: "finalized", status: "published" });
+    expect(JSON.parse(
+      (discordFetch.mock.calls[0]?.[1] as RequestInit).body as string,
+    )).toMatchObject({
+      p_provider_message_id: "123",
+      p_provider_url: "https://discord.com/channels/456/789/123",
+    });
+
     await expect(
       completeMarketingDeliveryClaim(
         {

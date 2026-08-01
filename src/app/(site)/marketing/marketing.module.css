@@ -886,6 +886,14 @@
   overflow-wrap: anywhere;
 }
 
+.substackMeta code {
+  color: var(--ink-2);
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-size: 9.5px;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
 .substackActions {
   display: flex;
   align-items: center;

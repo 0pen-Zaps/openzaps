@@ -41,12 +41,25 @@ function webhookMetadata(
   });
 }
 
+function messageReadback(
+  messageId: string,
+  channelId = TEST_CHANNEL_ID,
+  webhookId?: string,
+): Response {
+  return Response.json({
+    id: messageId,
+    channel_id: channelId,
+    ...(webhookId === undefined ? {} : { webhook_id: webhookId }),
+  });
+}
+
 describe("Discord outbound adapters", () => {
   it("posts a bounded webhook message with mentions disabled", async () => {
     const fetchMock = vi
       .fn()
       .mockResolvedValueOnce(webhookMetadata("12345"))
-      .mockResolvedValueOnce(Response.json({ id: "1234567890" }));
+      .mockResolvedValueOnce(Response.json({ id: "1234567890" }))
+      .mockResolvedValueOnce(messageReadback("1234567890", TEST_CHANNEL_ID, "12345"));
 
     await expect(
       postDiscordWebhook(
@@ -73,6 +86,8 @@ describe("Discord outbound adapters", () => {
       channel: "discord",
       transport: "webhook",
       providerMessageId: "1234567890",
+      providerUrl:
+        "https://discord.com/channels/999888777/111222333/1234567890",
       idempotencyKey: "tutorial:bounded:discord",
     });
 
@@ -93,6 +108,19 @@ describe("Discord outbound adapters", () => {
       username: "OpenZaps",
       allowed_mentions: { parse: [] },
     });
+    const [readbackUrl, readbackInit] = fetchMock.mock.calls[2] as [
+      string,
+      RequestInit,
+    ];
+    expect(readbackUrl).toBe(
+      "https://discord.com/api/v10/webhooks/12345/fake-token/messages/1234567890",
+    );
+    expect(readbackInit).toMatchObject({
+      method: "GET",
+      cache: "no-store",
+      redirect: "error",
+    });
+    expect(readbackInit.headers).not.toHaveProperty("authorization");
   });
 
   it("uses Discord REST with bot authentication when requested", async () => {
@@ -102,7 +130,8 @@ describe("Discord outbound adapters", () => {
         id: TEST_CHANNEL_ID,
         guild_id: TEST_GUILD_ID,
       }))
-      .mockResolvedValueOnce(Response.json({ id: "9876543210" }));
+      .mockResolvedValueOnce(Response.json({ id: "9876543210" }))
+      .mockResolvedValueOnce(messageReadback("9876543210"));
 
     await expect(
       postDiscordBotMessage(
@@ -117,6 +146,8 @@ describe("Discord outbound adapters", () => {
     ).resolves.toMatchObject({
       transport: "bot",
       providerMessageId: "9876543210",
+      providerUrl:
+        "https://discord.com/channels/999888777/111222333/9876543210",
     });
 
     const [metadataUrl, metadataInit] = fetchMock.mock.calls[0] as [string, RequestInit];
@@ -133,6 +164,105 @@ describe("Discord outbound adapters", () => {
     expect(init.method).toBe("POST");
     expect(init.redirect).toBe("error");
     expect(init.headers).toMatchObject({ authorization: "Bot bot-token" });
+    const [readbackUrl, readbackInit] = fetchMock.mock.calls[2] as [
+      string,
+      RequestInit,
+    ];
+    expect(readbackUrl).toBe(
+      "https://discord.com/api/v10/channels/111222333/messages/9876543210",
+    );
+    expect(readbackInit).toMatchObject({
+      method: "GET",
+      cache: "no-store",
+      redirect: "error",
+    });
+    expect(readbackInit.headers).toMatchObject({
+      authorization: "Bot bot-token",
+    });
+  });
+
+  it("returns a credential-free structured destination preflight", async () => {
+    const fetchMock = vi.fn().mockResolvedValueOnce(webhookMetadata("12345"));
+
+    await expect(
+      verifyDiscordPublishDestination({
+        transport: "webhook",
+        webhookUrl: "https://discord.com/api/webhooks/12345/private-token",
+        guildId: TEST_GUILD_ID,
+        channelId: TEST_CHANNEL_ID,
+        fetchImpl: fetchMock,
+      }),
+    ).resolves.toEqual({
+      schemaVersion: 1,
+      channel: "discord",
+      transport: "webhook",
+      scope: "configured_guild_channel",
+      verified: true,
+      mutationsPerformed: false,
+    });
+    expect(JSON.stringify(await verifyDiscordPublishDestination({
+      transport: "webhook",
+      webhookUrl: "https://discord.com/api/webhooks/12345/private-token",
+      guildId: TEST_GUILD_ID,
+      channelId: TEST_CHANNEL_ID,
+      fetchImpl: vi.fn().mockResolvedValueOnce(webhookMetadata("12345")),
+    }))).not.toContain("private-token");
+  });
+
+  it("authenticates bot destination preflight without returning its binding", async () => {
+    const fetchMock = vi.fn().mockResolvedValueOnce(Response.json({
+      id: TEST_CHANNEL_ID,
+      guild_id: TEST_GUILD_ID,
+    }));
+
+    const proof = await verifyDiscordPublishDestination({
+      transport: "bot",
+      botToken: "private-bot-token",
+      guildId: TEST_GUILD_ID,
+      channelId: TEST_CHANNEL_ID,
+      fetchImpl: fetchMock,
+    });
+
+    expect(proof).toEqual({
+      schemaVersion: 1,
+      channel: "discord",
+      transport: "bot",
+      scope: "configured_guild_channel",
+      verified: true,
+      mutationsPerformed: false,
+    });
+    expect(JSON.stringify(proof)).not.toContain("private-bot-token");
+    expect(JSON.stringify(proof)).not.toContain(TEST_GUILD_ID);
+    expect(JSON.stringify(proof)).not.toContain(TEST_CHANNEL_ID);
+    expect((fetchMock.mock.calls[0]?.[1] as RequestInit).headers).toMatchObject({
+      authorization: "Bot private-bot-token",
+    });
+  });
+
+  it("fails closed when the exact accepted message cannot be read back", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(webhookMetadata("12345"))
+      .mockResolvedValueOnce(Response.json({ id: "1234567890" }))
+      .mockResolvedValueOnce(
+        messageReadback("1234567890", "different-channel", "12345"),
+      );
+
+    await expect(
+      postDiscordWebhook(
+        { content: "Bounded post", idempotencyKey: "discord-readback" },
+        {
+          webhookUrl: "https://discord.com/api/webhooks/12345/private-token",
+          guildId: TEST_GUILD_ID,
+          channelId: TEST_CHANNEL_ID,
+          fetchImpl: fetchMock,
+        },
+      ),
+    ).rejects.toMatchObject({
+      code: "invalid-response",
+      message: "Discord message readback did not match the accepted delivery.",
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(3);
   });
 
   it("fails closed for an untrusted webhook URL", async () => {

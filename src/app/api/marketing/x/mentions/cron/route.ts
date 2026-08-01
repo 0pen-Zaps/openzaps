@@ -17,6 +17,12 @@ import {
   getMarketingLedgerSnapshot,
 } from "@/lib/marketing/ledger-server";
 import {
+  admitMarketingXOutboundDelivery,
+  checkMarketingXOutboundAdmission,
+  finalizeMarketingXOutboundAdmission,
+  getMarketingXComplianceHealth,
+} from "@/lib/marketing/x-compliance-server";
+import {
   claimNextEligibleXMention,
   claimXMentionPollLease,
   commitXMentionDiscovery,
@@ -362,6 +368,22 @@ async function deliverOneReply(
       body,
     }))
     .digest("hex");
+  const admission = await admitMarketingXOutboundDelivery({
+    accountId: mention.accountId,
+    interactionReference: mention.interactionReference,
+    postId: mention.postId,
+    authorId: mention.authorId,
+    sourceClaimToken: mention.claimToken,
+    providerCheckedAt: verified.observedAt,
+  }).catch(() => null);
+  if (admission?.result !== "admitted" || !admission.admissionToken) {
+    await failClaim(mention, "compliance_admission_denied");
+    return {
+      replyStatus: "blocked",
+      reason: "compliance_admission_denied",
+    };
+  }
+  const admissionToken = admission.admissionToken;
   let delivery;
   try {
     delivery = await claimMarketingDelivery({
@@ -371,18 +393,30 @@ async function deliverOneReply(
       contentHash,
       channel: "x",
       action: "reply",
-      interactionId: mention.postId,
+      // The generic delivery ledger must never receive a provider subject id.
+      // Compliance erasure can rotate/delete the short-lived provider binding
+      // while this opaque reference remains safe for idempotency checks.
+      interactionId: mention.interactionReference,
       approvedBy:
         `x-auto-response-campaign:reviewed-template-v${X_MENTION_TEMPLATE_VERSION}`,
       dailyCap,
     });
   } catch {
+    await finalizeMarketingXOutboundAdmission({
+      admissionToken,
+      outcome: "failed",
+      failureCode: "delivery_admission_unavailable",
+    }).catch(() => undefined);
     await failClaim(mention, "delivery_admission_unavailable");
     return { replyStatus: "failed", reason: "delivery_admission_unavailable" };
   }
 
   if (delivery.result === "already_claimed") {
     if (delivery.status === "published") {
+      await finalizeMarketingXOutboundAdmission({
+        admissionToken,
+        outcome: "completed",
+      }).catch(() => undefined);
       await completeXMentionReply({
         accountId: mention.accountId,
         postId: mention.postId,
@@ -390,6 +424,11 @@ async function deliverOneReply(
       });
       return { replyStatus: "already_published" };
     }
+    await finalizeMarketingXOutboundAdmission({
+      admissionToken,
+      outcome: "failed",
+      failureCode: "delivery_reconciliation_required",
+    }).catch(() => undefined);
     await failClaim(
       mention,
       delivery.status === "failed"
@@ -404,8 +443,33 @@ async function deliverOneReply(
     };
   }
   if (delivery.result !== "claimed") {
+    await finalizeMarketingXOutboundAdmission({
+      admissionToken,
+      outcome: "failed",
+      failureCode: "delivery_claim_denied",
+    }).catch(() => undefined);
     await failClaim(mention, `delivery_${delivery.result}`);
     return { replyStatus: "blocked", reason: `delivery_${delivery.result}` };
+  }
+
+  const fence = await checkMarketingXOutboundAdmission(admissionToken).catch(
+    () => null,
+  );
+  if (!fence?.allowed || fence.result !== "allowed") {
+    await finalizeMarketingXOutboundAdmission({
+      admissionToken,
+      outcome: "failed",
+      failureCode: "admission_revoked",
+    }).catch(() => undefined);
+    await completeMarketingDeliveryClaim({
+      idempotencyKey,
+      channel: "x",
+      action: "reply",
+      status: "failed",
+      failureCode: "admission_revoked",
+    }).catch(() => undefined);
+    await failClaim(mention, "admission_revoked");
+    return { replyStatus: "blocked", reason: "admission_revoked" };
   }
 
   let receipt;
@@ -423,6 +487,11 @@ async function deliverOneReply(
       error instanceof ChannelAdapterError
       && ["invalid-input", "not-configured"].includes(error.code);
     if (definitivePreWriteFailure) {
+      await finalizeMarketingXOutboundAdmission({
+        admissionToken,
+        outcome: "failed",
+        failureCode: "x_prewrite_failed",
+      }).catch(() => undefined);
       await completeMarketingDeliveryClaim({
         idempotencyKey,
         channel: "x",
@@ -433,9 +502,31 @@ async function deliverOneReply(
       await failClaim(mention, "x_prewrite_failed");
       return { replyStatus: "failed", reason: "x_prewrite_failed" };
     }
+    await finalizeMarketingXOutboundAdmission({
+      admissionToken,
+      outcome: "failed",
+      failureCode: "x_delivery_ambiguous",
+    }).catch(() => undefined);
     return {
       replyStatus: "reconciliation_required",
       reason: "x_delivery_outcome_ambiguous",
+    };
+  }
+
+  const complianceFinalized = await finalizeMarketingXOutboundAdmission({
+    admissionToken,
+    outcome: "completed",
+  }).catch(() => null);
+  if (
+    !complianceFinalized
+    || !["finalized", "already_finalized"].includes(
+      complianceFinalized.result,
+    )
+    || complianceFinalized.state !== "completed"
+  ) {
+    return {
+      replyStatus: "reconciliation_required",
+      reason: "compliance_receipt_not_finalized",
     };
   }
 
@@ -477,11 +568,32 @@ export async function GET(request: Request): Promise<Response> {
     return response({ error: "Unauthorized." }, 401);
   }
 
-  const config = readXMentionAutomationConfig();
-  if (!config.ingestRequested) {
+  const requestedConfig = readXMentionAutomationConfig();
+  if (!requestedConfig.ingestRequested) {
     return response({ skipped: true, reason: "X mention ingestion is disabled." });
   }
-  if (!config.ingestReady || !marketingXMentionsConfigured()) {
+  const accountId = process.env.X_EXPECTED_ACCOUNT_ID;
+  if (
+    !accountId
+    || !X_ACCOUNT_ID.test(accountId)
+    || !marketingXMentionsConfigured()
+  ) {
+    return response(
+      {
+        error: "X mention ingestion is not ready.",
+        blockers: requestedConfig.blockers,
+      },
+      503,
+    );
+  }
+  const complianceHealth = await getMarketingXComplianceHealth(accountId).catch(
+    () => null,
+  );
+  const config = readXMentionAutomationConfig(
+    process.env,
+    complianceHealth,
+  );
+  if (!config.ingestReady) {
     return response(
       {
         error: "X mention ingestion is not ready.",
@@ -489,10 +601,6 @@ export async function GET(request: Request): Promise<Response> {
       },
       503,
     );
-  }
-  const accountId = process.env.X_EXPECTED_ACCOUNT_ID;
-  if (!accountId || !X_ACCOUNT_ID.test(accountId)) {
-    return response({ error: "The bound X account identity is invalid." }, 503);
   }
 
   let discovery;

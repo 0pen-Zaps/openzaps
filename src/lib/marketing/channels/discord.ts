@@ -51,7 +51,17 @@ export interface DiscordPublishResult {
   channel: "discord";
   transport: "webhook" | "bot";
   providerMessageId: string;
+  providerUrl: string;
   idempotencyKey: string;
+}
+
+export interface DiscordDestinationVerification {
+  schemaVersion: 1;
+  channel: "discord";
+  transport: "webhook" | "bot";
+  scope: "configured_guild_channel";
+  verified: true;
+  mutationsPerformed: false;
 }
 
 interface DiscordDependencies {
@@ -80,6 +90,8 @@ export interface DiscordPublishDependencies
 
 interface DiscordMessageResponse {
   id?: unknown;
+  channel_id?: unknown;
+  webhook_id?: unknown;
 }
 
 interface DiscordWebhookMetadata {
@@ -98,6 +110,18 @@ interface ValidatedDiscordWebhookUrls {
   webhookId: string;
   metadataUrl: string;
   executeUrl: string;
+}
+
+interface VerifiedDiscordWebhookDestination {
+  webhook: ValidatedDiscordWebhookUrls;
+  guildId: string;
+  channelId: string;
+}
+
+interface VerifiedDiscordBotDestination {
+  token: string;
+  guildId: string;
+  channelId: string;
 }
 
 function codePointLength(value: string): number {
@@ -356,11 +380,7 @@ async function discordProviderError(
   );
 }
 
-async function parseDiscordResult(
-  response: Response,
-  input: DiscordPublishInput,
-  transport: DiscordPublishResult["transport"],
-): Promise<DiscordPublishResult> {
+async function parseDiscordMessageId(response: Response): Promise<string> {
   const payload = await readBoundedJsonResponse(
     "discord",
     response,
@@ -373,17 +393,12 @@ async function parseDiscordResult(
       { status: response.status },
     );
   }
-  return {
-    channel: "discord",
-    transport,
-    providerMessageId: payload.id,
-    idempotencyKey: input.idempotencyKey,
-  };
+  return payload.id;
 }
 
 async function verifyDiscordWebhookDestination(
   dependencies: DiscordWebhookDependencies,
-): Promise<void> {
+): Promise<VerifiedDiscordWebhookDestination> {
   const webhook = validatedWebhookUrls(
     requireServerSecret(
       "discord",
@@ -422,11 +437,12 @@ async function verifyDiscordWebhookDestination(
   ) {
     throw discordDestinationError();
   }
+  return { webhook, guildId, channelId };
 }
 
 async function verifyDiscordBotDestination(
   dependencies: DiscordBotDependencies,
-): Promise<void> {
+): Promise<VerifiedDiscordBotDestination> {
   const token = requireServerSecret(
     "discord",
     "DISCORD_BOT_TOKEN",
@@ -461,6 +477,65 @@ async function verifyDiscordBotDestination(
   if (metadata.id !== channelId || metadata.guild_id !== guildId) {
     throw discordDestinationError();
   }
+  return { token, guildId, channelId };
+}
+
+function discordMessageUrl(
+  guildId: string,
+  channelId: string,
+  messageId: string,
+): string {
+  return `https://discord.com/channels/${guildId}/${channelId}/${messageId}`;
+}
+
+async function verifyDiscordMessageReadback({
+  fetchImpl,
+  url,
+  headers,
+  messageId,
+  channelId,
+  webhookId,
+  nowMs,
+  requestTimeoutMs,
+}: {
+  fetchImpl: ChannelFetch;
+  url: string;
+  headers: HeadersInit;
+  messageId: string;
+  channelId: string;
+  webhookId?: string;
+  nowMs?: number;
+  requestTimeoutMs?: number;
+}): Promise<void> {
+  const response = await safelyFetch(
+    "discord",
+    fetchImpl,
+    url,
+    {
+      method: "GET",
+      headers,
+      cache: "no-store",
+      redirect: "error",
+    },
+    requestTimeoutMs,
+  );
+  if (!response.ok) throw await discordProviderError(response, nowMs);
+  const message = await readBoundedJsonResponse(
+    "discord",
+    response,
+  ) as DiscordMessageResponse;
+  if (
+    message.id !== messageId
+    || message.channel_id !== channelId
+    || (webhookId !== undefined && message.webhook_id !== webhookId)
+  ) {
+    throw new ChannelAdapterError(
+      "discord",
+      "invalid-response",
+      "Discord message readback did not match the accepted delivery.",
+      { status: response.status },
+    );
+  }
 }
 
 /**
@@ -470,15 +545,25 @@ async function verifyDiscordBotDestination(
  */
 export async function verifyDiscordPublishDestination(
   dependencies: DiscordPublishDependencies = {},
-): Promise<void> {
+): Promise<DiscordDestinationVerification> {
   const transport =
     dependencies.transport ??
     (dependencies.webhookUrl || process.env.DISCORD_MARKETING_WEBHOOK_URL
       ? "webhook"
       : "bot");
-  return transport === "webhook"
-    ? verifyDiscordWebhookDestination(dependencies)
-    : verifyDiscordBotDestination(dependencies);
+  if (transport === "webhook") {
+    await verifyDiscordWebhookDestination(dependencies);
+  } else {
+    await verifyDiscordBotDestination(dependencies);
+  }
+  return {
+    schemaVersion: 1,
+    channel: "discord",
+    transport,
+    scope: "configured_guild_channel",
+    verified: true,
+    mutationsPerformed: false,
+  };
 }
 
 export async function postDiscordWebhook(
@@ -486,14 +571,8 @@ export async function postDiscordWebhook(
   dependencies: DiscordWebhookDependencies = {},
 ): Promise<DiscordPublishResult> {
   validateDiscordInput(input);
-  const webhook = validatedWebhookUrls(
-    requireServerSecret(
-      "discord",
-      "DISCORD_MARKETING_WEBHOOK_URL",
-      dependencies.webhookUrl,
-    ),
-  );
-  await verifyDiscordWebhookDestination(dependencies);
+  const { webhook, guildId, channelId } =
+    await verifyDiscordWebhookDestination(dependencies);
   const response = await safelyFetch(
     "discord",
     dependencies.fetchImpl ?? fetch,
@@ -511,7 +590,24 @@ export async function postDiscordWebhook(
     dependencies.requestTimeoutMs,
   );
   if (!response.ok) throw await discordProviderError(response, dependencies.nowMs);
-  return parseDiscordResult(response, input, "webhook");
+  const providerMessageId = await parseDiscordMessageId(response);
+  await verifyDiscordMessageReadback({
+    fetchImpl: dependencies.fetchImpl ?? fetch,
+    url: `${webhook.metadataUrl}/messages/${providerMessageId}`,
+    headers: { accept: "application/json" },
+    messageId: providerMessageId,
+    channelId,
+    webhookId: webhook.webhookId,
+    nowMs: dependencies.nowMs,
+    requestTimeoutMs: dependencies.requestTimeoutMs,
+  });
+  return {
+    channel: "discord",
+    transport: "webhook",
+    providerMessageId,
+    providerUrl: discordMessageUrl(guildId, channelId, providerMessageId),
+    idempotencyKey: input.idempotencyKey,
+  };
 }
 
 export async function postDiscordBotMessage(
@@ -519,15 +615,8 @@ export async function postDiscordBotMessage(
   dependencies: DiscordBotDependencies = {},
 ): Promise<DiscordPublishResult> {
   validateDiscordInput(input);
-  const token = requireServerSecret(
-    "discord",
-    "DISCORD_BOT_TOKEN",
-    dependencies.botToken,
-  );
-  const channelId =
-    dependencies.channelId ?? process.env.DISCORD_MARKETING_CHANNEL_ID;
-  requiredDiscordDestinationId(channelId);
-  await verifyDiscordBotDestination(dependencies);
+  const { token, guildId, channelId } =
+    await verifyDiscordBotDestination(dependencies);
   const response = await safelyFetch(
     "discord",
     dependencies.fetchImpl ?? fetch,
@@ -546,7 +635,26 @@ export async function postDiscordBotMessage(
     dependencies.requestTimeoutMs,
   );
   if (!response.ok) throw await discordProviderError(response, dependencies.nowMs);
-  return parseDiscordResult(response, input, "bot");
+  const providerMessageId = await parseDiscordMessageId(response);
+  await verifyDiscordMessageReadback({
+    fetchImpl: dependencies.fetchImpl ?? fetch,
+    url: `${DISCORD_API_BASE}/channels/${channelId}/messages/${providerMessageId}`,
+    headers: {
+      accept: "application/json",
+      authorization: `Bot ${token}`,
+    },
+    messageId: providerMessageId,
+    channelId,
+    nowMs: dependencies.nowMs,
+    requestTimeoutMs: dependencies.requestTimeoutMs,
+  });
+  return {
+    channel: "discord",
+    transport: "bot",
+    providerMessageId,
+    providerUrl: discordMessageUrl(guildId, channelId, providerMessageId),
+    idempotencyKey: input.idempotencyKey,
+  };
 }
 
 export function postDiscordMessage(

@@ -6,6 +6,7 @@ import {
   parseCliArguments,
   reconcileDiscordCommands,
   validateDiscordEnvironment,
+  verifyGuildCommandReadback,
 } from "../../../scripts/reconcile-discord-commands.mjs";
 
 const APPLICATION_ID = "123456789012345678";
@@ -23,6 +24,26 @@ function command(name: "ask" | "openzaps" | "status") {
   return value;
 }
 
+function remoteCommand(
+  value: Record<string, unknown>,
+  id: string,
+): Record<string, unknown> {
+  return {
+    ...value,
+    id,
+    application_id: APPLICATION_ID,
+    guild_id: GUILD_ID,
+  };
+}
+
+function remoteManifest(): Record<string, unknown>[] {
+  return DISCORD_COMMAND_MANIFEST.map((entry, index) =>
+    remoteCommand(
+      entry as unknown as Record<string, unknown>,
+      `${index + 1}`.repeat(18),
+    ));
+}
+
 describe("Discord command reconciliation", () => {
   it("defaults to a content-free read-only guild diff", async () => {
     const remote = [
@@ -36,12 +57,16 @@ describe("Discord command reconciliation", () => {
         ...command("status"),
         description: "Outdated status description",
         id: "222222222222222222",
+        application_id: APPLICATION_ID,
+        guild_id: GUILD_ID,
       },
       {
         name: "legacy",
         description: "Old command",
         type: 1,
         id: "333333333333333333",
+        application_id: APPLICATION_ID,
+        guild_id: GUILD_ID,
       },
     ];
     const fetchMock = vi.fn(async () => Response.json(remote));
@@ -60,6 +85,9 @@ describe("Discord command reconciliation", () => {
       managedCommandsInSync: false,
       applied: false,
       verified: true,
+      providerReadbackVerified: true,
+      manifestSha256: expect.stringMatching(/^[0-9a-f]{64}$/u),
+      managedReadbackSha256: expect.stringMatching(/^[0-9a-f]{64}$/u),
       counts: { desired: 3, remote: 3, create: 1, update: 1, delete: 1 },
       changes: {
         create: ["/openzaps"],
@@ -86,7 +114,7 @@ describe("Discord command reconciliation", () => {
       .mockResolvedValueOnce(Response.json({ ...command("ask"), id: "111111111111111111" }))
       .mockResolvedValueOnce(Response.json({ ...command("openzaps"), id: "222222222222222222" }))
       .mockResolvedValueOnce(Response.json({ ...command("status"), id: "333333333333333333" }))
-      .mockResolvedValueOnce(Response.json(DISCORD_COMMAND_MANIFEST));
+      .mockResolvedValueOnce(Response.json(remoteManifest()));
 
     const result = await reconcileDiscordCommands({
       environment: ENVIRONMENT,
@@ -101,8 +129,10 @@ describe("Discord command reconciliation", () => {
       verified: true,
       inSync: true,
       managedCommandsInSync: true,
+      providerReadbackVerified: true,
       counts: { desired: 3, remote: 0, create: 3, update: 0, delete: 0 },
     });
+    expect(result.managedReadbackSha256).toBe(result.manifestSha256);
     expect(fetchMock).toHaveBeenCalledTimes(5);
     for (const call of fetchMock.mock.calls.slice(1, 4)) {
       const [, applyInit] = call as unknown as [string, RequestInit];
@@ -123,15 +153,21 @@ describe("Discord command reconciliation", () => {
       description: "Owned by another integration",
       type: 1,
       id: "444444444444444444",
+      application_id: APPLICATION_ID,
+      guild_id: GUILD_ID,
     };
     const current = DISCORD_COMMAND_MANIFEST.map((entry, index) => ({
       ...entry,
       id: `${index + 1}`.repeat(18),
+      application_id: APPLICATION_ID,
+      guild_id: GUILD_ID,
       ...(entry.name === "ask" ? { description: "Drifted" } : {}),
     })).concat(legacy as never);
     const verified = DISCORD_COMMAND_MANIFEST.map((entry, index) => ({
       ...entry,
       id: `${index + 1}`.repeat(18),
+      application_id: APPLICATION_ID,
+      guild_id: GUILD_ID,
     })).concat(legacy as never);
     const fetchMock = vi
       .fn()
@@ -169,15 +205,21 @@ describe("Discord command reconciliation", () => {
   });
 
   it("detects behavior-changing option drift", async () => {
-    const remote = DISCORD_COMMAND_MANIFEST.map((entry) => entry.name === "ask"
-      ? {
+    const remote = DISCORD_COMMAND_MANIFEST.map((entry, index) =>
+      remoteCommand(
+        {
           ...entry,
-          options: entry.options?.map((option) => ({
-            ...option,
-            choices: [{ name: "Hidden route", value: "hidden" }],
-          })),
-        }
-      : entry);
+          ...(entry.name === "ask"
+            ? {
+                options: entry.options?.map((option) => ({
+                  ...option,
+                  choices: [{ name: "Hidden route", value: "hidden" }],
+                })),
+              }
+            : {}),
+        },
+        `${index + 1}`.repeat(18),
+      ));
     const fetchMock = vi.fn(async () => Response.json(remote));
 
     const result = await reconcileDiscordCommands({
@@ -194,7 +236,7 @@ describe("Discord command reconciliation", () => {
   });
 
   it("does not PUT an already-synchronized guild even in apply mode", async () => {
-    const fetchMock = vi.fn(async () => Response.json(DISCORD_COMMAND_MANIFEST));
+    const fetchMock = vi.fn(async () => Response.json(remoteManifest()));
 
     const result = await reconcileDiscordCommands({
       environment: ENVIRONMENT,
@@ -208,7 +250,9 @@ describe("Discord command reconciliation", () => {
       inSync: true,
       applied: false,
       verified: true,
+      providerReadbackVerified: true,
     });
+    expect(result.managedReadbackSha256).toBe(result.manifestSha256);
     expect(fetchMock).toHaveBeenCalledTimes(1);
     const [, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
     expect(init).toMatchObject({ method: "GET" });
@@ -222,6 +266,33 @@ describe("Discord command reconciliation", () => {
     );
     expect(() => parseCliArguments(["--dry-run"])).toThrow(
       DiscordCommandReconciliationError,
+    );
+  });
+
+  it("binds command readback to the exact application and guild", () => {
+    const verified = verifyGuildCommandReadback({
+      desiredValue: DISCORD_COMMAND_MANIFEST,
+      remoteValue: remoteManifest(),
+      applicationId: APPLICATION_ID,
+      guildId: GUILD_ID,
+    });
+
+    expect(verified).toMatchObject({
+      inSync: true,
+      providerReadbackVerified: true,
+      manifestSha256: expect.stringMatching(/^[0-9a-f]{64}$/u),
+    });
+    expect(verified.managedReadbackSha256).toBe(verified.manifestSha256);
+
+    const wrongGuild = remoteManifest().map((entry, index) =>
+      index === 0 ? { ...entry, guild_id: "111111111111111111" } : entry);
+    expect(() => verifyGuildCommandReadback({
+      desiredValue: DISCORD_COMMAND_MANIFEST,
+      remoteValue: wrongGuild,
+      applicationId: APPLICATION_ID,
+      guildId: GUILD_ID,
+    })).toThrowError(
+      "Discord command readback did not match the configured application and guild.",
     );
   });
 

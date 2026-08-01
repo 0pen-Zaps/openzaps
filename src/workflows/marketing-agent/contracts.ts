@@ -12,6 +12,10 @@ import {
   containsCredentialLikeData,
   normalizeMarketingSourceUrl,
 } from "@/lib/marketing/source-url";
+import {
+  SourceControlledTutorialApprovalBundleSchema,
+  SourceControlledTutorialApprovalReceiptSchema,
+} from "@/lib/marketing/tutorial-handoff-contract";
 import { parseCanonicalXStatusUrl } from "@/lib/marketing/x-interaction";
 
 export const DEPLOYED_MARKETING_CHANNELS = ["x", "discord", "substack"] as const;
@@ -57,7 +61,17 @@ const canonicalXInteractionUrl = z
     }
   });
 
-export const MarketingDraftRequestSchema = z
+const opaqueXInteractionReference = z
+  .string()
+  .regex(/^[1-9]\d{29}$/u);
+
+const sourceControlledTutorialId = z
+  .string()
+  .min(1)
+  .max(200)
+  .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/u);
+
+const marketingDraftRequestBase = z
   .object({
     kind: z.enum(DEPLOYED_MARKETING_KINDS),
     brief: z.string().trim().min(8).max(4_000),
@@ -70,88 +84,166 @@ export const MarketingDraftRequestSchema = z
       })
       .strict()
       .optional(),
-    interactionUrl: canonicalXInteractionUrl.optional(),
+    tutorialId: sourceControlledTutorialId.optional(),
   })
-  .strict()
-  .superRefine((request, context) => {
-    if (new Set(request.channels).size !== request.channels.length) {
-      context.addIssue({ code: "custom", message: "Channels must be unique.", path: ["channels"] });
-    }
-    if (request.kind === "community_reply") {
-      if (!request.interactionUrl) {
-        context.addIssue({
-          code: "custom",
-          message: "A canonical X target URL is required for a community reply.",
-          path: ["interactionUrl"],
-        });
-      }
-      if (request.channels.length !== 1 || request.channels[0] !== "x") {
-        context.addIssue({
-          code: "custom",
-          message: "Community replies are currently supported only on X.",
-          path: ["channels"],
-        });
-      }
-    } else if (request.interactionUrl) {
-      context.addIssue({
-        code: "custom",
-        message: "Interaction context is valid only for a community reply.",
-        path: ["interactionUrl"],
-      });
-    }
-    if (containsCredentialLikeData(request.brief)) {
+  .strict();
+
+type DraftRequestForRefinement = z.infer<typeof marketingDraftRequestBase> & {
+  interactionUrl?: string;
+  interactionReference?: string;
+};
+
+function refineMarketingDraftRequest(
+  request: DraftRequestForRefinement,
+  context: z.RefinementCtx,
+  interactionKey: "interactionUrl" | "interactionReference",
+): void {
+  const interaction = request[interactionKey];
+  const requestsSubstack = request.channels.includes("substack");
+  if (new Set(request.channels).size !== request.channels.length) {
+    context.addIssue({
+      code: "custom",
+      message: "Channels must be unique.",
+      path: ["channels"],
+    });
+  }
+  if (request.kind === "community_reply") {
+    if (!interaction) {
       context.addIssue({
         code: "custom",
         message:
-          "The brief appears to contain a credential. Remove it before model processing.",
-        path: ["brief"],
+          interactionKey === "interactionUrl"
+            ? "A canonical X target URL is required for a community reply."
+            : "An opaque X interaction reference is required for a community reply.",
+        path: [interactionKey],
       });
     }
-    if (request.requiredChannelLinks) {
-      const entries = Object.entries(request.requiredChannelLinks);
-      if (entries.length === 0) {
-        context.addIssue({
-          code: "custom",
-          message: "Required channel links cannot be empty.",
-          path: ["requiredChannelLinks"],
-        });
-      }
-      if (request.kind === "community_reply") {
-        context.addIssue({
-          code: "custom",
-          message: "Community replies cannot require promotional links.",
-          path: ["requiredChannelLinks"],
-        });
-      }
-      const sourceDestinations = new Set(request.sourceUrls.map((raw) => {
+    if (request.channels.length !== 1 || request.channels[0] !== "x") {
+      context.addIssue({
+        code: "custom",
+        message: "Community replies are currently supported only on X.",
+        path: ["channels"],
+      });
+    }
+  } else if (interaction) {
+    context.addIssue({
+      code: "custom",
+      message: "Interaction context is valid only for a community reply.",
+      path: [interactionKey],
+    });
+  }
+  if (containsCredentialLikeData(request.brief)) {
+    context.addIssue({
+      code: "custom",
+      message:
+        "The brief appears to contain a credential. Remove it before model processing.",
+      path: ["brief"],
+    });
+  }
+  if (
+    request.kind === "community_reply"
+    && /https:\/\/x\.com\/[A-Za-z0-9_]{1,15}\/status\/\d{1,19}/iu.test(
+      request.brief,
+    )
+  ) {
+    context.addIssue({
+      code: "custom",
+      message:
+        "Keep the raw X target URL out of the paraphrased brief; the route stores it only in the short-lived subject vault.",
+      path: ["brief"],
+    });
+  }
+  if (request.requiredChannelLinks) {
+    const entries = Object.entries(request.requiredChannelLinks);
+    if (entries.length === 0) {
+      context.addIssue({
+        code: "custom",
+        message: "Required channel links cannot be empty.",
+        path: ["requiredChannelLinks"],
+      });
+    }
+    if (request.kind === "community_reply") {
+      context.addIssue({
+        code: "custom",
+        message: "Community replies cannot require promotional links.",
+        path: ["requiredChannelLinks"],
+      });
+    }
+    const sourceDestinations = new Set(
+      request.sourceUrls.map((raw) => {
         const url = new URL(raw);
         url.search = "";
         url.hash = "";
         return url.toString();
-      }));
-      for (const [channel, raw] of entries) {
-        if (!request.channels.includes(channel as "x" | "discord")) {
-          context.addIssue({
-            code: "custom",
-            message: "A required link must target a requested channel.",
-            path: ["requiredChannelLinks", channel],
-          });
-        }
-        const url = new URL(raw);
-        url.search = "";
-        url.hash = "";
-        if (!sourceDestinations.has(url.toString())) {
-          context.addIssue({
-            code: "custom",
-            message: "A required link must attribute one of the canonical sources.",
-            path: ["requiredChannelLinks", channel],
-          });
-        }
+      }),
+    );
+    for (const [channel, raw] of entries) {
+      if (!request.channels.includes(channel as "x" | "discord")) {
+        context.addIssue({
+          code: "custom",
+          message: "A required link must target a requested channel.",
+          path: ["requiredChannelLinks", channel],
+        });
+      }
+      const url = new URL(raw);
+      url.search = "";
+      url.hash = "";
+      if (!sourceDestinations.has(url.toString())) {
+        context.addIssue({
+          code: "custom",
+          message: "A required link must attribute one of the canonical sources.",
+          path: ["requiredChannelLinks", channel],
+        });
       }
     }
-  });
+  }
+  if (requestsSubstack) {
+    if (request.kind !== "tutorial") {
+      context.addIssue({
+        code: "custom",
+        message:
+          "Substack delivery is limited to source-controlled tutorial requests.",
+        path: ["kind"],
+      });
+    }
+    if (!request.tutorialId) {
+      context.addIssue({
+        code: "custom",
+        message:
+          "A source-controlled tutorial selection is required for Substack.",
+        path: ["tutorialId"],
+      });
+    }
+  } else if (request.tutorialId) {
+    context.addIssue({
+      code: "custom",
+      message: "A tutorial selection is valid only when Substack is requested.",
+      path: ["tutorialId"],
+    });
+  }
+}
+
+/**
+ * Public operator input. The raw X URL is verified and vaulted in the route;
+ * it must never be passed to Workflow.
+ */
+export const MarketingDraftApiRequestSchema = marketingDraftRequestBase
+  .extend({ interactionUrl: canonicalXInteractionUrl.optional() })
+  .strict()
+  .superRefine((request, context) =>
+    refineMarketingDraftRequest(request, context, "interactionUrl"));
+
+/** Durable Workflow input. It contains only a random opaque subject reference. */
+export const MarketingDraftRequestSchema = marketingDraftRequestBase
+  .extend({ interactionReference: opaqueXInteractionReference.optional() })
+  .strict()
+  .superRefine((request, context) =>
+    refineMarketingDraftRequest(request, context, "interactionReference"));
 
 export type MarketingDraftRequest = z.infer<typeof MarketingDraftRequestSchema>;
+export type MarketingDraftApiRequest = z.infer<
+  typeof MarketingDraftApiRequestSchema
+>;
 
 export const MarketingScheduledRequestSchema = z
   .object({
@@ -334,6 +426,7 @@ export const MarketingDraftBundleSchema = z
     request: MarketingDraftRequestSchema,
     scheduledClaim: MarketingScheduledRequestSchema.optional(),
     sourcePacket: MarketingSourcePacketSchema,
+    tutorialHandoff: SourceControlledTutorialApprovalBundleSchema.optional(),
     candidates: z.array(DeployedMarketingCandidateSchema).min(1).max(3),
     presentations: z
       .array(
@@ -416,10 +509,47 @@ export const MarketingDraftBundleSchema = z
       });
     }
     const replyRequest = bundle.request.kind === "community_reply";
+    const substackCandidate = bundle.candidates.find(
+      (candidate) => candidate.channel === "substack",
+    );
+    const substackPresentation = bundle.presentations.find(
+      (presentation) => presentation.channel === "substack",
+    );
+    const requestsSubstack = bundle.request.channels.includes("substack");
+    if (
+      requestsSubstack
+        ? !bundle.tutorialHandoff
+          || bundle.tutorialHandoff.tutorialId !== bundle.request.tutorialId
+          || !substackCandidate
+          || !substackPresentation
+          || substackCandidate.action !== "prepare_tutorial"
+          || substackCandidate.body !== bundle.tutorialHandoff.bodyMarkdown
+          || JSON.stringify(substackCandidate.links)
+            !== JSON.stringify(bundle.tutorialHandoff.links)
+          || JSON.stringify(substackCandidate.claims)
+            !== JSON.stringify(bundle.tutorialHandoff.claims)
+          || JSON.stringify(substackCandidate.topics)
+            !== JSON.stringify(bundle.tutorialHandoff.topics)
+          || JSON.stringify(substackCandidate.disclosures)
+            !== JSON.stringify(bundle.tutorialHandoff.disclosures)
+          || substackPresentation.candidateId !== substackCandidate.id
+          || substackPresentation.title !== bundle.tutorialHandoff.title
+          || substackPresentation.subtitle !== bundle.tutorialHandoff.subtitle
+          || JSON.stringify(substackPresentation.tags)
+            !== JSON.stringify(bundle.tutorialHandoff.tags)
+        : bundle.tutorialHandoff !== undefined
+    ) {
+      context.addIssue({
+        code: "custom",
+        message:
+          "The Substack candidate must exactly match its source-controlled tutorial handoff.",
+        path: ["tutorialHandoff"],
+      });
+    }
     if (
       replyRequest
-        ? bundle.sourcePacket.interaction?.targetUrl !==
-          bundle.request.interactionUrl
+        ? bundle.sourcePacket.interaction?.id !==
+          bundle.request.interactionReference
         : bundle.sourcePacket.interaction !== null
     ) {
       context.addIssue({
@@ -536,8 +666,28 @@ export const MarketingApprovalPayloadSchema = z
     decision: z.enum(["approve", "reject"]),
     approvedBy: z.string().trim().min(1).max(120),
     comment: z.string().trim().max(1_000).optional(),
+    tutorialApproval: SourceControlledTutorialApprovalReceiptSchema.optional(),
   })
-  .strict();
+  .strict()
+  .superRefine((approval, context) => {
+    if (approval.decision === "reject" && approval.tutorialApproval) {
+      context.addIssue({
+        code: "custom",
+        message: "A rejected draft cannot carry a tutorial approval receipt.",
+        path: ["tutorialApproval"],
+      });
+    }
+    if (
+      approval.tutorialApproval
+      && approval.tutorialApproval.approvedBy !== approval.approvedBy
+    ) {
+      context.addIssue({
+        code: "custom",
+        message: "Tutorial and workflow approvals must have the same owner.",
+        path: ["tutorialApproval", "approvedBy"],
+      });
+    }
+  });
 
 export type MarketingApprovalPayload = z.infer<typeof MarketingApprovalPayloadSchema>;
 

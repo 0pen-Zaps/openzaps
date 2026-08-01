@@ -1,12 +1,29 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const { startMock, workflowMock } = vi.hoisted(() => ({
+const {
+  createReplySubjectMock,
+  startMock,
+  verifyReplyTargetMock,
+  workflowMock,
+} = vi.hoisted(() => ({
+  createReplySubjectMock: vi.fn(),
   startMock: vi.fn(),
+  verifyReplyTargetMock: vi.fn(),
   workflowMock: vi.fn(),
 }));
 
+vi.mock("server-only", () => ({}));
+
 vi.mock("workflow/api", () => ({
   start: startMock,
+}));
+
+vi.mock("@/lib/marketing/channels/x", () => ({
+  verifyXReplyTarget: verifyReplyTargetMock,
+}));
+
+vi.mock("@/lib/marketing/x-compliance-server", () => ({
+  createMarketingXReplySubject: createReplySubjectMock,
 }));
 
 vi.mock("@/workflows/marketing-agent", () => ({
@@ -19,6 +36,16 @@ const VALID_BODY = {
   kind: "product_update",
   brief: "Explain the verified bounded-authority release.",
   channels: ["x", "discord"],
+};
+const X_TARGET_URL = "https://x.com/community/status/123456789";
+const X_INTERACTION_REFERENCE = "8".repeat(30);
+const X_VERIFIED_TARGET = {
+  postId: "123456789",
+  targetUrl: X_TARGET_URL,
+  authorId: "200",
+  authenticatedAccountId: "100",
+  trigger: "mention" as const,
+  observedAt: "2026-08-01T12:00:00.000Z",
 };
 
 function request(body: unknown, token = "operator-token", headers?: HeadersInit): Request {
@@ -39,6 +66,16 @@ beforeEach(() => {
   vi.stubEnv("OPENZAPS_MARKETING_DRY_RUN", "true");
   vi.stubEnv("OPENZAPS_MARKETING_AUTO_PUBLISH", "false");
   vi.stubEnv("OPENZAPS_X_AI_REPLY_APPROVED", "false");
+  verifyReplyTargetMock.mockResolvedValue(X_VERIFIED_TARGET);
+  createReplySubjectMock.mockResolvedValue({
+    result: "created",
+    interaction: {
+      id: X_INTERACTION_REFERENCE,
+      trigger: "mention",
+      observedAt: X_VERIFIED_TARGET.observedAt,
+    },
+    expiresAt: "2026-08-02T12:00:00.000Z",
+  });
   startMock.mockResolvedValue({ runId: "wrun_test_1" });
 });
 
@@ -126,6 +163,110 @@ describe("marketing run creation route", () => {
         sourceUrls: [],
       }],
     );
+  });
+
+  it("passes the exact source-controlled tutorial selection into Workflow", async () => {
+    const response = await POST(request({
+      kind: "tutorial",
+      brief: "Prepare the reviewed source-controlled tutorial.",
+      channels: ["substack"],
+      tutorialId: "paper-trade-first-authority-map",
+    }));
+
+    expect(response.status).toBe(202);
+    expect(startMock).toHaveBeenCalledWith(
+      workflowMock,
+      [{
+        kind: "tutorial",
+        brief: "Prepare the reviewed source-controlled tutorial.",
+        channels: ["substack"],
+        sourceUrls: [],
+        tutorialId: "paper-trade-first-authority-map",
+      }],
+    );
+    expect(verifyReplyTargetMock).not.toHaveBeenCalled();
+    expect(createReplySubjectMock).not.toHaveBeenCalled();
+  });
+
+  it("verifies and vaults a raw X target before passing only an opaque reference into Workflow", async () => {
+    const response = await POST(request({
+      kind: "community_reply",
+      brief: "Paraphrased question about bounded agent authority.",
+      channels: ["x"],
+      interactionUrl: X_TARGET_URL,
+    }));
+
+    expect(response.status).toBe(202);
+    expect(verifyReplyTargetMock).toHaveBeenCalledWith(X_TARGET_URL);
+    expect(createReplySubjectMock).toHaveBeenCalledWith(X_VERIFIED_TARGET);
+    expect(startMock).toHaveBeenCalledOnce();
+    const workflowRequest = startMock.mock.calls[0]?.[1]?.[0] as Record<string, unknown>;
+    expect(workflowRequest).toEqual({
+      kind: "community_reply",
+      brief: "Paraphrased question about bounded agent authority.",
+      channels: ["x"],
+      sourceUrls: [],
+      interactionReference: X_INTERACTION_REFERENCE,
+    });
+    expect(workflowRequest).not.toHaveProperty("interactionUrl");
+    expect(workflowRequest).not.toHaveProperty("postId");
+    expect(workflowRequest).not.toHaveProperty("targetUrl");
+    expect(workflowRequest).not.toHaveProperty("authorId");
+    expect(workflowRequest).not.toHaveProperty("authenticatedAccountId");
+    expect(JSON.stringify(workflowRequest)).not.toContain(X_TARGET_URL);
+  });
+
+  it("rejects a caller-supplied opaque X reference at the public API boundary", async () => {
+    const response = await POST(request({
+      kind: "community_reply",
+      brief: "Paraphrased question about bounded agent authority.",
+      channels: ["x"],
+      interactionReference: X_INTERACTION_REFERENCE,
+    }));
+
+    expect(response.status).toBe(400);
+    expect(verifyReplyTargetMock).not.toHaveBeenCalled();
+    expect(createReplySubjectMock).not.toHaveBeenCalled();
+    expect(startMock).not.toHaveBeenCalled();
+  });
+
+  it("fails closed when the durable X subject vault is unavailable", async () => {
+    createReplySubjectMock.mockRejectedValue(
+      new Error("durable store secret: should-never-leak"),
+    );
+
+    const response = await POST(request({
+      kind: "community_reply",
+      brief: "Paraphrased question about bounded agent authority.",
+      channels: ["x"],
+      interactionUrl: X_TARGET_URL,
+    }));
+    const raw = await response.text();
+
+    expect(response.status).toBe(503);
+    expect(raw).toBe('{"error":"Marketing workflow could not be started."}');
+    expect(raw).not.toContain("should-never-leak");
+    expect(verifyReplyTargetMock).toHaveBeenCalledOnce();
+    expect(createReplySubjectMock).toHaveBeenCalledOnce();
+    expect(startMock).not.toHaveBeenCalled();
+  });
+
+  it("fails closed when the durable X subject vault does not create a reference", async () => {
+    createReplySubjectMock.mockResolvedValue({
+      result: "compliance_hold",
+      interaction: null,
+      expiresAt: null,
+    });
+
+    const response = await POST(request({
+      kind: "community_reply",
+      brief: "Paraphrased question about bounded agent authority.",
+      channels: ["x"],
+      interactionUrl: X_TARGET_URL,
+    }));
+
+    expect(response.status).toBe(503);
+    expect(startMock).not.toHaveBeenCalled();
   });
 
   it("sanitizes workflow start failures", async () => {

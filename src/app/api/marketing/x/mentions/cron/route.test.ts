@@ -17,6 +17,10 @@ const mocks = vi.hoisted(() => ({
   claimMention: vi.fn(),
   completeMention: vi.fn(),
   failMention: vi.fn(),
+  admitOutbound: vi.fn(),
+  checkOutbound: vi.fn(),
+  finalizeOutbound: vi.fn(),
+  complianceHealth: vi.fn(),
 }));
 
 vi.mock("@/lib/cron-auth", () => ({
@@ -46,6 +50,12 @@ vi.mock("@/lib/marketing/x-mentions-server", () => ({
   claimNextEligibleXMention: mocks.claimMention,
   completeXMentionReply: mocks.completeMention,
   failXMentionReply: mocks.failMention,
+}));
+vi.mock("@/lib/marketing/x-compliance-server", () => ({
+  admitMarketingXOutboundDelivery: mocks.admitOutbound,
+  checkMarketingXOutboundAdmission: mocks.checkOutbound,
+  finalizeMarketingXOutboundAdmission: mocks.finalizeOutbound,
+  getMarketingXComplianceHealth: mocks.complianceHealth,
 }));
 
 import {
@@ -106,6 +116,15 @@ beforeEach(() => {
   readyEnvironment();
   mocks.authorized.mockReturnValue(true);
   mocks.storeConfigured.mockReturnValue(true);
+  mocks.complianceHealth.mockResolvedValue({
+    result: "healthy",
+    checkpointId: "00000000-0000-4000-8000-000000000099",
+    checkedAt: new Date().toISOString(),
+    validUntil: new Date(Date.now() + 30 * 60_000).toISOString(),
+    subjectCount: 3,
+    nonPresentCount: 0,
+    hold: false,
+  });
   mocks.claimLease.mockResolvedValue({
     result: "claimed",
     accountId: "100",
@@ -158,6 +177,21 @@ beforeEach(() => {
   mocks.deferPoll.mockResolvedValue({ result: "deferred" });
   mocks.failMention.mockResolvedValue({ result: "failed" });
   mocks.completeMention.mockResolvedValue({ result: "completed" });
+  mocks.admitOutbound.mockResolvedValue({
+    result: "admitted",
+    admissionToken: "00000000-0000-4000-8000-000000000010",
+    admissionExpiresAt: new Date(Date.now() + 10_000).toISOString(),
+  });
+  mocks.checkOutbound.mockResolvedValue({
+    result: "allowed",
+    allowed: true,
+    expiresAt: new Date(Date.now() + 10_000).toISOString(),
+  });
+  mocks.finalizeOutbound.mockResolvedValue({
+    result: "finalized",
+    state: "completed",
+    finalizedAt: new Date().toISOString(),
+  });
 });
 
 afterEach(() => {
@@ -269,6 +303,34 @@ describe("X mentions cron", () => {
     expect(mocks.postReply).not.toHaveBeenCalled();
   });
 
+  it.each(["unavailable", "stale"])(
+    "fails closed before X reads when the compliance checkpoint is %s",
+    async (state) => {
+      if (state === "unavailable") {
+        mocks.complianceHealth.mockRejectedValue(new Error("database unavailable"));
+      } else {
+        mocks.complianceHealth.mockResolvedValue({
+          result: "stale",
+          checkpointId: "00000000-0000-4000-8000-000000000099",
+          checkedAt: new Date(Date.now() - 60 * 60_000).toISOString(),
+          validUntil: new Date(Date.now() - 30 * 60_000).toISOString(),
+          subjectCount: 3,
+          nonPresentCount: 0,
+          hold: false,
+        });
+      }
+
+      const result = await GET(request());
+      expect(result.status).toBe(503);
+      expect(await result.json()).toMatchObject({
+        error: "X mention ingestion is not ready.",
+      });
+      expect(mocks.fetchPage).not.toHaveBeenCalled();
+      expect(mocks.claimLease).not.toHaveBeenCalled();
+      expect(mocks.postReply).not.toHaveBeenCalled();
+    },
+  );
+
   it("keeps discovery review-only when the separate X campaign approval is absent", async () => {
     vi.stubEnv("OPENZAPS_X_AUTO_RESPONSE_APPROVED", "false");
     const result = await GET(request());
@@ -344,6 +406,7 @@ describe("X mentions cron", () => {
       authenticatedAccountId: "100",
       authenticatedUsername: "0xzaps",
       mention,
+      observedAt: new Date().toISOString(),
     });
     mocks.claimDelivery.mockResolvedValue({
       result: "claimed",
@@ -364,9 +427,15 @@ describe("X mentions cron", () => {
     expect(mocks.claimDelivery).toHaveBeenCalledWith(expect.objectContaining({
       channel: "x",
       action: "reply",
-      interactionId: mention.id,
+      interactionId: "1".repeat(30),
       dailyCap: 1,
     }));
+    expect(mocks.admitOutbound).toHaveBeenCalledWith(expect.objectContaining({
+      interactionReference: "1".repeat(30),
+      postId: mention.id,
+      authorId: mention.authorId,
+    }));
+    expect(mocks.checkOutbound).toHaveBeenCalledBefore(mocks.postReply);
     expect(mocks.postReply).toHaveBeenCalledTimes(1);
     expect(mocks.postReply).toHaveBeenCalledWith(expect.objectContaining({
       templateId: "docs-v1",

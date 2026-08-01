@@ -3,6 +3,7 @@ import "server-only";
 import { createHash, createHmac } from "node:crypto";
 
 import { readMarketingConfig } from "@/lib/marketing/config";
+import type { XComplianceHealth } from "@/lib/marketing/x-compliance-server";
 
 const X_ACCOUNT_ID = /^\d{1,19}$/u;
 const CONTENT_HASH = /^[0-9a-f]{64}$/u;
@@ -65,7 +66,10 @@ export interface XMentionAutomationConfig {
   autoReplyRequested: boolean;
   autoResponseApproved: boolean;
   commercialUseApproved: boolean;
+  complianceAttested: boolean;
   complianceReady: boolean;
+  complianceHealth: XComplianceHealth["result"] | "unavailable";
+  complianceValidUntil: string | null;
   templateApprovalDigestValid: boolean;
   templateRegistryDigest: string;
   hashSecretConfigured: boolean;
@@ -145,6 +149,8 @@ function validHashSecret(value: string | undefined): value is string {
 
 export function readXMentionAutomationConfig(
   env: Environment = process.env,
+  complianceHealth: XComplianceHealth | null = null,
+  nowMs = Date.now(),
 ): XMentionAutomationConfig {
   const ingest = strictBoolean(env, "OPENZAPS_X_MENTION_INGEST_ENABLED");
   const autoReply = strictBoolean(env, "OPENZAPS_X_AUTO_REPLY_ENABLED");
@@ -175,6 +181,16 @@ export function readXMentionAutomationConfig(
     cap.error,
   ].filter((error): error is string => error !== null);
   const blockers = [...errors];
+  const complianceValidUntilMs = complianceHealth?.validUntil
+    ? Date.parse(complianceHealth.validUntil)
+    : Number.NaN;
+  const operationalComplianceReady = Boolean(
+    complianceHealth
+    && complianceHealth.result === "healthy"
+    && !complianceHealth.hold
+    && Number.isFinite(complianceValidUntilMs)
+    && complianceValidUntilMs > nowMs,
+  );
 
   if (ingest.value && !hashSecretConfigured) {
     blockers.push(
@@ -188,7 +204,14 @@ export function readXMentionAutomationConfig(
   }
   if (ingest.value && !compliance.value) {
     blockers.push(
-      "X mention ingestion requires an operational official X compliance deletion/modification feed.",
+      "X mention ingestion requires the operator compliance-monitor attestation.",
+    );
+  }
+  if (ingest.value && compliance.value && !operationalComplianceReady) {
+    blockers.push(
+      complianceHealth
+        ? `X mention ingestion requires a fresh healthy compliance checkpoint; current state is ${complianceHealth.result}.`
+        : "X mention ingestion requires a fresh healthy compliance checkpoint from the durable store.",
     );
   }
   if (ingest.value && !marketing.readiness.durableLedgerConfigured) {
@@ -233,6 +256,7 @@ export function readXMentionAutomationConfig(
     && hashSecretConfigured
     && commercialUse.value
     && compliance.value
+    && operationalComplianceReady
     && marketing.readiness.configurationValid
     && marketing.enabled
     && !marketing.dryRun
@@ -251,7 +275,10 @@ export function readXMentionAutomationConfig(
     autoReplyRequested: autoReply.value,
     autoResponseApproved: approval.value,
     commercialUseApproved: commercialUse.value,
-    complianceReady: compliance.value,
+    complianceAttested: compliance.value,
+    complianceReady: compliance.value && operationalComplianceReady,
+    complianceHealth: complianceHealth?.result ?? "unavailable",
+    complianceValidUntil: complianceHealth?.validUntil ?? null,
     templateApprovalDigestValid,
     templateRegistryDigest: X_MENTION_TEMPLATE_REGISTRY_DIGEST,
     hashSecretConfigured,

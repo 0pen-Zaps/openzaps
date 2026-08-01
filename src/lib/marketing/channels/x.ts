@@ -2,7 +2,6 @@ import "server-only";
 
 import { createHmac, randomBytes } from "node:crypto";
 
-import type { MarketingInteraction } from "@/lib/marketing/types";
 import { parseCanonicalXStatusUrl } from "@/lib/marketing/x-interaction";
 import {
   renderXMentionReply,
@@ -110,6 +109,36 @@ export interface XMentionsPageInput {
 export interface XAuthenticatedIdentity {
   authenticatedAccountId: string;
   authenticatedUsername: string;
+  observedAt: string;
+}
+
+export interface XComplianceLookupInput {
+  postIds: readonly string[];
+  userIds: readonly string[];
+}
+
+export interface XComplianceLookupObservation {
+  subjectKind: "post" | "user";
+  subjectId: string;
+  status: "present" | "absent" | "protected" | "withheld";
+}
+
+export interface XComplianceLookupResult {
+  authenticatedAccountId: string;
+  observedAt: string;
+  observations: XComplianceLookupObservation[];
+}
+
+/**
+ * Transient provider subject metadata. This type must stay inside the API
+ * route or the single final-delivery step; never serialize it into Workflow.
+ */
+export interface XVerifiedReplyTarget {
+  postId: string;
+  targetUrl: string;
+  authorId: string;
+  authenticatedAccountId: string;
+  trigger: "mention" | "quote";
   observedAt: string;
 }
 
@@ -554,7 +583,7 @@ export async function verifyXAuthenticatedIdentity(
 export async function verifyXReplyTarget(
   targetUrl: string,
   dependencies: XVerificationDependencies = {},
-): Promise<MarketingInteraction> {
+): Promise<XVerifiedReplyTarget> {
   let target;
   try {
     target = parseCanonicalXStatusUrl(targetUrl);
@@ -649,12 +678,186 @@ export async function verifyXReplyTarget(
   }
 
   return {
-    id,
+    postId: id,
     targetUrl: target.url,
     authorId,
     authenticatedAccountId,
     trigger: isMention ? "mention" : "quote",
     observedAt: new Date(dependencies.nowMs ?? Date.now()).toISOString(),
+  };
+}
+
+function exactUniqueXIds(
+  values: readonly string[],
+  label: string,
+): string[] {
+  if (!Array.isArray(values) || values.length > 100) {
+    throw invalidVerification(`${label} accepts at most 100 ids.`);
+  }
+  const ids = [...values];
+  if (ids.some((value) => typeof value !== "string" || !X_POST_ID.test(value))) {
+    throw invalidVerification(`${label} contains an invalid id.`);
+  }
+  if (new Set(ids).size !== ids.length) {
+    throw invalidVerification(`${label} ids must be unique.`);
+  }
+  return ids;
+}
+
+function lookupErrorSubjectId(value: unknown): string | null {
+  const error = record(value);
+  if (!error) return null;
+  const candidate = error.resource_id ?? error.value;
+  return typeof candidate === "string" && X_POST_ID.test(candidate)
+    ? candidate
+    : null;
+}
+
+async function lookupXComplianceKind(
+  subjectKind: "post" | "user",
+  ids: readonly string[],
+  dependencies: XVerificationDependencies,
+): Promise<XComplianceLookupObservation[]> {
+  if (ids.length === 0) return [];
+  const query = new URLSearchParams({ ids: ids.join(",") });
+  if (subjectKind === "post") {
+    query.set("tweet.fields", "author_id,withheld");
+  } else {
+    query.set("user.fields", "protected,withheld");
+  }
+  const url = subjectKind === "post"
+    ? `https://api.x.com/2/tweets?${query.toString()}`
+    : `https://api.x.com/2/users?${query.toString()}`;
+  const { payload, response } = await xJsonRequest(
+    "GET",
+    url,
+    dependencies,
+    undefined,
+    X_MENTIONS_RESPONSE_MAX_BYTES,
+  );
+  const root = record(payload);
+  const rawData = root?.data;
+  const data = rawData === undefined ? [] : Array.isArray(rawData) ? rawData : null;
+  const rawErrors = root?.errors;
+  const errors = rawErrors === undefined
+    ? []
+    : Array.isArray(rawErrors)
+      ? rawErrors
+      : null;
+  if (!root || data === null || errors === null) {
+    throw new ChannelAdapterError(
+      "x",
+      "invalid-response",
+      "X returned an invalid compliance lookup response.",
+      { status: response.status },
+    );
+  }
+
+  const requested = new Set(ids);
+  const observations = new Map<string, XComplianceLookupObservation>();
+  for (const raw of data) {
+    const subject = record(raw);
+    const id = subject?.id;
+    if (
+      !subject
+      || typeof id !== "string"
+      || !requested.has(id)
+      || observations.has(id)
+    ) {
+      throw new ChannelAdapterError(
+        "x",
+        "invalid-response",
+        "X returned invalid compliance lookup subjects.",
+        { status: response.status },
+      );
+    }
+    if (
+      subjectKind === "post"
+      && (
+        typeof subject.author_id !== "string"
+        || !X_ACCOUNT_ID.test(subject.author_id)
+      )
+    ) {
+      throw new ChannelAdapterError(
+        "x",
+        "invalid-response",
+        "X returned invalid compliance lookup post metadata.",
+        { status: response.status },
+      );
+    }
+    if (
+      subjectKind === "user"
+      && typeof subject.protected !== "boolean"
+    ) {
+      throw new ChannelAdapterError(
+        "x",
+        "invalid-response",
+        "X returned invalid compliance lookup user metadata.",
+        { status: response.status },
+      );
+    }
+    observations.set(id, {
+      subjectKind,
+      subjectId: id,
+      status:
+        subject.withheld !== undefined
+          ? "withheld"
+          : subjectKind === "user" && subject.protected === true
+            ? "protected"
+            : "present",
+    });
+  }
+
+  for (const raw of errors) {
+    const id = lookupErrorSubjectId(raw);
+    if (!id || !requested.has(id) || observations.has(id)) {
+      throw new ChannelAdapterError(
+        "x",
+        "invalid-response",
+        "X returned invalid compliance lookup errors.",
+        { status: response.status },
+      );
+    }
+    observations.set(id, {
+      subjectKind,
+      subjectId: id,
+      status: "absent",
+    });
+  }
+
+  if (observations.size !== ids.length) {
+    throw new ChannelAdapterError(
+      "x",
+      "invalid-response",
+      "X compliance lookup did not cover every requested subject.",
+      { status: response.status },
+    );
+  }
+  return ids.map((id) => observations.get(id) as XComplianceLookupObservation);
+}
+
+/**
+ * Reconcile stored X object ids through official lookup endpoints. The caller
+ * may persist only the bounded status observations, never response bodies.
+ */
+export async function lookupXComplianceSubjects(
+  input: XComplianceLookupInput,
+  dependencies: XVerificationDependencies = {},
+): Promise<XComplianceLookupResult> {
+  const postIds = exactUniqueXIds(input.postIds, "X post lookup");
+  const userIds = exactUniqueXIds(input.userIds, "X user lookup");
+  if (postIds.length + userIds.length === 0) {
+    throw invalidVerification("X compliance lookup requires at least one subject.");
+  }
+  const identity = await verifyXAuthenticatedIdentity(dependencies);
+  const [posts, users] = await Promise.all([
+    lookupXComplianceKind("post", postIds, dependencies),
+    lookupXComplianceKind("user", userIds, dependencies),
+  ]);
+  return {
+    authenticatedAccountId: identity.authenticatedAccountId,
+    observedAt: new Date(dependencies.nowMs ?? Date.now()).toISOString(),
+    observations: [...posts, ...users],
   };
 }
 
@@ -866,6 +1069,7 @@ export async function verifyXMentionById(
   authenticatedAccountId: string;
   authenticatedUsername: string;
   mention: XMentionObservation;
+  observedAt: string;
 }> {
   if (!X_POST_ID.test(postId) || !X_ACCOUNT_ID.test(expectedAuthorId)) {
     throw invalidVerification("X mention verification identity is invalid.");
@@ -912,6 +1116,7 @@ export async function verifyXMentionById(
     authenticatedAccountId: identity.authenticatedAccountId,
     authenticatedUsername: identity.authenticatedUsername,
     mention,
+    observedAt: new Date(dependencies.nowMs ?? Date.now()).toISOString(),
   };
 }
 
