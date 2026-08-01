@@ -9,6 +9,7 @@ import {
   MarketingDraftBundleSchema,
   MarketingDraftRequestSchema,
   MarketingScheduledRequestSchema,
+  type MarketingDraftBundle,
 } from "@/workflows/marketing-agent/contracts";
 
 describe("marketing workflow request contracts", () => {
@@ -38,26 +39,39 @@ describe("marketing workflow request contracts", () => {
     ).toBe(false);
   });
 
-  it("keeps scheduled authority to the server-only X and Discord surface", () => {
+  it("binds scheduled workflow input to one reviewed campaign/channel pair", () => {
     expect(
       MarketingScheduledRequestSchema.parse({
-        channels: ["discord", "x"],
+        campaignId: "virtual-trading-request-zap-v2",
+        channel: "discord",
+        slotDay: "2026-07-31",
+        contentHash: "ab".repeat(32),
       }),
-    ).toEqual({ channels: ["discord", "x"] });
+    ).toEqual({
+      campaignId: "virtual-trading-request-zap-v2",
+      channel: "discord",
+      slotDay: "2026-07-31",
+      contentHash: "ab".repeat(32),
+    });
     expect(
       MarketingScheduledRequestSchema.safeParse({
-        channels: ["discord", "discord"],
+        campaignId: "virtual-trading-request-zap-v2",
+        channel: "substack",
+        slotDay: "2026-07-31",
+        contentHash: "ab".repeat(32),
       }).success,
     ).toBe(false);
     expect(
       MarketingScheduledRequestSchema.safeParse({
-        channels: ["substack"],
+        campaignId: "../caller-selected",
+        channel: "discord",
+        slotDay: "2026-07-31",
+        contentHash: "ab".repeat(32),
       }).success,
     ).toBe(false);
     expect(
       MarketingScheduledRequestSchema.safeParse({
         channels: ["discord"],
-        templateId: "caller-selected-template",
       }).success,
     ).toBe(false);
   });
@@ -183,6 +197,76 @@ describe("generated marketing output contracts", () => {
     treatment: "asserted" as const,
   };
 
+  function validReviewBundle(): MarketingDraftBundle {
+    const observedAt = "2026-07-29T12:00:00.000Z";
+    const sourcePacket = {
+      id: "sources:bundle-invariants",
+      createdAt: observedAt,
+      protocolPreAudit: true,
+      facts: [],
+      externalData: [],
+      interaction: null,
+    };
+    const candidate = {
+      id: "candidate:substack",
+      channel: "substack" as const,
+      action: "prepare_tutorial" as const,
+      kind: "tutorial" as const,
+      topics: ["protocol" as const],
+      body: "Useful tutorial step. ".repeat(20),
+      links: ["https://www.0xzaps.com/docs"],
+      disclosures: ["pre_audit" as const],
+      claims: [],
+      sourcePacket,
+      interaction: null,
+      flags: {
+        containsCredential: false,
+        guaranteesReturns: false,
+        impersonatesPerson: false,
+        requestsPolicyBypass: false,
+        unsolicitedBulkMessaging: false,
+        usesUnavailableAsZero: false,
+      },
+    };
+    return {
+      id: "draft:bundle-invariants",
+      runId: "run:bundle-invariants",
+      requestedAt: observedAt,
+      model: "test-model",
+      request: {
+        kind: "tutorial" as const,
+        brief: "Explain bounded agent authority in a verified tutorial.",
+        channels: ["substack" as const],
+        sourceUrls: [],
+      },
+      sourcePacket,
+      candidates: [candidate],
+      presentations: [{
+        candidateId: candidate.id,
+        channel: "substack" as const,
+        title: "A source-backed OpenZaps tutorial",
+        tags: ["OpenZaps", "DeFi"],
+      }],
+      policy: [{
+        policyVersion: 2 as const,
+        candidateId: candidate.id,
+        riskTier: 2 as const,
+        disposition: "require_approval" as const,
+        approvalRequired: true,
+        approvalReasons: ["every_run_human_approval", "tutorial"],
+        requiredDisclosures: ["pre_audit" as const],
+        dailyCounter: "substackTutorials" as const,
+        issues: [],
+        evaluatedAt: observedAt,
+      }],
+      usage: {
+        inputTokens: 1,
+        outputTokens: 1,
+        totalTokens: 2,
+      },
+    };
+  }
+
   it("enforces channel-specific lengths and Substack presentation fields", () => {
     expect(
       GeneratedChannelDraftSchema.safeParse({
@@ -222,6 +306,19 @@ describe("generated marketing output contracts", () => {
         tags: ["OpenZaps", "DeFi"],
       }).success,
     ).toBe(true);
+
+    expect(
+      GeneratedChannelDraftSchema.safeParse({
+        channel: "substack",
+        title: "A bounded OpenZaps tutorial",
+        body: "Useful tutorial step. ".repeat(20),
+        links: [],
+        claims: [claim],
+        topics: ["protocol"],
+        subtitle: null,
+        tags: ["OpenZaps", "openzaps"],
+      }).success,
+    ).toBe(false);
   });
 
   it("keeps model-facing links portable while validating URLs at runtime", () => {
@@ -314,6 +411,182 @@ describe("generated marketing output contracts", () => {
     ).toBe(false);
   });
 
+  it("accepts a one-to-one candidate, presentation, and policy bundle", () => {
+    expect(MarketingDraftBundleSchema.safeParse(validReviewBundle()).success)
+      .toBe(true);
+  });
+
+  it.each([
+    [
+      "duplicate candidate id/channel",
+      (input: ReturnType<typeof validReviewBundle>) => {
+        input.candidates.push(structuredClone(input.candidates[0]));
+        input.presentations.push(structuredClone(input.presentations[0]));
+        input.policy.push(structuredClone(input.policy[0]));
+      },
+    ],
+    [
+      "missing presentation",
+      (input: ReturnType<typeof validReviewBundle>) => {
+        input.presentations = [];
+      },
+    ],
+    [
+      "duplicate presentation",
+      (input: ReturnType<typeof validReviewBundle>) => {
+        input.presentations.push(structuredClone(input.presentations[0]));
+      },
+    ],
+    [
+      "presentation for another candidate",
+      (input: ReturnType<typeof validReviewBundle>) => {
+        input.presentations[0].candidateId = "candidate:other";
+      },
+    ],
+    [
+      "missing policy decision",
+      (input: ReturnType<typeof validReviewBundle>) => {
+        input.policy = [];
+      },
+    ],
+    [
+      "duplicate policy decision",
+      (input: ReturnType<typeof validReviewBundle>) => {
+        input.policy.push(structuredClone(input.policy[0]));
+      },
+    ],
+    [
+      "policy decision for another candidate",
+      (input: ReturnType<typeof validReviewBundle>) => {
+        input.policy[0].candidateId = "candidate:other";
+      },
+    ],
+    [
+      "unrequested candidate channel",
+      (input: ReturnType<typeof validReviewBundle>) => {
+        input.request.channels = ["x"];
+      },
+    ],
+    [
+      "candidate kind different from request",
+      (input: ReturnType<typeof validReviewBundle>) => {
+        input.request.kind = "educational";
+      },
+    ],
+    [
+      "candidate evidence different from bundle evidence",
+      (input: ReturnType<typeof validReviewBundle>) => {
+        input.candidates[0].sourcePacket = {
+          ...input.sourcePacket,
+          id: "sources:other",
+        };
+      },
+    ],
+    [
+      "candidate/presentation channel mismatch",
+      (input: ReturnType<typeof validReviewBundle>) => {
+        input.presentations[0].channel = "x";
+      },
+    ],
+  ])("rejects a bundle with %s", (_label, mutate) => {
+    const input = validReviewBundle();
+    mutate(input);
+    expect(MarketingDraftBundleSchema.safeParse(input).success).toBe(false);
+  });
+
+  it("requires exact Substack presentation metadata and forbids it elsewhere", () => {
+    const missingTags = validReviewBundle();
+    delete missingTags.presentations[0].tags;
+    expect(MarketingDraftBundleSchema.safeParse(missingTags).success).toBe(
+      false,
+    );
+
+    const duplicateTags = validReviewBundle();
+    duplicateTags.presentations[0].tags = ["OpenZaps", "openzaps"];
+    expect(MarketingDraftBundleSchema.safeParse(duplicateTags).success).toBe(
+      false,
+    );
+
+    const shortTutorial = validReviewBundle();
+    shortTutorial.candidates[0].body = "Too short for an editor handoff.";
+    expect(MarketingDraftBundleSchema.safeParse(shortTutorial).success).toBe(
+      false,
+    );
+
+    const nonSubstack = validReviewBundle();
+    nonSubstack.request = {
+      ...nonSubstack.request,
+      kind: "educational",
+      channels: ["x"],
+    };
+    nonSubstack.candidates[0] = {
+      ...nonSubstack.candidates[0],
+      channel: "x",
+      action: "broadcast",
+      kind: "educational",
+    };
+    nonSubstack.presentations[0].channel = "x";
+    expect(MarketingDraftBundleSchema.safeParse(nonSubstack).success).toBe(
+      false,
+    );
+  });
+
+  it("binds the reply action to the exact requested and verified X interaction", () => {
+    const unexpectedReply = validReviewBundle();
+    unexpectedReply.request.channels = ["x"];
+    unexpectedReply.candidates[0] = {
+      ...unexpectedReply.candidates[0],
+      channel: "x",
+      action: "reply",
+    };
+    unexpectedReply.presentations[0] = {
+      candidateId: unexpectedReply.candidates[0].id,
+      channel: "x",
+    };
+    unexpectedReply.policy[0].dailyCounter = "xReplies";
+    expect(
+      MarketingDraftBundleSchema.safeParse(unexpectedReply).success,
+    ).toBe(false);
+
+    const wrongTarget = validReviewBundle();
+    const interaction = {
+      id: "987654321",
+      targetUrl: "https://x.com/community/status/987654321",
+      authorId: "200",
+      authenticatedAccountId: "100",
+      trigger: "mention" as const,
+      observedAt: wrongTarget.requestedAt,
+    };
+    wrongTarget.request = {
+      kind: "community_reply",
+      brief: "Paraphrased question about bounded agent authority.",
+      channels: ["x"],
+      sourceUrls: [],
+      interactionUrl: "https://x.com/community/status/123456789",
+    };
+    wrongTarget.sourcePacket = {
+      ...wrongTarget.sourcePacket,
+      interaction,
+    };
+    wrongTarget.candidates[0] = {
+      ...wrongTarget.candidates[0],
+      channel: "x",
+      action: "reply",
+      kind: "community_reply",
+      sourcePacket: wrongTarget.sourcePacket,
+      interaction,
+    };
+    wrongTarget.presentations[0] = {
+      candidateId: wrongTarget.candidates[0].id,
+      channel: "x",
+    };
+    wrongTarget.policy[0].dailyCounter = "xReplies";
+
+    expect(MarketingDraftBundleSchema.safeParse(wrongTarget).success).toBe(
+      false,
+    );
+  });
+
   it("admits only channel/action pairs with a deployed adapter", () => {
     const sourcePacket = {
       id: "sources:test",
@@ -354,6 +627,10 @@ describe("generated marketing output contracts", () => {
           ...base,
           channel,
           action,
+          body:
+            channel === "substack"
+              ? "A reviewed tutorial step. ".repeat(20)
+              : base.body,
         }).success,
       ).toBe(true);
     }

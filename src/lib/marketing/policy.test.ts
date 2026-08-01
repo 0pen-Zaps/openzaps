@@ -114,8 +114,9 @@ function context(overrides: Partial<MarketingPolicyContext> = {}): MarketingPoli
 function scheduledCandidate(
   overrides: Partial<MarketingCandidate> = {},
 ): MarketingCandidate {
-  const template = scheduledMarketingTemplate("x");
+  const template = scheduledMarketingTemplate("discord");
   const draft = candidate({
+    channel: "discord",
     body: template.body,
     links: template.links,
     topics: template.topics,
@@ -383,6 +384,10 @@ describe("deterministic marketing policy", () => {
       X_USER_ACCESS_TOKEN: "token",
       X_EXPECTED_ACCOUNT_ID: "100",
       X_EXPECTED_USERNAME: "0xzaps",
+      DISCORD_MARKETING_WEBHOOK_URL:
+        "https://discord.com/api/webhooks/123/public-token",
+      OPENZAPS_DISCORD_GUILD_ID: "456",
+      DISCORD_MARKETING_CHANNEL_ID: "789",
       OPENZAPS_MARKETING_SUPABASE_PROJECT_REF: "abcdefghijklmnopqrst",
       SUPABASE_URL: "https://abcdefghijklmnopqrst.supabase.co",
       SUPABASE_SERVICE_ROLE_KEY: "service-secret",
@@ -404,6 +409,10 @@ describe("deterministic marketing policy", () => {
       X_USER_ACCESS_TOKEN: "token",
       X_EXPECTED_ACCOUNT_ID: "100",
       X_EXPECTED_USERNAME: "0xzaps",
+      DISCORD_MARKETING_WEBHOOK_URL:
+        "https://discord.com/api/webhooks/123/public-token",
+      OPENZAPS_DISCORD_GUILD_ID: "456",
+      DISCORD_MARKETING_CHANNEL_ID: "789",
       OPENZAPS_MARKETING_SUPABASE_PROJECT_REF: "abcdefghijklmnopqrst",
       SUPABASE_URL: "https://abcdefghijklmnopqrst.supabase.co",
       SUPABASE_SERVICE_ROLE_KEY: "service-secret",

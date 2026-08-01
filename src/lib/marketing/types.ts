@@ -206,7 +206,7 @@ export interface MarketingReadiness {
   canDraft: boolean;
   /** True only when a durable cross-run usage and idempotency ledger is explicitly configured. */
   durableLedgerConfigured: boolean;
-  /** True only for the bounded scheduled-template surface. */
+  /** True only for the bounded, source-reviewed scheduled-campaign surface. */
   autoPublishReady: boolean;
   channels: MarketingChannelReadiness;
   blockers: string[];
@@ -221,7 +221,7 @@ export interface MarketingConfig {
   dryRun: boolean;
   /** Operator intent before the durable-ledger safety gate is applied. */
   autoPublishRequested: boolean;
-  /** Effective only for server-controlled deterministic scheduled templates. */
+  /** Effective only for server-controlled deterministic reviewed campaigns. */
   autoPublish: boolean;
   /** Effective only when both independent X attestations are true. */
   xAiReplyApproved: boolean;
@@ -239,12 +239,12 @@ export interface MarketingPolicyContext {
   /** A separate human approval record; never inferred from content. */
   humanApproved: boolean;
   /**
-   * Server-created authority for one exact deterministic template. Public
+   * Server-created authority for one exact deterministic campaign. Public
    * drafting inputs cannot request or construct this authorization.
    */
   automaticAuthorization?: {
     kind: "scheduled_template";
-    templateId: typeof SCHEDULED_MARKETING_TEMPLATE_ID;
+    templateId: string;
   };
   /** Durable ledger entries prevent retry/replay from producing a second reply. */
   repliedInteractionIds: string[];

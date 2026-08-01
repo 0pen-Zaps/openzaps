@@ -106,21 +106,23 @@ export type MarketingDraftRequest = z.infer<typeof MarketingDraftRequestSchema>;
 
 export const MarketingScheduledRequestSchema = z
   .object({
-    channels: z
-      .array(z.enum(SCHEDULED_MARKETING_CHANNELS))
+    campaignId: z
+      .string()
       .min(1)
-      .max(SCHEDULED_MARKETING_CHANNELS.length),
+      .max(120)
+      .regex(/^[a-z0-9][a-z0-9-]*$/u),
+    channel: z.enum(SCHEDULED_MARKETING_CHANNELS),
+    slotDay: z
+      .string()
+      .regex(/^\d{4}-\d{2}-\d{2}$/u)
+      .refine((day) => {
+        const parsed = new Date(`${day}T00:00:00.000Z`);
+        return Number.isFinite(parsed.getTime()) &&
+          parsed.toISOString().slice(0, 10) === day;
+      }),
+    contentHash: z.string().regex(/^[0-9a-f]{64}$/u),
   })
-  .strict()
-  .superRefine((request, context) => {
-    if (new Set(request.channels).size !== request.channels.length) {
-      context.addIssue({
-        code: "custom",
-        message: "Scheduled channels must be unique.",
-        path: ["channels"],
-      });
-    }
-  });
+  .strict();
 
 export type MarketingScheduledRequest = z.infer<
   typeof MarketingScheduledRequestSchema
@@ -194,6 +196,17 @@ export const GeneratedChannelDraftSchema = z
         path: ["body"],
       });
     }
+    if (
+      draft.tags &&
+      new Set(draft.tags.map((tag) => tag.toLowerCase())).size !==
+        draft.tags.length
+    ) {
+      context.addIssue({
+        code: "custom",
+        message: "Substack tags must be unique.",
+        path: ["tags"],
+      });
+    }
     if (draft.channel !== "substack" && (draft.title || draft.subtitle || draft.tags)) {
       context.addIssue({
         code: "custom",
@@ -215,6 +228,7 @@ export const DeployedMarketingCandidateSchema = MarketingCandidateSchema.extend(
 })
   .strict()
   .superRefine((candidate, context) => {
+    const bodyLength = Array.from(candidate.body).length;
     const supported =
       (candidate.channel === "x"
         && (candidate.action === "broadcast" || candidate.action === "reply"))
@@ -229,6 +243,18 @@ export const DeployedMarketingCandidateSchema = MarketingCandidateSchema.extend(
         path: ["action"],
       });
     }
+    if (
+      (candidate.channel === "x" && bodyLength > 280) ||
+      (candidate.channel === "discord" && bodyLength > 2_000) ||
+      (candidate.channel === "substack" && bodyLength < 300)
+    ) {
+      context.addIssue({
+        code: "custom",
+        message:
+          "Reviewed copy must satisfy the deployed channel length boundary.",
+        path: ["body"],
+      });
+    }
   });
 
 export type DeployedMarketingCandidate = z.infer<typeof DeployedMarketingCandidateSchema>;
@@ -240,6 +266,7 @@ export const MarketingDraftBundleSchema = z
     requestedAt: z.iso.datetime(),
     model: z.string().min(1),
     request: MarketingDraftRequestSchema,
+    scheduledClaim: MarketingScheduledRequestSchema.optional(),
     sourcePacket: MarketingSourcePacketSchema,
     candidates: z.array(DeployedMarketingCandidateSchema).min(1).max(3),
     presentations: z
@@ -267,6 +294,137 @@ export const MarketingDraftBundleSchema = z
   })
   .strict()
   .superRefine((bundle, context) => {
+    const candidateIds = bundle.candidates.map((candidate) => candidate.id);
+    const candidateChannels = bundle.candidates.map(
+      (candidate) => candidate.channel,
+    );
+    const presentationIds = bundle.presentations.map(
+      (presentation) => presentation.candidateId,
+    );
+    const policyIds = bundle.policy.map((decision) => decision.candidateId);
+    const duplicate = (values: readonly string[]): boolean =>
+      new Set(values).size !== values.length;
+    const sameMembers = (
+      left: readonly string[],
+      right: readonly string[],
+    ): boolean => {
+      if (left.length !== right.length) return false;
+      const sortedLeft = [...left].sort();
+      const sortedRight = [...right].sort();
+      return sortedLeft.every(
+        (value, index) => value === sortedRight[index],
+      );
+    };
+
+    if (duplicate(candidateIds) || duplicate(candidateChannels)) {
+      context.addIssue({
+        code: "custom",
+        message: "Marketing candidates must have unique ids and channels.",
+        path: ["candidates"],
+      });
+    }
+    if (
+      duplicate(presentationIds) ||
+      !sameMembers(candidateIds, presentationIds)
+    ) {
+      context.addIssue({
+        code: "custom",
+        message:
+          "Every marketing candidate must have exactly one matching presentation.",
+        path: ["presentations"],
+      });
+    }
+    if (duplicate(policyIds) || !sameMembers(candidateIds, policyIds)) {
+      context.addIssue({
+        code: "custom",
+        message:
+          "Every marketing candidate must have exactly one matching policy decision.",
+        path: ["policy"],
+      });
+    }
+    if (!sameMembers(candidateChannels, bundle.request.channels)) {
+      context.addIssue({
+        code: "custom",
+        message: "Candidate channels must exactly match the requested channels.",
+        path: ["candidates"],
+      });
+    }
+    const replyRequest = bundle.request.kind === "community_reply";
+    if (
+      replyRequest
+        ? bundle.sourcePacket.interaction?.targetUrl !==
+          bundle.request.interactionUrl
+        : bundle.sourcePacket.interaction !== null
+    ) {
+      context.addIssue({
+        code: "custom",
+        message:
+          "The verified interaction must exactly match the requested community reply.",
+        path: ["sourcePacket", "interaction"],
+      });
+    }
+
+    for (const candidate of bundle.candidates) {
+      const presentation = bundle.presentations.find(
+        (entry) => entry.candidateId === candidate.id,
+      );
+      if (
+        candidate.kind !== bundle.request.kind ||
+        JSON.stringify(candidate.sourcePacket) !==
+          JSON.stringify(bundle.sourcePacket) ||
+        JSON.stringify(candidate.interaction) !==
+          JSON.stringify(bundle.sourcePacket.interaction)
+      ) {
+        context.addIssue({
+          code: "custom",
+          message:
+            "Candidate kind, evidence, and interaction must match the reviewed bundle.",
+          path: ["candidates"],
+        });
+      }
+      if (
+        replyRequest
+          ? candidate.channel !== "x" || candidate.action !== "reply"
+          : candidate.action === "reply"
+      ) {
+        context.addIssue({
+          code: "custom",
+          message:
+            "Only an explicitly requested, verified community reply may use the reply action.",
+          path: ["candidates"],
+        });
+      }
+      if (!presentation || presentation.channel !== candidate.channel) {
+        context.addIssue({
+          code: "custom",
+          message: "Candidate and presentation channels must match.",
+          path: ["presentations"],
+        });
+        continue;
+      }
+      if (
+        candidate.channel === "substack"
+          ? !presentation.title ||
+            !presentation.tags ||
+            presentation.tags.length < 2 ||
+            new Set(presentation.tags.map((tag) => tag.toLowerCase())).size !==
+              presentation.tags.length ||
+            Array.from(candidate.body).length < 300
+          : Boolean(
+              presentation.title ||
+                presentation.subtitle ||
+                presentation.tags,
+            )
+      ) {
+        context.addIssue({
+          code: "custom",
+          message:
+            "Substack requires at least 300 characters, a title, and 2-5 unique tags; other channels cannot carry presentation metadata.",
+          path: ["presentations"],
+        });
+      }
+    }
+
     const publicFields = [
       ...bundle.candidates.flatMap((candidate) => [
         candidate.body,

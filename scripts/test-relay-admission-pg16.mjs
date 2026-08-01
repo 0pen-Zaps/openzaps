@@ -124,6 +124,33 @@ function psqlSession(sql) {
   });
 }
 
+function psqlScalarSession(sql) {
+  return new Promise((resolveSession, rejectSession) => {
+    const child = spawn(
+      "psql",
+      [...psqlArgs, "-A", "-t", "-F", "|", "-c", sql],
+      {
+        cwd: root,
+        stdio: ["ignore", "pipe", "pipe"],
+      },
+    );
+    let stdout = "";
+    let stderr = "";
+    child.stdout.setEncoding("utf8");
+    child.stderr.setEncoding("utf8");
+    child.stdout.on("data", (chunk) => {
+      stdout += chunk;
+    });
+    child.stderr.on("data", (chunk) => {
+      stderr += chunk;
+    });
+    child.on("error", rejectSession);
+    child.on("close", (status) => {
+      resolveSession({ status, stdout, stderr });
+    });
+  });
+}
+
 async function waitForSessionPause(applicationName) {
   for (let attempt = 0; attempt < 100; attempt += 1) {
     const count = psqlScalar(`
@@ -238,6 +265,13 @@ const cappedSubscriberKey = "44444444-4444-4444-8444-444444444444";
 const subscriptionMigration = "20260729010711_wallet_bound_policy_subscriptions.sql";
 const receiptProvenanceMigration =
   "20260729095505_harden_verified_receipt_provenance.sql";
+const reviewedCampaignQueueMigration =
+  "20260801024005_durable_reviewed_marketing_campaign_queue.sql";
+const reviewedCampaignFixture = "pg16-reviewed-campaign";
+const reviewedCampaignContentHash = "de".repeat(32);
+const reviewedCampaignMonday = "2026-08-03T15:00:00Z";
+const reviewedCampaignTuesday = "2026-08-04T15:00:00Z";
+const reviewedCampaignWednesday = "2026-08-05T15:00:00Z";
 const malformedReceiptHash = `0x${"aa".repeat(32)}`;
 const rejectedMalformedReceiptHash = `0x${"bb".repeat(32)}`;
 const v3Factory = "0x70fcfd3615ea6651a670b6c4cd6b8ba1506717e9";
@@ -370,10 +404,21 @@ try {
   `);
 
   const migrationFiles = readdirSync(migrations).filter((name) => name.endsWith(".sql")).sort();
-  // A clean schema must survive a complete replay too. This catches migrations
-  // whose IF EXISTS/OR REPLACE story only works in a partially upgraded DB.
+  // A clean schema must survive a complete replay except for exact new-table
+  // migrations that deliberately reject an unexpected history replay.
   for (let pass = 0; pass < 2; pass += 1) {
     for (const filename of migrationFiles) {
+      if (pass === 1 && filename === reviewedCampaignQueueMigration) {
+        const replayProbe = psqlFileProbe(join(migrations, filename), "select 1;");
+        assert(
+          replayProbe.status !== 0 &&
+            /relation "marketing_reviewed_campaigns" already exists/.test(
+              `${replayProbe.stdout}${replayProbe.stderr}`,
+            ),
+          "reviewed campaign queue migration did not fail closed on an unexpected replay",
+        );
+        continue;
+      }
       if (pass === 0 && filename === subscriptionMigration) {
         psql(`
           insert into public.policy_templates (
@@ -523,6 +568,468 @@ try {
   assert(
     replayState.join("|") === "0|0|0|5",
     `full-chain replay left unexpected relay state: ${replayState.join(", ")}`,
+  );
+
+  const initialReviewedCampaignState = psqlScalar(`
+    select
+      (select count(*) from public.marketing_reviewed_campaigns),
+      (select count(*) from public.marketing_campaign_schedule_claims),
+      (
+        select count(*)
+        from public.marketing_reviewed_campaigns
+        where channel = 'x'
+      );
+  `);
+  assert(
+    initialReviewedCampaignState === "0|0|0",
+    `reviewed campaign migration seeded a production post: ${initialReviewedCampaignState}`,
+  );
+
+  const emptyReviewedCampaignClaim = psqlScalar(`
+    select result_code
+    from private.claim_next_marketing_campaign_at(
+      array['discord']::text[],
+      '${reviewedCampaignMonday}'::timestamptz
+    );
+  `);
+  const emptyReviewedCampaignClaimState = psqlScalar(`
+    select count(*)
+    from public.marketing_campaign_schedule_claims;
+  `);
+  assert(
+    emptyReviewedCampaignClaim === "no_pending_campaign" &&
+      emptyReviewedCampaignClaimState === "0",
+    `empty reviewed queue wrote a schedule claim: ${emptyReviewedCampaignClaim}|${emptyReviewedCampaignClaimState}`,
+  );
+
+  const reviewedCampaignPrivileges = psqlScalar(`
+    select
+      (
+        select relrowsecurity
+        from pg_catalog.pg_class
+        where oid = 'public.marketing_reviewed_campaigns'::regclass
+      ),
+      (
+        select relrowsecurity
+        from pg_catalog.pg_class
+        where oid = 'public.marketing_campaign_schedule_claims'::regclass
+      ),
+      has_table_privilege(
+        'service_role',
+        'public.marketing_reviewed_campaigns',
+        'select'
+      ),
+      has_table_privilege(
+        'service_role',
+        'public.marketing_campaign_schedule_claims',
+        'select'
+      ),
+      has_function_privilege(
+        'service_role',
+        'public.claim_next_marketing_campaign(text[])',
+        'execute'
+      ),
+      has_function_privilege(
+        'service_role',
+        'public.verify_marketing_campaign_schedule_claim(text,text,date,text)',
+        'execute'
+      ),
+      has_function_privilege(
+        'anon',
+        'public.claim_next_marketing_campaign(text[])',
+        'execute'
+      ),
+      has_function_privilege(
+        'authenticated',
+        'public.claim_next_marketing_campaign(text[])',
+        'execute'
+      ),
+      has_function_privilege(
+        'anon',
+        'public.verify_marketing_campaign_schedule_claim(text,text,date,text)',
+        'execute'
+      ),
+      has_function_privilege(
+        'authenticated',
+        'public.verify_marketing_campaign_schedule_claim(text,text,date,text)',
+        'execute'
+      ),
+      has_function_privilege(
+        'service_role',
+        'private.claim_next_marketing_campaign_at(text[],timestamptz)',
+        'execute'
+      ),
+      has_function_privilege(
+        'service_role',
+        'private.verify_marketing_campaign_schedule_claim_at(text,text,date,text,timestamptz)',
+        'execute'
+      );
+  `);
+  assert(
+    reviewedCampaignPrivileges === "t|t|f|f|t|t|f|f|f|f|f|f",
+    `unexpected reviewed campaign queue privileges: ${reviewedCampaignPrivileges}`,
+  );
+
+  const serviceReviewedCampaignClaim = await psqlScalarSession(`
+    set role service_role;
+    select count(*)
+    from public.claim_next_marketing_campaign(array['discord']::text[]);
+  `);
+  assert(
+    serviceReviewedCampaignClaim.status === 0 &&
+      /(?:^|\n)1(?:\n|$)/.test(serviceReviewedCampaignClaim.stdout),
+    `service role could not call reviewed campaign RPC: ${serviceReviewedCampaignClaim.stdout}${serviceReviewedCampaignClaim.stderr}`,
+  );
+
+  const serviceReviewedCampaignVerify = await psqlScalarSession(`
+    set role service_role;
+    select count(*)
+    from public.verify_marketing_campaign_schedule_claim(
+      '${reviewedCampaignFixture}',
+      'discord',
+      '2026-08-03'::date,
+      '${reviewedCampaignContentHash}'
+    );
+  `);
+  assert(
+    serviceReviewedCampaignVerify.status === 0 &&
+      /(?:^|\n)1(?:\n|$)/.test(serviceReviewedCampaignVerify.stdout),
+    `service role could not call reviewed campaign verification RPC: ${serviceReviewedCampaignVerify.stdout}${serviceReviewedCampaignVerify.stderr}`,
+  );
+
+  for (const role of ["anon", "authenticated"]) {
+    for (const [rpcName, rpcSql] of [
+      [
+        "claim",
+        "select result_code from public.claim_next_marketing_campaign(array['discord']::text[])",
+      ],
+      [
+        "verify",
+        `select verified from public.verify_marketing_campaign_schedule_claim(
+          '${reviewedCampaignFixture}',
+          'discord',
+          '2026-08-03'::date,
+          '${reviewedCampaignContentHash}'
+        )`,
+      ],
+    ]) {
+      const unauthorizedReviewedCampaignRpc = await psqlScalarSession(`
+        set role ${role};
+        ${rpcSql};
+      `);
+      assert(
+        unauthorizedReviewedCampaignRpc.status !== 0 &&
+          /permission denied/.test(
+            `${unauthorizedReviewedCampaignRpc.stdout}${unauthorizedReviewedCampaignRpc.stderr}`,
+          ),
+        `${role} unexpectedly executed the reviewed campaign ${rpcName} RPC`,
+      );
+    }
+  }
+
+  const directReviewedCampaignRead = await psqlScalarSession(`
+    set role service_role;
+    select * from public.marketing_reviewed_campaigns;
+  `);
+  assert(
+    directReviewedCampaignRead.status !== 0 &&
+      /permission denied/.test(
+        `${directReviewedCampaignRead.stdout}${directReviewedCampaignRead.stderr}`,
+      ),
+    "service role unexpectedly read the reviewed campaign queue directly",
+  );
+
+  const fixedTimeHelperCall = await psqlScalarSession(`
+    set role service_role;
+    select result_code
+    from private.claim_next_marketing_campaign_at(
+      array['discord']::text[],
+      '${reviewedCampaignMonday}'::timestamptz
+    );
+  `);
+  assert(
+    fixedTimeHelperCall.status !== 0 &&
+      /permission denied/.test(
+        `${fixedTimeHelperCall.stdout}${fixedTimeHelperCall.stderr}`,
+      ),
+    "service role unexpectedly executed the fixed-time queue test helper",
+  );
+
+  const fixedTimeVerifyHelperCall = await psqlScalarSession(`
+    set role service_role;
+    select verified
+    from private.verify_marketing_campaign_schedule_claim_at(
+      '${reviewedCampaignFixture}',
+      'discord',
+      '2026-08-03'::date,
+      '${reviewedCampaignContentHash}',
+      '${reviewedCampaignMonday}'::timestamptz
+    );
+  `);
+  assert(
+    fixedTimeVerifyHelperCall.status !== 0 &&
+      /permission denied/.test(
+        `${fixedTimeVerifyHelperCall.stdout}${fixedTimeVerifyHelperCall.stderr}`,
+      ),
+    "service role unexpectedly executed the fixed-time verification test helper",
+  );
+
+  psql(`
+    insert into public.marketing_reviewed_campaigns (
+      campaign_id,
+      channel,
+      queue_order,
+      not_before,
+      body,
+      links,
+      topics,
+      disclosures,
+      claims,
+      flags,
+      required_facts,
+      canonical_source_urls,
+      content_hash
+    )
+    values (
+      '${reviewedCampaignFixture}',
+      'discord',
+      1,
+      null,
+      'Harness-only reviewed Discord campaign.',
+      '["https://www.0xzaps.com/docs"]'::jsonb,
+      '["protocol"]'::jsonb,
+      '["pre_audit"]'::jsonb,
+      '[{
+        "text":"Harness-only reviewed product fact.",
+        "factKeys":["product.docs"],
+        "treatment":"asserted"
+      }]'::jsonb,
+      '{
+        "containsCredential":false,
+        "guaranteesReturns":false,
+        "impersonatesPerson":false,
+        "requestsPolicyBypass":false,
+        "unsolicitedBulkMessaging":false,
+        "usesUnavailableAsZero":false
+      }'::jsonb,
+      '[{
+        "key":"product.docs",
+        "sourceUrl":"https://www.0xzaps.com/docs"
+      }]'::jsonb,
+      '["https://www.0xzaps.com/docs"]'::jsonb,
+      '${reviewedCampaignContentHash}'
+    );
+  `);
+
+  const reviewedCampaignChannelState = psqlScalar(`
+    select
+      count(*) filter (where channel = 'discord'),
+      count(*) filter (where channel = 'x')
+    from public.marketing_reviewed_campaigns;
+  `);
+  assert(
+    reviewedCampaignChannelState === "1|0",
+    `reviewed queue fixture unexpectedly created an X row: ${reviewedCampaignChannelState}`,
+  );
+
+  const xOnlyReviewedCampaignClaim = psqlScalar(`
+    select result_code
+    from private.claim_next_marketing_campaign_at(
+      array['x']::text[],
+      '${reviewedCampaignMonday}'::timestamptz
+    );
+  `);
+  assert(
+    xOnlyReviewedCampaignClaim === "no_pending_campaign",
+    `X-only claim selected a Discord campaign: ${xOnlyReviewedCampaignClaim}`,
+  );
+
+  const concurrentReviewedCampaignClaims = await Promise.all([
+    psqlScalarSession(`
+      select result_code
+      from private.claim_next_marketing_campaign_at(
+        array['discord']::text[],
+        '${reviewedCampaignMonday}'::timestamptz
+      );
+    `),
+    psqlScalarSession(`
+      select result_code
+      from private.claim_next_marketing_campaign_at(
+        array['discord']::text[],
+        '${reviewedCampaignMonday}'::timestamptz
+      );
+    `),
+  ]);
+  assert(
+    concurrentReviewedCampaignClaims.every((result) => result.status === 0),
+    `concurrent reviewed campaign claims failed: ${concurrentReviewedCampaignClaims
+      .map((result) => `${result.stdout}${result.stderr}`)
+      .join("\n")}`,
+  );
+  const concurrentReviewedCampaignCodes = concurrentReviewedCampaignClaims
+    .map((result) => result.stdout.trim())
+    .sort();
+  assert(
+    concurrentReviewedCampaignCodes.join("|") === "already_claimed|claimed",
+    `reviewed campaign claim was not serialized exactly once: ${concurrentReviewedCampaignCodes.join("|")}`,
+  );
+
+  const firstReviewedCampaignClaimState = psqlScalar(`
+    select
+      count(*),
+      count(distinct campaign_id || ':' || channel),
+      min(channel),
+      min(claim_day)::text
+    from public.marketing_campaign_schedule_claims;
+  `);
+  assert(
+    firstReviewedCampaignClaimState === "1|1|discord|2026-08-03",
+    `first reviewed campaign claim did not persist exactly once: ${firstReviewedCampaignClaimState}`,
+  );
+
+  const reviewedCampaignVerification = psqlScalar(`
+    select
+      (
+        select verified
+        from private.verify_marketing_campaign_schedule_claim_at(
+          '${reviewedCampaignFixture}',
+          'discord',
+          '2026-08-03'::date,
+          '${reviewedCampaignContentHash}',
+          '${reviewedCampaignMonday}'::timestamptz
+        )
+      ),
+      (
+        select verified
+        from private.verify_marketing_campaign_schedule_claim_at(
+          '${reviewedCampaignFixture}',
+          'x',
+          '2026-08-03'::date,
+          '${reviewedCampaignContentHash}',
+          '${reviewedCampaignMonday}'::timestamptz
+        )
+      ),
+      (
+        select verified
+        from private.verify_marketing_campaign_schedule_claim_at(
+          '${reviewedCampaignFixture}',
+          'discord',
+          '2026-08-03'::date,
+          '${"ef".repeat(32)}',
+          '${reviewedCampaignMonday}'::timestamptz
+        )
+      ),
+      (
+        select verified
+        from private.verify_marketing_campaign_schedule_claim_at(
+          '${reviewedCampaignFixture}',
+          'discord',
+          '2026-08-03'::date,
+          '${reviewedCampaignContentHash}',
+          '${reviewedCampaignTuesday}'::timestamptz
+        )
+      );
+  `);
+  assert(
+    reviewedCampaignVerification === "t|f|f|f",
+    `reviewed claim verification accepted a stale or mismatched identity: ${reviewedCampaignVerification}`,
+  );
+
+  const nextWeekdayReviewedCampaignClaim = psqlScalar(`
+    select result_code
+    from private.claim_next_marketing_campaign_at(
+      array['discord']::text[],
+      '${reviewedCampaignTuesday}'::timestamptz
+    );
+  `);
+  assert(
+    nextWeekdayReviewedCampaignClaim === "claimed",
+    `undelivered reviewed campaign was not retryable next weekday: ${nextWeekdayReviewedCampaignClaim}`,
+  );
+
+  const scheduledDeliveryClaim = psqlScalar(`
+    insert into public.marketing_delivery_ledger (
+      idempotency_key,
+      run_id,
+      candidate_id,
+      content_hash,
+      channel,
+      action,
+      counter_key,
+      interaction_id,
+      approved_by,
+      claim_day,
+      status
+    )
+    values (
+      'scheduled:${reviewedCampaignFixture}:discord',
+      'marketing-reviewed-campaign-harness',
+      'marketing-reviewed-campaign-harness-discord',
+      '${reviewedCampaignContentHash}',
+      'discord',
+      'broadcast',
+      'discordPosts',
+      null,
+      'integration-test',
+      '2000-01-03'::date,
+      'claimed'
+    )
+    returning status, claim_day;
+  `);
+  assert(
+    scheduledDeliveryClaim.startsWith("claimed|2000-01-03"),
+    `reviewed campaign delivery key could not be persisted: ${scheduledDeliveryClaim}`,
+  );
+
+  const deliveredReviewedCampaignClaim = psqlScalar(`
+    select result_code
+    from private.claim_next_marketing_campaign_at(
+      array['discord']::text[],
+      '${reviewedCampaignWednesday}'::timestamptz
+    );
+  `);
+  const deliveredReviewedCampaignState = psqlScalar(`
+    select
+      (select count(*) from public.marketing_campaign_schedule_claims),
+      (
+        select count(*)
+        from public.marketing_delivery_ledger
+        where idempotency_key =
+          'scheduled:${reviewedCampaignFixture}:discord'
+      );
+  `);
+  assert(
+    deliveredReviewedCampaignClaim === "no_pending_campaign" &&
+      deliveredReviewedCampaignState === "2|1",
+    `delivered reviewed campaign was reclaimed: ${deliveredReviewedCampaignClaim}|${deliveredReviewedCampaignState}`,
+  );
+
+  for (const mutation of [
+    "update public.marketing_reviewed_campaigns set body = body",
+    "delete from public.marketing_reviewed_campaigns",
+    "truncate public.marketing_reviewed_campaigns cascade",
+    "update public.marketing_campaign_schedule_claims set claim_day = claim_day",
+    "delete from public.marketing_campaign_schedule_claims",
+    "truncate public.marketing_campaign_schedule_claims",
+  ]) {
+    const mutationAttempt = await psqlScalarSession(mutation);
+    assert(
+      mutationAttempt.status !== 0 &&
+        /reviewed marketing campaign artifacts are immutable/.test(
+          `${mutationAttempt.stdout}${mutationAttempt.stderr}`,
+        ),
+      `reviewed campaign artifact mutation was not rejected: ${mutation}\n${mutationAttempt.stdout}${mutationAttempt.stderr}`,
+    );
+  }
+
+  const immutableReviewedCampaignState = psqlScalar(`
+    select
+      (select count(*) from public.marketing_reviewed_campaigns),
+      (select count(*) from public.marketing_campaign_schedule_claims);
+  `);
+  assert(
+    immutableReviewedCampaignState === "1|2",
+    `reviewed campaign artifacts changed after rejected mutations: ${immutableReviewedCampaignState}`,
   );
 
   const hardenedPrivileges = psqlScalar(`

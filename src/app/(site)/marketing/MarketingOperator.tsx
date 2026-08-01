@@ -6,6 +6,12 @@ import {
   marketingRunIdFromSearch,
   parseMarketingSourceUrls,
 } from "@/lib/marketing/operator-input";
+import {
+  canonicalSubstackPostUrl,
+  prepareSubstackRichText,
+  substackDraftView,
+  type SubstackRichText,
+} from "@/lib/marketing/substack-handoff";
 import { parseCanonicalXStatusUrl } from "@/lib/marketing/x-interaction";
 import styles from "./marketing.module.css";
 
@@ -21,9 +27,21 @@ type DraftKind = "product_update" | "tutorial" | "community_reply";
 type LeadStatus = "new" | "contacted" | "qualified" | "closed";
 type JsonRecord = Record<string, unknown>;
 
+type SubstackVerification = {
+  runId: string;
+  candidateId: string;
+  status: "rss_confirmed" | "not_found" | "title_mismatch";
+  canonicalUrl: string;
+  approvedTitle: string;
+  feedUrl: string;
+  checkedAt: string;
+  publishedAt?: string;
+  persisted: false;
+};
+
 type OperatorError = Error & { status?: number };
 
-type ReadinessRow = {
+export type ReadinessRow = {
   key: string;
   label: string;
   ready: boolean;
@@ -102,14 +120,145 @@ async function operatorRequest(
   return body;
 }
 
+type ClipboardAccess = Partial<Pick<Clipboard, "write" | "writeText">>;
+
+export async function writeSubstackClipboard(
+  richText: SubstackRichText,
+  clipboard: ClipboardAccess | undefined,
+  ClipboardItemCtor: typeof ClipboardItem | undefined,
+): Promise<"rich" | "plain"> {
+  if (clipboard?.write && ClipboardItemCtor) {
+    try {
+      await clipboard.write([
+        new ClipboardItemCtor({
+          "text/html": new Blob([richText.html], { type: "text/html" }),
+          "text/plain": new Blob([richText.plainText], {
+            type: "text/plain",
+          }),
+        }),
+      ]);
+      return "rich";
+    } catch {
+      // Some browsers expose write() but reject HTML MIME clipboard items.
+    }
+  }
+  if (clipboard?.writeText) {
+    await clipboard.writeText(richText.plainText);
+    return "plain";
+  }
+  throw new Error("Clipboard unavailable");
+}
+
+const CHANNEL_READINESS_COPY: Record<
+  string,
+  {
+    label: string;
+    supported: boolean;
+    readyState: string;
+    blockedState: string;
+    readyDetail: string;
+    blockedDetail: string;
+  }
+> = {
+  x: {
+    label: "X posts",
+    supported: true,
+    readyState: "configured",
+    blockedState: "gated",
+    readyDetail:
+      "Credential, automated-label, and expected-account prerequisites are configured. Identity and write availability are rechecked before every post.",
+    blockedDetail:
+      "One or more credential, automated-label, or expected-account prerequisites are missing. No X write is admitted.",
+  },
+  discordBroadcast: {
+    label: "Discord broadcasts",
+    supported: true,
+    readyState: "configured",
+    blockedState: "gated",
+    readyDetail:
+      "Exact guild and channel bindings plus webhook or bot prerequisites are configured. The destination and provider response are rechecked before every post.",
+    blockedDetail:
+      "One or more Discord broadcast prerequisites are missing. No channel post is admitted.",
+  },
+  discordInteractions: {
+    label: "Discord interactions",
+    supported: true,
+    readyState: "configured",
+    blockedState: "not configured",
+    readyDetail:
+      "Signed-interaction verification and exact application and guild bindings are configured. This check does not prove a live command invocation.",
+    blockedDetail:
+      "Signed Discord interaction handling is not configured.",
+  },
+  directMessages: {
+    label: "Direct messages",
+    supported: false,
+    readyState: "unsupported",
+    blockedState: "unsupported",
+    readyDetail:
+      "Unsupported in this release; no direct-message adapter is deployed.",
+    blockedDetail:
+      "Unsupported in this release; no direct-message adapter is deployed.",
+  },
+  substackDirectPublish: {
+    label: "Substack direct publish",
+    supported: false,
+    readyState: "unsupported",
+    blockedState: "unsupported",
+    readyDetail:
+      "Unsupported in this release. Substack publishing stays an official-editor human handoff; no private or undocumented write API is used.",
+    blockedDetail:
+      "Unsupported in this release. Substack publishing stays an official-editor human handoff; no private or undocumented write API is used.",
+  },
+  substackManualHandoff: {
+    label: "Substack editor handoff",
+    supported: true,
+    readyState: "manual",
+    blockedState: "unavailable",
+    readyDetail:
+      "Human-only handoff to the official DeFi Tutorials editor is supported. Publication is verified separately through the public RSS feed.",
+    blockedDetail:
+      "The official-editor handoff is unavailable. Direct publishing remains unsupported.",
+  },
+  farcaster: {
+    label: "Farcaster",
+    supported: false,
+    readyState: "not implemented",
+    blockedState: "not implemented",
+    readyDetail: "No reviewed Farcaster delivery adapter exists in this release.",
+    blockedDetail: "No reviewed Farcaster delivery adapter exists in this release.",
+  },
+  github: {
+    label: "GitHub",
+    supported: false,
+    readyState: "not implemented",
+    blockedState: "not implemented",
+    readyDetail: "No reviewed GitHub delivery adapter exists in this release.",
+    blockedDetail: "No reviewed GitHub delivery adapter exists in this release.",
+  },
+};
+
 function readinessValue(key: string, value: unknown): ReadinessRow {
+  const channelCopy = CHANNEL_READINESS_COPY[key];
+  if (channelCopy && typeof value === "boolean") {
+    const ready = channelCopy.supported && value;
+    return {
+      key,
+      label: channelCopy.label,
+      ready,
+      state: ready ? channelCopy.readyState : channelCopy.blockedState,
+      detail: ready ? channelCopy.readyDetail : channelCopy.blockedDetail,
+    };
+  }
   if (typeof value === "boolean") {
     return {
       key,
       label: titleCase(key),
       ready: value,
-      state: value ? "ready" : "blocked",
-      detail: value ? "Configured and available." : "Not configured.",
+      state: value ? "prerequisite met" : "gated",
+      detail: value
+        ? "The server-side prerequisite is satisfied. Provider availability is checked at action time."
+        : "The prerequisite is not satisfied or the capability is gated.",
     };
   }
   if (typeof value === "string") {
@@ -141,23 +290,76 @@ function readinessValue(key: string, value: unknown): ReadinessRow {
       text(entry.detail)
       ?? text(entry.reason)
       ?? text(entry.message)
-      ?? (ready ? "Configured and available." : "Not configured."),
+      ?? (ready
+        ? "The server-side prerequisite is satisfied. Provider availability is checked at action time."
+        : "The prerequisite is not satisfied or the capability is gated."),
   };
 }
 
-function readinessRows(status: JsonRecord | null): ReadinessRow[] {
+function modeReadiness(mode: string): ReadinessRow {
+  const details: Record<string, string> = {
+    disabled: "Marketing workflows are disabled. No draft or provider write is allowed.",
+    dry_run:
+      "Provider writes are disabled. Draft-generation readiness is reported separately.",
+    review_only:
+      "Automatic provider writes are off. Draft-generation readiness and human approval are reported separately.",
+    live:
+      "Bounded auto-publish is effective only for deterministic, source-reviewed campaigns. Durable admission, identity, destination, and provider response are still rechecked for every write.",
+  };
+  const knownMode = Object.prototype.hasOwnProperty.call(details, mode);
+  return {
+    key: "mode",
+    label: "Runtime mode",
+    ready: knownMode && mode !== "disabled",
+    state: knownMode ? mode : "unknown",
+    detail: details[mode] ?? `The server reported runtime mode “${mode}”.`,
+  };
+}
+
+function dailyCapsReadiness(value: unknown): ReadinessRow | null {
+  if (!isRecord(value)) return null;
+  const labels: Record<string, string> = {
+    xPosts: "X posts",
+    xReplies: "X replies",
+    discordPosts: "Discord posts",
+    substackTutorials: "Substack editor handoffs",
+    directMessages: "direct messages",
+  };
+  const entries = Object.entries(labels).flatMap(([key, label]) => {
+    const cap = value[key];
+    return typeof cap === "number" && Number.isInteger(cap) && cap >= 0
+      ? [key === "directMessages"
+        ? `${label} ${cap} (adapter unsupported)`
+        : `${label} ${cap}`]
+      : [];
+  });
+  if (entries.length !== Object.keys(labels).length) return null;
+  return {
+    key: "dailyCaps",
+    label: "UTC daily caps",
+    ready: true,
+    state: "bounded",
+    detail: `${entries.join(" · ")} per UTC day. Caps do not enable gated or unsupported adapters, and admission still checks durable usage before every write.`,
+  };
+}
+
+export function readinessRows(status: JsonRecord | null): ReadinessRow[] {
   if (!status) return [];
   const root = isRecord(status.config) ? status.config : status;
   const readiness = isRecord(root.readiness) ? root.readiness : null;
   const source = root.channels ?? readiness?.channels ?? root.checks;
   const rows: ReadinessRow[] = [];
 
+  const mode = text(root.mode);
+  if (mode) rows.push(modeReadiness(mode));
+
   if (readiness && typeof readiness.configurationValid === "boolean") {
     rows.push(readinessValue("configuration", {
+      label: "Configuration validation",
       ready: readiness.configurationValid,
       detail: readiness.configurationValid
-        ? "All configured values passed validation."
-        : "One or more configuration values are invalid.",
+        ? "Configured values passed local validation. This check does not test provider or database availability."
+        : "One or more configured values are invalid; affected actions fail closed.",
     }));
   }
   if (readiness && typeof readiness.canDraft === "boolean") {
@@ -165,12 +367,65 @@ function readinessRows(status: JsonRecord | null): ReadinessRow[] {
       ? readiness.blockers.filter((blocker): blocker is string => typeof blocker === "string")
       : [];
     rows.push(readinessValue("drafting", {
+      label: "Draft generation",
       ready: readiness.canDraft,
       detail: readiness.canDraft
-        ? "Source-backed draft generation is enabled."
-        : blockers.join(" ") || "Draft generation is disabled.",
+        ? "Server-side prerequisites for source-backed draft generation are satisfied. No provider write is implied."
+        : blockers.length
+          ? `Draft generation is gated. ${blockers.join(" ")}`
+          : "Draft generation is gated.",
     }));
   }
+  if (readiness && typeof readiness.durableLedgerConfigured === "boolean") {
+    rows.push(readinessValue("durableLedger", {
+      label: "Durable delivery ledger",
+      ready: readiness.durableLedgerConfigured,
+      state: readiness.durableLedgerConfigured ? "configured" : "gated",
+      detail: readiness.durableLedgerConfigured
+        ? "Exact-project environment prerequisites are configured. Schema and database availability are rechecked by each ledger operation."
+        : "Durable cross-run ledger prerequisites are not satisfied; non-dry-run drafting and auto-publish fail closed.",
+    }));
+  }
+  if (
+    readiness
+    && typeof readiness.autoPublishReady === "boolean"
+    && typeof root.autoPublishRequested === "boolean"
+    && typeof root.autoPublish === "boolean"
+  ) {
+    const requested = root.autoPublishRequested;
+    const effective = root.autoPublish;
+    const eligible = readiness.autoPublishReady;
+    rows.push(readinessValue("autoPublish", {
+      label: "Bounded auto-publish",
+      ready: effective || (!requested && eligible),
+      state: effective
+        ? "effective"
+        : requested
+          ? "gated"
+          : eligible
+            ? "ready, not requested"
+            : "off",
+      detail: effective
+        ? "Effective only for deterministic, source-reviewed scheduled campaigns. Every write still requires durable admission and fresh provider identity and destination checks."
+        : requested
+          ? "Requested, but one or more safety prerequisites are not satisfied. No automatic provider write is allowed."
+          : eligible
+            ? "Safety prerequisites are configured, but auto-publish was not requested. Outbound delivery remains human-reviewed."
+            : "Auto-publish is off. Outbound delivery remains human-reviewed.",
+    }));
+  }
+  if (typeof root.xAiReplyApproved === "boolean") {
+    rows.push(readinessValue("xReplyPolicy", {
+      label: "X reply policy",
+      ready: root.xAiReplyApproved,
+      state: root.xAiReplyApproved ? "platform gate enabled" : "gated",
+      detail: root.xAiReplyApproved
+        ? "The X AI-reply and automated-label configuration gates are enabled. Each reply still requires an operator-selected, API-verified interaction and per-interaction human approval."
+        : "AI-authored X replies remain gated. Per-interaction human approval is still required for every reply.",
+    }));
+  }
+  const caps = dailyCapsReadiness(root.dailyCaps);
+  if (caps) rows.push(caps);
 
   if (Array.isArray(source)) {
     return [...rows, ...source.map((value, index) => {
@@ -260,6 +515,10 @@ export function leadReplyHref(email: string): string {
   )}`;
 }
 
+export function leadDeleteTriggerId(id: string): string {
+  return `lead-delete-trigger-${encodeURIComponent(id)}`;
+}
+
 export function pollRetryDelay(failureCount: number): number {
   const exponent = Math.max(0, Math.floor(failureCount) - 1);
   return Math.min(POLL_INTERVAL_MS * 2 ** exponent, POLL_MAX_INTERVAL_MS);
@@ -271,6 +530,18 @@ export function shouldRetryPoll(status?: number): boolean {
     || status === 408
     || status === 429
     || (status >= 500 && status <= 599)
+  );
+}
+
+export function leadOperationIsCurrent(input: {
+  expectedSessionGeneration: number;
+  expectedActionGeneration: number;
+  currentSessionGeneration: number;
+  currentActionGeneration: number;
+}): boolean {
+  return (
+    input.expectedSessionGeneration === input.currentSessionGeneration &&
+    input.expectedActionGeneration === input.currentActionGeneration
   );
 }
 
@@ -306,6 +577,75 @@ function resultFrom(run: JsonRecord | null): unknown {
   if (!run) return null;
   const nested = nestedRun(run);
   return nested.result ?? run.result ?? null;
+}
+
+export function hasSubstackEditorHandoff(
+  result: unknown,
+  candidateId?: string,
+): boolean {
+  if (!isRecord(result) || !Array.isArray(result.deliveries)) return false;
+  return result.deliveries.some(
+    (delivery) =>
+      isRecord(delivery)
+      && text(delivery.channel) === "substack"
+      && text(delivery.status) === "requires_human_publish"
+      && Boolean(text(delivery.candidateId))
+      && (!candidateId || text(delivery.candidateId) === candidateId)
+      && text(delivery.editorUrl) ===
+        "https://defitutorials.substack.com/publish/post",
+  );
+}
+
+export function parseSubstackVerification(
+  body: JsonRecord,
+  expected: { runId: string; candidateId: string; canonicalUrl: string },
+): SubstackVerification | null {
+  const runId = text(body.runId);
+  const candidateId = text(body.candidateId);
+  const status = text(body.status);
+  const canonicalUrl = text(body.canonicalUrl);
+  const approvedTitle = text(body.approvedTitle);
+  const feedUrl = text(body.feedUrl);
+  const checkedAt = text(body.checkedAt);
+  const publishedAt = text(body.publishedAt);
+  if (
+    runId !== expected.runId
+    || candidateId !== expected.candidateId
+    || !status
+    || !["rss_confirmed", "not_found", "title_mismatch"].includes(status)
+    || !canonicalUrl
+    || canonicalUrl !== expected.canonicalUrl
+    || !approvedTitle
+    || feedUrl !== "https://defitutorials.substack.com/feed"
+    || !checkedAt
+    || !Number.isFinite(Date.parse(checkedAt))
+    || body.persisted !== false
+    || (publishedAt !== null && !Number.isFinite(Date.parse(publishedAt)))
+  ) return null;
+  return {
+    runId,
+    candidateId,
+    status: status as SubstackVerification["status"],
+    canonicalUrl,
+    approvedTitle,
+    feedUrl,
+    checkedAt,
+    ...(publishedAt ? { publishedAt } : {}),
+    persisted: false,
+  };
+}
+
+export function substackVerificationResponseIsCurrent(input: {
+  requestGeneration: number;
+  currentGeneration: number;
+  requestedCanonicalUrl: string;
+  currentRawUrl: string;
+}): boolean {
+  return (
+    input.requestGeneration === input.currentGeneration
+    && canonicalSubstackPostUrl(input.currentRawUrl)
+      === input.requestedCanonicalUrl
+  );
 }
 
 function terminalStatus(status: string): boolean {
@@ -382,6 +722,8 @@ export function MarketingOperator(): React.JSX.Element {
   );
   const [pollRevision, setPollRevision] = useState(0);
   const leadRequestGeneration = useRef(0);
+  const leadSessionGeneration = useRef(0);
+  const leadActionGeneration = useRef(0);
 
   const readiness = useMemo(() => readinessRows(status), [status]);
   const currentStatus = runStatus(run);
@@ -400,6 +742,8 @@ export function MarketingOperator(): React.JSX.Element {
     sessionRemove(LEAD_TOKEN_STORAGE_KEY);
     sessionRemove(RUN_STORAGE_KEY);
     leadRequestGeneration.current += 1;
+    leadSessionGeneration.current += 1;
+    leadActionGeneration.current += 1;
     setToken("");
     setTokenInput("");
     setLeadToken("");
@@ -429,7 +773,9 @@ export function MarketingOperator(): React.JSX.Element {
   const loadLeadQueue = async (
     candidateToken: string,
     minimumScore: number,
+    expectedSessionGeneration = leadSessionGeneration.current,
   ): Promise<void> => {
+    if (leadSessionGeneration.current !== expectedSessionGeneration) return;
     const requestGeneration = leadRequestGeneration.current + 1;
     leadRequestGeneration.current = requestGeneration;
     setLeadQueueState("loading");
@@ -439,11 +785,17 @@ export function MarketingOperator(): React.JSX.Element {
         `/api/leads?limit=50&minScore=${minimumScore}`,
         candidateToken,
       );
-      if (leadRequestGeneration.current !== requestGeneration) return;
+      if (
+        leadRequestGeneration.current !== requestGeneration ||
+        leadSessionGeneration.current !== expectedSessionGeneration
+      ) return;
       setLeads(operatorLeads(body));
       setLeadQueueState("ready");
     } catch (error) {
-      if (leadRequestGeneration.current !== requestGeneration) return;
+      if (
+        leadRequestGeneration.current !== requestGeneration ||
+        leadSessionGeneration.current !== expectedSessionGeneration
+      ) return;
       const requestError = error as OperatorError;
       if (requestError?.status === 401) {
         handleError(error, "The lead queue could not be loaded.");
@@ -464,6 +816,9 @@ export function MarketingOperator(): React.JSX.Element {
     status: Exclude<LeadStatus, "new">,
   ): Promise<void> => {
     if (!leadToken || leadActionId) return;
+    const sessionGeneration = leadSessionGeneration.current;
+    const actionGeneration = leadActionGeneration.current + 1;
+    leadActionGeneration.current = actionGeneration;
     setLeadActionId(id);
     setLeadActionNotice("");
     try {
@@ -471,10 +826,22 @@ export function MarketingOperator(): React.JSX.Element {
         method: "PATCH",
         body: JSON.stringify({ status }),
       });
+      if (!leadOperationIsCurrent({
+        expectedSessionGeneration: sessionGeneration,
+        expectedActionGeneration: actionGeneration,
+        currentSessionGeneration: leadSessionGeneration.current,
+        currentActionGeneration: leadActionGeneration.current,
+      })) return;
       setLeadDeleteConfirmId("");
       setLeadActionNotice(`Request marked ${titleCase(status)}.`);
-      await loadLeadQueue(leadToken, leadScoreFloor);
+      await loadLeadQueue(leadToken, leadScoreFloor, sessionGeneration);
     } catch (error) {
+      if (!leadOperationIsCurrent({
+        expectedSessionGeneration: sessionGeneration,
+        expectedActionGeneration: actionGeneration,
+        currentSessionGeneration: leadSessionGeneration.current,
+        currentActionGeneration: leadActionGeneration.current,
+      })) return;
       const requestError = error as OperatorError;
       if (requestError?.status === 401) {
         handleError(error, "The request status could not be updated.");
@@ -486,22 +853,42 @@ export function MarketingOperator(): React.JSX.Element {
         );
       }
     } finally {
-      setLeadActionId("");
+      if (leadOperationIsCurrent({
+        expectedSessionGeneration: sessionGeneration,
+        expectedActionGeneration: actionGeneration,
+        currentSessionGeneration: leadSessionGeneration.current,
+        currentActionGeneration: leadActionGeneration.current,
+      })) setLeadActionId("");
     }
   };
 
   const permanentlyDeleteLead = async (id: string): Promise<void> => {
     if (!leadToken || leadActionId) return;
+    const sessionGeneration = leadSessionGeneration.current;
+    const actionGeneration = leadActionGeneration.current + 1;
+    leadActionGeneration.current = actionGeneration;
     setLeadActionId(id);
     setLeadActionNotice("");
     try {
       await operatorRequest(`/api/leads/${encodeURIComponent(id)}`, leadToken, {
         method: "DELETE",
       });
+      if (!leadOperationIsCurrent({
+        expectedSessionGeneration: sessionGeneration,
+        expectedActionGeneration: actionGeneration,
+        currentSessionGeneration: leadSessionGeneration.current,
+        currentActionGeneration: leadActionGeneration.current,
+      })) return;
       setLeadDeleteConfirmId("");
       setLeadActionNotice("Request permanently deleted.");
-      await loadLeadQueue(leadToken, leadScoreFloor);
+      await loadLeadQueue(leadToken, leadScoreFloor, sessionGeneration);
     } catch (error) {
+      if (!leadOperationIsCurrent({
+        expectedSessionGeneration: sessionGeneration,
+        expectedActionGeneration: actionGeneration,
+        currentSessionGeneration: leadSessionGeneration.current,
+        currentActionGeneration: leadActionGeneration.current,
+      })) return;
       const requestError = error as OperatorError;
       if (requestError?.status === 401) {
         handleError(error, "The request could not be deleted.");
@@ -511,7 +898,12 @@ export function MarketingOperator(): React.JSX.Element {
         );
       }
     } finally {
-      setLeadActionId("");
+      if (leadOperationIsCurrent({
+        expectedSessionGeneration: sessionGeneration,
+        expectedActionGeneration: actionGeneration,
+        currentSessionGeneration: leadSessionGeneration.current,
+        currentActionGeneration: leadActionGeneration.current,
+      })) setLeadActionId("");
     }
   };
 
@@ -521,9 +913,16 @@ export function MarketingOperator(): React.JSX.Element {
     if (!storedToken || !storedLeadToken) return;
 
     let cancelled = false;
+    const sessionGeneration = leadSessionGeneration.current + 1;
+    leadSessionGeneration.current = sessionGeneration;
+    leadRequestGeneration.current += 1;
+    leadActionGeneration.current += 1;
     void operatorRequest("/api/marketing/status", storedToken)
       .then((body) => {
-        if (cancelled) return;
+        if (
+          cancelled ||
+          leadSessionGeneration.current !== sessionGeneration
+        ) return;
         setTokenInput(storedToken);
         setToken(storedToken);
         setLeadTokenInput(storedLeadToken);
@@ -536,7 +935,7 @@ export function MarketingOperator(): React.JSX.Element {
           sessionWrite(RUN_STORAGE_KEY, recoveredRunId);
           setRunId(recoveredRunId);
         }
-        void loadLeadQueue(storedLeadToken, 3);
+        void loadLeadQueue(storedLeadToken, 3, sessionGeneration);
         setNotice("Operator session restored. Readiness is current.");
       })
       .catch((error: unknown) => {
@@ -602,8 +1001,13 @@ export function MarketingOperator(): React.JSX.Element {
     }
 
     setBusy("connect");
+    const sessionGeneration = leadSessionGeneration.current + 1;
+    leadSessionGeneration.current = sessionGeneration;
+    leadRequestGeneration.current += 1;
+    leadActionGeneration.current += 1;
     try {
       const body = await operatorRequest("/api/marketing/status", candidate);
+      if (leadSessionGeneration.current !== sessionGeneration) return;
       sessionWrite(TOKEN_STORAGE_KEY, candidate);
       sessionWrite(LEAD_TOKEN_STORAGE_KEY, candidateLeadToken);
       setToken(candidate);
@@ -617,7 +1021,11 @@ export function MarketingOperator(): React.JSX.Element {
         setRunId(recoveredRunId);
       }
       setNotice("Connected. Readiness is current.");
-      await loadLeadQueue(candidateLeadToken, leadScoreFloor);
+      await loadLeadQueue(
+        candidateLeadToken,
+        leadScoreFloor,
+        sessionGeneration,
+      );
     } catch (error) {
       handleError(error, "Could not load marketing readiness.");
     } finally {
@@ -817,6 +1225,11 @@ export function MarketingOperator(): React.JSX.Element {
                 Refresh
               </button>
             </div>
+            <p className={styles.readinessScope}>
+              Configuration snapshot only. Provider identity, destination,
+              durable admission, and write availability are rechecked at the
+              action boundary.
+            </p>
             {readiness.length ? (
               <div className={styles.readinessGrid}>
                 {readiness.map((item) => (
@@ -987,33 +1400,16 @@ export function MarketingOperator(): React.JSX.Element {
                           Close
                         </button>
                       ) : null}
-                      {leadDeleteConfirmId === lead.id ? (
-                        <>
-                          <button
-                            type="button"
-                            data-danger
-                            onClick={() => void permanentlyDeleteLead(lead.id)}
-                            disabled={Boolean(leadActionId)}
-                          >
-                            Confirm permanent delete
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => setLeadDeleteConfirmId("")}
-                            disabled={Boolean(leadActionId)}
-                          >
-                            Cancel
-                          </button>
-                        </>
-                      ) : (
-                        <button
-                          type="button"
-                          onClick={() => setLeadDeleteConfirmId(lead.id)}
-                          disabled={Boolean(leadActionId)}
-                        >
-                          Delete
-                        </button>
-                      )}
+                      <LeadDeleteControls
+                        leadId={lead.id}
+                        expanded={leadDeleteConfirmId === lead.id}
+                        busy={Boolean(leadActionId)}
+                        onToggle={() => setLeadDeleteConfirmId(
+                          leadDeleteConfirmId === lead.id ? "" : lead.id,
+                        )}
+                        onConfirm={() => void permanentlyDeleteLead(lead.id)}
+                        onCancel={() => setLeadDeleteConfirmId("")}
+                      />
                     </div>
                   </article>
                 ))}
@@ -1174,7 +1570,12 @@ export function MarketingOperator(): React.JSX.Element {
               </p>
 
               {draft ? (
-                <DraftReview draft={draft} />
+                <DraftReview
+                  draft={draft}
+                  operatorToken={token}
+                  runId={runId}
+                  result={result}
+                />
               ) : (
                 <div className={styles.generating} role="status">
                   <span aria-hidden />
@@ -1257,7 +1658,77 @@ function StatusChip({ ready, label }: { ready: boolean; label: string }): React.
   );
 }
 
-function DraftReview({ draft }: { draft: unknown }): React.JSX.Element {
+export function LeadDeleteControls({
+  leadId,
+  expanded,
+  busy,
+  onToggle,
+  onConfirm,
+  onCancel,
+}: {
+  leadId: string;
+  expanded: boolean;
+  busy: boolean;
+  onToggle: () => void;
+  onConfirm: () => void;
+  onCancel: () => void;
+}): React.JSX.Element {
+  const triggerId = leadDeleteTriggerId(leadId);
+  const confirmationId = `${triggerId}-confirmation`;
+  const cancel = (): void => {
+    onCancel();
+    window.setTimeout(() => {
+      document.getElementById(triggerId)?.focus();
+    }, 0);
+  };
+
+  return (
+    <>
+      <button
+        id={triggerId}
+        type="button"
+        aria-controls={expanded ? confirmationId : undefined}
+        aria-expanded={expanded}
+        onClick={onToggle}
+        disabled={busy}
+      >
+        {expanded ? "Hide delete options" : "Delete"}
+      </button>
+      {expanded ? (
+        <div
+          className={styles.deleteConfirmation}
+          id={confirmationId}
+          role="group"
+          aria-label="Permanent deletion confirmation"
+        >
+          <button
+            type="button"
+            data-danger
+            onClick={onConfirm}
+            disabled={busy}
+          >
+            Confirm permanent delete
+          </button>
+          <button type="button" onClick={cancel} disabled={busy}>
+            Cancel
+          </button>
+        </div>
+      ) : null}
+    </>
+  );
+}
+
+function DraftReview({
+  draft,
+  operatorToken,
+  runId,
+  result,
+}: {
+  draft: unknown;
+  operatorToken: string;
+  runId: string;
+  result: unknown;
+}): React.JSX.Element {
   const record = isRecord(draft) ? draft : {};
   const channelEntries = extractChannelEntries(record);
   const sourcePacket = isRecord(record.sourcePacket) ? record.sourcePacket : null;
@@ -1283,12 +1754,36 @@ function DraftReview({ draft }: { draft: unknown }): React.JSX.Element {
 
       <div className={styles.copyGrid}>
         {channelEntries.length ? channelEntries.map(([channel, value]) => (
-          <article className={styles.copyCard} key={channel}>
+          <article
+            className={`${styles.copyCard} ${
+              channel === "substack" ? styles.substackCard : ""
+            }`}
+            key={`${channel}:${
+              isRecord(value) ? text(value.id) ?? text(value.candidateId) ?? "draft" : "draft"
+            }`}
+          >
             <div>
               <h3>{channel === "x" ? "X" : titleCase(channel)}</h3>
               {channel === "substack" ? <span>editor handoff</span> : null}
             </div>
-            <DraftCopy value={value} />
+            {channel === "substack" ? (
+              <SubstackHandoff
+                candidateId={isRecord(value)
+                  ? text(value.id) ?? text(value.candidateId) ?? ""
+                  : ""}
+                value={value}
+                operatorToken={operatorToken}
+                runId={runId}
+                verificationEnabled={hasSubstackEditorHandoff(
+                  result,
+                  isRecord(value)
+                    ? text(value.id) ?? text(value.candidateId) ?? ""
+                    : "",
+                )}
+              />
+            ) : (
+              <DraftCopy value={value} />
+            )}
           </article>
         )) : (
           <article className={styles.copyCard}>
@@ -1302,6 +1797,221 @@ function DraftReview({ draft }: { draft: unknown }): React.JSX.Element {
         <ReviewItems title="Evidence" items={evidence} empty="No evidence was attached." />
         <ReviewItems title="Policy gates" items={gates} empty="No policy gates were reported." gates />
       </div>
+    </div>
+  );
+}
+
+export function SubstackHandoff({
+  candidateId,
+  value,
+  operatorToken,
+  runId,
+  verificationEnabled,
+}: {
+  candidateId: string;
+  value: unknown;
+  operatorToken: string;
+  runId: string;
+  verificationEnabled: boolean;
+}): React.JSX.Element {
+  const draft = substackDraftView(value);
+  const [copyState, setCopyState] = useState<
+    "idle" | "rich" | "plain" | "error"
+  >(
+    "idle",
+  );
+  const [canonicalUrl, setCanonicalUrl] = useState("");
+  const [verification, setVerification] =
+    useState<SubstackVerification | null>(null);
+  const [verificationBusy, setVerificationBusy] = useState(false);
+  const [verificationError, setVerificationError] = useState("");
+  const verificationGeneration = useRef(0);
+  const canonicalUrlRef = useRef("");
+
+  if (!draft) return <DraftCopy value={value} />;
+  const richText = prepareSubstackRichText(draft.bodyMarkdown);
+
+  const copyRichText = async (): Promise<void> => {
+    setCopyState("idle");
+    try {
+      const copiedAs = await writeSubstackClipboard(
+        richText,
+        navigator.clipboard,
+        typeof ClipboardItem === "undefined" ? undefined : ClipboardItem,
+      );
+      setCopyState(copiedAs);
+    } catch {
+      setCopyState("error");
+    }
+  };
+
+  const verifyPublication = async (): Promise<void> => {
+    const requestedCanonicalUrl = canonicalSubstackPostUrl(canonicalUrl);
+    if (
+      !verificationEnabled
+      || verificationBusy
+      || !requestedCanonicalUrl
+      || !runId
+      || !candidateId
+    ) return;
+    const requestGeneration = verificationGeneration.current + 1;
+    verificationGeneration.current = requestGeneration;
+    canonicalUrlRef.current = requestedCanonicalUrl;
+    setCanonicalUrl(requestedCanonicalUrl);
+    setVerificationBusy(true);
+    setVerification(null);
+    setVerificationError("");
+    try {
+      const body = await operatorRequest(
+        "/api/marketing/substack/verify",
+        operatorToken,
+        {
+          method: "POST",
+          body: JSON.stringify({
+            runId,
+            candidateId,
+            canonicalUrl: requestedCanonicalUrl,
+          }),
+        },
+      );
+      if (
+        !substackVerificationResponseIsCurrent({
+          requestGeneration,
+          currentGeneration: verificationGeneration.current,
+          requestedCanonicalUrl,
+          currentRawUrl: canonicalUrlRef.current,
+        })
+      ) return;
+      const parsed = parseSubstackVerification(body, {
+        runId,
+        candidateId,
+        canonicalUrl: requestedCanonicalUrl,
+      });
+      if (!parsed) throw new Error("The RSS verifier returned an invalid receipt.");
+      setVerification(parsed);
+    } catch (error) {
+      if (requestGeneration === verificationGeneration.current) {
+        setVerificationError(
+          error instanceof Error
+            ? error.message
+            : "The public RSS could not be verified.",
+        );
+      }
+    } finally {
+      if (requestGeneration === verificationGeneration.current) {
+        setVerificationBusy(false);
+      }
+    }
+  };
+
+  return (
+    <div className={styles.substackHandoff}>
+      <div className={styles.substackMeta}>
+        <span>Title</span>
+        <strong>{draft.title}</strong>
+        {draft.subtitle ? <p>{draft.subtitle}</p> : null}
+        {draft.tags.length ? <small>{draft.tags.join(" · ")}</small> : null}
+      </div>
+
+      {verificationEnabled ? (
+        <div className={styles.substackActions}>
+          <button type="button" onClick={() => void copyRichText()}>
+            {copyState === "rich"
+              ? "Rich text copied"
+              : copyState === "plain"
+                ? "Plain text copied"
+                : "Copy rich text"}
+          </button>
+          <a
+            href="https://defitutorials.substack.com/publish/post"
+            target="_blank"
+            rel="noreferrer noopener"
+          >
+            Open official editor ↗
+          </a>
+          <span role="status">
+            {copyState === "error"
+              ? "Clipboard access failed. Select the plain-text fallback below."
+              : copyState === "plain"
+                ? "Rich copy was unavailable, so the plain-text body was copied."
+                : "Copies the body as text/html plus a plain-text fallback."}
+          </span>
+        </div>
+      ) : (
+        <p className={styles.hint}>
+          Approve this exact draft before using the official editor handoff.
+        </p>
+      )}
+
+      <section className={styles.substackPreview} aria-label="Rendered Substack body preview">
+        <span>Rendered preview</span>
+        {/* prepareSubstackRichText escapes raw HTML and allowlists every href. */}
+        <div dangerouslySetInnerHTML={{ __html: richText.html }} />
+      </section>
+
+      <details className={styles.plainTextFallback}>
+        <summary>Selectable plain-text editor fallback</summary>
+        <pre>{richText.plainText}</pre>
+      </details>
+
+      <details className={styles.markdownAudit}>
+        <summary>Reviewed Markdown audit source</summary>
+        <pre>{draft.bodyMarkdown}</pre>
+      </details>
+
+      {verificationEnabled ? (
+        <div className={styles.substackVerify}>
+          <label className={styles.field}>
+            <span>Published canonical URL</span>
+            <input
+              type="url"
+              inputMode="url"
+              spellCheck={false}
+              value={canonicalUrl}
+              onChange={(event) => {
+                verificationGeneration.current += 1;
+                canonicalUrlRef.current = event.target.value;
+                setCanonicalUrl(event.target.value);
+                setVerification(null);
+                setVerificationError("");
+                setVerificationBusy(false);
+              }}
+              placeholder="https://defitutorials.substack.com/p/..."
+            />
+          </label>
+          <button
+            type="button"
+            onClick={() => void verifyPublication()}
+            disabled={
+              verificationBusy
+              || !canonicalUrl.trim()
+              || !runId
+              || !candidateId
+            }
+          >
+            {verificationBusy ? "Checking RSS…" : "Verify public RSS"}
+          </button>
+          {verification ? (
+            <p data-status={verification.status} role="status">
+              {verification.status === "rss_confirmed"
+                ? `RSS confirmed the exact URL and approved title${
+                    verification.publishedAt
+                      ? ` · ${new Date(verification.publishedAt).toLocaleString()}`
+                      : ""
+                  }.`
+                : verification.status === "title_mismatch"
+                  ? "The URL is in the feed, but its title does not match the approved draft."
+                  : "The exact URL is not present in the public feed."}
+            </p>
+          ) : null}
+          {verificationError ? <p role="status">{verificationError}</p> : null}
+          <small>
+            This is a read-only check. It does not publish, edit Substack, or
+            persist an RSS-confirmed receipt; the current ledger records only
+            the approved editor handoff.
+          </small>
+        </div>
+      ) : null}
     </div>
   );
 }

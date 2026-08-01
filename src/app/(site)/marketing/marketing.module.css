@@ -220,6 +220,7 @@
 }
 
 .textButton {
+  min-height: 42px;
   padding: 5px 7px;
   background: transparent;
   color: var(--ink-2);
@@ -257,6 +258,13 @@
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 9px;
+}
+
+.readinessScope {
+  margin: -5px 0 12px;
+  color: var(--ink-3);
+  font-size: 11.5px;
+  line-height: 1.55;
 }
 
 .readinessCard {
@@ -306,7 +314,7 @@
 
 .queueControls select {
   min-width: 74px;
-  height: 30px;
+  height: 42px;
   padding: 0 8px;
   border: 1px solid var(--line);
   border-radius: var(--r-ctl-sm);
@@ -335,6 +343,10 @@
   gap: 12px;
 }
 
+.leadCard > header > div {
+  min-width: 0;
+}
+
 .leadPersona {
   display: block;
   color: var(--zap-wash-ink);
@@ -352,12 +364,14 @@
   font-size: 20px;
   font-weight: 500;
   letter-spacing: -0.02em;
+  overflow-wrap: anywhere;
 }
 
 .leadCard header p {
   margin: 3px 0 0;
   color: var(--ink-3);
   font-size: 11px;
+  overflow-wrap: anywhere;
 }
 
 .leadScore {
@@ -383,6 +397,13 @@
   margin-top: 11px;
   color: var(--ink-2);
   font-size: 11.5px;
+  overflow-wrap: anywhere;
+}
+
+.leadContact > * {
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
 }
 
 .leadContact a {
@@ -441,12 +462,14 @@
 }
 
 .leadCard > footer span {
+  max-width: 100%;
   padding: 3px 7px;
   border-radius: var(--r-chip);
   background: var(--chip);
   color: var(--ink-3);
   font-family: var(--font-mono), ui-monospace, monospace;
   font-size: 9px;
+  overflow-wrap: anywhere;
 }
 
 .leadActions {
@@ -459,8 +482,8 @@
 }
 
 .leadActions button {
-  min-height: 30px;
-  padding: 5px 9px;
+  min-height: 42px;
+  padding: 8px 11px;
   border: 1px solid var(--line-2);
   border-radius: var(--r-ctl-sm);
   background: var(--sunk);
@@ -468,6 +491,22 @@
   cursor: pointer;
   font-size: 10.5px;
   font-weight: 650;
+}
+
+.leadActions > button {
+  flex: 1 1 132px;
+}
+
+.deleteConfirmation {
+  display: flex;
+  flex: 2 1 270px;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-width: 0;
+}
+
+.deleteConfirmation button {
+  flex: 1 1 132px;
 }
 
 .leadActions button:hover:not(:disabled) {
@@ -639,6 +678,10 @@
   background: var(--sunk);
 }
 
+.substackCard {
+  grid-column: 1 / -1;
+}
+
 .copyCard > div:first-child {
   display: flex;
   align-items: center;
@@ -666,6 +709,217 @@
   font-weight: 650;
   letter-spacing: 0.04em;
   text-transform: uppercase;
+}
+
+.substackHandoff {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+  padding: 12px;
+}
+
+.substackMeta {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.substackMeta > span,
+.substackPreview > span {
+  color: var(--ink-3);
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-size: 9.5px;
+  font-weight: 650;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.substackMeta strong {
+  min-width: 0;
+  color: var(--ink);
+  font-family: var(--font-serif), Georgia, serif;
+  font-size: 21px;
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+
+.substackMeta p,
+.substackMeta small,
+.substackActions span,
+.substackVerify small {
+  margin: 0;
+  color: var(--ink-3);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.substackMeta p,
+.substackMeta small {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.substackActions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.substackActions button,
+.substackActions a,
+.substackVerify > button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 42px;
+  padding: 8px 12px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-ctl);
+  background: var(--panel);
+  color: var(--ink);
+  cursor: pointer;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 650;
+  text-decoration: none;
+}
+
+.substackActions button:hover,
+.substackActions a:hover,
+.substackVerify > button:hover {
+  border-color: var(--zap-deep);
+}
+
+.substackActions span {
+  flex: 1 1 240px;
+}
+
+.substackPreview {
+  display: grid;
+  gap: 9px;
+  padding: 12px;
+  border: 1px solid var(--line-2);
+  border-radius: var(--r-card-sm);
+  background: var(--panel);
+}
+
+.substackPreview > div {
+  max-height: 520px;
+  overflow: auto;
+  color: var(--ink-prose);
+  font-size: 13px;
+  line-height: 1.7;
+}
+
+.substackPreview h2,
+.substackPreview h3 {
+  margin: 20px 0 8px;
+  color: var(--ink);
+  font-family: var(--font-serif), Georgia, serif;
+  font-weight: 500;
+  line-height: 1.2;
+}
+
+.substackPreview h2:first-child,
+.substackPreview h3:first-child,
+.substackPreview p:first-child {
+  margin-top: 0;
+}
+
+.substackPreview h2 {
+  font-size: 20px;
+}
+
+.substackPreview h3 {
+  font-size: 16px;
+}
+
+.substackPreview p,
+.substackPreview blockquote,
+.substackPreview ul,
+.substackPreview ol,
+.substackPreview pre {
+  margin: 0 0 12px;
+}
+
+.substackPreview blockquote {
+  padding: 8px 12px;
+  border-left: 3px solid var(--zap-deep);
+  background: var(--zap-wash);
+}
+
+.substackPreview blockquote p {
+  margin: 0;
+}
+
+.substackPreview pre {
+  overflow-x: auto;
+  padding: 10px;
+  border-radius: var(--r-ctl);
+  background: var(--sunk);
+  font-family: var(--font-mono), ui-monospace, monospace;
+}
+
+.substackPreview a {
+  color: var(--zap-deep);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.markdownAudit,
+.plainTextFallback {
+  border: 1px solid var(--line-2);
+  border-radius: var(--r-card-sm);
+  background: var(--panel-2);
+}
+
+.markdownAudit summary,
+.plainTextFallback summary {
+  display: flex;
+  align-items: center;
+  min-height: 42px;
+  padding: 8px 12px;
+  color: var(--ink-2);
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 650;
+}
+
+.markdownAudit pre,
+.plainTextFallback pre {
+  max-height: 320px;
+  border-top: 1px solid var(--line-2);
+}
+
+.substackVerify {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 8px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line-2);
+}
+
+.substackVerify > p,
+.substackVerify > small {
+  grid-column: 1 / -1;
+}
+
+.substackVerify > p {
+  margin: 0;
+  color: var(--warn);
+  font-size: 11.5px;
+  line-height: 1.5;
+}
+
+.substackVerify > p[data-status="rss_confirmed"] {
+  color: var(--ok);
+}
+
+.substackVerify > button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
 }
 
 .copyCard pre,
@@ -851,8 +1105,29 @@
   }
 
   .actionRow,
-  .decisionButtons {
+  .decisionButtons,
+  .substackActions {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .leadActions > button,
+  .deleteConfirmation,
+  .deleteConfirmation button {
+    flex-basis: 100%;
+    width: 100%;
+  }
+
+  .deleteConfirmation {
+    flex-direction: column;
+  }
+
+  .substackVerify {
+    grid-template-columns: 1fr;
+  }
+
+  .substackVerify > p,
+  .substackVerify > small {
+    grid-column: 1;
   }
 }

@@ -1,0 +1,29 @@
+{
+  "version": 1,
+  "publication": "https://defitutorials.substack.com",
+  "feed": "https://defitutorials.substack.com/feed",
+  "statusDefinitions": {
+    "draft": "Source-controlled Markdown that still requires owner approval. It is not authorized for the editor handoff and is not public.",
+    "approved_handoff": "The owner approved the exact draft and an official-editor handoff was prepared. This does not mean the tutorial is public.",
+    "rss_confirmed": "The exact canonical DeFi Tutorials URL and approved title were found together in the public RSS feed."
+  },
+  "tutorials": [
+    {
+      "id": "give-an-agent-the-trigger",
+      "title": "Give an Agent the Trigger, Never the Authority",
+      "sourcePath": "docs/tutorials/give-an-agent-the-trigger.md",
+      "status": "rss_confirmed",
+      "canonicalUrl": "https://defitutorials.substack.com/p/give-an-agent-the-trigger-never-the",
+      "publishedAt": "2026-07-29T16:55:32.000Z"
+    },
+    {
+      "id": "paper-trade-first-authority-map",
+      "title": "Paper Trade First, Then Draw the Authority Map",
+      "sourcePath": "docs/tutorials/paper-trade-first-authority-map.md",
+      "status": "draft",
+      "preparedAt": "2026-07-31",
+      "canonicalUrl": null,
+      "publishedAt": null
+    }
+  ]
+}

@@ -10,7 +10,10 @@ import type {
   MarketingTopic,
 } from "@/lib/marketing/types";
 import { MARKETING_POLICY_VERSION } from "@/lib/marketing/types";
-import { isScheduledMarketingTemplateCandidate } from "@/lib/marketing/scheduled-template";
+import {
+  isReviewedMarketingCampaignCandidate,
+  reviewedMarketingCampaignIsAvailable,
+} from "@/lib/marketing/scheduled-template";
 import { containsCredentialLikeData } from "@/lib/marketing/source-url";
 
 export const PRE_AUDIT_DISCLOSURE = "Pre-audit software. Verify before use.";
@@ -248,7 +251,12 @@ export function isBoundedAutoPublishAuthorized(
     riskTier === 1 &&
     candidate.action === "broadcast" &&
     (candidate.channel === "x" || candidate.channel === "discord") &&
-    isScheduledMarketingTemplateCandidate(
+    reviewedMarketingCampaignIsAvailable(
+      authorization.templateId,
+      candidate.channel,
+      context.now,
+    ) &&
+    isReviewedMarketingCampaignCandidate(
       candidate,
       authorization.templateId,
     )

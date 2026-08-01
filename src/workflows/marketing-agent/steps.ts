@@ -14,12 +14,11 @@ import {
   isCanonicalOutboundUrl,
   marketingSourcePacketPromptData,
   readMarketingConfig,
-  scheduledMarketingTemplate,
-  isScheduledMarketingTemplateCandidate,
-  SCHEDULED_MARKETING_TEMPLATE_ID,
+  isReviewedMarketingCampaignCandidate,
+  reviewedMarketingCampaign,
   type MarketingFact,
   type MarketingPolicyContext,
-  type ScheduledMarketingChannel,
+  type ReviewedMarketingCampaign,
 } from "@/lib/marketing";
 import {
   ChannelAdapterError,
@@ -38,6 +37,7 @@ import {
   completeMarketingDeliveryClaim,
   emptyDryRunMarketingLedgerSnapshot,
   getMarketingLedgerSnapshot,
+  verifyReviewedMarketingCampaignClaim,
 } from "@/lib/marketing/ledger-server";
 import { containsCredentialLikeData } from "@/lib/marketing/source-url";
 import {
@@ -66,10 +66,7 @@ import {
 } from "@/workflows/marketing-agent/contracts";
 
 const DEFAULT_MODEL = "openai/gpt-5-mini";
-const SCHEDULED_MODEL =
-  `deterministic/${SCHEDULED_MARKETING_TEMPLATE_ID}` as const;
-const SCHEDULED_BRIEF =
-  "Publish the versioned Virtual Trading and Request a Zap feature template.";
+const SCHEDULED_MODEL_PREFIX = "deterministic/reviewed-campaign/" as const;
 const DEFAULT_SITE_URL = "https://www.0xzaps.com";
 const SOURCE_TIMEOUT_MS = 12_000;
 const JSON_SOURCE_LIMIT = 1_000_000;
@@ -679,10 +676,14 @@ export function scheduledMarketingDraftRequest(
   rawRequest: MarketingScheduledRequest,
 ): MarketingDraftRequest {
   const request = MarketingScheduledRequestSchema.parse(rawRequest);
+  const campaign = reviewedMarketingCampaign(
+    request.campaignId,
+    request.channel,
+  );
   return MarketingDraftRequestSchema.parse({
     kind: "product_update",
-    brief: SCHEDULED_BRIEF,
-    channels: request.channels,
+    brief: scheduledCampaignBrief(campaign),
+    channels: [campaign.channel],
     sourceUrls: [],
   });
 }
@@ -803,17 +804,41 @@ export async function generateMarketingDraftStep(
 // its inputs, so recovery happens through a fresh, explicitly requested run.
 generateMarketingDraftStep.maxRetries = 0;
 
-function scheduledBundleId(
-  channels: readonly ScheduledMarketingChannel[],
-): string {
+function scheduledCampaignBrief(campaign: ReviewedMarketingCampaign): string {
+  return `Publish the exact source-reviewed ${campaign.id} campaign on ${campaign.channel}.`;
+}
+
+function scheduledCampaignModel(campaign: ReviewedMarketingCampaign): string {
+  return `${SCHEDULED_MODEL_PREFIX}${campaign.id}/${campaign.channel}`;
+}
+
+function scheduledBundleId(campaign: ReviewedMarketingCampaign): string {
   const hash = createHash("sha256")
     .update(JSON.stringify({
-      templateId: SCHEDULED_MARKETING_TEMPLATE_ID,
-      channels: [...channels].sort(),
+      campaignId: campaign.id,
+      channel: campaign.channel,
     }))
     .digest("hex")
     .slice(0, 24);
   return `scheduled:${hash}`;
+}
+
+function scheduledCampaignFromModel(
+  model: string,
+): ReviewedMarketingCampaign | null {
+  if (!model.startsWith(SCHEDULED_MODEL_PREFIX)) return null;
+  const identity = model.slice(SCHEDULED_MODEL_PREFIX.length);
+  const separator = identity.lastIndexOf("/");
+  if (separator < 1) return null;
+  const campaignId = identity.slice(0, separator);
+  const channel = identity.slice(separator + 1);
+  if (channel !== "x" && channel !== "discord") return null;
+  try {
+    const campaign = reviewedMarketingCampaign(campaignId, channel);
+    return scheduledCampaignModel(campaign) === model ? campaign : null;
+  } catch {
+    return null;
+  }
 }
 
 export async function buildScheduledMarketingDraftStep(
@@ -823,46 +848,54 @@ export async function buildScheduledMarketingDraftStep(
 ): Promise<MarketingDraftBundle> {
   "use step";
 
-  const request = scheduledMarketingDraftRequest(rawRequest);
-  const channels = request.channels as ScheduledMarketingChannel[];
-  const bundleId = scheduledBundleId(channels);
-  const candidates = channels.map((channel) => {
-    const template = scheduledMarketingTemplate(channel);
-    return DeployedMarketingCandidateSchema.parse({
-      id: `${bundleId}:${channel}`,
-      channel,
-      action: "broadcast",
-      kind: "product_update",
-      topics: template.topics,
-      body: template.body,
-      links: template.links,
-      disclosures: template.disclosures,
-      claims: template.claims,
-      sourcePacket,
-      interaction: null,
-      flags: template.flags,
-    });
+  const scheduledRequest = MarketingScheduledRequestSchema.parse(rawRequest);
+  const campaign = reviewedMarketingCampaign(
+    scheduledRequest.campaignId,
+    scheduledRequest.channel,
+  );
+  if (
+    scheduledRequest.contentHash !== campaign.contentHash ||
+    !(await verifyReviewedMarketingCampaignClaim(scheduledRequest))
+  ) {
+    throw new Error(
+      "The scheduled campaign does not have a matching durable claim.",
+    );
+  }
+  const request = scheduledMarketingDraftRequest(scheduledRequest);
+  const bundleId = scheduledBundleId(campaign);
+  const candidate = DeployedMarketingCandidateSchema.parse({
+    id: `${bundleId}:${campaign.channel}`,
+    channel: campaign.channel,
+    action: "broadcast",
+    kind: "product_update",
+    topics: campaign.topics,
+    body: campaign.body,
+    links: campaign.links,
+    disclosures: campaign.disclosures,
+    claims: campaign.claims,
+    sourcePacket,
+    interaction: null,
+    flags: campaign.flags,
   });
   const context = await policyContext(false, [], {
     kind: "scheduled_template",
-    templateId: SCHEDULED_MARKETING_TEMPLATE_ID,
+    templateId: campaign.id,
   });
-  const policy = candidates.map((candidate) =>
-    evaluateMarketingPolicy(candidate, context),
-  );
+  const policy = [evaluateMarketingPolicy(candidate, context)];
 
   return MarketingDraftBundleSchema.parse({
     id: bundleId,
     runId,
     requestedAt: sourcePacket.createdAt,
-    model: SCHEDULED_MODEL,
+    model: scheduledCampaignModel(campaign),
     request,
+    scheduledClaim: scheduledRequest,
     sourcePacket,
-    candidates,
-    presentations: candidates.map((candidate) => ({
+    candidates: [candidate],
+    presentations: [{
       candidateId: candidate.id,
       channel: candidate.channel,
-    })),
+    }],
     policy,
     usage: {
       inputTokens: 0,
@@ -875,52 +908,48 @@ export async function buildScheduledMarketingDraftStep(
 buildScheduledMarketingDraftStep.maxRetries = 0;
 
 function isExactScheduledBundle(bundle: MarketingDraftBundle): boolean {
+  const campaign = scheduledCampaignFromModel(bundle.model);
+  const scheduledClaim = MarketingScheduledRequestSchema.safeParse(
+    bundle.scheduledClaim,
+  );
   if (
-    bundle.model !== SCHEDULED_MODEL ||
+    !campaign ||
+    !scheduledClaim.success ||
+    scheduledClaim.data.campaignId !== campaign.id ||
+    scheduledClaim.data.channel !== campaign.channel ||
+    scheduledClaim.data.contentHash !== campaign.contentHash ||
     bundle.request.kind !== "product_update" ||
-    bundle.request.brief !== SCHEDULED_BRIEF ||
+    bundle.request.brief !== scheduledCampaignBrief(campaign) ||
     bundle.request.sourceUrls.length !== 0 ||
     bundle.request.interactionUrl !== undefined ||
-    bundle.request.channels.some(
-      (channel) => channel !== "x" && channel !== "discord",
-    ) ||
+    bundle.request.channels.length !== 1 ||
+    bundle.request.channels[0] !== campaign.channel ||
     bundle.sourcePacket.interaction !== null ||
     bundle.requestedAt !== bundle.sourcePacket.createdAt
   ) {
     return false;
   }
-  const channels = bundle.request.channels as ScheduledMarketingChannel[];
   if (
-    bundle.id !== scheduledBundleId(channels) ||
-    bundle.candidates.length !== channels.length ||
-    bundle.presentations.length !== channels.length
+    bundle.id !== scheduledBundleId(campaign) ||
+    bundle.candidates.length !== 1 ||
+    bundle.presentations.length !== 1
   ) {
     return false;
   }
 
-  return channels.every((channel) => {
-    const candidate = bundle.candidates.find(
-      (item) => item.channel === channel,
-    );
-    const presentations = bundle.presentations.filter(
-      (item) => item.channel === channel,
-    );
-    return (
-      candidate !== undefined &&
-      candidate.id === `${bundle.id}:${channel}` &&
-      JSON.stringify(candidate.sourcePacket) ===
-        JSON.stringify(bundle.sourcePacket) &&
-      isScheduledMarketingTemplateCandidate(
-        candidate,
-        SCHEDULED_MARKETING_TEMPLATE_ID,
-      ) &&
-      presentations.length === 1 &&
-      presentations[0]?.candidateId === candidate.id &&
-      presentations[0]?.title === undefined &&
-      presentations[0]?.subtitle === undefined &&
-      presentations[0]?.tags === undefined
-    );
-  });
+  const candidate = bundle.candidates[0];
+  const presentation = bundle.presentations[0];
+  return (
+    candidate !== undefined &&
+    candidate.id === `${bundle.id}:${campaign.channel}` &&
+    JSON.stringify(candidate.sourcePacket) === JSON.stringify(bundle.sourcePacket) &&
+    isReviewedMarketingCampaignCandidate(candidate, campaign.id) &&
+    presentation?.candidateId === candidate.id &&
+    presentation.channel === campaign.channel &&
+    presentation.title === undefined &&
+    presentation.subtitle === undefined &&
+    presentation.tags === undefined
+  );
 }
 
 function safeChannelError(error: unknown): string {
@@ -932,14 +961,13 @@ function itemIdempotencyKey(
   bundle: MarketingDraftBundle,
   candidate: DeployedMarketingCandidate,
 ): string {
+  const campaign = scheduledCampaignFromModel(bundle.model);
   if (
-    bundle.model === SCHEDULED_MODEL &&
-    isScheduledMarketingTemplateCandidate(
-      candidate,
-      SCHEDULED_MARKETING_TEMPLATE_ID,
-    )
+    campaign &&
+    campaign.channel === candidate.channel &&
+    isReviewedMarketingCampaignCandidate(candidate, campaign.id)
   ) {
-    return `scheduled:${SCHEDULED_MARKETING_TEMPLATE_ID}:${candidate.channel}`;
+    return `scheduled:${campaign.id}:${candidate.channel}`;
   }
   return `${bundle.id.replace(/[^A-Za-z0-9._:-]/gu, "_")}:${candidate.channel}`;
 }
@@ -1053,10 +1081,25 @@ async function deliverMarketingBundle(
     );
   }
 
+  const automaticCampaignClaimError = async (): Promise<string | null> => {
+    if (!authorization.automaticAuthorization) return null;
+    try {
+      return bundle.scheduledClaim &&
+        (await verifyReviewedMarketingCampaignClaim(bundle.scheduledClaim))
+        ? null
+        : "The durable scheduled-campaign claim was no longer current; no durable delivery claim or provider write was made.";
+    } catch {
+      return "Scheduled-campaign claim verification was unavailable; no durable delivery claim or provider write was made.";
+    }
+  };
+
   const dryRun = context.config.dryRun;
   const deliveries: MarketingDelivery[] = [];
-  for (const [index, candidate] of bundle.candidates.entries()) {
+  for (const candidate of bundle.candidates) {
     const idempotencyKey = itemIdempotencyKey(bundle, candidate);
+    const presentation = bundle.presentations.find(
+      (item) => item.candidateId === candidate.id,
+    );
     if (dryRun) {
       deliveries.push({
         channel: candidate.channel,
@@ -1067,7 +1110,26 @@ async function deliverMarketingBundle(
       continue;
     }
 
-    const dailyCounter = decisions[index]?.dailyCounter;
+    if (
+      candidate.channel === "substack" &&
+      (!presentation?.title ||
+        !presentation.tags ||
+        presentation.tags.length < 2)
+    ) {
+      deliveries.push({
+        channel: candidate.channel,
+        candidateId: candidate.id,
+        status: "blocked",
+        idempotencyKey,
+        error:
+          "The approved Substack candidate is missing its exact title or tags; no durable claim or editor handoff was created.",
+      });
+      continue;
+    }
+
+    const dailyCounter = decisions.find(
+      (decision) => decision.candidateId === candidate.id,
+    )?.dailyCounter;
     if (candidate.action === "draft" || !dailyCounter) {
       deliveries.push({
         channel: candidate.channel,
@@ -1075,6 +1137,18 @@ async function deliverMarketingBundle(
         status: "blocked",
         idempotencyKey,
         error: "No reviewed durable counter exists for this delivery.",
+      });
+      continue;
+    }
+
+    const preflightClaimError = await automaticCampaignClaimError();
+    if (preflightClaimError) {
+      deliveries.push({
+        channel: candidate.channel,
+        candidateId: candidate.id,
+        status: "blocked",
+        idempotencyKey,
+        error: preflightClaimError,
       });
       continue;
     }
@@ -1140,6 +1214,18 @@ async function deliverMarketingBundle(
         idempotencyKey,
         error:
           "Deterministic policy blocked delivery at final provider admission.",
+      });
+      continue;
+    }
+
+    const finalClaimError = await automaticCampaignClaimError();
+    if (finalClaimError) {
+      deliveries.push({
+        channel: candidate.channel,
+        candidateId: candidate.id,
+        status: "blocked",
+        idempotencyKey,
+        error: finalClaimError,
       });
       continue;
     }
@@ -1298,14 +1384,11 @@ async function deliverMarketingBundle(
           providerMessageId: receipt.providerMessageId,
         });
       } else {
-        const presentation = bundle.presentations.find(
-          (item) => item.candidateId === candidate.id,
-        );
         const handoff = createSubstackEditorHandoff({
-          title: presentation?.title ?? "OpenZaps tutorial",
+          title: presentation!.title!,
           ...(presentation?.subtitle ? { subtitle: presentation.subtitle } : {}),
           bodyMarkdown: candidate.body,
-          tags: presentation?.tags ?? ["OpenZaps", "DeFi"],
+          tags: presentation!.tags!,
           idempotencyKey,
         });
         const finalized = await finalizeDeliveryClaim({
@@ -1377,18 +1460,35 @@ export async function publishScheduledMarketingBundleStep(
   "use step";
 
   const bundle = MarketingDraftBundleSchema.parse(rawBundle);
-  if (!isExactScheduledBundle(bundle)) {
+  const campaign = scheduledCampaignFromModel(bundle.model);
+  if (!campaign || !isExactScheduledBundle(bundle)) {
     return blockedDeliveries(
       bundle,
-      "Scheduled delivery did not match the exact versioned server template.",
+      "Scheduled delivery did not match an exact source-reviewed campaign.",
+    );
+  }
+  try {
+    if (
+      !bundle.scheduledClaim ||
+      !(await verifyReviewedMarketingCampaignClaim(bundle.scheduledClaim))
+    ) {
+      return blockedDeliveries(
+        bundle,
+        "Scheduled delivery has no current durable campaign claim.",
+      );
+    }
+  } catch {
+    return blockedDeliveries(
+      bundle,
+      "Scheduled campaign claim verification was unavailable; no provider write was attempted.",
     );
   }
   return deliverMarketingBundle(bundle, {
-    approvedBy: `system:${SCHEDULED_MARKETING_TEMPLATE_ID}`,
+    approvedBy: `system:${campaign.id}`,
     humanApproved: false,
     automaticAuthorization: {
       kind: "scheduled_template",
-      templateId: SCHEDULED_MARKETING_TEMPLATE_ID,
+      templateId: campaign.id,
     },
     xMadeWithAi: false,
   });

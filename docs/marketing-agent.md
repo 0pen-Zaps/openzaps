@@ -4,9 +4,10 @@ This runbook covers deployment and operation of the OpenZaps marketing agent on
 Vercel. Model-generated copy is **review-only**: the agent collects evidence
 and drafts channel-specific copy, deterministic policy evaluates it, and an
 authenticated operator approves or rejects every generated outbound bundle.
-There is one narrower automatic lane for exact, versioned, server-rendered
-tier-1 educational or wallet-free simulation templates on ready X and Discord
-broadcast providers.
+There is one narrower automatic lane for exact, versioned, source-reviewed
+tier-1 educational or wallet-free simulation campaigns on ready X and Discord
+broadcast providers. Campaign/channel rows are append-only release artifacts;
+the model and public drafting inputs cannot add to the queue.
 
 The agent does not receive wallet authority. It cannot create, fund, sign, or
 execute a Zap. Its only external write surfaces are reviewed X broadcasts and
@@ -28,7 +29,7 @@ in [lead-engine.md](lead-engine.md).
 | Canonical links only | Outbound links are restricted to `0xzaps.com`, `www.0xzaps.com`, `defitutorials.substack.com`, and `github.com/0pen-Zaps/openzaps`. |
 | Human review | Every model-generated item and every reply remains review-only. Tutorials, incidents, security, token/trading, partnerships, roadmaps, and new deployments always require approval. |
 | Paper simulation | The `simulation` topic is reserved for wallet-free, no-real-funds practice surfaces. Live or token trading remains `trading` and always requires approval. |
-| Bounded scheduled templates | Automatic delivery accepts only the exact public fields of the current versioned server template, only for tier-1 X/Discord broadcasts, and rechecks configuration, source freshness, provider identity/destination, caps, and the durable claim immediately before writing. A changed body, claim, or channel—or missing, stale, or internally inconsistent source evidence—cannot inherit that authority. |
+| Bounded scheduled campaigns | Automatic delivery accepts only an immutable campaign/channel row that exactly matches the source-reviewed registry and its SHA-256 content binding, only for tier-1 X/Discord broadcasts. It rechecks typed source requirements, freshness, provider identity/destination, caps, and the durable delivery claim immediately before writing. A changed body, fact source, claim, or channel cannot inherit that authority. |
 | Prohibited means prohibited | A human cannot override credential exposure, guaranteed-return claims, impersonation, policy bypasses, unsolicited bulk messaging, unavailable-as-zero claims, or non-canonical links. |
 | No unverified X replies | An operator supplies only a canonical `x.com/<user>/status/<id>` URL and a paraphrase. The agent verifies the author and explicit mention/owned quote through X's API, stores metadata but not post text, requires human approval, and enforces one lifetime reply per interaction. There is no polling or browser scraping. |
 | No undocumented publishing | X uses `POST /2/tweets`; Discord uses official webhooks/REST; Substack uses its official editor and public RSS feed. There is no browser scraping, session-cookie automation, or private endpoint. |
@@ -48,10 +49,11 @@ operator
 cron
   -> durable weekday slot
   -> production evidence snapshot
-  -> exact versioned server template (no model)
+  -> oldest eligible source-reviewed campaign/channel (no model)
+  -> exact database/source content-hash match
   -> deterministic tier-1 policy
   -> fresh automatic-authority and provider checks
-  -> durable once-per-template/channel claim
+  -> durable once-per-campaign/channel claim
   -> X / Discord delivery
 ```
 
@@ -67,7 +69,8 @@ not invoke the model or the approval workflow.
 | `POST /api/marketing/runs` | Start a durable draft workflow | Operator bearer token |
 | `GET /api/marketing/runs/:runId` | Read the latest run event/result | Operator bearer token |
 | `POST /api/marketing/approvals` | Resume the one-shot approval hook | Operator bearer token |
-| `GET /api/marketing/cron` | Start the bounded scheduled-template workflow | `Authorization: Bearer <CRON_SECRET>` |
+| `GET /api/marketing/cron` | Claim and start the next bounded reviewed-campaign workflow | `Authorization: Bearer <CRON_SECRET>` |
+| `POST /api/marketing/substack/verify` | Read-only canonical-URL check against public DeFi Tutorials RSS, bound to one completed, approved editor handoff whose recorded title is used server-side | Operator bearer token |
 | `POST /api/marketing/discord/interactions` | Receive Discord application commands | Discord Ed25519 request signature and a five-minute freshness window |
 | `GET /api/leads/request` | Return non-secret, non-mutating lead-intake RPC readiness for fail-closed campaign evidence | Public; private/no-store response, with `503` while unavailable |
 
@@ -90,7 +93,7 @@ or interactive `vercel env add`; never commit `.env` files.
 | --- | --- | --- |
 | `OPENZAPS_MARKETING_ENABLED` | `false` | Master gate. Set `true` only after a disabled deployment passes readiness checks. |
 | `OPENZAPS_MARKETING_DRY_RUN` | `true` | When `true`, runs stop at `dry_run_complete` and never wait for approval or publish. |
-| `OPENZAPS_MARKETING_AUTO_PUBLISH` | `false` | Enables only the exact versioned scheduled-template lane when live mode, the durable ledger, and at least one requested X/Discord provider are ready. It never authorizes model output, replies, tutorials, direct messages, or operator-supplied copy. |
+| `OPENZAPS_MARKETING_AUTO_PUBLISH` | `false` | Enables only exact source-reviewed queued campaigns when live mode, the durable ledger/queue, and at least one requested X/Discord provider are ready. It never authorizes model output, replies, tutorials, direct messages, or operator-supplied copy. |
 | `OPENZAPS_MARKETING_DURABLE_LEDGER_CONFIGURED` | `false` | Set `true` only after the reviewed migration is applied and its RPC/privilege checks pass in the target Supabase project. Non-dry-run drafting fails closed without it. |
 | `OPENZAPS_MARKETING_ADMIN_TOKEN` | unset | Strong random operator bearer token. Missing configuration denies every operator API. |
 | `OPENZAPS_MARKETING_APPROVER_ID` | `authenticated-operator` | Non-secret audit label recorded with approvals. Do not put an email address or other unnecessary personal data here. |
@@ -135,7 +138,7 @@ exact project-ref/host binding, canonical Supabase origin, and service-role
 secret are all present. Loopback HTTP is accepted only outside production. Dry
 runs may use a marked empty snapshot and never call the provider. Live drafting
 and delivery fail closed without the durable ledger. Effective `autoPublish`
-can become `true` only for the scheduled-template prerequisites above; the
+can become `true` only for the reviewed-campaign prerequisites above; the
 ledger never replaces human approval for generated copy or replies.
 Direct-message delivery is hard-disabled because there is no deployed DM
 adapter; setting the legacy DM flag does not enable it.
@@ -151,22 +154,28 @@ adapter; setting the legacy DM flag does not enable it.
 `vercel.json` invokes the route at `0 14 * * 1-5`: 14:00 UTC every weekday.
 That is 10:00 Eastern during daylight-saving time and 09:00 Eastern during
 standard time. Vercel schedules use UTC. The route never invokes a model. It
-renders the exact `virtual-trading-request-zap-v2` feature template and can
-publish it only when `OPENZAPS_MARKETING_AUTO_PUBLISH=true` and every fresh gate
-passes. Substack, replies, and arbitrary copy are outside this lane.
+claims at most one eligible campaign/channel, returns `no_pending_campaign`
+without starting a workflow when the queue is empty, and can publish only when
+`OPENZAPS_MARKETING_AUTO_PUBLISH=true` and every fresh gate passes. Substack,
+replies, and arbitrary copy are outside this lane.
 
 Keep the schedule disabled during previews and initial production rollout.
 Before starting a workflow, cron atomically claims one
-`weekday_product_update` slot for the current UTC weekday in Supabase.
+`weekday_product_update` slot and the oldest eligible campaign/channel for the
+current UTC weekday in Supabase.
 Overlapping or retried invocations return `already_claimed` without creating a
 second run. A claimed slot is deliberately retained when workflow start is
 ambiguous, so the day's scheduled draft may be skipped rather than duplicated.
-Each template revision and channel also has one stable durable delivery key. A
+Each campaign and channel also has one stable durable delivery key. A
 retry inside the same workflow run can reconcile its original receipt. Once
-`virtual-trading-request-zap-v2` has been claimed, a later weekday run has a new
-run id and fails closed with `idempotency_conflict` before any provider write.
-Shipping new scheduled copy therefore requires a reviewed source change with a
-new template id; never date-salt identical text to manufacture a new delivery.
+a delivery key exists, later weekdays advance to the next eligible row. A
+schedule claim without a delivery key suppresses duplicate starts for that UTC
+day, then becomes eligible for a later weekday retry. Shipping new automatic
+copy requires a new reviewed source entry plus its exact append-only queue row
+and content hash; never date-salt identical text to manufacture a new delivery.
+The initial queue is empty because the Virtual Trading and Request-a-Zap update
+was already published to both X and Discord. No duplicate pending row or
+fabricated historical delivery receipt is created.
 
 ### X
 
@@ -354,19 +363,32 @@ After approval, a Substack delivery returns:
 
 - `status: "requires_human_publish"`;
 - the official editor URL;
-- a title, optional subtitle, body Markdown, tags, and an idempotency key in
-  the reviewed draft bundle.
+- an idempotency key bound to the exact candidate.
+
+The reviewed draft bundle persists the approved title, optional subtitle,
+body Markdown, and tags. After the exact handoff is approved, the operator UI
+derives sanitized HTML and plain text locally for copying; those derived forms
+are not separate persisted review artifacts.
 
 The operator must:
 
 1. Open the returned `https://defitutorials.substack.com/publish/post` URL.
-2. Copy the approved title, subtitle, Markdown, and tags.
+2. Use **Copy rich text** for the body and copy the approved title, subtitle,
+   and tags separately. Keep the Markdown view as the immutable audit source;
+   Substack's editor does not accept Markdown syntax as an import format. If
+   rich clipboard MIME is unavailable, use the copied or selectable plain-text
+   fallback.
 3. Recheck every fact, link, image right, disclosure, and call to action in the
    Substack preview.
 4. Publish or schedule from the official editor.
-5. Record the canonical public post URL with the run id.
-6. Confirm the item appears at
-   `https://defitutorials.substack.com/feed`.
+5. Paste the exact canonical `https://defitutorials.substack.com/p/...` URL
+   into the operator's read-only RSS verifier. The request carries only the run
+   id, candidate id, and canonical URL. The server loads the completed workflow,
+   requires its approved official-editor handoff, derives the recorded title,
+   and requires that URL and title to appear together in the public feed.
+6. Record the canonical public post URL with the run id. The verifier currently
+   reports `persisted: false`; it does not append a publication receipt to the
+   durable ledger.
 7. Start a new, reviewed X/Discord syndication run using the canonical
    Substack URL as a source.
 
@@ -453,7 +475,7 @@ Verify that the authenticated status endpoint reports disabled/dry-run and
 does not return any secret values. Verify unauthorized requests return `401`
 with `Cache-Control: private, no-store`.
 
-### 4. Apply and verify the durable ledger
+### 4. Apply and verify the durable ledger and reviewed queue
 
 The production Supabase database is shared. Do not run a blind `supabase db
 push`, repair unrelated migration history, or replay SQL copied from an
@@ -462,15 +484,28 @@ apply only:
 
 ```text
 supabase/migrations/20260729035549_marketing_delivery_ledger.sql
+supabase/migrations/20260801024005_durable_reviewed_marketing_campaign_queue.sql
 ```
+
+If the first file is already recorded remotely, apply only the second exact
+file. Do not use `db push` to cross unrelated or intentionally unapplied rows in
+the shared migration history.
 
 Apply it transactionally while the marketing agent is disabled. Then verify:
 
 - the exact migration timestamp/name is recorded once;
 - `public.marketing_delivery_ledger` has RLS enabled and no direct table grants
   for `anon`, `authenticated`, or `service_role`;
-- only `service_role` can execute the four public marketing RPCs, including
-  schedule-slot admission;
+- `public.marketing_reviewed_campaigns` and
+  `public.marketing_campaign_schedule_claims` have RLS enabled and no direct
+  table grants for `anon`, `authenticated`, or `service_role`;
+- only `service_role` can execute the public marketing RPCs, including the new
+  reviewed-campaign claim;
+- the initial reviewed-campaign queue is empty because the
+  `virtual-trading-request-zap-v2` update was already public on both X and
+  Discord before the queue existed;
+- an empty eligible queue returns `no_pending_campaign` without inserting a
+  schedule claim or starting a workflow;
 - the snapshot returns the current UTC day and zero or expected counters;
 - an idempotency replay returns the stored claim/receipt and never inserts a
   second row;
@@ -528,14 +563,17 @@ OPENZAPS_MARKETING_SCHEDULE_CHANNELS=discord
 OPENZAPS_MARKETING_AUTO_PUBLISH=true
 ```
 
-Redeploy, then verify the next Vercel Cron invocation returns `202` with a run
-id, records `auto_authorized`, and publishes only the requested providers that
-are ready. Keep production Discord-only while the X automated label and API
-write credits are pending. Written X approval remains an additional requirement
-for AI replies, which are never part of this automatic lane. Verify the
-canonical Discord receipt, then replay the same template and prove it returns
-the stored receipt without a second provider call. Leave all model-generated
-runs and all replies on the approval hook.
+Redeploy, then verify the next Vercel Cron invocation returns
+`no_pending_campaign` and creates no workflow or provider write. That is the
+expected initial state. To exercise automatic delivery, add a genuinely new,
+owner-reviewed campaign in source plus its exact append-only queue migration,
+deploy both together, and verify the next eligible invocation returns `202`
+with a run id and records `auto_authorized`. Confirm the canonical provider
+receipt, then replay the same campaign and prove the stable delivery key
+returns the stored receipt without a second provider call. Written X approval
+remains an additional requirement for AI replies, which are never part of this
+automatic lane. Leave every model-generated run and every reply on the
+approval hook.
 
 To roll back automatic delivery, first set
 `OPENZAPS_MARKETING_SCHEDULE_ENABLED=false`, then set
@@ -797,5 +835,6 @@ patched tree, or stop the release if the affected packages enter runtime output.
 - [Discord receiving and responding to interactions](https://docs.discord.com/developers/interactions/receiving-and-responding)
 - [Discord webhooks](https://docs.discord.com/developers/resources/webhook)
 - [Substack publishing](https://support.substack.com/hc/en-us/articles/360037831771-How-do-I-publish-a-new-post-on-Substack)
+- [Substack Markdown support](https://support.substack.com/hc/en-us/articles/360037463132-Do-you-support-Markdown)
 - [Substack publication RSS](https://support.substack.com/hc/en-us/articles/360038239391-Is-there-an-RSS-feed-for-my-publication)
 - [Substack API terms](https://substack.com/api-tos)

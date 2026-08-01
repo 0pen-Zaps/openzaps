@@ -12,6 +12,7 @@ const mocks = vi.hoisted(() => ({
   generateText: vi.fn(),
   getSnapshot: vi.fn(),
   verifyDiscordDestination: vi.fn(),
+  verifyCampaignClaim: vi.fn(),
   verifyXIdentity: vi.fn(),
   verifyXReplyTarget: vi.fn(),
   xBroadcast: vi.fn(),
@@ -34,6 +35,7 @@ vi.mock("@/lib/marketing/ledger-server", async (importOriginal) => {
     claimMarketingDelivery: mocks.claim,
     completeMarketingDeliveryClaim: mocks.complete,
     getMarketingLedgerSnapshot: mocks.getSnapshot,
+    verifyReviewedMarketingCampaignClaim: mocks.verifyCampaignClaim,
   };
 });
 vi.mock("@/lib/marketing/channels", async (importOriginal) => {
@@ -158,6 +160,12 @@ function setLiveEnvironment(): void {
   vi.stubEnv("X_USER_ACCESS_TOKEN", "x-user-token");
   vi.stubEnv("X_EXPECTED_ACCOUNT_ID", "100");
   vi.stubEnv("X_EXPECTED_USERNAME", "0xzaps");
+  vi.stubEnv(
+    "DISCORD_MARKETING_WEBHOOK_URL",
+    "https://discord.com/api/webhooks/123/public-token",
+  );
+  vi.stubEnv("OPENZAPS_DISCORD_GUILD_ID", "456");
+  vi.stubEnv("DISCORD_MARKETING_CHANNEL_ID", "789");
   vi.stubEnv("OPENZAPS_MARKETING_SUPABASE_PROJECT_REF", "abcdefghijklmnopqrst");
   vi.stubEnv("SUPABASE_URL", "https://abcdefghijklmnopqrst.supabase.co");
   vi.stubEnv("SUPABASE_SERVICE_ROLE_KEY", "service-secret");
@@ -302,6 +310,18 @@ function scheduledSourcePacket() {
   };
 }
 
+function scheduledRequest(channel: "x" | "discord") {
+  return {
+    campaignId: "virtual-trading-request-zap-v2",
+    channel,
+    slotDay: CREATED_AT.slice(0, 10),
+    contentHash:
+      channel === "x"
+        ? "31bc8afd32a05563745a85b55a8ae267fda72da5c9cef4b3b63378b14cf53961"
+        : "d87798d6ff0ba39a29c5b9da58397162cb43cd4908c5b604493e8fe98a0604f5",
+  };
+}
+
 function replyBundle(): MarketingDraftBundle {
   const base = bundle();
   const interaction = {
@@ -363,7 +383,53 @@ function discordBundle(): MarketingDraftBundle {
   };
 }
 
+function substackBundle(): MarketingDraftBundle {
+  const base = bundle();
+  const candidate = {
+    ...base.candidates[0],
+    id: "draft:abc:substack",
+    channel: "substack" as const,
+    action: "prepare_tutorial" as const,
+    kind: "tutorial" as const,
+    body: [
+      "# Give the agent the trigger, never the authority",
+      "",
+      "OpenZaps keeps execution bounded by terms the owner commits before an agent can submit a due action. ".repeat(4),
+      "",
+      "Pre-audit software. Verify before use.",
+      "",
+      "Review the exact authority boundary at https://www.0xzaps.com/docs before using a live workflow.",
+    ].join("\n"),
+    links: ["https://www.0xzaps.com/docs"],
+  };
+  return {
+    ...base,
+    request: {
+      kind: "tutorial",
+      brief: "Explain bounded agent authority in a verified tutorial.",
+      channels: ["substack"],
+      sourceUrls: [],
+    },
+    candidates: [candidate],
+    presentations: [{
+      candidateId: candidate.id,
+      channel: "substack",
+      title: "Give the Agent the Trigger, Never the Authority",
+      subtitle: "A source-backed guide to bounded agent execution",
+      tags: ["OpenZaps", "DeFi"],
+    }],
+    policy: [{
+      ...base.policy[0],
+      candidateId: candidate.id,
+      riskTier: 2,
+      approvalReasons: ["every_run_human_approval", "tutorial"],
+      dailyCounter: "substackTutorials",
+    }],
+  };
+}
+
 beforeEach(() => {
+  mocks.verifyCampaignClaim.mockResolvedValue(true);
   mocks.verifyDiscordDestination.mockResolvedValue(undefined);
   mocks.verifyXIdentity.mockResolvedValue({
     authenticatedAccountId: "100",
@@ -715,6 +781,86 @@ describe("durable marketing delivery admission", () => {
     expect(mocks.discord).not.toHaveBeenCalled();
   });
 
+  it("creates one approved Substack editor handoff and replays it without a network write", async () => {
+    setLiveEnvironment();
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    mocks.getSnapshot.mockResolvedValue(zeroSnapshot());
+    mocks.claim
+      .mockResolvedValueOnce({
+        result: "claimed",
+        status: "claimed",
+        currentCount: 1,
+        day: zeroSnapshot().usage.day,
+      })
+      .mockResolvedValueOnce({
+        result: "already_claimed",
+        status: "requires_human_publish",
+        currentCount: 1,
+        day: zeroSnapshot().usage.day,
+        providerMessageId: null,
+        providerUrl: "https://defitutorials.substack.com/publish/post",
+        failureCode: null,
+        claimedAt: CREATED_AT,
+        completedAt: CREATED_AT,
+      });
+    mocks.complete.mockResolvedValue({
+      result: "finalized",
+      status: "requires_human_publish",
+    });
+    const reviewedBundle = substackBundle();
+    const approval = {
+      decision: "approve" as const,
+      approvedBy: "Nodar",
+    };
+
+    await expect(
+      publishMarketingBundleStep(reviewedBundle, approval),
+    ).resolves.toEqual([{
+      channel: "substack",
+      candidateId: "draft:abc:substack",
+      status: "requires_human_publish",
+      idempotencyKey: "draft:abc:substack",
+      editorUrl: "https://defitutorials.substack.com/publish/post",
+    }]);
+    expect(mocks.claim).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        idempotencyKey: "draft:abc:substack",
+        candidateId: "draft:abc:substack",
+        channel: "substack",
+        action: "prepare_tutorial",
+        approvedBy: "Nodar",
+        dailyCap: 1,
+      }),
+    );
+    expect(mocks.complete).toHaveBeenCalledWith({
+      idempotencyKey: "draft:abc:substack",
+      channel: "substack",
+      action: "prepare_tutorial",
+      status: "requires_human_publish",
+      providerUrl: "https://defitutorials.substack.com/publish/post",
+    });
+
+    await expect(
+      publishMarketingBundleStep(reviewedBundle, approval),
+    ).resolves.toEqual([{
+      channel: "substack",
+      candidateId: "draft:abc:substack",
+      status: "requires_human_publish",
+      idempotencyKey: "draft:abc:substack",
+      editorUrl: "https://defitutorials.substack.com/publish/post",
+    }]);
+
+    expect(mocks.claim).toHaveBeenCalledTimes(2);
+    expect(mocks.complete).toHaveBeenCalledOnce();
+    expect(mocks.xBroadcast).not.toHaveBeenCalled();
+    expect(mocks.xReply).not.toHaveBeenCalled();
+    expect(mocks.discord).not.toHaveBeenCalled();
+    expect(mocks.discordWebhook).not.toHaveBeenCalled();
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
   it("blocks a reply when reverified identity differs from immutable evidence", async () => {
     setLiveEnvironment();
     vi.stubEnv("OPENZAPS_X_AI_REPLY_APPROVED", "true");
@@ -794,59 +940,53 @@ describe("durable marketing delivery admission", () => {
     expect(mocks.xReply).not.toHaveBeenCalled();
   });
 
-  it("auto-publishes only the exact versioned scheduled template", async () => {
+  it("never auto-publishes the externally fulfilled X campaign", async () => {
     setLiveEnvironment();
     vi.stubEnv("OPENZAPS_MARKETING_AUTO_PUBLISH", "true");
     mocks.getSnapshot.mockResolvedValue(zeroSnapshot());
-    mocks.claim.mockResolvedValue({
-      result: "claimed",
-      status: "claimed",
-      currentCount: 1,
-      day: zeroSnapshot().usage.day,
-    });
-    mocks.xBroadcast.mockResolvedValue({
-      providerMessageId: "777",
-      providerUrl: "https://x.com/i/web/status/777",
-    });
-    mocks.complete.mockResolvedValue({
-      result: "finalized",
-      status: "published",
-    });
 
     const draft = await buildScheduledMarketingDraftStep(
-      { channels: ["x"] },
+      scheduledRequest("x"),
       scheduledSourcePacket(),
       "scheduled-run-1",
     );
     expect(draft.model).toBe(
-      "deterministic/virtual-trading-request-zap-v2",
+      "deterministic/reviewed-campaign/virtual-trading-request-zap-v2/x",
     );
     expect(draft.policy).toEqual([
       expect.objectContaining({
-        disposition: "allow",
+        disposition: "require_approval",
         riskTier: 1,
-        approvalRequired: false,
-        approvalReasons: [],
+        approvalRequired: true,
+        approvalReasons: ["every_run_human_approval"],
       }),
     ]);
     expect(mocks.generateText).not.toHaveBeenCalled();
 
     await expect(
       publishScheduledMarketingBundleStep(draft),
-    ).resolves.toMatchObject([
-      { status: "published", providerMessageId: "777" },
-    ]);
-    expect(mocks.claim).toHaveBeenCalledWith(
-      expect.objectContaining({
-        idempotencyKey: "scheduled:virtual-trading-request-zap-v2:x",
-        approvedBy: "system:virtual-trading-request-zap-v2",
-        channel: "x",
-        action: "broadcast",
-      }),
-    );
-    expect(mocks.xBroadcast).toHaveBeenCalledWith(
-      expect.objectContaining({ madeWithAi: false }),
-    );
+    ).resolves.toMatchObject([{ status: "blocked" }]);
+    expect(mocks.claim).not.toHaveBeenCalled();
+    expect(mocks.xBroadcast).not.toHaveBeenCalled();
+  });
+
+  it("rejects a direct scheduled invocation without a current durable queue claim", async () => {
+    setLiveEnvironment();
+    vi.stubEnv("OPENZAPS_MARKETING_AUTO_PUBLISH", "true");
+    mocks.getSnapshot.mockResolvedValue(zeroSnapshot());
+    mocks.verifyCampaignClaim.mockResolvedValue(false);
+
+    await expect(
+      buildScheduledMarketingDraftStep(
+        scheduledRequest("discord"),
+        scheduledSourcePacket(),
+        "scheduled-run-without-claim",
+      ),
+    ).rejects.toThrow("matching durable claim");
+
+    expect(mocks.generateText).not.toHaveBeenCalled();
+    expect(mocks.claim).not.toHaveBeenCalled();
+    expect(mocks.discord).not.toHaveBeenCalled();
   });
 
   it("rechecks volatile evidence after provider preflight", async () => {
@@ -855,7 +995,7 @@ describe("durable marketing delivery admission", () => {
     setLiveEnvironment();
     vi.stubEnv("OPENZAPS_MARKETING_AUTO_PUBLISH", "true");
     mocks.getSnapshot.mockResolvedValue(zeroSnapshot());
-    mocks.verifyXIdentity.mockImplementation(async () => {
+    mocks.verifyDiscordDestination.mockImplementation(async () => {
       vi.setSystemTime(
         new Date(
           Date.parse(CREATED_AT)
@@ -863,15 +1003,10 @@ describe("durable marketing delivery admission", () => {
             + 1,
         ),
       );
-      return {
-        authenticatedAccountId: "100",
-        authenticatedUsername: "0xzaps",
-        observedAt: CREATED_AT,
-      };
     });
 
     const draft = await buildScheduledMarketingDraftStep(
-      { channels: ["x"] },
+      scheduledRequest("discord"),
       scheduledSourcePacket(),
       "scheduled-run-delayed",
     );
@@ -884,7 +1019,95 @@ describe("durable marketing delivery admission", () => {
       },
     ]);
     expect(mocks.claim).not.toHaveBeenCalled();
-    expect(mocks.xBroadcast).not.toHaveBeenCalled();
+    expect(mocks.discord).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["is no longer current", false],
+    ["is unavailable", new Error("campaign claim verification unavailable")],
+  ])(
+    "blocks when the final durable campaign claim %s",
+    async (_case, finalVerification) => {
+      setLiveEnvironment();
+      vi.stubEnv("OPENZAPS_MARKETING_AUTO_PUBLISH", "true");
+      vi.stubEnv(
+        "DISCORD_MARKETING_WEBHOOK_URL",
+        "https://discord.com/api/webhooks/123/public-token",
+      );
+      vi.stubEnv("OPENZAPS_DISCORD_GUILD_ID", "456");
+      vi.stubEnv("DISCORD_MARKETING_CHANNEL_ID", "789");
+      mocks.getSnapshot.mockResolvedValue(zeroSnapshot());
+      mocks.verifyCampaignClaim
+        .mockResolvedValueOnce(true)
+        .mockResolvedValueOnce(true);
+      if (finalVerification instanceof Error) {
+        mocks.verifyCampaignClaim.mockRejectedValueOnce(finalVerification);
+      } else {
+        mocks.verifyCampaignClaim.mockResolvedValueOnce(finalVerification);
+      }
+
+      const draft = await buildScheduledMarketingDraftStep(
+        scheduledRequest("discord"),
+        scheduledSourcePacket(),
+        "scheduled-run-final-claim-check",
+      );
+      await expect(
+        publishScheduledMarketingBundleStep(draft),
+      ).resolves.toMatchObject([
+        {
+          channel: "discord",
+          status: "blocked",
+          error: expect.stringContaining(
+            finalVerification instanceof Error
+              ? "verification was unavailable"
+              : "no longer current",
+          ),
+        },
+      ]);
+
+      expect(mocks.verifyDiscordDestination).not.toHaveBeenCalled();
+      expect(mocks.verifyCampaignClaim).toHaveBeenCalledTimes(3);
+      expect(mocks.claim).not.toHaveBeenCalled();
+      expect(mocks.discord).not.toHaveBeenCalled();
+      expect(mocks.complete).not.toHaveBeenCalled();
+    },
+  );
+
+  it("rechecks the durable campaign claim immediately before delivery admission", async () => {
+    setLiveEnvironment();
+    vi.stubEnv("OPENZAPS_MARKETING_AUTO_PUBLISH", "true");
+    vi.stubEnv(
+      "DISCORD_MARKETING_WEBHOOK_URL",
+      "https://discord.com/api/webhooks/123/public-token",
+    );
+    vi.stubEnv("OPENZAPS_DISCORD_GUILD_ID", "456");
+    vi.stubEnv("DISCORD_MARKETING_CHANNEL_ID", "789");
+    mocks.getSnapshot.mockResolvedValue(zeroSnapshot());
+    mocks.verifyCampaignClaim
+      .mockResolvedValueOnce(true)
+      .mockResolvedValueOnce(true)
+      .mockResolvedValueOnce(true)
+      .mockResolvedValueOnce(false);
+
+    const draft = await buildScheduledMarketingDraftStep(
+      scheduledRequest("discord"),
+      scheduledSourcePacket(),
+      "scheduled-run-immediate-claim-check",
+    );
+    await expect(
+      publishScheduledMarketingBundleStep(draft),
+    ).resolves.toMatchObject([
+      {
+        channel: "discord",
+        status: "blocked",
+        error: expect.stringContaining("no longer current"),
+      },
+    ]);
+
+    expect(mocks.verifyDiscordDestination).toHaveBeenCalledOnce();
+    expect(mocks.verifyCampaignClaim).toHaveBeenCalledTimes(4);
+    expect(mocks.claim).not.toHaveBeenCalled();
+    expect(mocks.discord).not.toHaveBeenCalled();
   });
 
   it("uses the same bounded path for a verified Discord destination", async () => {
@@ -910,7 +1133,7 @@ describe("durable marketing delivery admission", () => {
     });
 
     const draft = await buildScheduledMarketingDraftStep(
-      { channels: ["discord"] },
+      scheduledRequest("discord"),
       scheduledSourcePacket(),
       "scheduled-run-discord",
     );
@@ -945,12 +1168,12 @@ describe("durable marketing delivery admission", () => {
     });
 
     const first = await buildScheduledMarketingDraftStep(
-      { channels: ["x"] },
+      scheduledRequest("discord"),
       scheduledSourcePacket(),
       "scheduled-run-1",
     );
     const second = await buildScheduledMarketingDraftStep(
-      { channels: ["x"] },
+      scheduledRequest("discord"),
       scheduledSourcePacket(),
       "scheduled-run-2",
     );
@@ -960,7 +1183,7 @@ describe("durable marketing delivery admission", () => {
       publishScheduledMarketingBundleStep(second),
     ).resolves.toMatchObject([
       {
-        channel: "x",
+        channel: "discord",
         status: "blocked",
         error: expect.stringContaining("idempotency_conflict"),
       },
@@ -968,10 +1191,10 @@ describe("durable marketing delivery admission", () => {
 
     expect(mocks.claim).toHaveBeenCalledWith(
       expect.objectContaining({
-        idempotencyKey: "scheduled:virtual-trading-request-zap-v2:x",
+        idempotencyKey: "scheduled:virtual-trading-request-zap-v2:discord",
       }),
     );
-    expect(mocks.xBroadcast).not.toHaveBeenCalled();
+    expect(mocks.discord).not.toHaveBeenCalled();
   });
 
   it("blocks scheduled body, claim, and evidence tampering before a provider write", async () => {
@@ -979,7 +1202,7 @@ describe("durable marketing delivery admission", () => {
     vi.stubEnv("OPENZAPS_MARKETING_AUTO_PUBLISH", "true");
     mocks.getSnapshot.mockResolvedValue(zeroSnapshot());
     const draft = await buildScheduledMarketingDraftStep(
-      { channels: ["x"] },
+      scheduledRequest("discord"),
       scheduledSourcePacket(),
       "scheduled-run-1",
     );
@@ -1015,7 +1238,7 @@ describe("durable marketing delivery admission", () => {
       ).resolves.toMatchObject([{ status: "blocked" }]);
     }
     expect(mocks.claim).not.toHaveBeenCalled();
-    expect(mocks.xBroadcast).not.toHaveBeenCalled();
+    expect(mocks.discord).not.toHaveBeenCalled();
   });
 
   it("rechecks the automatic authority immediately before durable admission", async () => {
@@ -1023,7 +1246,7 @@ describe("durable marketing delivery admission", () => {
     vi.stubEnv("OPENZAPS_MARKETING_AUTO_PUBLISH", "true");
     mocks.getSnapshot.mockResolvedValue(zeroSnapshot());
     const draft = await buildScheduledMarketingDraftStep(
-      { channels: ["x"] },
+      scheduledRequest("discord"),
       scheduledSourcePacket(),
       "scheduled-run-1",
     );
@@ -1034,7 +1257,7 @@ describe("durable marketing delivery admission", () => {
     ).resolves.toMatchObject([{ status: "blocked" }]);
 
     expect(mocks.claim).not.toHaveBeenCalled();
-    expect(mocks.xBroadcast).not.toHaveBeenCalled();
+    expect(mocks.discord).not.toHaveBeenCalled();
   });
 });
 

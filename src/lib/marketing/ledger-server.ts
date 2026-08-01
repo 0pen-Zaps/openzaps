@@ -1,6 +1,14 @@
 import "server-only";
 
+import { createHash } from "node:crypto";
+
 import { isMarketingLedgerSupabaseUrl } from "@/lib/marketing/config";
+import {
+  reviewedMarketingCampaign,
+  reviewedMarketingCampaignCanonicalPayload,
+  type ReviewedMarketingCampaign,
+  type ScheduledMarketingChannel,
+} from "@/lib/marketing/scheduled-template";
 import { containsCredentialLikeData } from "@/lib/marketing/source-url";
 import { readBoundedJsonBody } from "@/lib/request-body";
 import type {
@@ -14,6 +22,8 @@ const SNAPSHOT_RPC = "get_marketing_delivery_snapshot";
 const CLAIM_RPC = "claim_marketing_delivery";
 const COMPLETE_RPC = "complete_marketing_delivery_claim";
 const SCHEDULE_SLOT_RPC = "claim_marketing_schedule_slot";
+const CAMPAIGN_QUEUE_RPC = "claim_next_marketing_campaign";
+const VERIFY_CAMPAIGN_CLAIM_RPC = "verify_marketing_campaign_schedule_claim";
 const MAX_RPC_RESPONSE_BYTES = 64 * 1024;
 const RPC_TIMEOUT_MS = 12_000;
 const IDEMPOTENCY_KEY = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$/u;
@@ -120,6 +130,27 @@ export interface MarketingScheduleSlotClaim {
   claimedAt: string | null;
 }
 
+export type MarketingCampaignQueueClaimResultCode =
+  | "claimed"
+  | "already_claimed"
+  | "outside_schedule"
+  | "no_pending_campaign";
+
+export interface MarketingCampaignQueueClaim {
+  result: MarketingCampaignQueueClaimResultCode;
+  scheduleKey: typeof MARKETING_SCHEDULE_KEY;
+  day: string;
+  claimedAt: string | null;
+  campaign: ReviewedMarketingCampaign | null;
+}
+
+export interface VerifyMarketingCampaignClaimInput {
+  campaignId: string;
+  channel: ScheduledMarketingChannel;
+  slotDay: string;
+  contentHash: string;
+}
+
 interface LedgerDependencies {
   env?: Environment;
   fetchImpl?: typeof fetch;
@@ -178,7 +209,9 @@ async function callLedgerRpc(
     | typeof SNAPSHOT_RPC
     | typeof CLAIM_RPC
     | typeof COMPLETE_RPC
-    | typeof SCHEDULE_SLOT_RPC,
+    | typeof SCHEDULE_SLOT_RPC
+    | typeof CAMPAIGN_QUEUE_RPC
+    | typeof VERIFY_CAMPAIGN_CLAIM_RPC,
   body: Record<string, unknown>,
   dependencies: LedgerDependencies,
 ): Promise<unknown> {
@@ -696,4 +729,262 @@ export async function claimMarketingScheduleSlot(
     day,
     claimedAt,
   };
+}
+
+function reviewedCampaignRow(
+  row: Record<string, unknown>,
+): ReviewedMarketingCampaign | null {
+  if (
+    typeof row.campaign_id !== "string" ||
+    !/^[a-z0-9][a-z0-9-]{0,119}$/u.test(row.campaign_id) ||
+    (row.channel !== "x" && row.channel !== "discord")
+  ) {
+    return null;
+  }
+
+  let reviewed: ReviewedMarketingCampaign;
+  try {
+    reviewed = reviewedMarketingCampaign(
+      row.campaign_id,
+      row.channel as ScheduledMarketingChannel,
+    );
+  } catch {
+    return null;
+  }
+
+  const queueOrder = nonnegativeInteger(row.queue_order);
+  const notBefore =
+    row.not_before === null
+      ? null
+      : validTimestamp(row.not_before)
+        ? new Date(row.not_before).toISOString()
+        : undefined;
+  const contentHash = nullableBoundedString(row.content_hash, 64, CONTENT_HASH);
+  if (
+    queueOrder === null ||
+    notBefore === undefined ||
+    contentHash !== reviewed.contentHash
+  ) {
+    return null;
+  }
+
+  const databasePayload = {
+    id: row.campaign_id,
+    channel: row.channel,
+    queueOrder,
+    notBefore,
+    body: row.body,
+    links: row.links,
+    topics: row.topics,
+    disclosures: row.disclosures,
+    claims: row.claims,
+    flags: row.flags,
+    requiredFacts: row.required_facts,
+    canonicalSourceUrls: row.canonical_source_urls,
+  };
+  const expectedPayload = reviewedMarketingCampaignCanonicalPayload(reviewed);
+  const calculatedHash = createHash("sha256")
+    .update(JSON.stringify(expectedPayload))
+    .digest("hex");
+  if (
+    calculatedHash !== reviewed.contentHash ||
+    !sameStructuredValue(databasePayload, expectedPayload)
+  ) {
+    return null;
+  }
+  return reviewed;
+}
+
+function sameStructuredValue(left: unknown, right: unknown): boolean {
+  if (Object.is(left, right)) return true;
+  if (Array.isArray(left) || Array.isArray(right)) {
+    return (
+      Array.isArray(left) &&
+      Array.isArray(right) &&
+      left.length === right.length &&
+      left.every((value, index) => sameStructuredValue(value, right[index]))
+    );
+  }
+  if (
+    !left ||
+    !right ||
+    typeof left !== "object" ||
+    typeof right !== "object"
+  ) {
+    return false;
+  }
+  const leftRecord = left as Record<string, unknown>;
+  const rightRecord = right as Record<string, unknown>;
+  const leftKeys = Object.keys(leftRecord).sort();
+  const rightKeys = Object.keys(rightRecord).sort();
+  return (
+    leftKeys.length === rightKeys.length &&
+    leftKeys.every(
+      (key, index) =>
+        key === rightKeys[index] &&
+        sameStructuredValue(leftRecord[key], rightRecord[key]),
+    )
+  );
+}
+
+/**
+ * Claim at most one immutable, source-reviewed campaign/channel pair for the
+ * current UTC weekday. A no-pending result performs no queue write and must
+ * never start a workflow.
+ */
+export async function claimNextReviewedMarketingCampaign(
+  requestedChannels: readonly ScheduledMarketingChannel[],
+  dependencies: LedgerDependencies = {},
+): Promise<MarketingCampaignQueueClaim> {
+  const channels = [...new Set(requestedChannels)];
+  if (
+    channels.length < 1 ||
+    channels.length > 2 ||
+    channels.some((channel) => channel !== "x" && channel !== "discord")
+  ) {
+    throw new MarketingLedgerError(
+      "invalid-input",
+      "Reviewed campaign channels must be a non-empty X/Discord set.",
+    );
+  }
+
+  const row = oneRow(
+    await callLedgerRpc(
+      CAMPAIGN_QUEUE_RPC,
+      { p_channels: channels },
+      dependencies,
+    ),
+  );
+  const result = row.result_code;
+  const scheduleKey = row.schedule_key;
+  const day = row.slot_day;
+  const claimedAt =
+    row.claimed_at === null
+      ? null
+      : validTimestamp(row.claimed_at)
+        ? row.claimed_at
+        : undefined;
+  const knownResult = [
+    "claimed",
+    "already_claimed",
+    "outside_schedule",
+    "no_pending_campaign",
+  ].includes(String(result));
+  const campaign = result === "claimed" ? reviewedCampaignRow(row) : null;
+  const emptyCampaignFields = [
+    row.campaign_id,
+    row.channel,
+    row.queue_order,
+    row.not_before,
+    row.body,
+    row.links,
+    row.topics,
+    row.disclosures,
+    row.claims,
+    row.flags,
+    row.required_facts,
+    row.canonical_source_urls,
+    row.content_hash,
+  ].every((value) => value === null);
+  const semanticResult =
+    result === "claimed"
+      ? campaign !== null &&
+        claimedAt !== null &&
+        claimedAt !== undefined &&
+        validDay(day) &&
+        isWeekday(day)
+      : result === "already_claimed"
+        ? emptyCampaignFields &&
+          claimedAt !== null &&
+          claimedAt !== undefined &&
+          validDay(day) &&
+          isWeekday(day)
+        : result === "outside_schedule"
+          ? emptyCampaignFields && claimedAt === null && validDay(day) && !isWeekday(day)
+          : result === "no_pending_campaign"
+            ? emptyCampaignFields && claimedAt === null && validDay(day) && isWeekday(day)
+            : false;
+
+  if (
+    !knownResult ||
+    scheduleKey !== MARKETING_SCHEDULE_KEY ||
+    !validDay(day) ||
+    claimedAt === undefined ||
+    !semanticResult
+  ) {
+    throw new MarketingLedgerError(
+      "invalid-response",
+      "The durable marketing campaign queue returned an invalid claim.",
+    );
+  }
+
+  return {
+    result: result as MarketingCampaignQueueClaimResultCode,
+    scheduleKey: MARKETING_SCHEDULE_KEY,
+    day,
+    claimedAt,
+    campaign,
+  };
+}
+
+export async function verifyReviewedMarketingCampaignClaim(
+  input: VerifyMarketingCampaignClaimInput,
+  dependencies: LedgerDependencies = {},
+): Promise<boolean> {
+  let campaign: ReviewedMarketingCampaign;
+  try {
+    campaign = reviewedMarketingCampaign(input.campaignId, input.channel);
+  } catch {
+    throw new MarketingLedgerError(
+      "invalid-input",
+      "The reviewed campaign claim identity is invalid.",
+    );
+  }
+  if (
+    !validDay(input.slotDay) ||
+    !isWeekday(input.slotDay) ||
+    !CONTENT_HASH.test(input.contentHash) ||
+    input.contentHash !== campaign.contentHash
+  ) {
+    throw new MarketingLedgerError(
+      "invalid-input",
+      "The reviewed campaign claim identity is invalid.",
+    );
+  }
+
+  const row = oneRow(
+    await callLedgerRpc(
+      VERIFY_CAMPAIGN_CLAIM_RPC,
+      {
+        p_campaign_id: campaign.id,
+        p_channel: campaign.channel,
+        p_slot_day: input.slotDay,
+        p_content_hash: campaign.contentHash,
+      },
+      dependencies,
+    ),
+  );
+  if (typeof row.verified !== "boolean") {
+    throw new MarketingLedgerError(
+      "invalid-response",
+      "The durable marketing campaign queue returned an invalid verification.",
+    );
+  }
+  const claimedAt =
+    row.claimed_at === null
+      ? null
+      : validTimestamp(row.claimed_at)
+        ? row.claimed_at
+        : undefined;
+  if (
+    claimedAt === undefined ||
+    (row.verified && claimedAt === null) ||
+    (!row.verified && claimedAt !== null)
+  ) {
+    throw new MarketingLedgerError(
+      "invalid-response",
+      "The durable marketing campaign queue returned an inconsistent verification.",
+    );
+  }
+  return row.verified;
 }
