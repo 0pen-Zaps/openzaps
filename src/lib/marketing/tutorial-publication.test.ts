@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   TutorialPublicationError,
   normalizeConfirmedTutorialManifest,
+  normalizeWithheldTutorialTitles,
 } from "@/lib/marketing/tutorial-publication";
 
 function manifest(tutorials: unknown[]): unknown {
@@ -76,5 +77,26 @@ describe("confirmed tutorial publication boundary", () => {
         ]),
       ),
     ).toThrow("not canonical");
+  });
+
+  it("normalizes the titles that must remain absent before RSS confirmation", () => {
+    expect(
+      normalizeWithheldTutorialTitles(
+        manifest([
+          CONFIRMED,
+          { title: "  Private   draft ", status: "draft" },
+          { title: "Prepared handoff", status: "approved_handoff" },
+        ]),
+      ),
+    ).toEqual(["Prepared handoff", "Private draft"]);
+
+    expect(() =>
+      normalizeWithheldTutorialTitles(
+        manifest([
+          { title: "Duplicate", status: "draft" },
+          { title: "Duplicate", status: "approved_handoff" },
+        ]),
+      ),
+    ).toThrow(TutorialPublicationError);
   });
 });

@@ -3,7 +3,10 @@ import Link from "next/link";
 import { JsonLd } from "@/components/JsonLd";
 import { Reveal } from "@/components/Reveal";
 import { LINKS } from "@/lib/config";
-import { PUBLIC_CONTENT_ITEMS } from "@/lib/marketing/public-content";
+import {
+  PUBLIC_CONTENT_CATALOG_DIGEST,
+  PUBLIC_CONTENT_ITEMS,
+} from "@/lib/marketing/public-content";
 import {
   STATIC_PAGE_SEO,
   breadcrumbJsonLd,
@@ -67,7 +70,14 @@ const REQUEST_URL =
 
 export default function LearnPage(): React.JSX.Element {
   return (
-    <main className={styles.page} id="main" data-screen-label="Updates">
+    <main
+      className={styles.page}
+      id="main"
+      data-screen-label="Updates"
+      data-publication-boundary="reviewed-feed-and-rss-confirmed"
+      data-public-content-count={PUBLIC_CONTENT_ITEMS.length}
+      data-public-content-digest={PUBLIC_CONTENT_CATALOG_DIGEST}
+    >
       <JsonLd
         data={{
           "@context": "https://schema.org",
@@ -194,6 +204,7 @@ export default function LearnPage(): React.JSX.Element {
             <Reveal
               as="article"
               className={styles.updateCard}
+              data-public-content-id={item.id}
               delay={(index % 3) * 45}
               key={item.id}
             >

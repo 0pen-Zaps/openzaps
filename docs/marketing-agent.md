@@ -28,7 +28,7 @@ measurable, privacy-minimized handoff to `/request-a-zap`.
 
 | Invariant | Enforcement |
 | --- | --- |
-| Evidence before copy | Each run reads the production health, protocol activity, pot, Virtual Trading markets, a fresh read-only quote, and lead-intake readiness, then verifies bounded markers on the two promoted feature pages. Optional source URLs are restricted to OpenZaps, DeFi Tutorials, and the canonical GitHub repository. |
+| Evidence before copy | Each run reads the production health, protocol activity, pot, Virtual Trading markets, a fresh read-only quote, and lead-intake readiness, then verifies bounded markers on the promoted feature pages. The Learn launch additionally requires the exact source-derived catalog digest and rendered item identities, and rejects every tutorial title still withheld by the release manifest. Optional source URLs are restricted to OpenZaps, DeFi Tutorials, and the canonical GitHub repository. |
 | External text is data | Fetched text is marked `instructionsTrusted: false` and cannot widen the operator brief or policy. |
 | Claims cite facts | Every asserted or qualified generated claim must cite a source-packet fact key. Unavailable data is `null`, never zero. |
 | Pre-audit disclosure | Public copy includes `Pre-audit software. Verify before use.` while the protocol remains pre-audit. |

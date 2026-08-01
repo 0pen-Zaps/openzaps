@@ -3,6 +3,8 @@ import tutorialManifestJson from "../../../docs/tutorials/manifest.json";
 import { describe, expect, it } from "vitest";
 
 import {
+  NON_PUBLIC_TUTORIAL_TITLES,
+  PUBLIC_CONTENT_CATALOG_DIGEST,
   PUBLIC_CONTENT_ITEMS,
   publicContentCatalog,
 } from "@/lib/marketing/public-content";
@@ -17,6 +19,10 @@ describe("public content catalog", () => {
     expect(titles).toContain("Practice deployed routes in Virtual Trading");
     expect(titles).toContain("Give an Agent the Trigger, Never the Authority");
     expect(titles).not.toContain("Paper Trade First, Then Draw the Authority Map");
+    expect(NON_PUBLIC_TUTORIAL_TITLES).toContain(
+      "Paper Trade First, Then Draw the Authority Map",
+    );
+    expect(PUBLIC_CONTENT_CATALOG_DIGEST).toMatch(/^[0-9a-f]{64}$/u);
     expect(tutorial).toMatchObject({
       sourceLabel: "DeFi Tutorials",
       canonicalUrl:

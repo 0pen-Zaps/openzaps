@@ -56,15 +56,7 @@ function confirmedTimestamp(value: unknown): string {
   return new Date(timestamp).toISOString();
 }
 
-/**
- * The source manifest is also the publication boundary. Drafts and prepared
- * editor handoffs remain invisible until a canonical URL and title have been
- * read back from the public DeFi Tutorials RSS feed and recorded as
- * `rss_confirmed`.
- */
-export function normalizeConfirmedTutorialManifest(
-  raw: unknown,
-): ConfirmedTutorialPublication[] {
+function tutorialManifestEntries(raw: unknown): unknown[] {
   const manifest = record(raw);
   if (
     manifest?.version !== 1
@@ -77,11 +69,22 @@ export function normalizeConfirmedTutorialManifest(
   if (manifest.tutorials.length > MAX_TUTORIALS) {
     throw new TutorialPublicationError("Tutorial manifest exceeds its item bound.");
   }
+  return manifest.tutorials;
+}
 
+/**
+ * The source manifest is also the publication boundary. Drafts and prepared
+ * editor handoffs remain invisible until a canonical URL and title have been
+ * read back from the public DeFi Tutorials RSS feed and recorded as
+ * `rss_confirmed`.
+ */
+export function normalizeConfirmedTutorialManifest(
+  raw: unknown,
+): ConfirmedTutorialPublication[] {
   const confirmed: ConfirmedTutorialPublication[] = [];
   const ids = new Set<string>();
   const urls = new Set<string>();
-  for (const rawTutorial of manifest.tutorials) {
+  for (const rawTutorial of tutorialManifestEntries(raw)) {
     const tutorial = record(rawTutorial);
     if (!tutorial || tutorial.status !== "rss_confirmed") continue;
 
@@ -123,4 +126,29 @@ export function normalizeConfirmedTutorialManifest(
       Date.parse(right.publishedAt) - Date.parse(left.publishedAt)
       || left.id.localeCompare(right.id),
   );
+}
+
+/**
+ * Titles that must never appear on a public catalog until the release manifest
+ * records a canonical RSS receipt. This is server-side negative evidence for
+ * the automatic launch gate, not public draft content.
+ */
+export function normalizeWithheldTutorialTitles(raw: unknown): string[] {
+  const titles: string[] = [];
+  const unique = new Set<string>();
+  for (const rawTutorial of tutorialManifestEntries(raw)) {
+    const tutorial = record(rawTutorial);
+    if (!tutorial || tutorial.status === "rss_confirmed") continue;
+    const title = typeof tutorial.title === "string"
+      ? normalizeSubstackTitle(tutorial.title)
+      : null;
+    if (!title || containsCredentialLikeData(title) || unique.has(title)) {
+      throw new TutorialPublicationError(
+        "Withheld tutorial manifest title is invalid.",
+      );
+    }
+    unique.add(title);
+    titles.push(title);
+  }
+  return titles.sort((left, right) => left.localeCompare(right));
 }

@@ -46,6 +46,11 @@ import {
   VIRTUAL_QUOTE_TTL_MS,
 } from "@/lib/virtual-trading";
 import {
+  NON_PUBLIC_TUTORIAL_TITLES,
+  PUBLIC_CONTENT_CATALOG_DIGEST,
+  PUBLIC_CONTENT_ITEMS,
+} from "@/lib/marketing/public-content";
+import {
   GeneratedMarketingDraftSchema,
   DeployedMarketingCandidateSchema,
   MarketingApprovalPayloadSchema,
@@ -212,6 +217,49 @@ async function fetchFeaturePage(
   }
 }
 
+async function fetchLearnPageEvidence(url: string): Promise<boolean> {
+  try {
+    const response = await fetch(url, {
+      cache: "no-store",
+      headers: { accept: "text/html" },
+      redirect: "error",
+      signal: AbortSignal.timeout(SOURCE_TIMEOUT_MS),
+    });
+    if (!response.ok) return false;
+    const contentType = response.headers
+      .get("content-type")
+      ?.split(";", 1)[0]
+      ?.trim()
+      .toLowerCase();
+    if (contentType !== "text/html") return false;
+    const body = await readBoundedTextBody(response, FEATURE_PAGE_LIMIT);
+    const renderedItems = [
+      ...body.matchAll(
+        /<article\b[^>]*\sdata-public-content-id="([^"]+)"[^>]*>([\s\S]*?)<\/article>/gu,
+      ),
+    ].map((match) => ({ id: match[1], content: match[2] ?? "" }));
+    return body.includes(
+      'data-publication-boundary="reviewed-feed-and-rss-confirmed"',
+    )
+      && body.includes(
+        `data-public-content-count="${PUBLIC_CONTENT_ITEMS.length}"`,
+      )
+      && body.includes(
+        `data-public-content-digest="${PUBLIC_CONTENT_CATALOG_DIGEST}"`,
+      )
+      && renderedItems.length === PUBLIC_CONTENT_ITEMS.length
+      && PUBLIC_CONTENT_ITEMS.every((item, index) => {
+        const rendered = renderedItems[index];
+        return rendered?.id === item.id
+          && rendered.content.includes(item.title)
+          && rendered.content.includes(item.canonicalUrl);
+      })
+      && NON_PUBLIC_TUTORIAL_TITLES.every((title) => !body.includes(title));
+  } catch {
+    return false;
+  }
+}
+
 async function fetchExternalData(
   urls: readonly string[],
   observedAt: string,
@@ -371,12 +419,7 @@ export async function collectMarketingSourcesStep(
       "Stays with your wallet or Safe.",
       "Lives inside the immutable policy",
     ]),
-    fetchFeaturePage(learnUrl, [
-      "OpenZaps Learn",
-      "Public only after evidence.",
-      "Drafts and editor handoffs stay private.",
-      "Request an authority map",
-    ]),
+    fetchLearnPageEvidence(learnUrl),
     fetchJson(sdkRegistryUrl),
     fetchJson(mcpRegistryUrl),
     fetchExternalData(request.sourceUrls, observedAt),

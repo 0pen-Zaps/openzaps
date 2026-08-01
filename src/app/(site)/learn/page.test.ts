@@ -3,6 +3,10 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 
 import LearnPage from "@/app/(site)/learn/page";
+import {
+  PUBLIC_CONTENT_CATALOG_DIGEST,
+  PUBLIC_CONTENT_ITEMS,
+} from "@/lib/marketing/public-content";
 
 describe("Learn page", () => {
   it("renders only verified public content and a measurable request path", () => {
@@ -18,5 +22,14 @@ describe("Learn page", () => {
     expect(html).toContain("utm_content=learn_hub");
     expect(html).toContain("Pre-audit software");
     expect(html).toContain("Drafts and editor handoffs stay private");
+    expect(html).toContain(
+      'data-publication-boundary="reviewed-feed-and-rss-confirmed"',
+    );
+    expect(html).toContain(
+      `data-public-content-digest="${PUBLIC_CONTENT_CATALOG_DIGEST}"`,
+    );
+    expect(html.match(/data-public-content-id=/gu)).toHaveLength(
+      PUBLIC_CONTENT_ITEMS.length,
+    );
   });
 });

@@ -1,11 +1,16 @@
 import tutorialManifestJson from "../../../docs/tutorials/manifest.json";
 
+import { createHash } from "node:crypto";
+
 import {
   OPENZAPS_FEED_ITEMS,
   type OpenZapsFeedItem,
 } from "@/lib/marketing/feed";
 import { containsCredentialLikeData } from "@/lib/marketing/source-url";
-import { normalizeConfirmedTutorialManifest } from "@/lib/marketing/tutorial-publication";
+import {
+  normalizeConfirmedTutorialManifest,
+  normalizeWithheldTutorialTitles,
+} from "@/lib/marketing/tutorial-publication";
 
 const OPENZAPS_ORIGIN = "https://www.0xzaps.com";
 const MAX_PUBLIC_ITEMS = 200;
@@ -133,3 +138,11 @@ export function publicContentCatalog(
 }
 
 export const PUBLIC_CONTENT_ITEMS = Object.freeze(publicContentCatalog());
+
+export const PUBLIC_CONTENT_CATALOG_DIGEST = createHash("sha256")
+  .update(JSON.stringify(PUBLIC_CONTENT_ITEMS))
+  .digest("hex");
+
+export const NON_PUBLIC_TUTORIAL_TITLES = Object.freeze(
+  normalizeWithheldTutorialTitles(tutorialManifestJson),
+);
