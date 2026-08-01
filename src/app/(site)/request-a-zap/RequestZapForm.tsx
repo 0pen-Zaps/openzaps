@@ -24,6 +24,7 @@ type InitialValues = {
 type RequestZapFormProps = {
   attribution: LeadClientAttribution;
   initialValues: InitialValues;
+  isPreviewDeployment?: boolean;
 };
 
 type SubmissionState = "idle" | "pending" | "success" | "error";
@@ -57,6 +58,7 @@ const PERSONAS: readonly {
 export function RequestZapForm({
   attribution,
   initialValues,
+  isPreviewDeployment = false,
 }: RequestZapFormProps): React.JSX.Element {
   const [persona, setPersona] = useState<LeadPersona | "">(initialValues.persona ?? "");
   const [submission, setSubmission] = useState<SubmissionState>("idle");
@@ -68,6 +70,29 @@ export function RequestZapForm({
     campaign: attribution.utmCampaign,
     content: attribution.utmContent,
   };
+
+  if (isPreviewDeployment) {
+    return (
+      <section className={styles.previewNotice} aria-labelledby="preview-request-title">
+        <span className={styles.previewNoticeMark} aria-hidden>
+          ↗
+        </span>
+        <p className={styles.previewNoticeKicker}>Preview deployment</p>
+        <h2 id="preview-request-title">Submit Zap requests on the production site.</h2>
+        <p>
+          Preview deployments intentionally cannot access the private lead store.
+          Open the verified production form to send your workflow and trigger the
+          submission notification.
+        </p>
+        <a
+          href="https://www.0xzaps.com/request-a-zap#request-form"
+          className="btn btnPrimary"
+        >
+          Open production request form
+        </a>
+      </section>
+    );
+  }
 
   async function submitRequest(event: FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
