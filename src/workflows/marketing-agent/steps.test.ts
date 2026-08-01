@@ -1403,6 +1403,14 @@ describe("bounded source collection", () => {
           ),
         );
       }
+      if (input.endsWith("/learn")) {
+        return Promise.resolve(
+          new Response(
+            "OpenZaps Learn Public only after evidence. Drafts and editor handoffs stay private. Request an authority map",
+            { headers: { "content-type": "text/html; charset=utf-8" } },
+          ),
+        );
+      }
       if (input.includes("@openzaps%2fsdk/0.1.0")) {
         return Promise.resolve(
           Response.json({
@@ -1440,7 +1448,7 @@ describe("bounded source collection", () => {
       sourceUrls: [],
     });
 
-    expect(fetchMock).toHaveBeenCalledTimes(11);
+    expect(fetchMock).toHaveBeenCalledTimes(12);
     expect(result.facts).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -1485,6 +1493,11 @@ describe("bounded source collection", () => {
           key: "product.agent_kit_boundaries",
           status: "confirmed",
           sourceUrl: "https://www.0xzaps.com/docs",
+        }),
+        expect.objectContaining({
+          key: "product.learn_hub",
+          status: "confirmed",
+          sourceUrl: "https://www.0xzaps.com/learn",
         }),
       ]),
     );
@@ -1648,7 +1661,7 @@ describe("bounded source collection", () => {
       sourceUrls: [],
     });
 
-    expect(fetchMock).toHaveBeenCalledTimes(11);
+    expect(fetchMock).toHaveBeenCalledTimes(12);
     for (const [, init] of fetchMock.mock.calls as Array<[string, RequestInit]>) {
       expect(init.redirect).toBe("error");
     }
@@ -1719,7 +1732,7 @@ describe("bounded source collection", () => {
       sourceUrls: ["https://defitutorials.substack.com/p/openzaps"],
     });
 
-    expect(fetchMock).toHaveBeenCalledTimes(12);
+    expect(fetchMock).toHaveBeenCalledTimes(13);
     for (const [, init] of fetchMock.mock.calls as Array<[string, RequestInit]>) {
       expect(init.redirect).toBe("error");
     }
@@ -1769,7 +1782,7 @@ describe("bounded source collection", () => {
       sourceUrls: ["https://defitutorials.substack.com/p/openzaps"],
     });
 
-    expect(fetchMock).toHaveBeenCalledTimes(12);
+    expect(fetchMock).toHaveBeenCalledTimes(13);
     expect(result.externalData).toEqual([]);
     expect(JSON.stringify(result)).not.toContain("example-secret-token");
   });

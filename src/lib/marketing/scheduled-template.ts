@@ -7,6 +7,7 @@ import type {
 } from "@/lib/marketing/types";
 import {
   AGENT_KIT_MARKETING_CAMPAIGN_ID,
+  LEARN_HUB_MARKETING_CAMPAIGN_ID,
   SCHEDULED_MARKETING_TEMPLATE_ID,
 } from "@/lib/marketing/types";
 
@@ -138,6 +139,22 @@ const AGENT_KIT_CLAIMS: MarketingClaim[] = [
   },
 ];
 
+const LEARN_HUB_FACTS: ReviewedMarketingFactRequirement[] = [
+  {
+    key: "product.learn_hub",
+    sourceUrl: "https://www.0xzaps.com/learn",
+  },
+];
+
+const LEARN_HUB_CLAIMS: MarketingClaim[] = [
+  {
+    text:
+      "OpenZaps Learn publishes source-reviewed product updates and only RSS-confirmed DeFi Tutorials, keeps drafts and editor handoffs private, and links to Request a Zap for a human-reviewed authority map.",
+    factKeys: ["product.learn_hub"],
+    treatment: "asserted",
+  },
+];
+
 const CAMPAIGNS: readonly ReviewedMarketingCampaign[] = [
   {
     id: SCHEDULED_MARKETING_TEMPLATE_ID,
@@ -193,6 +210,40 @@ const CAMPAIGNS: readonly ReviewedMarketingCampaign[] = [
     contentHash:
       "516443309a2b558c1335bb4f672a649a1f728ddc643bb0a762564835c6ff59ca",
   },
+  {
+    id: LEARN_HUB_MARKETING_CAMPAIGN_ID,
+    channel: "x",
+    queueOrder: 30,
+    notBefore: "2026-08-04T14:00:00.000Z",
+    body:
+      "OpenZaps Learn is live.\n\nSource-reviewed product updates and RSS-confirmed DeFi Tutorials in one hub. Drafts stay private until evidence exists.\n\nRead—or request a bounded authority map:\nhttps://www.0xzaps.com/learn\n\nPre-audit software. Verify before use.",
+    links: ["https://www.0xzaps.com/learn"],
+    topics: ["protocol"],
+    disclosures: ["pre_audit"],
+    claims: LEARN_HUB_CLAIMS,
+    flags: SAFE_FLAGS,
+    requiredFacts: LEARN_HUB_FACTS,
+    canonicalSourceUrls: LEARN_HUB_FACTS.map((fact) => fact.sourceUrl),
+    contentHash:
+      "0f3f9bd4b0b4950f55749a194d98a4fbeb87e16d33274b6f7640c35c499efd82",
+  },
+  {
+    id: LEARN_HUB_MARKETING_CAMPAIGN_ID,
+    channel: "discord",
+    queueOrder: 31,
+    notBefore: "2026-08-04T14:00:00.000Z",
+    body:
+      "**OpenZaps Learn is live.**\n\nThe new hub collects source-reviewed OpenZaps product updates and DeFi Tutorials whose title and canonical URL are RSS-confirmed. Drafts and editor handoffs stay private until that publication evidence exists.\n\nUse it to follow what shipped, read why the bounds matter, or request a human-reviewed authority map for one workflow:\nhttps://www.0xzaps.com/learn\n\nPre-audit software. Verify before use.",
+    links: ["https://www.0xzaps.com/learn"],
+    topics: ["protocol"],
+    disclosures: ["pre_audit"],
+    claims: LEARN_HUB_CLAIMS,
+    flags: SAFE_FLAGS,
+    requiredFacts: LEARN_HUB_FACTS,
+    canonicalSourceUrls: LEARN_HUB_FACTS.map((fact) => fact.sourceUrl),
+    contentHash:
+      "e4e5576c60c5d08e1e874875b15ac82aa9a9f1db016132ee682bc95d124529d8",
+  },
 ];
 
 // The v2 X copy has a separately verified public receipt and is intentionally
@@ -205,6 +256,8 @@ const CAMPAIGNS: readonly ReviewedMarketingCampaign[] = [
 const AUTO_DELIVERY_CAMPAIGNS = new Set([
   `${SCHEDULED_MARKETING_TEMPLATE_ID}:discord`,
   `${AGENT_KIT_MARKETING_CAMPAIGN_ID}:discord`,
+  `${LEARN_HUB_MARKETING_CAMPAIGN_ID}:x`,
+  `${LEARN_HUB_MARKETING_CAMPAIGN_ID}:discord`,
 ]);
 
 function cloneCampaign(

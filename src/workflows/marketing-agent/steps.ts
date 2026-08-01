@@ -323,6 +323,7 @@ export async function collectMarketingSourcesStep(
   const requestZapUrl = `${siteUrl}/request-a-zap`;
   const leadReadinessUrl = `${siteUrl}/api/leads/request`;
   const docsUrl = `${siteUrl}/docs`;
+  const learnUrl = `${siteUrl}/learn`;
   const sdkRegistryUrl =
     "https://registry.npmjs.org/@openzaps%2fsdk/0.1.0";
   const mcpRegistryUrl =
@@ -337,6 +338,7 @@ export async function collectMarketingSourcesStep(
     virtualTradingPageReady,
     requestZapPageReady,
     agentKitDocsReady,
+    learnPageReady,
     sdkRegistryValue,
     mcpRegistryValue,
     externalData,
@@ -368,6 +370,12 @@ export async function collectMarketingSourcesStep(
       "no signing or broadcast method",
       "Stays with your wallet or Safe.",
       "Lives inside the immutable policy",
+    ]),
+    fetchFeaturePage(learnUrl, [
+      "OpenZaps Learn",
+      "Public only after evidence.",
+      "Drafts and editor handoffs stay private.",
+      "Request an authority map",
     ]),
     fetchJson(sdkRegistryUrl),
     fetchJson(mcpRegistryUrl),
@@ -575,6 +583,15 @@ export async function collectMarketingSourcesStep(
         ? "The SDK prepares unsigned EIP-712 policy data without a signing or broadcast method; the read-only MCP surface discovers capsules and holds no wallet key. Creation stays with the owner wallet or Safe, while execution authority lives in the immutable policy or typed intent."
         : null,
       docsUrl,
+      observedAt,
+    ),
+    knownOrUnavailable(
+      "product.learn_hub",
+      "OpenZaps Learn publication boundary",
+      learnPageReady
+        ? "OpenZaps Learn publishes source-reviewed product updates and only RSS-confirmed DeFi Tutorials, keeps drafts and editor handoffs private, and links to Request a Zap for a human-reviewed authority map."
+        : null,
+      learnUrl,
       observedAt,
     ),
     fact(

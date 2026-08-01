@@ -9,6 +9,7 @@ import {
   normalizeSubstackTitle,
 } from "@/lib/marketing/substack-handoff";
 import { containsCredentialLikeData } from "@/lib/marketing/source-url";
+import { normalizeConfirmedTutorialManifest } from "@/lib/marketing/tutorial-publication";
 
 const SYNDICATION_VERSION = 1 as const;
 const MAX_FEED_ITEMS = 100;
@@ -70,19 +71,6 @@ export class SyndicationInputError extends Error {
     super(message);
     this.name = "SyndicationInputError";
   }
-}
-
-interface ConfirmedTutorial {
-  id: string;
-  title: string;
-  canonicalUrl: string;
-  publishedAt: string;
-}
-
-function record(value: unknown): Record<string, unknown> | null {
-  return typeof value === "object" && value !== null && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : null;
 }
 
 function normalizedIsoDate(value: unknown, label: string): string {
@@ -248,52 +236,12 @@ function baseItem(
   };
 }
 
-function confirmedTutorials(raw: unknown): Map<string, ConfirmedTutorial> {
-  const manifest = record(raw);
-  if (manifest?.version !== 1 || !Array.isArray(manifest.tutorials)) {
-    throw new SyndicationInputError("Tutorial manifest is invalid.");
-  }
-  if (manifest.tutorials.length > MAX_FEED_ITEMS) {
-    throw new SyndicationInputError("Tutorial manifest exceeds its item bound.");
-  }
-
-  const confirmed = new Map<string, ConfirmedTutorial>();
-  const ids = new Set<string>();
-  for (const rawTutorial of manifest.tutorials) {
-    const tutorial = record(rawTutorial);
-    if (!tutorial || tutorial.status !== "rss_confirmed") continue;
-    const id = boundedSourceId(tutorial.id, "Tutorial manifest id");
-    const title = normalizeSubstackTitle(
-      boundedTitle(tutorial.title, "Tutorial manifest title"),
-    );
-    const canonicalUrl = typeof tutorial.canonicalUrl === "string"
-      ? canonicalSubstackPostUrl(tutorial.canonicalUrl)
-      : null;
-    if (!title || !canonicalUrl || canonicalUrl !== tutorial.canonicalUrl) {
-      throw new SyndicationInputError(
-        "Confirmed tutorial manifest entry is not canonical.",
-      );
-    }
-    if (ids.has(id) || confirmed.has(canonicalUrl)) {
-      throw new SyndicationInputError(
-        "Confirmed tutorial manifest entries must be unique.",
-      );
-    }
-    ids.add(id);
-    confirmed.set(canonicalUrl, {
-      id,
-      title,
-      canonicalUrl,
-      publishedAt: normalizedIsoDate(
-        tutorial.publishedAt,
-        "Tutorial manifest publishedAt",
-      ),
-    });
-  }
-  return confirmed;
-}
-
-const CONFIRMED_TUTORIALS = confirmedTutorials(tutorialManifestJson);
+const CONFIRMED_TUTORIALS = new Map(
+  normalizeConfirmedTutorialManifest(tutorialManifestJson).map((tutorial) => [
+    tutorial.canonicalUrl,
+    tutorial,
+  ]),
+);
 
 /** Required public receipts for a safe first-run Substack baseline. */
 export const CONFIRMED_TUTORIAL_BASELINE_URLS = Object.freeze(

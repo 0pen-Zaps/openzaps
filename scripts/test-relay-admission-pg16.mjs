@@ -325,6 +325,8 @@ const reviewedCampaignQueueMigration =
   "20260801024005_durable_reviewed_marketing_campaign_queue.sql";
 const agentKitCampaignMigration =
   "20260801062000_queue_agent_kit_discord_campaign.sql";
+const learnHubCampaignMigration =
+  "20260801100000_queue_learn_hub_campaign.sql";
 const syndicationInboxMigration =
   "20260801041508_marketing_syndication_inbox.sql";
 const reviewedCampaignFixture = "pg16-reviewed-campaign";
@@ -332,6 +334,11 @@ const reviewedCampaignContentHash = "de".repeat(32);
 const agentKitCampaignId = "agent-kit-published-v1";
 const agentKitCampaignContentHash =
   "516443309a2b558c1335bb4f672a649a1f728ddc643bb0a762564835c6ff59ca";
+const learnHubCampaignId = "learn-hub-launched-v1";
+const learnHubXContentHash =
+  "0f3f9bd4b0b4950f55749a194d98a4fbeb87e16d33274b6f7640c35c499efd82";
+const learnHubDiscordContentHash =
+  "e4e5576c60c5d08e1e874875b15ac82aa9a9f1db016132ee682bc95d124529d8";
 const reviewedCampaignMonday = "2026-07-27T15:00:00Z";
 const reviewedCampaignTuesday = "2026-07-28T15:00:00Z";
 const reviewedCampaignWednesday = "2026-07-29T15:00:00Z";
@@ -479,7 +486,12 @@ try {
   // migrations that deliberately reject an unexpected history replay.
   for (let pass = 0; pass < 2; pass += 1) {
     for (const filename of migrationFiles) {
-      if (pass === 1 && filename === agentKitCampaignMigration) {
+      if (
+        pass === 1
+        && [agentKitCampaignMigration, learnHubCampaignMigration].includes(
+          filename,
+        )
+      ) {
         const replayProbe = psqlFileProbe(join(migrations, filename), "select 1;");
         assert(
           replayProbe.status !== 0
@@ -1436,8 +1448,8 @@ try {
       );
   `);
   assert(
-    initialReviewedCampaignState === "1|0|0",
-    `reviewed campaign queue did not contain exactly one Discord release artifact: ${initialReviewedCampaignState}`,
+    initialReviewedCampaignState === "3|0|1",
+    `reviewed campaign queue did not contain the three exact release artifacts: ${initialReviewedCampaignState}`,
   );
 
   const emptyReviewedCampaignClaim = psqlScalar(`
@@ -1683,8 +1695,8 @@ try {
     from public.marketing_reviewed_campaigns;
   `);
   assert(
-    reviewedCampaignChannelState === "2|0",
-    `reviewed queue fixture unexpectedly created an X row: ${reviewedCampaignChannelState}`,
+    reviewedCampaignChannelState === "3|1",
+    `reviewed queue fixture changed the expected channel distribution: ${reviewedCampaignChannelState}`,
   );
 
   const xOnlyReviewedCampaignClaim = psqlScalar(`
@@ -1943,26 +1955,172 @@ Pre-audit software. Verify before use.$campaign$)::text
     );
   `);
 
-  const deliveredAgentKitClaim = psqlScalar(`
-    select result_code
+  const learnHubXClaim = psqlScalar(`
+    select
+      result_code || '|' ||
+      campaign_id || '|' ||
+      channel || '|' ||
+      queue_order::text || '|' ||
+      content_hash || '|' ||
+      (not_before = '2026-08-04T14:00:00Z'::timestamptz)::text || '|' ||
+      (body = $campaign$OpenZaps Learn is live.
+
+Source-reviewed product updates and RSS-confirmed DeFi Tutorials in one hub. Drafts stay private until evidence exists.
+
+Read—or request a bounded authority map:
+https://www.0xzaps.com/learn
+
+Pre-audit software. Verify before use.$campaign$)::text
     from private.claim_next_marketing_campaign_at(
-      array['discord']::text[],
+      array['x', 'discord']::text[],
       '2026-08-04T15:00:00Z'::timestamptz
     );
   `);
-  const deliveredAgentKitState = psqlScalar(`
+  assert(
+    learnHubXClaim ===
+      `claimed|${learnHubCampaignId}|x|30|${learnHubXContentHash}|true|true`,
+    `OpenZaps Learn X campaign claim drifted: ${learnHubXClaim}`,
+  );
+
+  const learnHubXVerification = psqlScalar(`
+    select verified
+    from private.verify_marketing_campaign_schedule_claim_at(
+      '${learnHubCampaignId}',
+      'x',
+      '2026-08-04'::date,
+      '${learnHubXContentHash}',
+      '2026-08-04T15:05:00Z'::timestamptz
+    );
+  `);
+  assert(
+    learnHubXVerification === "t",
+    `OpenZaps Learn X campaign claim did not verify: ${learnHubXVerification}`,
+  );
+
+  psql(`
+    insert into public.marketing_delivery_ledger (
+      idempotency_key,
+      run_id,
+      candidate_id,
+      content_hash,
+      channel,
+      action,
+      counter_key,
+      interaction_id,
+      approved_by,
+      claim_day,
+      status
+    )
+    values (
+      'scheduled:${learnHubCampaignId}:x',
+      'marketing-learn-hub-x-harness',
+      'marketing-learn-hub-x-harness-candidate',
+      '${learnHubXContentHash}',
+      'x',
+      'broadcast',
+      'xPosts',
+      null,
+      'integration-test',
+      '2000-01-05'::date,
+      'claimed'
+    );
+  `);
+
+  const learnHubDiscordClaim = psqlScalar(`
+    select
+      result_code || '|' ||
+      campaign_id || '|' ||
+      channel || '|' ||
+      queue_order::text || '|' ||
+      content_hash || '|' ||
+      (not_before = '2026-08-04T14:00:00Z'::timestamptz)::text || '|' ||
+      (body = $campaign$**OpenZaps Learn is live.**
+
+The new hub collects source-reviewed OpenZaps product updates and DeFi Tutorials whose title and canonical URL are RSS-confirmed. Drafts and editor handoffs stay private until that publication evidence exists.
+
+Use it to follow what shipped, read why the bounds matter, or request a human-reviewed authority map for one workflow:
+https://www.0xzaps.com/learn
+
+Pre-audit software. Verify before use.$campaign$)::text
+    from private.claim_next_marketing_campaign_at(
+      array['x', 'discord']::text[],
+      '2026-08-05T15:00:00Z'::timestamptz
+    );
+  `);
+  assert(
+    learnHubDiscordClaim ===
+      `claimed|${learnHubCampaignId}|discord|31|${learnHubDiscordContentHash}|true|true`,
+    `OpenZaps Learn Discord campaign claim drifted: ${learnHubDiscordClaim}`,
+  );
+
+  const learnHubDiscordVerification = psqlScalar(`
+    select verified
+    from private.verify_marketing_campaign_schedule_claim_at(
+      '${learnHubCampaignId}',
+      'discord',
+      '2026-08-05'::date,
+      '${learnHubDiscordContentHash}',
+      '2026-08-05T15:05:00Z'::timestamptz
+    );
+  `);
+  assert(
+    learnHubDiscordVerification === "t",
+    `OpenZaps Learn Discord campaign claim did not verify: ${learnHubDiscordVerification}`,
+  );
+
+  psql(`
+    insert into public.marketing_delivery_ledger (
+      idempotency_key,
+      run_id,
+      candidate_id,
+      content_hash,
+      channel,
+      action,
+      counter_key,
+      interaction_id,
+      approved_by,
+      claim_day,
+      status
+    )
+    values (
+      'scheduled:${learnHubCampaignId}:discord',
+      'marketing-learn-hub-discord-harness',
+      'marketing-learn-hub-discord-harness-candidate',
+      '${learnHubDiscordContentHash}',
+      'discord',
+      'broadcast',
+      'discordPosts',
+      null,
+      'integration-test',
+      '2000-01-06'::date,
+      'claimed'
+    );
+  `);
+
+  const completedReviewedCampaignQueue = psqlScalar(`
+    select result_code
+    from private.claim_next_marketing_campaign_at(
+      array['x', 'discord']::text[],
+      '2026-08-06T15:00:00Z'::timestamptz
+    );
+  `);
+  const completedReviewedCampaignState = psqlScalar(`
     select
       (select count(*) from public.marketing_campaign_schedule_claims),
       (
         select count(*)
         from public.marketing_delivery_ledger
-        where idempotency_key = 'scheduled:${agentKitCampaignId}:discord'
+        where idempotency_key in (
+          'scheduled:${agentKitCampaignId}:discord',
+          'scheduled:${learnHubCampaignId}:x',
+          'scheduled:${learnHubCampaignId}:discord'
+        )
       );
   `);
   assert(
-    deliveredAgentKitClaim === "no_pending_campaign"
-      && deliveredAgentKitState === "3|1",
-    `delivered Agent Kit campaign was reclaimed: ${deliveredAgentKitClaim}|${deliveredAgentKitState}`,
+    completedReviewedCampaignQueue === "no_pending_campaign"
+      && completedReviewedCampaignState === "5|3",
+    `completed reviewed campaign queue was reclaimed: ${completedReviewedCampaignQueue}|${completedReviewedCampaignState}`,
   );
 
   for (const mutation of [
@@ -1989,7 +2147,7 @@ Pre-audit software. Verify before use.$campaign$)::text
       (select count(*) from public.marketing_campaign_schedule_claims);
   `);
   assert(
-    immutableReviewedCampaignState === "2|3",
+    immutableReviewedCampaignState === "4|5",
     `reviewed campaign artifacts changed after rejected mutations: ${immutableReviewedCampaignState}`,
   );
 

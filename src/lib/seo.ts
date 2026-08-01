@@ -63,6 +63,15 @@ export const STATIC_PAGE_SEO = {
     changeFrequency: "weekly",
     priority: 0.85,
   },
+  learn: {
+    title: "OpenZaps Tutorials & Product Updates",
+    description:
+      "Read verified OpenZaps product updates and RSS-confirmed DeFi Tutorials, then request a human-reviewed authority map for your own bounded workflow.",
+    path: "/learn",
+    ogImage: "/og/docs.png",
+    changeFrequency: "weekly",
+    priority: 0.75,
+  },
   requestZap: {
     title: "Request a Bounded DeFi Zap",
     description:

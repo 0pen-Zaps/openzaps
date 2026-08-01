@@ -52,6 +52,7 @@ export function SiteFooter(): React.JSX.Element {
               Request a Zap
             </Link>
             <Link href="/explore">Explore</Link>
+            <Link href="/learn">Updates &amp; tutorials</Link>
             <Link href="/docs">Developer docs</Link>
             <Link href="/roadmap">Roadmap</Link>
           </div>

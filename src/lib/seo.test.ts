@@ -51,6 +51,14 @@ describe("SEO primitives", () => {
     expect(Object.keys(STATIC_PAGE_SEO)).not.toContain("zapdrawHow");
   });
 
+  it("indexes the verified learning hub", () => {
+    expect(STATIC_PAGE_SEO.learn).toMatchObject({
+      path: "/learn",
+      changeFrequency: "weekly",
+      priority: 0.75,
+    });
+  });
+
   it("emits canonical, Open Graph, and Twitter metadata from one route definition", () => {
     const entry = STATIC_PAGE_SEO.docs;
     const metadata = pageMetadata(entry);

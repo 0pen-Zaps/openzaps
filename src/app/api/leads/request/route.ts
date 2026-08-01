@@ -33,6 +33,7 @@ const LEAD_ANALYTICS_SOURCES = new Set([
   "github",
   "homepage",
   "newsletter",
+  "openzaps",
   "rss",
   "substack",
   "x",
