@@ -8,6 +8,7 @@ import {
   createSubstackEditorHandoff,
   fetchSubstackFeed,
   parseSubstackRss,
+  verifySubstackPublication,
 } from "./substack";
 
 afterEach(() => {
@@ -57,6 +58,8 @@ describe("Substack editor handoff", () => {
         title: "How bounded Zaps work",
         subtitle: "An execution walkthrough",
         bodyMarkdown: "# Tutorial\n\nDo the thing.",
+        bodyHtml: "<h2>Tutorial</h2>\n<p>Do the thing.</p>",
+        bodyPlainText: "Tutorial\n\nDo the thing.",
         tags: ["DeFi", "OpenZaps"],
       },
     });
@@ -72,6 +75,8 @@ describe("Substack editor handoff", () => {
     ).toEqual({
       title: "A direct walkthrough",
       bodyMarkdown: "Start here.",
+      bodyHtml: "<p>Start here.</p>",
+      bodyPlainText: "Start here.",
       tags: [],
     });
   });
@@ -87,6 +92,72 @@ describe("Substack editor handoff", () => {
   });
 });
 
+describe("Substack publication verification", () => {
+  it("confirms only an exact canonical URL and approved RSS title", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(FEED));
+
+    await expect(
+      verifySubstackPublication(
+        {
+          canonicalUrl: "https://defitutorials.substack.com/p/bounded-zaps/",
+          approvedTitle: "  Zaps & bounded agents  ",
+        },
+        { fetchImpl: fetchMock, nowMs: Date.parse("2026-07-29T13:00:00Z") },
+      ),
+    ).resolves.toEqual({
+      channel: "substack",
+      status: "rss_confirmed",
+      canonicalUrl: "https://defitutorials.substack.com/p/bounded-zaps",
+      approvedTitle: "Zaps & bounded agents",
+      feedUrl: DEFITUTORIALS_FEED_URL,
+      checkedAt: "2026-07-29T13:00:00.000Z",
+      publishedAt: "2026-07-28T12:00:00.000Z",
+      persisted: false,
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("distinguishes a missing URL from a title mismatch without accepting either", async () => {
+    const fetchMock = vi.fn().mockImplementation(async () => new Response(FEED));
+
+    await expect(
+      verifySubstackPublication(
+        {
+          canonicalUrl: "https://defitutorials.substack.com/p/not-in-feed",
+          approvedTitle: "Zaps & bounded agents",
+        },
+        { fetchImpl: fetchMock, nowMs: 0 },
+      ),
+    ).resolves.toMatchObject({ status: "not_found", persisted: false });
+
+    await expect(
+      verifySubstackPublication(
+        {
+          canonicalUrl: "https://defitutorials.substack.com/p/bounded-zaps",
+          approvedTitle: "A changed title",
+        },
+        { fetchImpl: fetchMock, nowMs: 0 },
+      ),
+    ).resolves.toMatchObject({ status: "title_mismatch", persisted: false });
+  });
+
+  it("rejects tracking URLs and alternate Substack hosts before fetching", async () => {
+    const fetchMock = vi.fn();
+
+    await expect(
+      verifySubstackPublication(
+        {
+          canonicalUrl:
+            "https://defitutorials.substack.com/p/bounded-zaps?utm_source=test",
+          approvedTitle: "Zaps & bounded agents",
+        },
+        { fetchImpl: fetchMock },
+      ),
+    ).rejects.toMatchObject({ code: "invalid-input" });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+});
+
 describe("Substack RSS ingestion", () => {
   it("parses and bounds public DeFi Tutorials RSS items", () => {
     expect(parseSubstackRss(FEED)).toEqual([
@@ -99,6 +170,40 @@ describe("Substack RSS ingestion", () => {
         author: "Nodar",
       },
     ]);
+  });
+
+  it("deduplicates by canonical URL rather than untrusted RSS GUID", () => {
+    const feed = `
+      <rss><channel>
+        <item>
+          <title>First post</title>
+          <link>https://defitutorials.substack.com/p/first-post</link>
+          <guid>shared-guid</guid>
+        </item>
+        <item>
+          <title>Second post</title>
+          <link>https://defitutorials.substack.com/p/second-post</link>
+          <guid>shared-guid</guid>
+        </item>
+        <item>
+          <title>Duplicate first post</title>
+          <link>https://defitutorials.substack.com/p/first-post</link>
+          <guid>different-guid</guid>
+        </item>
+      </channel></rss>`;
+
+    expect(parseSubstackRss(feed).map((post) => post.url)).toEqual([
+      "https://defitutorials.substack.com/p/first-post",
+      "https://defitutorials.substack.com/p/second-post",
+    ]);
+  });
+
+  it("rejects a truncated feed even when it contains one complete item", () => {
+    const truncated = FEED.slice(0, FEED.lastIndexOf("</channel>"));
+
+    expect(() => parseSubstackRss(truncated)).toThrow(
+      "Substack returned an invalid feed.",
+    );
   });
 
   it("fetches only the public feed and returns cache validators", async () => {

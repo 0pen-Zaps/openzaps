@@ -9,7 +9,6 @@ import {
   MARKETING_POLICY_VERSION,
   MARKETING_RISK_TIERS,
   MARKETING_RUN_STATES,
-  SCHEDULED_MARKETING_TEMPLATE_ID,
   MARKETING_TOPICS,
 } from "@/lib/marketing/types";
 
@@ -208,7 +207,11 @@ export const MarketingPolicyContextSchema = z
     automaticAuthorization: z
       .object({
         kind: z.literal("scheduled_template"),
-        templateId: z.literal(SCHEDULED_MARKETING_TEMPLATE_ID),
+        templateId: z
+          .string()
+          .min(1)
+          .max(120)
+          .regex(/^[a-z0-9][a-z0-9-]*$/u),
       })
       .strict()
       .optional(),

@@ -7,10 +7,7 @@ import {
   SCHEDULED_MARKETING_CHANNELS,
   type MarketingConfig,
 } from "@/lib/marketing";
-import { claimMarketingScheduleSlot } from "@/lib/marketing/ledger-server";
-import {
-  type MarketingScheduledRequest,
-} from "@/workflows/marketing-agent/contracts";
+import { claimNextReviewedMarketingCampaign } from "@/lib/marketing/ledger-server";
 import { openZapsScheduledMarketingWorkflow } from "@/workflows/marketing-agent";
 
 export const dynamic = "force-dynamic";
@@ -19,7 +16,7 @@ export { isCronAuthorized } from "@/lib/cron-auth";
 
 function scheduledChannels(
   config: MarketingConfig,
-): MarketingScheduledRequest["channels"] {
+): Array<(typeof SCHEDULED_MARKETING_CHANNELS)[number]> {
   const requested = (process.env.OPENZAPS_MARKETING_SCHEDULE_CHANNELS ?? "x,discord")
     .split(",")
     .map((value) => value.trim().toLowerCase())
@@ -32,7 +29,7 @@ function scheduledChannels(
     channel === "x"
       ? config.readiness.channels.x
       : config.readiness.channels.discordBroadcast,
-  ) as MarketingScheduledRequest["channels"];
+  ) as Array<(typeof SCHEDULED_MARKETING_CHANNELS)[number]>;
 }
 
 export async function GET(request: Request): Promise<Response> {
@@ -91,7 +88,7 @@ export async function GET(request: Request): Promise<Response> {
 
   let slot;
   try {
-    slot = await claimMarketingScheduleSlot();
+    slot = await claimNextReviewedMarketingCampaign(channels);
   } catch {
     return NextResponse.json(
       {
@@ -123,9 +120,35 @@ export async function GET(request: Request): Promise<Response> {
       { headers: { "cache-control": "private, no-store" } },
     );
   }
+  if (slot.result === "no_pending_campaign") {
+    return NextResponse.json(
+      {
+        started: false,
+        status: "no_pending_campaign",
+        scheduleKey: slot.scheduleKey,
+        slotDay: slot.day,
+      },
+      { headers: { "cache-control": "private, no-store" } },
+    );
+  }
+
+  if (!slot.campaign) {
+    return NextResponse.json(
+      {
+        error:
+          "Scheduled marketing admission returned no reviewed campaign; no workflow was started.",
+      },
+      { status: 503, headers: { "cache-control": "private, no-store" } },
+    );
+  }
 
   try {
-    const run = await start(openZapsScheduledMarketingWorkflow, [{ channels }]);
+    const run = await start(openZapsScheduledMarketingWorkflow, [{
+      campaignId: slot.campaign.id,
+      channel: slot.campaign.channel,
+      slotDay: slot.day,
+      contentHash: slot.campaign.contentHash,
+    }]);
     return NextResponse.json(
       {
         runId: run.runId,
@@ -139,7 +162,7 @@ export async function GET(request: Request): Promise<Response> {
     return NextResponse.json(
       {
         error:
-          "The schedule slot was claimed, but workflow start could not be confirmed. No automatic retry will start another run.",
+          "The campaign was claimed for today, but workflow start could not be confirmed. No same-day retry will start another run; a later weekday may retry before delivery admission.",
       },
       { status: 503, headers: { "cache-control": "private, no-store" } },
     );

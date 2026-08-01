@@ -12,15 +12,31 @@ export const SCHEDULED_MARKETING_CHANNELS = ["x", "discord"] as const;
 export type ScheduledMarketingChannel =
   (typeof SCHEDULED_MARKETING_CHANNELS)[number];
 
-interface ScheduledMarketingTemplate {
-  id: typeof SCHEDULED_MARKETING_TEMPLATE_ID;
+export interface ReviewedMarketingFactRequirement {
+  key: string;
+  sourceUrl: string;
+}
+
+/**
+ * Source-reviewed, deterministic public copy. Adding a campaign requires a
+ * source change plus an immutable database queue entry with the same content
+ * hash. Model output can never become an automatic campaign.
+ */
+export interface ReviewedMarketingCampaign {
+  id: string;
   channel: ScheduledMarketingChannel;
+  queueOrder: number;
+  notBefore: string | null;
   body: string;
   links: string[];
   topics: MarketingTopic[];
   disclosures: MarketingDisclosure[];
   claims: MarketingClaim[];
   flags: MarketingPolicyFlags;
+  requiredFacts: ReviewedMarketingFactRequirement[];
+  canonicalSourceUrls: string[];
+  /** SHA-256 of reviewedMarketingCampaignCanonicalPayload(campaign). */
+  contentHash: string;
 }
 
 const SAFE_FLAGS: MarketingPolicyFlags = {
@@ -58,12 +74,37 @@ const FEATURE_CLAIMS: MarketingClaim[] = [
   },
 ];
 
-const TEMPLATES: Readonly<
-  Record<ScheduledMarketingChannel, ScheduledMarketingTemplate>
-> = {
-  x: {
+const FEATURE_FACTS: ReviewedMarketingFactRequirement[] = [
+  {
+    key: "product.virtual_trading",
+    sourceUrl: "https://www.0xzaps.com/virtual-trading",
+  },
+  {
+    key: "product.virtual_trading_markets",
+    sourceUrl: "https://www.0xzaps.com/api/virtual-trading/markets",
+  },
+  {
+    key: "product.virtual_trading_quote",
+    sourceUrl: "https://www.0xzaps.com/api/virtual-trading/quote",
+  },
+  {
+    key: "product.request_a_zap",
+    sourceUrl: "https://www.0xzaps.com/request-a-zap",
+  },
+  {
+    key: "product.request_a_zap_intake",
+    sourceUrl: "https://www.0xzaps.com/api/leads/request",
+  },
+];
+
+const FEATURE_SOURCE_URLS = FEATURE_FACTS.map((fact) => fact.sourceUrl);
+
+const CAMPAIGNS: readonly ReviewedMarketingCampaign[] = [
+  {
     id: SCHEDULED_MARKETING_TEMPLATE_ID,
     channel: "x",
+    queueOrder: 10,
+    notBefore: null,
     body:
       "New on OpenZaps:\n\n→ Virtual Trading: paper trades with 10,000 virtual USDG and live read-only quotes. No wallet. No real funds.\n\n→ Request a Zap: submit one workflow to request a human-reviewed authority map.\n\nhttps://www.0xzaps.com\n\nPre-audit software. Verify before use.",
     links: ["https://www.0xzaps.com"],
@@ -71,10 +112,16 @@ const TEMPLATES: Readonly<
     disclosures: ["pre_audit"],
     claims: FEATURE_CLAIMS,
     flags: SAFE_FLAGS,
+    requiredFacts: FEATURE_FACTS,
+    canonicalSourceUrls: FEATURE_SOURCE_URLS,
+    contentHash:
+      "31bc8afd32a05563745a85b55a8ae267fda72da5c9cef4b3b63378b14cf53961",
   },
-  discord: {
+  {
     id: SCHEDULED_MARKETING_TEMPLATE_ID,
     channel: "discord",
+    queueOrder: 11,
+    notBefore: null,
     body:
       "New on OpenZaps:\n\n**Virtual Trading** lets you paper-trade deployed 0xZAPS/USDG and aeWETH/USDG routes with 10,000 virtual USDG and live read-only quotes. No wallet, approval, signature, transaction, or real funds.\n\n**Request a Zap** lets you submit one workflow for human review and request a bounded authority map: what the agent may trigger and what it can never change. A review is not an automatic deployment promise.\n\nTry Virtual Trading: https://www.0xzaps.com/virtual-trading\nRequest a Zap: https://www.0xzaps.com/request-a-zap\n\nPre-audit software. Verify before use.",
     links: [
@@ -85,56 +132,166 @@ const TEMPLATES: Readonly<
     disclosures: ["pre_audit"],
     claims: FEATURE_CLAIMS,
     flags: SAFE_FLAGS,
+    requiredFacts: FEATURE_FACTS,
+    canonicalSourceUrls: FEATURE_SOURCE_URLS,
+    contentHash:
+      "d87798d6ff0ba39a29c5b9da58397162cb43cd4908c5b604493e8fe98a0604f5",
   },
-};
+];
+
+// The v2 X copy has a separately verified public receipt and is intentionally
+// not eligible for automatic delivery. The matching Discord contract remains
+// here to exercise the fail-closed automatic lane, but the production queue
+// intentionally starts empty because that Discord update is also already
+// public. A durable claim is still mandatory, so source membership alone can
+// never authorize a provider write. Future campaigns must update source and
+// the durable queue together.
+const AUTO_DELIVERY_CAMPAIGNS = new Set([
+  `${SCHEDULED_MARKETING_TEMPLATE_ID}:discord`,
+]);
+
+function cloneCampaign(
+  campaign: ReviewedMarketingCampaign,
+): ReviewedMarketingCampaign {
+  return {
+    ...campaign,
+    notBefore:
+      campaign.notBefore === null
+        ? null
+        : new Date(campaign.notBefore).toISOString(),
+    links: [...campaign.links],
+    topics: [...campaign.topics],
+    disclosures: [...campaign.disclosures],
+    claims: campaign.claims.map((claim) => ({
+      ...claim,
+      factKeys: [...claim.factKeys],
+    })),
+    flags: { ...campaign.flags },
+    requiredFacts: campaign.requiredFacts.map((fact) => ({ ...fact })),
+    canonicalSourceUrls: [...campaign.canonicalSourceUrls],
+  };
+}
 
 function sameJson(left: unknown, right: unknown): boolean {
   return JSON.stringify(left) === JSON.stringify(right);
 }
 
-export function scheduledMarketingTemplate(
+export function reviewedMarketingCampaigns(): ReviewedMarketingCampaign[] {
+  return CAMPAIGNS.map(cloneCampaign);
+}
+
+export function reviewedMarketingCampaign(
+  campaignId: string,
   channel: ScheduledMarketingChannel,
-): ScheduledMarketingTemplate {
-  const template = TEMPLATES[channel];
+): ReviewedMarketingCampaign {
+  const campaign = CAMPAIGNS.find(
+    (entry) => entry.id === campaignId && entry.channel === channel,
+  );
+  if (!campaign) {
+    throw new Error("Unknown reviewed marketing campaign.");
+  }
+  return cloneCampaign(campaign);
+}
+
+export function reviewedMarketingCampaignIsAvailable(
+  campaignId: string,
+  channel: ScheduledMarketingChannel,
+  now: string,
+): boolean {
+  let campaign: ReviewedMarketingCampaign;
+  try {
+    campaign = reviewedMarketingCampaign(campaignId, channel);
+  } catch {
+    return false;
+  }
+  const evaluatedAt = Date.parse(now);
+  if (!Number.isFinite(evaluatedAt)) return false;
+  return campaign.notBefore === null || evaluatedAt >= Date.parse(campaign.notBefore);
+}
+
+export function reviewedMarketingCampaignCanonicalPayload(
+  campaign: ReviewedMarketingCampaign,
+): Record<string, unknown> {
   return {
-    ...template,
-    links: [...template.links],
-    topics: [...template.topics],
-    disclosures: [...template.disclosures],
-    claims: template.claims.map((claim) => ({
-      ...claim,
-      factKeys: [...claim.factKeys],
-    })),
-    flags: { ...template.flags },
+    id: campaign.id,
+    channel: campaign.channel,
+    queueOrder: campaign.queueOrder,
+    notBefore:
+      campaign.notBefore === null
+        ? null
+        : new Date(campaign.notBefore).toISOString(),
+    body: campaign.body,
+    links: campaign.links,
+    topics: campaign.topics,
+    disclosures: campaign.disclosures,
+    claims: campaign.claims,
+    flags: campaign.flags,
+    requiredFacts: campaign.requiredFacts,
+    canonicalSourceUrls: campaign.canonicalSourceUrls,
   };
 }
 
-/**
- * Automatic delivery is permitted only when every public and policy-relevant
- * candidate field still exactly matches the versioned server template.
- */
-export function isScheduledMarketingTemplateCandidate(
+/** Compatibility accessor for the campaign that replaced the one-shot slot. */
+export function scheduledMarketingTemplate(
+  channel: ScheduledMarketingChannel,
+): ReviewedMarketingCampaign {
+  return reviewedMarketingCampaign(SCHEDULED_MARKETING_TEMPLATE_ID, channel);
+}
+
+function hasRequiredCampaignEvidence(
   candidate: MarketingCandidate,
-  templateId: string,
+  campaign: ReviewedMarketingCampaign,
+): boolean {
+  const facts = new Map(
+    candidate.sourcePacket.facts.map((fact) => [fact.key, fact]),
+  );
+  return campaign.requiredFacts.every((requirement) => {
+    const fact = facts.get(requirement.key);
+    return fact?.status === "confirmed" && fact.sourceUrl === requirement.sourceUrl;
+  });
+}
+
+/**
+ * Automatic delivery is permitted only when every public, policy, and evidence
+ * field still exactly matches a source-reviewed campaign.
+ */
+export function isReviewedMarketingCampaignCandidate(
+  candidate: MarketingCandidate,
+  campaignId: string,
 ): boolean {
   if (
-    templateId !== SCHEDULED_MARKETING_TEMPLATE_ID ||
     !SCHEDULED_MARKETING_CHANNELS.includes(
       candidate.channel as ScheduledMarketingChannel,
     )
   ) {
     return false;
   }
-  const template = TEMPLATES[candidate.channel as ScheduledMarketingChannel];
+  const campaign = CAMPAIGNS.find(
+    (entry) => entry.id === campaignId && entry.channel === candidate.channel,
+  );
+  if (
+    !campaign ||
+    !AUTO_DELIVERY_CAMPAIGNS.has(`${campaign.id}:${campaign.channel}`)
+  ) {
+    return false;
+  }
   return (
     candidate.action === "broadcast" &&
     candidate.kind === "product_update" &&
     candidate.interaction === null &&
-    sameJson(candidate.topics, template.topics) &&
-    candidate.body === template.body &&
-    sameJson(candidate.links, template.links) &&
-    sameJson(candidate.disclosures, template.disclosures) &&
-    sameJson(candidate.claims, template.claims) &&
-    sameJson(candidate.flags, template.flags)
+    sameJson(candidate.topics, campaign.topics) &&
+    candidate.body === campaign.body &&
+    sameJson(candidate.links, campaign.links) &&
+    sameJson(candidate.disclosures, campaign.disclosures) &&
+    sameJson(candidate.claims, campaign.claims) &&
+    sameJson(candidate.flags, campaign.flags) &&
+    hasRequiredCampaignEvidence(candidate, campaign)
   );
+}
+
+export function isScheduledMarketingTemplateCandidate(
+  candidate: MarketingCandidate,
+  templateId: string,
+): boolean {
+  return isReviewedMarketingCampaignCandidate(candidate, templateId);
 }

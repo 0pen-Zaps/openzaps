@@ -7,6 +7,11 @@ import {
   safelyFetch,
   type ChannelFetch,
 } from "./shared";
+import {
+  canonicalSubstackPostUrl,
+  normalizeSubstackTitle,
+  prepareSubstackRichText,
+} from "../substack-handoff";
 
 export const DEFITUTORIALS_PUBLICATION_URL =
   "https://defitutorials.substack.com";
@@ -44,7 +49,11 @@ export interface SubstackEditorHandoff {
   draft: {
     title: string;
     subtitle?: string;
+    /** Immutable reviewed source retained for audit and revision. */
     bodyMarkdown: string;
+    /** Derived, sanitized editor copy. Never sent to Substack by this adapter. */
+    bodyHtml: string;
+    bodyPlainText: string;
     tags: string[];
   };
 }
@@ -77,6 +86,28 @@ export interface SubstackFeedInput {
 export interface SubstackFeedDependencies {
   fetchImpl?: ChannelFetch;
   nowMs?: number;
+}
+
+export type SubstackPublicationVerificationStatus =
+  | "rss_confirmed"
+  | "not_found"
+  | "title_mismatch";
+
+export interface SubstackPublicationVerification {
+  channel: "substack";
+  status: SubstackPublicationVerificationStatus;
+  canonicalUrl: string;
+  approvedTitle: string;
+  feedUrl: string;
+  checkedAt: string;
+  publishedAt?: string;
+  /** A schema change is still required before this receipt can be appended. */
+  persisted: false;
+}
+
+export interface SubstackPublicationVerificationInput {
+  canonicalUrl: string;
+  approvedTitle: string;
 }
 
 function assertDraftText(
@@ -143,6 +174,7 @@ export function createSubstackEditorHandoff(
       `Substack supports up to ${SUBSTACK_TAGS_MAX} non-empty tags of ${SUBSTACK_TAG_MAX} characters.`,
     );
   }
+  const richText = prepareSubstackRichText(input.bodyMarkdown);
 
   return {
     channel: "substack",
@@ -156,6 +188,8 @@ export function createSubstackEditorHandoff(
       title: input.title.trim(),
       ...(input.subtitle?.trim() ? { subtitle: input.subtitle.trim() } : {}),
       bodyMarkdown: input.bodyMarkdown,
+      bodyHtml: richText.html,
+      bodyPlainText: richText.plainText,
       tags: tags.map((tag) => tag.trim()),
     },
   };
@@ -205,22 +239,40 @@ function xmlElement(block: string, name: string): string | undefined {
 function validSubstackPostUrl(raw: string): string | undefined {
   try {
     const url = new URL(raw);
-    const isPublication =
-      url.protocol === "https:" &&
-      (url.hostname === "defitutorials.substack.com" ||
-        (url.hostname === "open.substack.com" &&
-          url.pathname.startsWith("/pub/defitutorials/")));
-    return isPublication ? url.toString() : undefined;
+    const canonical = canonicalSubstackPostUrl(url.toString());
+    if (canonical) return canonical;
+    if (
+      url.protocol !== "https:" ||
+      url.hostname !== "open.substack.com" ||
+      url.username ||
+      url.password ||
+      url.port ||
+      url.search ||
+      url.hash
+    ) return undefined;
+    const match = url.pathname.match(
+      /^\/pub\/defitutorials\/p\/([a-z0-9](?:[a-z0-9-]{0,198}[a-z0-9])?)\/?$/u,
+    );
+    return match?.[1]
+      ? `https://defitutorials.substack.com/p/${match[1]}`
+      : undefined;
   } catch {
     return undefined;
   }
 }
 
 export function parseSubstackRss(xml: string): SubstackFeedPost[] {
+  const trimmedXml = xml.trim();
+  const root = trimmedXml.match(/<(rss|feed)\b[^>]*>/iu)?.[1];
   if (
-    !xml.trim() ||
+    !trimmedXml ||
     xml.length > SUBSTACK_FEED_MAX_BYTES ||
-    !/<(?:rss|feed)\b/i.test(xml)
+    !root ||
+    !new RegExp(`<\\/${root}>\\s*$`, "iu").test(trimmedXml) ||
+    (root.toLowerCase() === "rss"
+      && !/<channel\b[^>]*>[\s\S]*<\/channel>\s*<\/rss>\s*$/iu.test(
+        trimmedXml,
+      ))
   ) {
     throw new ChannelAdapterError(
       "substack",
@@ -233,7 +285,7 @@ export function parseSubstackRss(xml: string): SubstackFeedPost[] {
     .slice(0, SUBSTACK_FEED_MAX_ITEMS)
     .map((match) => match[1]);
   const posts: SubstackFeedPost[] = [];
-  const seen = new Set<string>();
+  const seenUrls = new Set<string>();
 
   for (const block of blocks) {
     const rawTitle = xmlElement(block, "title");
@@ -248,7 +300,7 @@ export function parseSubstackRss(xml: string): SubstackFeedPost[] {
       !id ||
       id.length > SUBSTACK_FEED_ID_MAX ||
       title.length > SUBSTACK_FEED_TITLE_MAX ||
-      seen.has(id)
+      seenUrls.has(url)
     ) {
       continue;
     }
@@ -261,7 +313,7 @@ export function parseSubstackRss(xml: string): SubstackFeedPost[] {
     const rawAuthor =
       xmlElement(block, "dc:creator") ?? xmlElement(block, "author");
 
-    seen.add(id);
+    seenUrls.add(url);
     posts.push({
       id,
       title,
@@ -383,5 +435,60 @@ export async function fetchSubstackFeed(
     ...(response.headers.get("last-modified")
       ? { lastModified: response.headers.get("last-modified") as string }
       : {}),
+  };
+}
+
+/**
+ * Read-only publication verification against the public DeFi Tutorials RSS.
+ * It neither calls a Substack write endpoint nor mutates the delivery ledger.
+ */
+export async function verifySubstackPublication(
+  input: SubstackPublicationVerificationInput,
+  dependencies: SubstackFeedDependencies = {},
+): Promise<SubstackPublicationVerification> {
+  const canonicalUrl = canonicalSubstackPostUrl(input.canonicalUrl);
+  const approvedTitle = normalizeSubstackTitle(input.approvedTitle);
+  if (!canonicalUrl || !approvedTitle) {
+    throw new ChannelAdapterError(
+      "substack",
+      "invalid-input",
+      "A canonical DeFi Tutorials post URL and approved title are required.",
+    );
+  }
+
+  const checkedAt = new Date(dependencies.nowMs ?? Date.now()).toISOString();
+  const feed = await fetchSubstackFeed(
+    { idempotencyKey: "verify:defitutorials-publication" },
+    dependencies,
+  );
+  const post = feed.posts.find(
+    (candidate) => canonicalSubstackPostUrl(candidate.url) === canonicalUrl,
+  );
+  if (!post) {
+    return {
+      channel: "substack",
+      status: "not_found",
+      canonicalUrl,
+      approvedTitle,
+      feedUrl: DEFITUTORIALS_FEED_URL,
+      checkedAt,
+      persisted: false,
+    };
+  }
+
+  const status = normalizeSubstackTitle(post.title) === approvedTitle
+    ? "rss_confirmed"
+    : "title_mismatch";
+  return {
+    channel: "substack",
+    status,
+    canonicalUrl,
+    approvedTitle,
+    feedUrl: DEFITUTORIALS_FEED_URL,
+    checkedAt,
+    ...(status === "rss_confirmed" && post.publishedAt
+      ? { publishedAt: post.publishedAt }
+      : {}),
+    persisted: false,
   };
 }

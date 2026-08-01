@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const { scheduleClaimMock, startMock, workflowMock } = vi.hoisted(() => ({
-  scheduleClaimMock: vi.fn(),
+const { campaignClaimMock, startMock, workflowMock } = vi.hoisted(() => ({
+  campaignClaimMock: vi.fn(),
   startMock: vi.fn(),
   workflowMock: vi.fn(),
 }));
@@ -15,7 +15,7 @@ vi.mock("@/workflows/marketing-agent", () => ({
 }));
 
 vi.mock("@/lib/marketing/ledger-server", () => ({
-  claimMarketingScheduleSlot: scheduleClaimMock,
+  claimNextReviewedMarketingCampaign: campaignClaimMock,
 }));
 
 import { GET, isCronAuthorized } from "./route";
@@ -44,11 +44,17 @@ beforeEach(() => {
   );
   vi.stubEnv("OPENZAPS_DISCORD_GUILD_ID", "456");
   vi.stubEnv("DISCORD_MARKETING_CHANNEL_ID", "789");
-  scheduleClaimMock.mockResolvedValue({
+  campaignClaimMock.mockResolvedValue({
     result: "claimed",
     scheduleKey: "weekday_product_update",
     day: "2026-07-29",
     claimedAt: "2026-07-29T14:00:00.000Z",
+    campaign: {
+      id: "virtual-trading-request-zap-v2",
+      channel: "discord",
+      contentHash:
+        "d87798d6ff0ba39a29c5b9da58397162cb43cd4908c5b604493e8fe98a0604f5",
+    },
   });
   startMock.mockResolvedValue({ runId: "wrun_cron_1" });
 });
@@ -75,7 +81,7 @@ describe("marketing cron route", () => {
     const response = await GET(request("wrong-token"));
 
     expect(response.status).toBe(401);
-    expect(scheduleClaimMock).not.toHaveBeenCalled();
+    expect(campaignClaimMock).not.toHaveBeenCalled();
     expect(startMock).not.toHaveBeenCalled();
   });
 
@@ -94,7 +100,7 @@ describe("marketing cron route", () => {
       skipped: true,
       reason: "No requested scheduled channel has a ready publish provider.",
     });
-    expect(scheduleClaimMock).not.toHaveBeenCalled();
+    expect(campaignClaimMock).not.toHaveBeenCalled();
     expect(startMock).not.toHaveBeenCalled();
   });
 
@@ -110,14 +116,18 @@ describe("marketing cron route", () => {
       scheduleKey: "weekday_product_update",
       slotDay: "2026-07-29",
     });
-    expect(scheduleClaimMock).toHaveBeenCalledOnce();
+    expect(campaignClaimMock).toHaveBeenCalledWith(["discord"]);
     expect(startMock).toHaveBeenCalledOnce();
-    expect(scheduleClaimMock.mock.invocationCallOrder[0]).toBeLessThan(
+    expect(campaignClaimMock.mock.invocationCallOrder[0]).toBeLessThan(
       startMock.mock.invocationCallOrder[0],
     );
     expect(startMock.mock.calls[0]?.[0]).toBe(workflowMock);
-    expect(startMock.mock.calls[0]?.[1]?.[0]).toMatchObject({
-      channels: ["discord"],
+    expect(startMock.mock.calls[0]?.[1]?.[0]).toEqual({
+      campaignId: "virtual-trading-request-zap-v2",
+      channel: "discord",
+      slotDay: "2026-07-29",
+      contentHash:
+        "d87798d6ff0ba39a29c5b9da58397162cb43cd4908c5b604493e8fe98a0604f5",
     });
   });
 
@@ -130,8 +140,13 @@ describe("marketing cron route", () => {
     const response = await GET(request("cron-token"));
 
     expect(response.status).toBe(202);
+    expect(campaignClaimMock).toHaveBeenCalledWith(["x", "discord"]);
     expect(startMock.mock.calls[0]?.[1]?.[0]).toEqual({
-      channels: ["x", "discord"],
+      campaignId: "virtual-trading-request-zap-v2",
+      channel: "discord",
+      slotDay: "2026-07-29",
+      contentHash:
+        "d87798d6ff0ba39a29c5b9da58397162cb43cd4908c5b604493e8fe98a0604f5",
     });
   });
 
@@ -145,12 +160,12 @@ describe("marketing cron route", () => {
       skipped: true,
       reason: "Bounded automatic publishing is not ready.",
     });
-    expect(scheduleClaimMock).not.toHaveBeenCalled();
+    expect(campaignClaimMock).not.toHaveBeenCalled();
     expect(startMock).not.toHaveBeenCalled();
   });
 
   it("returns a truthful non-start result for a duplicate or weekend invocation", async () => {
-    scheduleClaimMock.mockResolvedValueOnce({
+    campaignClaimMock.mockResolvedValueOnce({
       result: "already_claimed",
       scheduleKey: "weekday_product_update",
       day: "2026-07-29",
@@ -158,7 +173,7 @@ describe("marketing cron route", () => {
     });
     const duplicate = await GET(request("cron-token"));
 
-    scheduleClaimMock.mockResolvedValueOnce({
+    campaignClaimMock.mockResolvedValueOnce({
       result: "outside_schedule",
       scheduleKey: "weekday_product_update",
       day: "2026-08-01",
@@ -183,6 +198,28 @@ describe("marketing cron route", () => {
     expect(startMock).not.toHaveBeenCalled();
   });
 
+  it("returns no_pending_campaign without starting a workflow", async () => {
+    campaignClaimMock.mockResolvedValueOnce({
+      result: "no_pending_campaign",
+      scheduleKey: "weekday_product_update",
+      day: "2026-07-29",
+      claimedAt: null,
+      campaign: null,
+    });
+
+    const response = await GET(request("cron-token"));
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({
+      started: false,
+      status: "no_pending_campaign",
+      scheduleKey: "weekday_product_update",
+      slotDay: "2026-07-29",
+    });
+    expect(campaignClaimMock).toHaveBeenCalledOnce();
+    expect(startMock).not.toHaveBeenCalled();
+  });
+
   it("fails closed before claiming when the durable ledger is not configured", async () => {
     vi.stubEnv("OPENZAPS_MARKETING_DURABLE_LEDGER_CONFIGURED", "false");
 
@@ -192,12 +229,12 @@ describe("marketing cron route", () => {
     expect(await response.json()).toEqual({
       error: "Durable scheduled-marketing admission is not configured.",
     });
-    expect(scheduleClaimMock).not.toHaveBeenCalled();
+    expect(campaignClaimMock).not.toHaveBeenCalled();
     expect(startMock).not.toHaveBeenCalled();
   });
 
   it("fails closed and sanitizes ledger admission failures", async () => {
-    scheduleClaimMock.mockRejectedValue(
+    campaignClaimMock.mockRejectedValue(
       new Error("database credential should-never-leak"),
     );
 
@@ -220,9 +257,9 @@ describe("marketing cron route", () => {
 
     expect(response.status).toBe(503);
     expect(raw).toBe(
-      '{"error":"The schedule slot was claimed, but workflow start could not be confirmed. No automatic retry will start another run."}',
+      '{"error":"The campaign was claimed for today, but workflow start could not be confirmed. No same-day retry will start another run; a later weekday may retry before delivery admission."}',
     );
     expect(raw).not.toContain("should-never-leak");
-    expect(scheduleClaimMock).toHaveBeenCalledOnce();
+    expect(campaignClaimMock).toHaveBeenCalledOnce();
   });
 });

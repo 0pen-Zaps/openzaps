@@ -2,7 +2,11 @@
 
 **Publication:** DeFi Tutorials
 
-**Status:** Human approval required before Substack publication
+**Status:** Published · public RSS confirmed
+
+**Published:** July 29, 2026 at 16:55:32 UTC
+
+**Canonical URL:** https://defitutorials.substack.com/p/give-an-agent-the-trigger-never-the
 
 **Suggested subtitle:** How OpenZaps lets an autonomous process submit a pre-committed DeFi action without giving it a wallet or a general-purpose session key
 

@@ -1,9 +1,11 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
+  createMarketingSyndicationRepairProof,
   isMarketingAdminAuthorized,
   marketingAdminTokenConfigured,
   marketingAdminUnauthorizedResponse,
+  verifyMarketingSyndicationRepairProof,
 } from "@/lib/marketing/auth";
 
 function request(authorization?: string): Request {
@@ -56,5 +58,43 @@ describe("marketing operator authorization", () => {
     expect(response.headers.get("cache-control")).toBe("no-store, private");
     expect(response.headers.get("www-authenticate")).toBe('Bearer realm="OpenZaps Marketing"');
     expect(await response.json()).toEqual({ error: "Unauthorized." });
+  });
+
+  it("binds a narrow repair proof to one exact item, run, and server secret", () => {
+    const itemId = "ab".repeat(32);
+    vi.stubEnv("OPENZAPS_MARKETING_ADMIN_TOKEN", "operator-token");
+    vi.stubEnv("SUPABASE_SERVICE_ROLE_KEY", "server-only-repair-secret");
+    const proof = createMarketingSyndicationRepairProof(itemId, "wrun_1");
+
+    expect(proof).toMatch(/^[A-Za-z0-9_-]{43}$/u);
+    expect(verifyMarketingSyndicationRepairProof(
+      itemId,
+      "wrun_1",
+      proof as string,
+    )).toBe(true);
+    expect(verifyMarketingSyndicationRepairProof(
+      itemId,
+      "wrun_2",
+      proof as string,
+    )).toBe(false);
+    expect(verifyMarketingSyndicationRepairProof(
+      "cd".repeat(32),
+      "wrun_1",
+      proof as string,
+    )).toBe(false);
+
+    vi.stubEnv("OPENZAPS_MARKETING_ADMIN_TOKEN", "rotated-token");
+    expect(verifyMarketingSyndicationRepairProof(
+      itemId,
+      "wrun_1",
+      proof as string,
+    )).toBe(true);
+
+    vi.stubEnv("SUPABASE_SERVICE_ROLE_KEY", "rotated-server-secret");
+    expect(verifyMarketingSyndicationRepairProof(
+      itemId,
+      "wrun_1",
+      proof as string,
+    )).toBe(false);
   });
 });

@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 vi.mock("server-only", () => ({}));
 
 import {
+  claimNextReviewedMarketingCampaign,
   claimMarketingScheduleSlot,
   MarketingLedgerError,
   claimMarketingDelivery,
@@ -10,7 +11,9 @@ import {
   emptyDryRunMarketingLedgerSnapshot,
   getMarketingLedgerSnapshot,
   marketingLedgerConfigured,
+  verifyReviewedMarketingCampaignClaim,
 } from "@/lib/marketing/ledger-server";
+import { reviewedMarketingCampaign } from "@/lib/marketing/scheduled-template";
 
 const ENV = {
   OPENZAPS_MARKETING_DURABLE_LEDGER_CONFIGURED: "true",
@@ -34,6 +37,35 @@ function claimResponse(overrides: Record<string, unknown> = {}): Response {
     failure_code: null,
     claimed_at: "2026-07-29T12:00:00.000Z",
     completed_at: null,
+    ...overrides,
+  });
+}
+
+function campaignQueueResponse(
+  overrides: Record<string, unknown> = {},
+): Response {
+  const campaign = reviewedMarketingCampaign(
+    "virtual-trading-request-zap-v2",
+    "discord",
+  );
+  return responseRow({
+    result_code: "claimed",
+    schedule_key: "weekday_product_update",
+    slot_day: "2026-07-29",
+    campaign_id: campaign.id,
+    channel: campaign.channel,
+    queue_order: campaign.queueOrder,
+    not_before: campaign.notBefore,
+    body: campaign.body,
+    links: campaign.links,
+    topics: campaign.topics,
+    disclosures: campaign.disclosures,
+    claims: campaign.claims,
+    flags: campaign.flags,
+    required_facts: campaign.requiredFacts,
+    canonical_source_urls: campaign.canonicalSourceUrls,
+    content_hash: campaign.contentHash,
+    claimed_at: "2026-07-29T14:00:00.000Z",
     ...overrides,
   });
 }
@@ -292,6 +324,161 @@ describe("claimMarketingScheduleSlot", () => {
       claimMarketingScheduleSlot({
         env: ENV,
         fetchImpl: vi.fn().mockResolvedValue(new Response(oversizedBody)),
+      }),
+    ).rejects.toMatchObject({ code: "invalid-response" });
+  });
+});
+
+describe("claimNextReviewedMarketingCampaign", () => {
+  it("claims the oldest source-reviewed campaign through the service-role RPC", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(campaignQueueResponse());
+
+    await expect(
+      claimNextReviewedMarketingCampaign(["discord"], {
+        env: ENV,
+        fetchImpl: fetchMock,
+      }),
+    ).resolves.toMatchObject({
+      result: "claimed",
+      scheduleKey: "weekday_product_update",
+      day: "2026-07-29",
+      campaign: {
+        id: "virtual-trading-request-zap-v2",
+        channel: "discord",
+      },
+    });
+
+    const [url, init] = fetchMock.mock.calls[0] as [URL, RequestInit];
+    expect(url.toString()).toBe(
+      "https://abcdefghijklmnopqrst.supabase.co/rest/v1/rpc/claim_next_marketing_campaign",
+    );
+    expect(init).toMatchObject({
+      method: "POST",
+      cache: "no-store",
+      redirect: "error",
+      body: JSON.stringify({ p_channels: ["discord"] }),
+    });
+  });
+
+  it("returns no_pending_campaign without inventing campaign content", async () => {
+    const emptyCampaign = {
+      campaign_id: null,
+      channel: null,
+      queue_order: null,
+      not_before: null,
+      body: null,
+      links: null,
+      topics: null,
+      disclosures: null,
+      claims: null,
+      flags: null,
+      required_facts: null,
+      canonical_source_urls: null,
+      content_hash: null,
+    };
+
+    await expect(
+      claimNextReviewedMarketingCampaign(["discord"], {
+        env: ENV,
+        fetchImpl: vi.fn().mockResolvedValue(
+          campaignQueueResponse({
+            result_code: "no_pending_campaign",
+            claimed_at: null,
+            ...emptyCampaign,
+          }),
+        ),
+      }),
+    ).resolves.toEqual({
+      result: "no_pending_campaign",
+      scheduleKey: "weekday_product_update",
+      day: "2026-07-29",
+      claimedAt: null,
+      campaign: null,
+    });
+  });
+
+  it("rejects unreviewed rows, copy drift, and invalid channel requests", async () => {
+    await expect(
+      claimNextReviewedMarketingCampaign(["discord"], {
+        env: ENV,
+        fetchImpl: vi.fn().mockResolvedValue(
+          campaignQueueResponse({ body: "Changed after review." }),
+        ),
+      }),
+    ).rejects.toMatchObject({ code: "invalid-response" });
+
+    const fetchMock = vi.fn();
+    await expect(
+      claimNextReviewedMarketingCampaign([], {
+        env: ENV,
+        fetchImpl: fetchMock,
+      }),
+    ).rejects.toMatchObject({ code: "invalid-input" });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("verifyReviewedMarketingCampaignClaim", () => {
+  const input = {
+    campaignId: "virtual-trading-request-zap-v2",
+    channel: "discord" as const,
+    slotDay: "2026-07-29",
+    contentHash:
+      "d87798d6ff0ba39a29c5b9da58397162cb43cd4908c5b604493e8fe98a0604f5",
+  };
+
+  it("verifies the exact durable day, channel, and reviewed content hash", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      responseRow({
+        verified: true,
+        claimed_at: "2026-07-29T14:00:00.000Z",
+      }),
+    );
+
+    await expect(
+      verifyReviewedMarketingCampaignClaim(input, {
+        env: ENV,
+        fetchImpl: fetchMock,
+      }),
+    ).resolves.toBe(true);
+
+    const [url, init] = fetchMock.mock.calls[0] as [URL, RequestInit];
+    expect(url.toString()).toBe(
+      "https://abcdefghijklmnopqrst.supabase.co/rest/v1/rpc/verify_marketing_campaign_schedule_claim",
+    );
+    expect(JSON.parse(init.body as string)).toEqual({
+      p_campaign_id: input.campaignId,
+      p_channel: input.channel,
+      p_slot_day: input.slotDay,
+      p_content_hash: input.contentHash,
+    });
+  });
+
+  it("fails closed for an absent claim, hash drift, or inconsistent response", async () => {
+    await expect(
+      verifyReviewedMarketingCampaignClaim(input, {
+        env: ENV,
+        fetchImpl: vi.fn().mockResolvedValue(
+          responseRow({ verified: false, claimed_at: null }),
+        ),
+      }),
+    ).resolves.toBe(false);
+
+    const fetchMock = vi.fn();
+    await expect(
+      verifyReviewedMarketingCampaignClaim(
+        { ...input, contentHash: "ab".repeat(32) },
+        { env: ENV, fetchImpl: fetchMock },
+      ),
+    ).rejects.toMatchObject({ code: "invalid-input" });
+    expect(fetchMock).not.toHaveBeenCalled();
+
+    await expect(
+      verifyReviewedMarketingCampaignClaim(input, {
+        env: ENV,
+        fetchImpl: vi.fn().mockResolvedValue(
+          responseRow({ verified: true, claimed_at: null }),
+        ),
       }),
     ).rejects.toMatchObject({ code: "invalid-response" });
   });

@@ -164,11 +164,17 @@ describe("bounded scheduled marketing workflow", () => {
 
   it("publishes an auto-authorized template without creating a human approval hook", async () => {
     const result = await openZapsScheduledMarketingWorkflow({
-      channels: ["discord"],
+      campaignId: "virtual-trading-request-zap-v2",
+      channel: "discord",
+      slotDay: "2026-07-31",
+      contentHash: "ab".repeat(32),
     });
 
     expect(scheduledRequestMock).toHaveBeenCalledWith({
-      channels: ["discord"],
+      campaignId: "virtual-trading-request-zap-v2",
+      channel: "discord",
+      slotDay: "2026-07-31",
+      contentHash: "ab".repeat(32),
     });
     expect(buildScheduledMock).toHaveBeenCalledOnce();
     expect(emitMock).toHaveBeenCalledWith(
@@ -192,7 +198,10 @@ describe("bounded scheduled marketing workflow", () => {
     });
 
     const result = await openZapsScheduledMarketingWorkflow({
-      channels: ["discord"],
+      campaignId: "virtual-trading-request-zap-v2",
+      channel: "discord",
+      slotDay: "2026-07-31",
+      contentHash: "ab".repeat(32),
     });
 
     expect(result.status).toBe("blocked");
