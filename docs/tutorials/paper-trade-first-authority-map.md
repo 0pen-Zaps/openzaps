@@ -4,7 +4,7 @@
 
 **Status:** Prepared draft · owner review and approval required before editor handoff
 
-**Suggested subtitle:** Test an agentic DeFi workflow without a wallet, then turn it into a bounded OpenZaps implementation request
+**Suggested subtitle:** Test an agentic DeFi workflow without a wallet, then turn it into a human-reviewed OpenZaps authority map
 
 **Suggested hero:** `docs/media/12-virtual-trading.jpg` (fresh production capture; do not reuse the retired ZapDraw image)
 
