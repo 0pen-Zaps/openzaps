@@ -74,6 +74,7 @@ not invoke the model or the approval workflow.
 | --- | --- | --- |
 | `/marketing` | Private operator UI for readiness, drafting, review, approval, and rejection | The page shell is public and `noindex`; every data/action API requires the operator bearer token. |
 | `GET /api/marketing/status` | Secret-free readiness and policy posture | `Authorization: Bearer <OPENZAPS_MARKETING_ADMIN_TOKEN>` |
+| `GET /api/marketing/x/identity` | Operator-triggered, read-only verification that the active X credentials resolve to the configured account id and username | Operator bearer token |
 | `POST /api/marketing/runs` | Start a durable draft workflow | Operator bearer token |
 | `GET /api/marketing/runs/:runId` | Read the latest run event/result | Operator bearer token |
 | `POST /api/marketing/approvals` | Resume the one-shot approval hook | Operator bearer token |
@@ -184,9 +185,13 @@ schedule claim without a delivery key suppresses duplicate starts for that UTC
 day, then becomes eligible for a later weekday retry. Shipping new automatic
 copy requires a new reviewed source entry plus its exact append-only queue row
 and content hash; never date-salt identical text to manufacture a new delivery.
-The initial queue is empty because the Virtual Trading and Request-a-Zap update
-was already published to both X and Discord. No duplicate pending row or
-fabricated historical delivery receipt is created.
+The initial queue migration is empty because the Virtual Trading and
+Request-a-Zap update was already published to both X and Discord. The public X
+post is independently visible at
+`https://x.com/0xzaps/status/2083287458976870428`, but it has no durable X API
+receipt and is not represented as one. A later append-only migration queues the
+distinct Discord-only Agent Kit announcement for the first eligible weekday;
+no duplicate row or fabricated historical delivery receipt is created.
 
 The separate feed-discovery route runs at `30 13 * * *`: 13:30 UTC every
 day. It becomes operational only after the syndication migration is applied
@@ -212,6 +217,13 @@ retains OAuth 2.0 bearer support. OAuth 1.0a requests are signed with
 HMAC-SHA1. For OAuth 2.0, use only the user scopes required here:
 `tweet.read`, `tweet.write`, and `users.read`. Never use an app-only bearer
 token for posting and never automate the X website.
+
+The Readiness panel exposes an explicit **Verify X identity** control. It calls
+the official `GET /2/users/me` endpoint through
+`GET /api/marketing/x/identity` and returns only the observed public account
+id, username, and timestamp. A successful check proves credential-to-account
+binding at that moment; it does not prove that the Automated label is visible,
+that the app has write access or credits, or that a provider post succeeded.
 
 All X writes remain blocked while
 `OPENZAPS_X_AUTOMATED_LABEL_CONFIRMED=false`; this includes broadcasts. A
@@ -515,6 +527,7 @@ supabase/migrations/20260729035549_marketing_delivery_ledger.sql
 supabase/migrations/20260729095505_harden_verified_receipt_provenance.sql
 supabase/migrations/20260801024005_durable_reviewed_marketing_campaign_queue.sql
 supabase/migrations/20260801041508_marketing_syndication_inbox.sql
+supabase/migrations/20260801062000_queue_agent_kit_discord_campaign.sql
 ```
 
 If any file is already recorded remotely, apply only the missing exact files
@@ -535,11 +548,12 @@ Apply them transactionally while the marketing agent is disabled. Then verify:
 - only `service_role` can execute the public marketing RPCs, including the new
   reviewed-campaign claim and the bounded syndication cursor, discovery, list,
   claim, attach, fail, skip, and sync RPCs;
-- the initial reviewed-campaign queue is empty because the
-  `virtual-trading-request-zap-v2` update was already public on both X and
-  Discord before the queue existed;
-- an empty eligible queue returns `no_pending_campaign` without inserting a
-  schedule claim or starting a workflow;
+- the initial queue migration remains empty for the already-public
+  `virtual-trading-request-zap-v2` update, while the later append-only migration
+  contains exactly one Discord-only `agent-kit-published-v1` artifact;
+- before that artifact's `not_before`, an empty eligible queue returns
+  `no_pending_campaign` without inserting a schedule claim or starting a
+  workflow;
 - the snapshot returns the current UTC day and zero or expected counters;
 - an idempotency replay returns the stored claim/receipt and never inserts a
   second row;
@@ -619,17 +633,20 @@ OPENZAPS_MARKETING_SCHEDULE_CHANNELS=discord
 OPENZAPS_MARKETING_AUTO_PUBLISH=true
 ```
 
-Redeploy, then verify the next Vercel Cron invocation returns
-`no_pending_campaign` and creates no workflow or provider write. That is the
-expected initial state. To exercise automatic delivery, add a genuinely new,
-owner-reviewed campaign in source plus its exact append-only queue migration,
-deploy both together, and verify the next eligible invocation returns `202`
-with a run id and records `auto_authorized`. Confirm the canonical provider
-receipt, then replay the same campaign and prove the stable delivery key
-returns the stored receipt without a second provider call. Written X approval
-remains an additional requirement for AI replies, which are never part of this
-automatic lane. Leave every model-generated run and every reply on the
-approval hook.
+With only the original empty queue migration applied, the next invocation must
+return `no_pending_campaign` and create no workflow or provider write. Once a
+new campaign migration exists, do not keep using that historical smoke
+expectation. Disable the schedule first, deploy the matching source registry,
+apply the exact append-only queue migration, and verify its body, hash,
+channel, and `not_before` while provider writes are disabled. Re-enable the
+Discord-only schedule and redeploy only after those checks pass. The first
+eligible `agent-kit-published-v1` invocation is expected to return `202` with a
+run id and record `auto_authorized`, not `no_pending_campaign`. Confirm the
+canonical provider receipt, then replay the same campaign and prove the stable
+delivery key returns the stored receipt without a second provider call.
+Written X approval remains an additional requirement for AI replies, which are
+never part of this automatic lane. Leave every model-generated run and every
+reply on the approval hook.
 
 To roll back automatic delivery, first set
 `OPENZAPS_MARKETING_SCHEDULE_ENABLED=false`, then set
@@ -657,6 +674,14 @@ Check readiness:
 curl --fail-with-body --silent --show-error \
   --header "Authorization: Bearer ${MARKETING_OPERATOR_TOKEN}" \
   "${MARKETING_BASE_URL}/api/marketing/status"
+```
+
+Verify the current X credential binding without posting:
+
+```bash
+curl --fail-with-body --silent --show-error \
+  --header "Authorization: Bearer ${MARKETING_OPERATOR_TOKEN}" \
+  "${MARKETING_BASE_URL}/api/marketing/x/identity"
 ```
 
 List the review-only feed inbox:
@@ -886,7 +911,7 @@ deployment must be made unable to publish.
 | Discord interaction returns `401` | Exact application public key, raw-body proxy behavior, endpoint URL, and server clock. |
 | Discord command is missing | Application installation scope and whether the command was registered to the correct guild/application. |
 | X returns `401` or `403` | User-context token, `tweet.write` scope, token expiry/revocation, account access, and app permissions. |
-| X identity verification is blocked | Confirm `X_EXPECTED_ACCOUNT_ID` is the intended account's numeric id and `X_EXPECTED_USERNAME=0xzaps`; then verify the active user-context credentials resolve to both values via `GET /2/users/me`. |
+| X identity verification is blocked | Use **Verify X identity** in `/marketing`; confirm `X_EXPECTED_ACCOUNT_ID` is the intended account's numeric id and `X_EXPECTED_USERNAME=0xzaps`, then confirm the active user-context credentials resolve to both values. |
 | X returns `429` | Stop, inspect the response window/provider dashboard, and wait. Never bypass rate limits. |
 | X publishing is policy-blocked | Confirm user-context credentials and keep `OPENZAPS_X_AUTOMATED_LABEL_CONFIRMED=false` until the automated label/operator disclosure is visibly configured. Replies also require the separate X approval attestation and API-verified engagement. |
 | Substack says `requires_human_publish` | Expected behavior; open the official editor and complete the human checklist. |

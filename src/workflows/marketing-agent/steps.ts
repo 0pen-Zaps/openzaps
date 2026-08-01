@@ -87,6 +87,44 @@ function record(value: unknown): JsonRecord | null {
     : null;
 }
 
+function isCanonicalSha512Integrity(value: unknown): value is string {
+  if (
+    typeof value !== "string"
+    || !/^sha512-[A-Za-z0-9+/]+={0,2}$/u.test(value)
+  ) {
+    return false;
+  }
+  const encoded = value.slice("sha512-".length);
+  const digest = Buffer.from(encoded, "base64");
+  return digest.byteLength === 64 && digest.toString("base64") === encoded;
+}
+
+export function npmReleaseHasProvenance(
+  value: unknown,
+  expectedName: string,
+  expectedVersion: string,
+  expectedDirectory: string,
+): boolean {
+  const packageVersion = record(value);
+  const dist = record(packageVersion?.dist);
+  const attestations = record(dist?.attestations);
+  const provenance = record(attestations?.provenance);
+  const repository = record(packageVersion?.repository);
+  const publishConfig = record(packageVersion?.publishConfig);
+  const expectedAttestationUrl =
+    `https://registry.npmjs.org/-/npm/v1/attestations/${expectedName.replace("/", "%2f")}@${expectedVersion}`;
+  return packageVersion?.name === expectedName
+    && packageVersion?.version === expectedVersion
+    && repository?.type === "git"
+    && repository?.url === "git+https://github.com/0pen-Zaps/openzaps.git"
+    && repository?.directory === expectedDirectory
+    && publishConfig?.access === "public"
+    && publishConfig?.provenance === true
+    && isCanonicalSha512Integrity(dist?.integrity)
+    && attestations?.url === expectedAttestationUrl
+    && provenance?.predicateType === "https://slsa.dev/provenance/v1";
+}
+
 function safeSiteUrl(): string {
   const configured = process.env.OPENZAPS_MARKETING_SITE_URL?.trim() || DEFAULT_SITE_URL;
   try {
@@ -284,6 +322,11 @@ export async function collectMarketingSourcesStep(
   const virtualQuoteUrl = `${siteUrl}/api/virtual-trading/quote`;
   const requestZapUrl = `${siteUrl}/request-a-zap`;
   const leadReadinessUrl = `${siteUrl}/api/leads/request`;
+  const docsUrl = `${siteUrl}/docs`;
+  const sdkRegistryUrl =
+    "https://registry.npmjs.org/@openzaps%2fsdk/0.1.0";
+  const mcpRegistryUrl =
+    "https://registry.npmjs.org/@openzaps%2fmcp/0.1.0";
   const [
     healthValue,
     activityValue,
@@ -293,6 +336,9 @@ export async function collectMarketingSourcesStep(
     leadReadinessValue,
     virtualTradingPageReady,
     requestZapPageReady,
+    agentKitDocsReady,
+    sdkRegistryValue,
+    mcpRegistryValue,
     externalData,
     interaction,
   ] = await Promise.all([
@@ -315,6 +361,16 @@ export async function collectMarketingSourcesStep(
       "human-reviewed",
       "Get its authority map.",
     ]),
+    fetchFeaturePage(docsUrl, [
+      "@openzaps/sdk@0.1.0",
+      "@openzaps/mcp@0.1.0",
+      "read-only Agent Kit can discover capsules",
+      "no signing or broadcast method",
+      "Stays with your wallet or Safe.",
+      "Lives inside the immutable policy",
+    ]),
+    fetchJson(sdkRegistryUrl),
+    fetchJson(mcpRegistryUrl),
     fetchExternalData(request.sourceUrls, observedAt),
     request.kind === "community_reply" && request.interactionUrl
       ? verifyXReplyTarget(request.interactionUrl)
@@ -482,6 +538,43 @@ export async function collectMarketingSourcesStep(
         ? "The non-mutating readiness probe confirmed authenticated access to the deployed lead-intake RPC."
         : null,
       leadReadinessUrl,
+      observedAt,
+    ),
+    knownOrUnavailable(
+      "product.agent_kit_sdk_release",
+      "Published OpenZaps SDK release",
+      npmReleaseHasProvenance(
+        sdkRegistryValue,
+        "@openzaps/sdk",
+        "0.1.0",
+        "packages/sdk",
+      )
+        ? "The npm registry confirms @openzaps/sdk@0.1.0 with an SLSA provenance v1 attestation."
+        : null,
+      sdkRegistryUrl,
+      observedAt,
+    ),
+    knownOrUnavailable(
+      "product.agent_kit_mcp_release",
+      "Published OpenZaps MCP release",
+      npmReleaseHasProvenance(
+        mcpRegistryValue,
+        "@openzaps/mcp",
+        "0.1.0",
+        "packages/mcp",
+      )
+        ? "The npm registry confirms @openzaps/mcp@0.1.0 with an SLSA provenance v1 attestation."
+        : null,
+      mcpRegistryUrl,
+      observedAt,
+    ),
+    knownOrUnavailable(
+      "product.agent_kit_boundaries",
+      "OpenZaps Agent Kit authority boundary",
+      agentKitDocsReady
+        ? "The SDK prepares unsigned EIP-712 policy data without a signing or broadcast method; the read-only MCP surface discovers capsules and holds no wallet key. Creation stays with the owner wallet or Safe, while execution authority lives in the immutable policy or typed intent."
+        : null,
+      docsUrl,
       observedAt,
     ),
     fact(

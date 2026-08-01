@@ -13,6 +13,7 @@ import {
   operatorResetClearsSyndicationRepair,
   parseSyndicationRepairPair,
   parseSubstackVerification,
+  parseXIdentityVerification,
   pollRetryDelay,
   readinessRows,
   shouldRetryPoll,
@@ -26,7 +27,87 @@ import {
   substackVerificationResponseIsCurrent,
   type OperatorSyndicationItem,
   writeSubstackClipboard,
+  xIdentityRequestIsCurrent,
 } from "./MarketingOperator";
+
+describe("X identity evidence parsing", () => {
+  it("accepts only a bounded public identity proof", () => {
+    expect(
+      parseXIdentityVerification({
+        authenticatedAccountId: "123456789",
+        authenticatedUsername: "0xzaps",
+        observedAt: "2026-08-01T15:00:00.000Z",
+      }),
+    ).toEqual({
+      authenticatedAccountId: "123456789",
+      authenticatedUsername: "0xzaps",
+      observedAt: "2026-08-01T15:00:00.000Z",
+    });
+  });
+
+  it("rejects malformed or oversized provider data", () => {
+    const valid = {
+      authenticatedAccountId: "123456789",
+      authenticatedUsername: "0xzaps",
+      observedAt: "2026-08-01T15:00:00.000Z",
+    };
+
+    expect(parseXIdentityVerification([])).toBeNull();
+    expect(
+      parseXIdentityVerification({
+        ...valid,
+        authenticatedAccountId: "1".repeat(31),
+      }),
+    ).toBeNull();
+    expect(
+      parseXIdentityVerification({ ...valid, authenticatedAccountId: "abc" }),
+    ).toBeNull();
+    expect(
+      parseXIdentityVerification({
+        ...valid,
+        authenticatedUsername: "x".repeat(16),
+      }),
+    ).toBeNull();
+    expect(
+      parseXIdentityVerification({ ...valid, observedAt: "not-a-date" }),
+    ).toBeNull();
+    expect(
+      parseXIdentityVerification({
+        authenticatedAccountId: valid.authenticatedAccountId,
+        authenticatedUsername: valid.authenticatedUsername,
+      }),
+    ).toBeNull();
+  });
+});
+
+describe("X identity request lifecycle", () => {
+  it("rejects a response after either refresh or session invalidation", () => {
+    expect(
+      xIdentityRequestIsCurrent({
+        requestGeneration: 3,
+        currentRequestGeneration: 3,
+        sessionGeneration: 5,
+        currentSessionGeneration: 5,
+      }),
+    ).toBe(true);
+    expect(
+      xIdentityRequestIsCurrent({
+        requestGeneration: 3,
+        currentRequestGeneration: 4,
+        sessionGeneration: 5,
+        currentSessionGeneration: 5,
+      }),
+    ).toBe(false);
+    expect(
+      xIdentityRequestIsCurrent({
+        requestGeneration: 3,
+        currentRequestGeneration: 3,
+        sessionGeneration: 5,
+        currentSessionGeneration: 6,
+      }),
+    ).toBe(false);
+  });
+});
 
 const VALID_LEAD = {
   id: "019fab5e-be72-72d2-809b-0a1d4a35c86b",

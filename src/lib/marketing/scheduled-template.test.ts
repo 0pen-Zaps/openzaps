@@ -3,9 +3,15 @@ import { createHash } from "node:crypto";
 import { describe, expect, it } from "vitest";
 
 import {
+  isReviewedMarketingCampaignCandidate,
+  reviewedMarketingCampaign,
   reviewedMarketingCampaignCanonicalPayload,
   reviewedMarketingCampaigns,
 } from "@/lib/marketing/scheduled-template";
+import {
+  AGENT_KIT_MARKETING_CAMPAIGN_ID,
+  type MarketingCandidate,
+} from "@/lib/marketing/types";
 
 describe("source-reviewed marketing campaigns", () => {
   it("pins unique immutable identities, queue order, typed evidence, and content hashes", () => {
@@ -59,5 +65,90 @@ describe("source-reviewed marketing campaigns", () => {
         notBefore: "2026-08-03T06:00:00-04:00",
       }).notBefore,
     ).toBe("2026-08-03T10:00:00.000Z");
+  });
+
+  it("auto-authorizes the Agent Kit campaign only with exact fresh evidence", () => {
+    const campaign = reviewedMarketingCampaign(
+      AGENT_KIT_MARKETING_CAMPAIGN_ID,
+      "discord",
+    );
+    const observedAt = "2026-08-03T14:00:00.000Z";
+    const candidate: MarketingCandidate = {
+      id: "agent-kit-campaign-discord",
+      channel: "discord",
+      action: "broadcast",
+      kind: "product_update",
+      topics: [...campaign.topics],
+      body: campaign.body,
+      links: [...campaign.links],
+      disclosures: [...campaign.disclosures],
+      claims: campaign.claims.map((claim) => ({
+        ...claim,
+        factKeys: [...claim.factKeys],
+      })),
+      flags: { ...campaign.flags },
+      interaction: null,
+      sourcePacket: {
+        id: "agent-kit-campaign-sources",
+        createdAt: observedAt,
+        protocolPreAudit: true,
+        externalData: [],
+        interaction: null,
+        facts: campaign.requiredFacts.map((fact) => ({
+          key: fact.key,
+          label: fact.key,
+          value: "confirmed",
+          status: "confirmed" as const,
+          sourceUrl: fact.sourceUrl,
+          observedAt,
+        })),
+      },
+    };
+
+    expect(
+      isReviewedMarketingCampaignCandidate(
+        candidate,
+        AGENT_KIT_MARKETING_CAMPAIGN_ID,
+      ),
+    ).toBe(true);
+    expect(() =>
+      reviewedMarketingCampaign(AGENT_KIT_MARKETING_CAMPAIGN_ID, "x"),
+    ).toThrow("Unknown reviewed marketing campaign.");
+    expect(
+      isReviewedMarketingCampaignCandidate(
+        { ...candidate, body: `${candidate.body}\nChanged.` },
+        AGENT_KIT_MARKETING_CAMPAIGN_ID,
+      ),
+    ).toBe(false);
+    expect(
+      isReviewedMarketingCampaignCandidate(
+        {
+          ...candidate,
+          sourcePacket: {
+            ...candidate.sourcePacket,
+            facts: candidate.sourcePacket.facts.map((fact, index) =>
+              index === 0 ? { ...fact, status: "unavailable", value: null } : fact,
+            ),
+          },
+        },
+        AGENT_KIT_MARKETING_CAMPAIGN_ID,
+      ),
+    ).toBe(false);
+    expect(
+      isReviewedMarketingCampaignCandidate(
+        {
+          ...candidate,
+          sourcePacket: {
+            ...candidate.sourcePacket,
+            facts: candidate.sourcePacket.facts.map((fact, index) =>
+              index === 0
+                ? { ...fact, sourceUrl: "https://www.0xzaps.com/docs" }
+                : fact,
+            ),
+          },
+        },
+        AGENT_KIT_MARKETING_CAMPAIGN_ID,
+      ),
+    ).toBe(false);
   });
 });

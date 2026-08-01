@@ -323,13 +323,18 @@ const receiptProvenanceMigration =
   "20260729095505_harden_verified_receipt_provenance.sql";
 const reviewedCampaignQueueMigration =
   "20260801024005_durable_reviewed_marketing_campaign_queue.sql";
+const agentKitCampaignMigration =
+  "20260801062000_queue_agent_kit_discord_campaign.sql";
 const syndicationInboxMigration =
   "20260801041508_marketing_syndication_inbox.sql";
 const reviewedCampaignFixture = "pg16-reviewed-campaign";
 const reviewedCampaignContentHash = "de".repeat(32);
-const reviewedCampaignMonday = "2026-08-03T15:00:00Z";
-const reviewedCampaignTuesday = "2026-08-04T15:00:00Z";
-const reviewedCampaignWednesday = "2026-08-05T15:00:00Z";
+const agentKitCampaignId = "agent-kit-published-v1";
+const agentKitCampaignContentHash =
+  "516443309a2b558c1335bb4f672a649a1f728ddc643bb0a762564835c6ff59ca";
+const reviewedCampaignMonday = "2026-07-27T15:00:00Z";
+const reviewedCampaignTuesday = "2026-07-28T15:00:00Z";
+const reviewedCampaignWednesday = "2026-07-29T15:00:00Z";
 const syndicationBaselineKnown = "10".repeat(32);
 const syndicationBaselineUnknown = "20".repeat(32);
 const syndicationPendingKnown = "30".repeat(32);
@@ -474,6 +479,17 @@ try {
   // migrations that deliberately reject an unexpected history replay.
   for (let pass = 0; pass < 2; pass += 1) {
     for (const filename of migrationFiles) {
+      if (pass === 1 && filename === agentKitCampaignMigration) {
+        const replayProbe = psqlFileProbe(join(migrations, filename), "select 1;");
+        assert(
+          replayProbe.status !== 0
+            && /duplicate key value violates unique constraint "marketing_reviewed_campaigns_pkey"/.test(
+              `${replayProbe.stdout}${replayProbe.stderr}`,
+            ),
+          `${filename} did not fail closed on an unexpected replay`,
+        );
+        continue;
+      }
       if (
         pass === 1 &&
         [reviewedCampaignQueueMigration, syndicationInboxMigration].includes(
@@ -1420,8 +1436,8 @@ try {
       );
   `);
   assert(
-    initialReviewedCampaignState === "0|0|0",
-    `reviewed campaign migration seeded a production post: ${initialReviewedCampaignState}`,
+    initialReviewedCampaignState === "1|0|0",
+    `reviewed campaign queue did not contain exactly one Discord release artifact: ${initialReviewedCampaignState}`,
   );
 
   const emptyReviewedCampaignClaim = psqlScalar(`
@@ -1526,7 +1542,7 @@ try {
     from public.verify_marketing_campaign_schedule_claim(
       '${reviewedCampaignFixture}',
       'discord',
-      '2026-08-03'::date,
+      '2026-07-27'::date,
       '${reviewedCampaignContentHash}'
     );
   `);
@@ -1547,7 +1563,7 @@ try {
         `select verified from public.verify_marketing_campaign_schedule_claim(
           '${reviewedCampaignFixture}',
           'discord',
-          '2026-08-03'::date,
+          '2026-07-27'::date,
           '${reviewedCampaignContentHash}'
         )`,
       ],
@@ -1600,7 +1616,7 @@ try {
     from private.verify_marketing_campaign_schedule_claim_at(
       '${reviewedCampaignFixture}',
       'discord',
-      '2026-08-03'::date,
+      '2026-07-27'::date,
       '${reviewedCampaignContentHash}',
       '${reviewedCampaignMonday}'::timestamptz
     );
@@ -1667,7 +1683,7 @@ try {
     from public.marketing_reviewed_campaigns;
   `);
   assert(
-    reviewedCampaignChannelState === "1|0",
+    reviewedCampaignChannelState === "2|0",
     `reviewed queue fixture unexpectedly created an X row: ${reviewedCampaignChannelState}`,
   );
 
@@ -1722,7 +1738,7 @@ try {
     from public.marketing_campaign_schedule_claims;
   `);
   assert(
-    firstReviewedCampaignClaimState === "1|1|discord|2026-08-03",
+    firstReviewedCampaignClaimState === "1|1|discord|2026-07-27",
     `first reviewed campaign claim did not persist exactly once: ${firstReviewedCampaignClaimState}`,
   );
 
@@ -1733,7 +1749,7 @@ try {
         from private.verify_marketing_campaign_schedule_claim_at(
           '${reviewedCampaignFixture}',
           'discord',
-          '2026-08-03'::date,
+          '2026-07-27'::date,
           '${reviewedCampaignContentHash}',
           '${reviewedCampaignMonday}'::timestamptz
         )
@@ -1743,7 +1759,7 @@ try {
         from private.verify_marketing_campaign_schedule_claim_at(
           '${reviewedCampaignFixture}',
           'x',
-          '2026-08-03'::date,
+          '2026-07-27'::date,
           '${reviewedCampaignContentHash}',
           '${reviewedCampaignMonday}'::timestamptz
         )
@@ -1753,7 +1769,7 @@ try {
         from private.verify_marketing_campaign_schedule_claim_at(
           '${reviewedCampaignFixture}',
           'discord',
-          '2026-08-03'::date,
+          '2026-07-27'::date,
           '${"ef".repeat(32)}',
           '${reviewedCampaignMonday}'::timestamptz
         )
@@ -1763,7 +1779,7 @@ try {
         from private.verify_marketing_campaign_schedule_claim_at(
           '${reviewedCampaignFixture}',
           'discord',
-          '2026-08-03'::date,
+          '2026-07-27'::date,
           '${reviewedCampaignContentHash}',
           '${reviewedCampaignTuesday}'::timestamptz
         )
@@ -1843,6 +1859,112 @@ try {
     `delivered reviewed campaign was reclaimed: ${deliveredReviewedCampaignClaim}|${deliveredReviewedCampaignState}`,
   );
 
+  const agentKitCampaignClaim = psqlScalar(`
+    select
+      result_code || '|' ||
+      campaign_id || '|' ||
+      channel || '|' ||
+      queue_order::text || '|' ||
+      content_hash || '|' ||
+      (not_before = '2026-08-03T14:00:00Z'::timestamptz)::text || '|' ||
+      (body = $campaign$**The OpenZaps Agent Kit is published.**
+
+\`@openzaps/sdk@0.1.0\` compiles the exact policy tuple and prepares unsigned EIP-712 data. \`@openzaps/mcp@0.1.0\` gives agent clients read-only capsule discovery. Both releases carry npm provenance attestations.
+
+Neither package holds a key, signs, or broadcasts. Your wallet or Safe creates authority; the signed intent and immutable Zap policy set the bounds.
+
+Connect an agent: https://www.0xzaps.com/docs#agents
+
+Pre-audit software. Verify before use.$campaign$)::text
+    from private.claim_next_marketing_campaign_at(
+      array['discord']::text[],
+      '2026-08-03T15:00:00Z'::timestamptz
+    );
+  `);
+  assert(
+    agentKitCampaignClaim ===
+      `claimed|${agentKitCampaignId}|discord|20|${agentKitCampaignContentHash}|true|true`,
+    `actual Agent Kit campaign claim drifted: ${agentKitCampaignClaim}`,
+  );
+
+  const agentKitSameDayReplay = psqlScalar(`
+    select result_code
+    from private.claim_next_marketing_campaign_at(
+      array['discord']::text[],
+      '2026-08-03T15:05:00Z'::timestamptz
+    );
+  `);
+  assert(
+    agentKitSameDayReplay === "already_claimed",
+    `Agent Kit schedule claim replay was not suppressed: ${agentKitSameDayReplay}`,
+  );
+
+  const agentKitCampaignVerification = psqlScalar(`
+    select verified
+    from private.verify_marketing_campaign_schedule_claim_at(
+      '${agentKitCampaignId}',
+      'discord',
+      '2026-08-03'::date,
+      '${agentKitCampaignContentHash}',
+      '2026-08-03T15:05:00Z'::timestamptz
+    );
+  `);
+  assert(
+    agentKitCampaignVerification === "t",
+    `Agent Kit campaign claim did not verify: ${agentKitCampaignVerification}`,
+  );
+
+  psql(`
+    insert into public.marketing_delivery_ledger (
+      idempotency_key,
+      run_id,
+      candidate_id,
+      content_hash,
+      channel,
+      action,
+      counter_key,
+      interaction_id,
+      approved_by,
+      claim_day,
+      status
+    )
+    values (
+      'scheduled:${agentKitCampaignId}:discord',
+      'marketing-agent-kit-campaign-harness',
+      'marketing-agent-kit-campaign-harness-discord',
+      '${agentKitCampaignContentHash}',
+      'discord',
+      'broadcast',
+      'discordPosts',
+      null,
+      'integration-test',
+      '2000-01-04'::date,
+      'claimed'
+    );
+  `);
+
+  const deliveredAgentKitClaim = psqlScalar(`
+    select result_code
+    from private.claim_next_marketing_campaign_at(
+      array['discord']::text[],
+      '2026-08-04T15:00:00Z'::timestamptz
+    );
+  `);
+  const deliveredAgentKitState = psqlScalar(`
+    select
+      (select count(*) from public.marketing_campaign_schedule_claims),
+      (
+        select count(*)
+        from public.marketing_delivery_ledger
+        where idempotency_key = 'scheduled:${agentKitCampaignId}:discord'
+      );
+  `);
+  assert(
+    deliveredAgentKitClaim === "no_pending_campaign"
+      && deliveredAgentKitState === "3|1",
+    `delivered Agent Kit campaign was reclaimed: ${deliveredAgentKitClaim}|${deliveredAgentKitState}`,
+  );
+
   for (const mutation of [
     "update public.marketing_reviewed_campaigns set body = body",
     "delete from public.marketing_reviewed_campaigns",
@@ -1867,7 +1989,7 @@ try {
       (select count(*) from public.marketing_campaign_schedule_claims);
   `);
   assert(
-    immutableReviewedCampaignState === "1|2",
+    immutableReviewedCampaignState === "2|3",
     `reviewed campaign artifacts changed after rejected mutations: ${immutableReviewedCampaignState}`,
   );
 

@@ -6,7 +6,7 @@
 
 **Suggested subtitle:** Test an agentic DeFi workflow without a wallet, then turn it into a bounded OpenZaps implementation request
 
-**Suggested hero:** `docs/media/03-zap-compose.png`
+**Suggested hero:** `docs/media/12-virtual-trading.jpg` (fresh production capture; do not reuse the retired ZapDraw image)
 
 **Canonical CTA:** https://www.0xzaps.com/request-a-zap
 

@@ -57,6 +57,12 @@ type OperatorError = Error & {
   repairProof?: string;
 };
 
+export type XIdentityVerification = {
+  authenticatedAccountId: string;
+  authenticatedUsername: string;
+  observedAt: string;
+};
+
 export type ReadinessRow = {
   key: string;
   label: string;
@@ -147,6 +153,39 @@ function isBoundedTimestamp(value: string | null): value is string {
     && value.length <= 40
     && Number.isFinite(Date.parse(value)),
   );
+}
+
+export function parseXIdentityVerification(
+  value: unknown,
+): XIdentityVerification | null {
+  if (!isRecord(value)) return null;
+  const authenticatedAccountId = text(value.authenticatedAccountId);
+  const authenticatedUsername = text(value.authenticatedUsername);
+  const observedAt = text(value.observedAt);
+  if (
+    !authenticatedAccountId
+    || !/^\d{1,30}$/u.test(authenticatedAccountId)
+    || !authenticatedUsername
+    || !/^[A-Za-z0-9_]{1,15}$/u.test(authenticatedUsername)
+    || !isBoundedTimestamp(observedAt)
+  ) {
+    return null;
+  }
+  return {
+    authenticatedAccountId,
+    authenticatedUsername,
+    observedAt,
+  };
+}
+
+export function xIdentityRequestIsCurrent(input: {
+  requestGeneration: number;
+  currentRequestGeneration: number;
+  sessionGeneration: number;
+  currentSessionGeneration: number;
+}): boolean {
+  return input.requestGeneration === input.currentRequestGeneration
+    && input.sessionGeneration === input.currentSessionGeneration;
 }
 
 function titleCase(value: string): string {
@@ -941,6 +980,12 @@ export function MarketingOperator(): React.JSX.Element {
   const [leadTokenInput, setLeadTokenInput] = useState("");
   const [leadToken, setLeadToken] = useState("");
   const [status, setStatus] = useState<JsonRecord | null>(null);
+  const [xIdentity, setXIdentity] =
+    useState<XIdentityVerification | null>(null);
+  const [xIdentityState, setXIdentityState] = useState<
+    "idle" | "loading" | "verified" | "error"
+  >("idle");
+  const [xIdentityError, setXIdentityError] = useState("");
   const [kind, setKind] = useState<DraftKind>("product_update");
   const [brief, setBrief] = useState("");
   const [interactionUrl, setInteractionUrl] = useState("");
@@ -982,6 +1027,7 @@ export function MarketingOperator(): React.JSX.Element {
   const leadSessionGeneration = useRef(0);
   const leadActionGeneration = useRef(0);
   const syndicationRequestGeneration = useRef(0);
+  const xIdentityRequestGeneration = useRef(0);
 
   const readiness = useMemo(() => readinessRows(status), [status]);
   const currentStatus = runStatus(run);
@@ -1019,11 +1065,15 @@ export function MarketingOperator(): React.JSX.Element {
     leadSessionGeneration.current += 1;
     leadActionGeneration.current += 1;
     syndicationRequestGeneration.current += 1;
+    xIdentityRequestGeneration.current += 1;
     setToken("");
     setTokenInput("");
     setLeadToken("");
     setLeadTokenInput("");
     setStatus(null);
+    setXIdentity(null);
+    setXIdentityState("idle");
+    setXIdentityError("");
     setRunId("");
     setRun(null);
     setLeads([]);
@@ -1530,6 +1580,10 @@ export function MarketingOperator(): React.JSX.Element {
     leadRequestGeneration.current += 1;
     leadActionGeneration.current += 1;
     syndicationRequestGeneration.current += 1;
+    xIdentityRequestGeneration.current += 1;
+    setXIdentity(null);
+    setXIdentityState("idle");
+    setXIdentityError("");
     try {
       const body = await operatorRequest("/api/marketing/status", candidate);
       if (leadSessionGeneration.current !== sessionGeneration) return;
@@ -1562,6 +1616,54 @@ export function MarketingOperator(): React.JSX.Element {
       handleError(error, "Could not load marketing readiness.");
     } finally {
       setBusy("");
+    }
+  };
+
+  const verifyXIdentity = async (): Promise<void> => {
+    if (!token || xIdentityState === "loading") return;
+    const expectedSessionGeneration = leadSessionGeneration.current;
+    const requestGeneration = xIdentityRequestGeneration.current + 1;
+    xIdentityRequestGeneration.current = requestGeneration;
+    setXIdentity(null);
+    setXIdentityState("loading");
+    setXIdentityError("");
+    try {
+      const body = await operatorRequest("/api/marketing/x/identity", token);
+      if (
+        !xIdentityRequestIsCurrent({
+          requestGeneration,
+          currentRequestGeneration: xIdentityRequestGeneration.current,
+          sessionGeneration: expectedSessionGeneration,
+          currentSessionGeneration: leadSessionGeneration.current,
+        })
+      ) return;
+      const verified = parseXIdentityVerification(body);
+      if (!verified) {
+        throw new Error("The X identity response was invalid.");
+      }
+      setXIdentity(verified);
+      setXIdentityState("verified");
+    } catch (error) {
+      if (
+        !xIdentityRequestIsCurrent({
+          requestGeneration,
+          currentRequestGeneration: xIdentityRequestGeneration.current,
+          sessionGeneration: expectedSessionGeneration,
+          currentSessionGeneration: leadSessionGeneration.current,
+        })
+      ) return;
+      const requestError = error as OperatorError;
+      if (requestError?.status === 401) {
+        handleError(error, "X identity could not be verified.");
+        return;
+      }
+      setXIdentity(null);
+      setXIdentityState("error");
+      setXIdentityError(
+        error instanceof Error
+          ? error.message
+          : "X identity could not be verified.",
+      );
     }
   };
 
@@ -1762,6 +1864,45 @@ export function MarketingOperator(): React.JSX.Element {
               durable admission, and write availability are rechecked at the
               action boundary.
             </p>
+            <div className={styles.readinessEvidence}>
+              <button
+                className={styles.secondaryButton}
+                type="button"
+                onClick={() => void verifyXIdentity()}
+                disabled={xIdentityState === "loading" || Boolean(busy)}
+              >
+                {xIdentityState === "loading"
+                  ? "Verifying X…"
+                  : "Verify X identity"}
+              </button>
+              <p
+                className={
+                  xIdentityState === "error"
+                    ? styles.readinessEvidenceError
+                    : styles.readinessEvidenceText
+                }
+                aria-live="polite"
+              >
+                {xIdentity
+                  ? (
+                      <>
+                        Verified through the official X API as @
+                        {xIdentity.authenticatedUsername} · account{" "}
+                        {xIdentity.authenticatedAccountId} ·{" "}
+                        <time dateTime={xIdentity.observedAt}>
+                          {LEAD_DATE_FORMATTER.format(
+                            new Date(xIdentity.observedAt),
+                          )}
+                        </time>
+                        . Identity only; this does not prove the Automated
+                        label or write availability.
+                      </>
+                    )
+                  : xIdentityState === "error"
+                    ? xIdentityError
+                    : "No live X API identity check has been run in this tab."}
+              </p>
+            </div>
             {readiness.length ? (
               <div className={styles.readinessGrid}>
                 {readiness.map((item) => (

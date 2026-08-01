@@ -5,7 +5,10 @@ import type {
   MarketingPolicyFlags,
   MarketingTopic,
 } from "@/lib/marketing/types";
-import { SCHEDULED_MARKETING_TEMPLATE_ID } from "@/lib/marketing/types";
+import {
+  AGENT_KIT_MARKETING_CAMPAIGN_ID,
+  SCHEDULED_MARKETING_TEMPLATE_ID,
+} from "@/lib/marketing/types";
 
 export const SCHEDULED_MARKETING_CHANNELS = ["x", "discord"] as const;
 
@@ -99,6 +102,42 @@ const FEATURE_FACTS: ReviewedMarketingFactRequirement[] = [
 
 const FEATURE_SOURCE_URLS = FEATURE_FACTS.map((fact) => fact.sourceUrl);
 
+const AGENT_KIT_FACTS: ReviewedMarketingFactRequirement[] = [
+  {
+    key: "product.agent_kit_sdk_release",
+    sourceUrl: "https://registry.npmjs.org/@openzaps%2fsdk/0.1.0",
+  },
+  {
+    key: "product.agent_kit_mcp_release",
+    sourceUrl: "https://registry.npmjs.org/@openzaps%2fmcp/0.1.0",
+  },
+  {
+    key: "product.agent_kit_boundaries",
+    sourceUrl: "https://www.0xzaps.com/docs",
+  },
+];
+
+const AGENT_KIT_CLAIMS: MarketingClaim[] = [
+  {
+    text:
+      "The npm registry publishes @openzaps/sdk@0.1.0 with a provenance attestation.",
+    factKeys: ["product.agent_kit_sdk_release"],
+    treatment: "asserted",
+  },
+  {
+    text:
+      "The npm registry publishes @openzaps/mcp@0.1.0 with a provenance attestation.",
+    factKeys: ["product.agent_kit_mcp_release"],
+    treatment: "asserted",
+  },
+  {
+    text:
+      "The SDK prepares unsigned policy data without signing or broadcasting; the read-only MCP surface discovers capsules without holding a wallet key; creation stays with the owner wallet or Safe, and execution authority lives in the immutable policy or typed intent.",
+    factKeys: ["product.agent_kit_boundaries"],
+    treatment: "asserted",
+  },
+];
+
 const CAMPAIGNS: readonly ReviewedMarketingCampaign[] = [
   {
     id: SCHEDULED_MARKETING_TEMPLATE_ID,
@@ -137,6 +176,23 @@ const CAMPAIGNS: readonly ReviewedMarketingCampaign[] = [
     contentHash:
       "d87798d6ff0ba39a29c5b9da58397162cb43cd4908c5b604493e8fe98a0604f5",
   },
+  {
+    id: AGENT_KIT_MARKETING_CAMPAIGN_ID,
+    channel: "discord",
+    queueOrder: 20,
+    notBefore: "2026-08-03T14:00:00.000Z",
+    body:
+      "**The OpenZaps Agent Kit is published.**\n\n`@openzaps/sdk@0.1.0` compiles the exact policy tuple and prepares unsigned EIP-712 data. `@openzaps/mcp@0.1.0` gives agent clients read-only capsule discovery. Both releases carry npm provenance attestations.\n\nNeither package holds a key, signs, or broadcasts. Your wallet or Safe creates authority; the signed intent and immutable Zap policy set the bounds.\n\nConnect an agent: https://www.0xzaps.com/docs#agents\n\nPre-audit software. Verify before use.",
+    links: ["https://www.0xzaps.com/docs#agents"],
+    topics: ["protocol"],
+    disclosures: ["pre_audit"],
+    claims: AGENT_KIT_CLAIMS,
+    flags: SAFE_FLAGS,
+    requiredFacts: AGENT_KIT_FACTS,
+    canonicalSourceUrls: AGENT_KIT_FACTS.map((fact) => fact.sourceUrl),
+    contentHash:
+      "516443309a2b558c1335bb4f672a649a1f728ddc643bb0a762564835c6ff59ca",
+  },
 ];
 
 // The v2 X copy has a separately verified public receipt and is intentionally
@@ -148,6 +204,7 @@ const CAMPAIGNS: readonly ReviewedMarketingCampaign[] = [
 // the durable queue together.
 const AUTO_DELIVERY_CAMPAIGNS = new Set([
   `${SCHEDULED_MARKETING_TEMPLATE_ID}:discord`,
+  `${AGENT_KIT_MARKETING_CAMPAIGN_ID}:discord`,
 ]);
 
 function cloneCampaign(
