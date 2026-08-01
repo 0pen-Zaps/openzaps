@@ -7,6 +7,7 @@ import {
   lookupXComplianceSubjects,
   verifyXAuthenticatedIdentity,
 } from "@/lib/marketing/channels/x";
+import { ChannelAdapterError } from "@/lib/marketing/channels/shared";
 import {
   initializeMarketingXComplianceAccount,
   listMarketingXComplianceSubjects,
@@ -25,8 +26,30 @@ const SUBJECT_LIMIT = 5_000;
 const PROVIDER_BATCH_SIZE = 100;
 const LOOKUP_CONCURRENCY = 5;
 
+type XComplianceFailureStage =
+  | "list_subjects"
+  | "verify_identity"
+  | "initialize_account"
+  | "relist_subjects"
+  | "lookup_subjects"
+  | "record_checkpoint";
+
 function response(body: Record<string, unknown>, status = 200): NextResponse {
   return NextResponse.json(body, { status, headers: HEADERS });
+}
+
+function logReconciliationFailure(
+  stage: XComplianceFailureStage,
+  error: unknown,
+): void {
+  const adapterError = error instanceof ChannelAdapterError ? error : null;
+  const providerStatus = adapterError?.details.status;
+  console.error(JSON.stringify({
+    event: "marketing_x_compliance_reconciliation_failed",
+    stage,
+    errorCode: adapterError?.code ?? "internal-error",
+    ...(Number.isSafeInteger(providerStatus) ? { providerStatus } : {}),
+  }));
 }
 
 function chunks<T>(values: readonly T[], size: number): T[][] {
@@ -132,16 +155,19 @@ export async function GET(request: Request): Promise<Response> {
     return response({ error: "X compliance monitoring is not ready." }, 503);
   }
 
+  let stage: XComplianceFailureStage = "list_subjects";
   try {
     let list = await listMarketingXComplianceSubjects(accountId, SUBJECT_LIMIT);
     let bootstrapped = false;
     if (list.result === "account_not_found") {
+      stage = "verify_identity";
       const identity = await verifyXAuthenticatedIdentity({
         requestTimeoutMs: 8_000,
       });
       if (identity.authenticatedAccountId !== accountId) {
         throw new Error("The X compliance identity changed.");
       }
+      stage = "initialize_account";
       const initialized = await initializeMarketingXComplianceAccount({
         accountId,
         verifiedAt: identity.observedAt,
@@ -149,6 +175,7 @@ export async function GET(request: Request): Promise<Response> {
       if (initialized.accountId !== accountId) {
         throw new Error("The durable X compliance identity changed.");
       }
+      stage = "relist_subjects";
       list = await listMarketingXComplianceSubjects(accountId, SUBJECT_LIMIT);
       if (list.result === "account_not_found") {
         throw new Error("The durable X compliance boundary is absent.");
@@ -160,8 +187,10 @@ export async function GET(request: Request): Promise<Response> {
     }
     const providerRunId = randomUUID();
     const startedAt = new Date().toISOString();
+    stage = "lookup_subjects";
     const observations = await observeSubjects(accountId, list.subjects);
     const completedAt = new Date().toISOString();
+    stage = "record_checkpoint";
     const checkpoint = await recordMarketingXComplianceCheckpoint({
       accountId,
       providerRunId,
@@ -185,7 +214,8 @@ export async function GET(request: Request): Promise<Response> {
       },
       healthy ? 200 : 503,
     );
-  } catch {
+  } catch (error) {
+    logReconciliationFailure(stage, error);
     return response(
       {
         error: "X compliance reconciliation failed closed.",

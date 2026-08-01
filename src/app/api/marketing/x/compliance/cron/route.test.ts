@@ -27,6 +27,7 @@ vi.mock("@/lib/marketing/x-compliance-server", () => ({
 }));
 
 import { GET } from "./route";
+import { ChannelAdapterError } from "@/lib/marketing/channels/shared";
 
 const ACCOUNT_ID = "999999";
 const CHECKED_AT = "2026-08-01T12:00:00.000Z";
@@ -89,6 +90,7 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.clearAllMocks();
+  vi.restoreAllMocks();
   vi.unstubAllEnvs();
 });
 
@@ -302,6 +304,7 @@ describe("X compliance cron", () => {
   });
 
   it("sanitizes an authenticated-account mismatch and records no checkpoint", async () => {
+    const errorLog = vi.spyOn(console, "error").mockImplementation(() => undefined);
     mocks.lookupSubjects.mockResolvedValue({
       authenticatedAccountId: "123456",
       observedAt: CHECKED_AT,
@@ -318,5 +321,38 @@ describe("X compliance cron", () => {
       providerWritesAttempted: false,
     });
     expect(mocks.recordCheckpoint).not.toHaveBeenCalled();
+    expect(errorLog).toHaveBeenCalledWith(JSON.stringify({
+      event: "marketing_x_compliance_reconciliation_failed",
+      stage: "lookup_subjects",
+      errorCode: "internal-error",
+    }));
+  });
+
+  it("logs only a fixed provider failure classification", async () => {
+    const errorLog = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    mocks.lookupSubjects.mockRejectedValue(new ChannelAdapterError(
+      "x",
+      "provider-error",
+      "provider response that must not enter logs",
+      { status: 402 },
+    ));
+
+    const result = await GET(request());
+
+    expect(result.status).toBe(503);
+    expect(await result.json()).toEqual({
+      error: "X compliance reconciliation failed closed.",
+      providerWritesAttempted: false,
+    });
+    expect(errorLog).toHaveBeenCalledTimes(1);
+    expect(errorLog).toHaveBeenCalledWith(JSON.stringify({
+      event: "marketing_x_compliance_reconciliation_failed",
+      stage: "lookup_subjects",
+      errorCode: "provider-error",
+      providerStatus: 402,
+    }));
+    expect(String(errorLog.mock.calls[0]?.[0])).not.toContain(
+      "provider response that must not enter logs",
+    );
   });
 });
