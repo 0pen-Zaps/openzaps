@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   RequestZapForm,
+  requestSubmissionErrorMessage,
   requestValidationMessage,
 } from "./RequestZapForm";
 
@@ -47,6 +48,15 @@ describe("RequestZapForm deployment boundary", () => {
     );
     expect(requestValidationMessage(null)).toBe(
       "Complete every required field marked with an asterisk before sending.",
+    );
+  });
+
+  it("describes the durable daily quota truthfully", () => {
+    expect(requestSubmissionErrorMessage(429)).toBe(
+      "This network reached today's request limit. Try again after the daily UTC reset, or contact us in Discord if the request is urgent.",
+    );
+    expect(requestSubmissionErrorMessage(503)).toContain(
+      "temporarily unavailable",
     );
   });
 });

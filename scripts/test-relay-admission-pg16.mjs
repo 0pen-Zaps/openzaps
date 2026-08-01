@@ -2549,6 +2549,51 @@ Pre-audit software. Verify before use.$campaign$)::text
     `lead deletion did not cascade to its notification outbox: ${cascadeBefore} -> ${cascadeAfter}`,
   );
 
+  const sharedNetworkFingerprint = "e".repeat(64);
+  const sharedNetworkResults = [];
+  for (let index = 1; index <= 13; index += 1) {
+    sharedNetworkResults.push(
+      submitLeadFixture({
+        fingerprint: sharedNetworkFingerprint,
+        email: `lead-quota-${index}@example.com`,
+        name: `Harness Lead Quota ${index}`,
+      }),
+    );
+  }
+  const independentNetworkResult = submitLeadFixture({
+    fingerprint: "f".repeat(64),
+    email: "lead-quota-independent@example.com",
+    name: "Harness Lead Quota Independent",
+  });
+  const sharedNetworkState = psqlScalar(`
+    select
+      quotas.accepted_count,
+      count(leads.id)
+    from private.lead_request_quotas as quotas
+    left join private.lead_requests as leads
+      on leads.email like 'lead-quota-%@example.com'
+      and leads.email <> 'lead-quota-independent@example.com'
+    where quotas.client_fingerprint = '${sharedNetworkFingerprint}'
+    group by quotas.accepted_count;
+  `);
+  assert(
+    sharedNetworkResults.slice(0, 12).every((result) => result === "accepted")
+      && sharedNetworkResults[12] === "quota_reached"
+      && independentNetworkResult === "accepted"
+      && sharedNetworkState === "12|12",
+    `lead shared-network quota was not bounded independently: ${sharedNetworkResults.join(",")}|${independentNetworkResult}|${sharedNetworkState}`,
+  );
+  psql(`
+    delete from private.lead_requests
+    where email like 'lead-quota-%@example.com';
+
+    delete from private.lead_request_quotas
+    where client_fingerprint in (
+      '${sharedNetworkFingerprint}',
+      '${"f".repeat(64)}'
+    );
+  `);
+
   psql(`
     set role service_role;
 

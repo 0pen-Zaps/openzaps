@@ -39,6 +39,16 @@ const LEAD_ANALYTICS_SOURCES = new Set([
 ]);
 const LEAD_ANALYTICS_REFERRER = "https://www.0xzaps.com/request-a-zap";
 
+export function leadQuotaRetryAfterSeconds(nowMs = Date.now()): number {
+  const now = new Date(nowMs);
+  const nextUtcDay = Date.UTC(
+    now.getUTCFullYear(),
+    now.getUTCMonth(),
+    now.getUTCDate() + 1,
+  );
+  return Math.max(1, Math.ceil((nextUtcDay - nowMs) / 1_000));
+}
+
 function leadAnalyticsSource(value: string | undefined): string {
   const normalized = value?.trim().toLowerCase() ?? "";
   return LEAD_ANALYTICS_SOURCES.has(normalized) ? normalized : "other";
@@ -151,10 +161,10 @@ export async function POST(request: Request): Promise<Response> {
       return intakeResponse(
         {
           accepted: false,
-          error: "Please try again later.",
+          error: "Daily request limit reached.",
         },
         429,
-        { "retry-after": "86400" },
+        { "retry-after": String(leadQuotaRetryAfterSeconds()) },
       );
     }
     try {

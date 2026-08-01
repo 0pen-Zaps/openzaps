@@ -25,6 +25,9 @@ The browser sends the form to `POST /api/leads/request`. The route:
 - derives an HMAC abuse-control key from a platform forwarding header without
   storing the raw network address;
 - keeps that pseudonymous key only in a separate short-lived quota ledger;
+- accepts at most 12 requests per pseudonymous network per UTC day so shared
+  office networks can submit multiple legitimate workflows without removing
+  the durable abuse ceiling;
 - reduces the referrer to its origin and drops sensitive campaign values;
 - computes a deterministic qualification score; and
 - calls one service-role-only database RPC.

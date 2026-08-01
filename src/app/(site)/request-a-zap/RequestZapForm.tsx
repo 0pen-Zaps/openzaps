@@ -48,6 +48,16 @@ export function requestValidationMessage(fieldName: string | null): string {
   return "Complete every required field marked with an asterisk before sending.";
 }
 
+export function requestSubmissionErrorMessage(status: number): string {
+  if (status === 429) {
+    return "This network reached today's request limit. Try again after the daily UTC reset, or contact us in Discord if the request is urgent.";
+  }
+  if (status === 503) {
+    return "The request desk is temporarily unavailable. Please try again shortly.";
+  }
+  return "We could not send your request. Check the form and try again.";
+}
+
 const PERSONAS: readonly {
   value: LeadPersona;
   index: string;
@@ -150,13 +160,7 @@ export function RequestZapForm({
         | null;
 
       if (!response.ok || result?.accepted !== true) {
-        const message =
-          response.status === 429
-            ? "We received several requests at once. Please wait a moment and try again."
-            : response.status === 503
-              ? "The request desk is temporarily unavailable. Please try again shortly."
-              : "We could not send your request. Check the form and try again.";
-        setErrorMessage(message);
+        setErrorMessage(requestSubmissionErrorMessage(response.status));
         setSubmission("error");
         trackEvent("lead_request_error", {
           ...analyticsAttribution,
