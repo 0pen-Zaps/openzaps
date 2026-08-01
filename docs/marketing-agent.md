@@ -10,10 +10,10 @@ broadcast providers. Campaign/channel rows are append-only release artifacts;
 the model and public drafting inputs cannot add to the queue.
 
 The agent does not receive wallet authority. It cannot create, fund, sign, or
-execute a Zap. Its only external write surfaces are reviewed X broadcasts and
-operator-selected, verified X replies, plus reviewed Discord broadcasts.
-Discord slash commands return deterministic responses. Substack publication
-always stops at a human editor handoff.
+execute a Zap. Its external write surfaces are reviewed X/Discord broadcasts,
+operator-selected verified X replies, and a separately gated deterministic X
+mention-response lane. Discord slash commands return deterministic responses.
+Substack publication always stops at a human editor handoff.
 
 The inbound request queue and separate review-only Lead Scout are documented
 in [lead-engine.md](lead-engine.md).
@@ -33,13 +33,14 @@ measurable, privacy-minimized handoff to `/request-a-zap`.
 | Claims cite facts | Every asserted or qualified generated claim must cite a source-packet fact key. Unavailable data is `null`, never zero. |
 | Pre-audit disclosure | Public copy includes `Pre-audit software. Verify before use.` while the protocol remains pre-audit. |
 | Canonical links only | Outbound links are restricted to `0xzaps.com`, `www.0xzaps.com`, `defitutorials.substack.com`, and `github.com/0pen-Zaps/openzaps`. |
-| Human review | Every model-generated item and every reply remains review-only. Tutorials, incidents, security, token/trading, partnerships, roadmaps, and new deployments always require approval. |
+| Human review | Every model-generated item and every freeform reply remains review-only. Tutorials, incidents, security, token/trading, partnerships, roadmaps, and new deployments always require approval. Only exact versioned X FAQ templates may use the independent auto-response lane after X campaign approval is attested. |
 | Paper simulation | The `simulation` topic is reserved for wallet-free, no-real-funds practice surfaces. Live or token trading remains `trading` and always requires approval. |
 | Bounded scheduled campaigns | Automatic delivery accepts only an immutable campaign/channel row that exactly matches the source-reviewed registry and its SHA-256 content binding, only for tier-1 X/Discord broadcasts. It rechecks typed source requirements, freshness, provider identity/destination, caps, and the durable delivery claim immediately before writing. A changed body, fact source, claim, or channel cannot inherit that authority. |
 | Review-only feed discovery | A separate daily cron reads only the source-controlled OpenZaps feed and public DeFi Tutorials RSS metadata. Its first complete snapshots are baselined, later canonical items are deduplicated into a private inbox, and it cannot start a workflow or call a provider. |
 | Exact syndication attribution | An operator-started inbox workflow binds a deterministic, non-personal X or Discord UTM URL to the canonical source and campaign slug. Generation fails unless the exact channel URL appears in both the reviewed body and its link metadata. |
 | Prohibited means prohibited | A human cannot override credential exposure, guaranteed-return claims, impersonation, policy bypasses, unsolicited bulk messaging, unavailable-as-zero claims, or non-canonical links. |
-| No unverified X replies | An operator supplies only a canonical `x.com/<user>/status/<id>` URL and a paraphrase. The agent verifies the author and explicit mention/owned quote through X's API, stores metadata but not post text, requires human approval, and enforces one lifetime reply per interaction. There is no polling or browser scraping. |
+| No unverified X replies | Manual replies start from an operator-selected canonical status URL. Proactive discovery uses only X's official mentions endpoint—never search or scraping—baselines the first complete result, stores IDs plus a keyed content HMAC but no post text, re-reads the exact post before delivery, and enforces one lifetime reply per interaction. |
+| Bounded X auto-response | Only exact `/docs`, `/request`, `/virtual`, `/agent`, and `/about` prompts (plus narrowly equivalent questions) can select source-reviewed templates. Protected/withheld observations are not retained; links, media, stale posts, sensitive topics, ambiguity, and freeform text stay review-only or ignored. One reply per invocation, one per author/day, one per conversation/day, a default one/day cap, and explicit opt-out are enforced durably. |
 | No undocumented publishing | X uses `POST /2/tweets`; Discord uses official webhooks/REST; Substack uses its official editor and public RSS feed. There is no browser scraping, session-cookie automation, or private endpoint. |
 | Safe failure | Missing or malformed configuration blocks work. Provider errors are sanitized, publishing is not automatically retried, and Discord mentions are disabled. |
 
@@ -69,6 +70,15 @@ discovery cron
   -> require a complete first baseline, including every RSS-confirmed tutorial
   -> durable deduplication inbox only
   -> zero workflows and zero provider writes
+
+X mention cron
+  -> official GET /2/users/:id/mentions only
+  -> first complete result becomes a no-reply baseline
+  -> transient classification + keyed content HMAC; no raw text persistence
+  -> exact deterministic template or review-only inbox
+  -> revalidate identity, post, author, content HMAC, policy, caps, and opt-out
+  -> durable interaction and delivery claims
+  -> at most one reply; no automatic retry after ambiguity
 ```
 
 Discord slash-command answers are a separate deterministic FAQ path. They do
@@ -82,6 +92,8 @@ not invoke the model or the approval workflow.
 | `/learn` | Public, indexable catalog of reviewed product updates and RSS-confirmed DeFi Tutorials, with RSS/community follow paths and a bounded Request-a-Zap CTA | Public; source-controlled catalog only, with no provider write or draft access. |
 | `GET /api/marketing/status` | Secret-free readiness and policy posture | `Authorization: Bearer <OPENZAPS_MARKETING_ADMIN_TOKEN>` |
 | `GET /api/marketing/x/identity` | Operator-triggered, read-only verification that the active X credentials resolve to the configured account id and username | Operator bearer token |
+| `GET /api/marketing/x/mentions` | List the metadata-only mention inbox and review-required count; never returns raw post text, usernames, or profiles | Operator bearer token |
+| `GET /api/marketing/x/mentions/cron` | Poll the official mentions endpoint and, when every independent gate is ready, deliver at most one exact deterministic reply | `Authorization: Bearer <CRON_SECRET>` |
 | `POST /api/marketing/runs` | Start a durable draft workflow | Operator bearer token |
 | `GET /api/marketing/runs/:runId` | Read the latest run event/result | Operator bearer token |
 | `POST /api/marketing/approvals` | Resume the one-shot approval hook | Operator bearer token |
@@ -144,8 +156,16 @@ later is not sufficient.
 | `OPENZAPS_MARKETING_DM_ENABLED` | `false` |
 | `OPENZAPS_X_AUTOMATED_LABEL_CONFIRMED` | `false` (required for every X provider write) |
 | `OPENZAPS_X_AI_REPLY_APPROVED` | `false` (additional gate for AI-authored replies) |
+| `OPENZAPS_X_MENTION_INGEST_ENABLED` | `false` (official-API discovery only) |
+| `OPENZAPS_X_AUTO_REPLY_ENABLED` | `false` (operator intent; ineffective without the independent approval attestation) |
+| `OPENZAPS_X_AUTO_RESPONSE_APPROVED` | `false` (set only after X approves the brand auto-response campaign) |
+| `OPENZAPS_X_AUTO_RESPONSE_APPROVAL_DIGEST` | unset (must exactly match the currently reviewed template registry digest) |
+| `OPENZAPS_X_COMMERCIAL_USE_APPROVED` | `false` (set only after the intended OpenZaps use is permitted for the X API access tier) |
+| `OPENZAPS_X_COMPLIANCE_READY` | `false` (set only while the official compliance event consumer is operating within the required window) |
+| `OPENZAPS_X_AUTO_REPLY_DAILY_CAP` | `1` (independent automatic-reply cap; accepts 0–5) |
 
-Caps accept integers from 0 through 100. A cap of `0` is an emergency
+General channel caps accept integers from 0 through 100; the dedicated X
+automatic-reply cap accepts 0 through 5. A cap of `0` is an emergency
 per-channel kill switch. In non-dry-run mode, every provider call must first
 acquire an atomic claim in `marketing_delivery_ledger`. That transaction
 enforces the UTC-day cap, lifetime one-reply-per-X-interaction rule, and stable
@@ -158,9 +178,15 @@ secret are all present. Loopback HTTP is accepted only outside production. Dry
 runs may use a marked empty snapshot and never call the provider. Live drafting
 and delivery fail closed without the durable ledger. Effective `autoPublish`
 can become `true` only for the reviewed-campaign prerequisites above; the
-ledger never replaces human approval for generated copy or replies.
+ledger never replaces human approval for generated copy or freeform replies.
 Direct-message delivery is hard-disabled because there is no deployed DM
 adapter; setting the legacy DM flag does not enable it.
+
+`OPENZAPS_X_MENTION_HASH_SECRET` is a separate server-only random secret of at
+least 32 characters. It keys the persisted content HMAC so low-entropy post
+text cannot be recovered with a simple hash dictionary. Rotate it only with a
+reviewed inbox migration/rebaseline; a blind rotation makes stored content
+bindings fail closed.
 
 ### Schedule
 
@@ -212,16 +238,35 @@ metadata, updates the private inbox and validators, and returns
 `OPENZAPS_MARKETING_AUTO_PUBLISH`, never starts the marketing workflow, and
 never calls X, Discord, or a Substack write surface.
 
+The independent X mention route runs every 15 minutes even when the weekday
+campaign schedule is disabled. Each provider page is limited to 100 mentions
+and one invocation may read at most five pages. If more than 500 mentions are
+pending, the validated pages are committed behind a stable continuation
+boundary, the public cursor does not advance, and no reply is attempted. A
+later invocation resumes below that boundary. A later-page provider failure
+also checkpoints already validated pages when possible; malformed first-page
+metadata fails closed. Rate-limit reset metadata controls the next poll. The
+first complete production snapshot, including an empty one, establishes a
+no-reply baseline; only later observations can become eligible.
+
 ### X
 
 | Variable | Required | Meaning |
 | --- | --- | --- |
 | `X_USER_ACCESS_TOKEN` | One X auth option | User-context OAuth 2.0 bearer token for the OpenZaps account. |
-| `X_CONSUMER_KEY`, `X_CONSUMER_SECRET`, `X_ACCESS_TOKEN`, `X_ACCESS_TOKEN_SECRET` | Preferred X auth option | Complete OAuth 1.0a user-context credential set. Partial sets fail closed. |
+| `X_CONSUMER_KEY`, `X_CONSUMER_SECRET`, `X_ACCESS_TOKEN`, `X_ACCESS_TOKEN_SECRET` | Preferred X auth option | Complete OAuth 1.0a user-context credential set. A partial set makes X readiness fail closed. |
 | `X_EXPECTED_ACCOUNT_ID` | Every X read/write operation | Exact numeric X account id returned for the intended OpenZaps account by `GET /2/users/me`. |
 | `X_EXPECTED_USERNAME` | Every X read/write operation | Canonical lowercase username without `@`; use `0xzaps`. |
 | `OPENZAPS_X_AUTOMATED_LABEL_CONFIRMED` | Every X provider write | Set only after the account's required automated-account label/operator disclosure is visibly configured. |
 | `OPENZAPS_X_AI_REPLY_APPROVED` | AI-authored replies only | Independent operator attestation that X has approved the reply automation. |
+| `OPENZAPS_X_MENTION_INGEST_ENABLED` | Proactive discovery | Enables official mentions-timeline reads after the durable inbox migration and HMAC secret are ready. It does not authorize a reply. |
+| `OPENZAPS_X_MENTION_HASH_SECRET` | Proactive discovery | Server-only HMAC key; minimum 32 characters. Raw post text is never persisted. |
+| `OPENZAPS_X_COMMERCIAL_USE_APPROVED` | Proactive discovery | Attests that the intended OpenZaps use is permitted for the active X API agreement/access tier. |
+| `OPENZAPS_X_COMPLIANCE_READY` | Proactive discovery | Attests that an official recurring compliance stream/batch consumer is live and meeting X deletion, protection, suspension, and withholding deadlines. A manual RPC alone is not sufficient. |
+| `OPENZAPS_X_AUTO_REPLY_ENABLED` | Deterministic auto-response intent | Enables the exact-template lane only when every other gate is ready. |
+| `OPENZAPS_X_AUTO_RESPONSE_APPROVED` | Deterministic automatic replies | Attests X approval for the brand auto-response campaign. Never set this from an app-install success or the user's product preference alone. |
+| `OPENZAPS_X_AUTO_RESPONSE_APPROVAL_DIGEST` | Deterministic automatic replies | Must equal the exact template-registry digest returned by the operator-only status endpoint after the copy is reviewed. Any template or version change disables replies. |
+| `OPENZAPS_X_AUTO_REPLY_DAILY_CAP` | Deterministic automatic replies | Independent UTC-day cap from 0–5; default `1`. The lower of this and the general X reply cap wins. |
 
 The adapter prefers a complete OAuth 1.0a user-context credential set and
 retains OAuth 2.0 bearer support. OAuth 1.0a requests are signed with
@@ -237,16 +282,40 @@ binding at that moment; it does not prove that the Automated label is visible,
 that the app has write access or credits, or that a provider post succeeded.
 
 All X writes remain blocked while
-`OPENZAPS_X_AUTOMATED_LABEL_CONFIRMED=false`; this includes broadcasts. A
-reply additionally requires `OPENZAPS_X_AI_REPLY_APPROVED=true`. Every reply
-starts from a human-selected canonical status URL in `/marketing`, not a
-poller. The adapter uses `GET /2/users/me` and `GET /2/tweets/:id` to prove
-that another account explicitly mentioned the authenticated OpenZaps username
-or quoted a post owned by that account. It derives the trigger itself, stores
-only target URL/id, author/account ids, trigger, and observation time, and
-discards the target text. The operator brief must paraphrase the question.
-Every generated reply still waits for human approval and the durable ledger
-allows at most one reply for that interaction.
+`OPENZAPS_X_AUTOMATED_LABEL_CONFIRMED=false`; this includes broadcasts.
+AI-authored replies additionally require `OPENZAPS_X_AI_REPLY_APPROVED=true`.
+Manual replies begin with a human-selected canonical status URL in
+`/marketing`; the operator paraphrases the question and approves the generated
+answer.
+
+The proactive lane uses `GET /2/users/:id/mentions`, never keyword search. Post
+text exists only transiently inside one request for strict classification and
+HMAC calculation. The durable inbox stores post, author and conversation IDs,
+source time, HMAC, classification and state—no raw text, username, display
+name, profile, email, direct message, media URL, or external URL. Freeform and
+sensitive content is surfaced as metadata-only review work. Exact deterministic
+templates are marked `made_with_ai: false`; generated replies continue to use
+the AI approval path. Immediately before any automatic reply, the adapter
+re-fetches the post and account identity and requires the author, prompt class,
+and keyed content binding to remain identical.
+
+An explicit `@0xzaps stop`, `unsubscribe`, or equivalent opt-out is persisted
+by author ID and blocks pending/future automatic replies. No public opt-out
+confirmation is generated. Automatic delivery also requires the independent
+campaign-approval attestation, both durable ledgers, the default one/day cap,
+one author/day, one conversation/day, and the lifetime interaction uniqueness
+claim. A timeout or ambiguous provider receipt is terminal for automatic
+delivery and requires human reconciliation.
+
+Protected and withheld observations are not written to the inbox. Official X
+deletion, protection, suspension, and withholding events must be processed by a
+recurring authorized compliance consumer within X's required window. The
+service-role erasure RPC removes subject identifiers, rewrites the generic
+delivery receipt to a non-subject reference, and places the account on a
+compliance hold. That hold may be cleared only after the official source proves
+the erased subject is absent. The existence of the RPC or the environment flag
+alone is not operational proof; keep ingestion disabled until the consumer and
+monitoring are live.
 
 The adapter calls `GET /2/users/me` before every `POST /2/tweets` and requires
 both the returned id and username to match `X_EXPECTED_ACCOUNT_ID` and
@@ -320,7 +389,10 @@ match.
 4. Register commands to the OpenZaps guild first. Guild commands update
    quickly and are safer for testing than global commands.
 
-Keep the bot token in the current shell, not a file or command-line argument:
+The canonical payload lives in
+`src/lib/marketing/discord-commands.json`; the signed interaction route and
+reconciliation tests consume the same manifest. Keep the bot token in the
+current shell, not a file or command-line argument:
 
 ```bash
 export OPENZAPS_DISCORD_APPLICATION_ID="your-application-id"
@@ -328,59 +400,20 @@ export OPENZAPS_DISCORD_GUILD_ID="your-openzaps-guild-id"
 read -r -s DISCORD_BOT_TOKEN
 export DISCORD_BOT_TOKEN
 
-node --input-type=module <<'NODE'
-const applicationId = process.env.OPENZAPS_DISCORD_APPLICATION_ID;
-const guildId = process.env.OPENZAPS_DISCORD_GUILD_ID;
-const token = process.env.DISCORD_BOT_TOKEN;
-if (!applicationId || !guildId || !token) throw new Error("Missing Discord registration environment.");
+# GET and compare only; prints a content-free structured diff.
+npm run discord:commands
 
-const commands = [
-  {
-    name: "ask",
-    description: "Ask a question about OpenZaps",
-    type: 1,
-    options: [{
-      name: "question",
-      description: "Your OpenZaps question",
-      type: 3,
-      required: true
-    }]
-  },
-  {
-    name: "openzaps",
-    description: "Learn what OpenZaps is and how bounded authority works",
-    type: 1,
-    options: [{
-      name: "question",
-      description: "Optional topic: Zaps, agents, security, audit status, or token",
-      type: 3,
-      required: false
-    }]
-  },
-  {
-    name: "status",
-    description: "Read the current OpenZaps audit and production posture",
-    type: 1
-  }
-];
-
-const response = await fetch(
-  `https://discord.com/api/v10/applications/${applicationId}/guilds/${guildId}/commands`,
-  {
-    method: "PUT",
-    headers: {
-      authorization: `Bot ${token}`,
-      "content-type": "application/json"
-    },
-    body: JSON.stringify(commands)
-  }
-);
-if (!response.ok) throw new Error(`Discord command registration failed (${response.status}).`);
-console.log(`Registered ${commands.length} guild commands.`);
-NODE
+# Explicitly apply the exact manifest, then GET and verify it again.
+npm run discord:commands:apply
+npm run discord:commands
 
 unset DISCORD_BOT_TOKEN
 ```
+
+The reconciler validates exact application/guild ids, never follows redirects,
+bounds provider responses, sanitizes errors, and performs no `PUT` without the
+explicit `--apply` script. Retain the final in-sync output as release evidence;
+it still does not replace a live signed command invocation.
 
 Test all three commands in the server. Promote them to global commands only if
 the application is intentionally meant for other servers; use the same payload
@@ -580,7 +613,16 @@ Apply them transactionally while the marketing agent is disabled. Then verify:
 - attaching a workflow run id retains `drafting`; only verified workflow draft
   evidence may advance it to `awaiting_approval`;
 - a partial X/Discord delivery is recorded as failed/incomplete, never as a
-  fully published syndication item.
+  fully published syndication item;
+- the first complete X mention poll creates only `baseline` rows and cannot
+  claim a reply;
+- replaying the same mention page is idempotent, a partial page set retains the
+  public cursor while advancing a stable continuation checkpoint, and
+  concurrent poll/reply claims admit one owner;
+- an empty first X snapshot initializes the baseline, and the first later exact
+  prompt is eligible only once;
+- automatic X mention claims enforce the independent daily cap, one
+  author/day, one conversation/day, opt-out, and terminal failure semantics.
 
 Keep a record of the verification output with the release. The migrations are
 append-only audit/idempotency boundaries; do not add a destructive rollback.
@@ -665,7 +707,7 @@ should deliver the Discord row because cron claims at most one row per run.
 Verify each canonical provider receipt independently.
 Written X approval remains an additional requirement for AI replies, which are
 never part of this automatic lane. Leave every model-generated run and every
-reply on the approval hook.
+freeform reply on the approval hook.
 
 To roll back automatic delivery, first set
 `OPENZAPS_MARKETING_SCHEDULE_ENABLED=false`, then set
@@ -673,6 +715,50 @@ To roll back automatic delivery, first set
 to review-only delivery without removing provider credentials or altering the
 append-only ledger. Never delete or rewrite a claimed row to force a retry;
 ambiguous provider outcomes require human reconciliation.
+
+### 8. Enable official X mention discovery, then deterministic replies
+
+Apply and verify the X mention migration before setting any feature flag. Keep
+both X flags false until all of the following are proven: the public privacy
+notice is deployed; the intended commercial use is permitted; an official X
+compliance stream or recurring batch consumer is running and monitored within
+the provider deadline; deletion/protection/suspension/withholding can invoke the
+erasure RPC; and a compliance hold cannot clear before official absence is
+verified. The current source tree does not make those external proofs by
+itself, so a dormant deployment must leave ingestion disabled.
+
+Only after those proofs exist, add a fresh
+`OPENZAPS_X_MENTION_HASH_SECRET`, set
+`OPENZAPS_X_COMMERCIAL_USE_APPROVED=true`,
+`OPENZAPS_X_COMPLIANCE_READY=true`, and
+`OPENZAPS_X_MENTION_INGEST_ENABLED=true`, then redeploy. Invoke the cron once;
+require `baseline_only`, no delivery claim, and no provider write. Invoke it
+again and inspect the authenticated metadata-only inbox.
+
+Keep `OPENZAPS_X_AUTO_REPLY_ENABLED=false` until X has approved the brand
+auto-response campaign. Approval of an app installation, write scope, account
+label, or this product plan is not that attestation. After written approval,
+set:
+
+```text
+OPENZAPS_X_AUTO_RESPONSE_APPROVED=true
+OPENZAPS_X_AUTO_RESPONSE_APPROVAL_DIGEST=<exact-status-templateRegistryDigest>
+OPENZAPS_X_AUTO_REPLY_ENABLED=true
+OPENZAPS_X_AUTO_REPLY_DAILY_CAP=1
+```
+
+Redeploy and send one controlled exact `@0xzaps /docs` test from a non-operator
+test account that has not opted out. Require one durable mention claim, one
+delivery-ledger receipt, one canonical X reply, and no second reply on replay.
+Then test `@0xzaps stop` and prove that future eligible prompts from that author
+remain blocked. Keep AI-generated replies on their separate approval/human
+review path.
+
+To stop this independent lane, set
+`OPENZAPS_X_AUTO_REPLY_ENABLED=false` and
+`OPENZAPS_X_MENTION_INGEST_ENABLED=false`, then redeploy. Disabling
+`OPENZAPS_MARKETING_SCHEDULE_ENABLED` stops weekday campaign broadcasts but does
+not stop the separate mention cron.
 
 ## Manual operation
 
@@ -709,6 +795,15 @@ List the review-only feed inbox:
 curl --fail-with-body --silent --show-error \
   --header "Authorization: Bearer ${MARKETING_OPERATOR_TOKEN}" \
   "${MARKETING_BASE_URL}/api/marketing/syndication"
+```
+
+List the metadata-only X mention inbox (the response deliberately omits raw
+post text, usernames, profiles, author IDs, and content HMACs):
+
+```bash
+curl --fail-with-body --silent --show-error \
+  --header "Authorization: Bearer ${MARKETING_OPERATOR_TOKEN}" \
+  "${MARKETING_BASE_URL}/api/marketing/x/mentions"
 ```
 
 Starting a draft from `/marketing` is preferred. The bounded API action accepts
@@ -899,17 +994,20 @@ further action.
 
 Use the narrowest effective control:
 
-1. Disable new cron starts with
+1. Disable deterministic X responses and reads with
+   `OPENZAPS_X_AUTO_REPLY_ENABLED=false` and
+   `OPENZAPS_X_MENTION_INGEST_ENABLED=false`, then redeploy.
+2. Disable new scheduled campaign starts with
    `OPENZAPS_MARKETING_SCHEDULE_ENABLED=false` and redeploy.
-2. Disable all new drafting with `OPENZAPS_MARKETING_ENABLED=false` and
+3. Disable all new drafting with `OPENZAPS_MARKETING_ENABLED=false` and
    redeploy.
-3. Set the affected channel cap to `0` and redeploy as an additional policy
+4. Set the affected channel cap to `0` and redeploy as an additional policy
    stop.
-4. Reject every workflow waiting for approval. List runs with
+5. Reject every workflow waiting for approval. List runs with
    `npx workflow inspect runs --backend vercel`.
-5. For an immediate external stop, revoke the X token or delete/rotate the
+6. For an immediate external stop, revoke the X token or delete/rotate the
    Discord webhook. Rotate the Discord bot token if it was exposed.
-6. Rotate `OPENZAPS_MARKETING_ADMIN_TOKEN` after any operator-token exposure
+7. Rotate `OPENZAPS_MARKETING_ADMIN_TOKEN` after any operator-token exposure
    and clear all operator tabs.
 
 Vercel Workflow runs are pinned to the deployment that started them. A code
@@ -990,6 +1088,8 @@ patched tree, or stop the release if the affected packages enter runtime output.
 - [Vercel AI Gateway](https://vercel.com/docs/ai-gateway)
 - [Vercel Cron Jobs](https://vercel.com/docs/cron-jobs)
 - [X automation rules](https://help.x.com/en/rules-and-policies/x-automation)
+- [X mentions timeline](https://docs.x.com/x-api/users/get-mentions)
+- [X automated-account labels](https://help.x.com/en/using-x/automated-account-labels)
 - [X create-post endpoint](https://docs.x.com/x-api/posts/create-post)
 - [X OAuth 2.0 authorization-code flow](https://docs.x.com/fundamentals/authentication/oauth-2-0/authorization-code)
 - [X API rate limits](https://docs.x.com/x-api/fundamentals/rate-limits)

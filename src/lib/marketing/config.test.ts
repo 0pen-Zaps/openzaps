@@ -343,6 +343,14 @@ describe("readMarketingConfig", () => {
         X_EXPECTED_USERNAME: "0xzaps",
       },
       {
+        X_EXPECTED_ACCOUNT_ID: "0",
+        X_EXPECTED_USERNAME: "0xzaps",
+      },
+      {
+        X_EXPECTED_ACCOUNT_ID: "1".repeat(20),
+        X_EXPECTED_USERNAME: "0xzaps",
+      },
+      {
         X_EXPECTED_ACCOUNT_ID: "100",
         X_EXPECTED_USERNAME: "@0xzaps",
       },

@@ -57,8 +57,8 @@ export const MarketingInteractionSchema = z
     targetUrl: z
       .string()
       .regex(/^https:\/\/x\.com\/[A-Za-z0-9_]{1,15}\/status\/\d{1,19}$/u),
-    authorId: z.string().regex(/^\d{1,30}$/u),
-    authenticatedAccountId: z.string().regex(/^\d{1,30}$/u),
+    authorId: z.string().regex(/^[1-9]\d{0,18}$/u),
+    authenticatedAccountId: z.string().regex(/^[1-9]\d{0,18}$/u),
     trigger: z.enum(["mention", "quote"]),
     observedAt: z.iso.datetime(),
   })

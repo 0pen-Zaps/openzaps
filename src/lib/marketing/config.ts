@@ -29,7 +29,7 @@ const MAX_DAILY_CAP = 100;
 const DISCORD_ID = /^\d{1,30}$/u;
 const DISCORD_PUBLIC_KEY = /^[0-9a-f]{64}$/iu;
 const DISCORD_WEBHOOK_HOSTS = new Set(["discord.com", "discordapp.com"]);
-const X_ACCOUNT_ID = /^\d{1,30}$/u;
+const X_ACCOUNT_ID = /^[1-9]\d{0,18}$/u;
 const X_CANONICAL_USERNAME = /^[a-z0-9_]{1,15}$/u;
 type Environment = Readonly<Record<string, string | undefined>>;
 
@@ -196,7 +196,7 @@ export function readMarketingConfig(env: Environment = process.env): MarketingCo
     && X_CANONICAL_USERNAME.test(xExpectedUsername);
   if (xExpectedAccountId !== undefined && !xExpectedAccountIdValid) {
     errors.push(
-      "X_EXPECTED_ACCOUNT_ID must be an exact 1-30 digit X account id.",
+      "X_EXPECTED_ACCOUNT_ID must be an exact 1-19 digit X account id.",
     );
   }
   if (xExpectedUsername !== undefined && !xExpectedUsernameValid) {
