@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { DM_Sans, JetBrains_Mono, Newsreader } from "next/font/google";
 import Script from "next/script";
+import { Suspense } from "react";
 import "./globals.css";
 import { Spotlight } from "@/components/Spotlight";
 import { MotionControl } from "@/components/MotionControl";
@@ -285,7 +286,9 @@ export default function RootLayout({
         </ThemeProvider>
         <Spotlight />
         <MotionControl />
-        <OpenZapsAnalytics />
+        <Suspense fallback={null}>
+          <OpenZapsAnalytics />
+        </Suspense>
       </body>
     </html>
   );
