@@ -26,9 +26,11 @@ Authenticated CLI verification on 1 August 2026 identified the production
 shared project as `pool-fans-v2` with ref `jhzpyfzkdsyavgnnuzyu`, and
 `20260801180000_marketing_discord_delivery_receipts.sql` as the latest applied OpenZaps
 migration before this release. The forward-only
-`20260801214552_harden_subscription_authorization_grants.sql` migration must be
-recorded separately after it is reviewed and applied. Treat all of this as
-dated evidence: reverify the project and migration ledger before a write.
+`20260801214552_harden_subscription_authorization_grants.sql` and
+`20260801223000_harden_marketing_retention_sequence_grants.sql` migrations
+must be recorded separately, in that order, after they are reviewed and
+applied. Treat all of this as dated evidence: reverify the project and
+migration ledger before a write.
 Setting the Vercel project-ref binding does not apply a migration or redeploy
 the app.
 

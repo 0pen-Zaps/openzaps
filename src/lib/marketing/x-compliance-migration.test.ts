@@ -8,6 +8,13 @@ const migration = readFileSync(
   ),
   "utf8",
 );
+const retentionSequenceMigration = readFileSync(
+  new URL(
+    "../../../supabase/migrations/20260801223000_harden_marketing_retention_sequence_grants.sql",
+    import.meta.url,
+  ),
+  "utf8",
+);
 
 function privateFunction(name: string, nextName?: string) {
   const start = migration.indexOf(`create or replace function private.${name}`);
@@ -20,6 +27,13 @@ function privateFunction(name: string, nextName?: string) {
 }
 
 describe("marketing X compliance operations migration", () => {
+  it("removes inherited direct access to the retention identity sequence", () => {
+    expect(retentionSequenceMigration).toMatch(
+      /revoke all on sequence public\.marketing_x_retention_events_event_id_seq\s+from public, anon, authenticated, service_role;/iu,
+    );
+    expect(retentionSequenceMigration).not.toMatch(/\bgrant\b/iu);
+  });
+
   it("keeps every new identifier store behind RLS and without direct grants", () => {
     for (const table of [
       "marketing_x_compliance_checkpoints",

@@ -662,6 +662,7 @@ supabase/migrations/20260801100000_queue_learn_hub_campaign.sql
 supabase/migrations/20260801143000_marketing_x_mentions.sql
 supabase/migrations/20260801170000_marketing_x_compliance_operations.sql
 supabase/migrations/20260801180000_marketing_discord_delivery_receipts.sql
+supabase/migrations/20260801223000_harden_marketing_retention_sequence_grants.sql
 ```
 
 If any file is already recorded remotely, apply only the missing exact files
@@ -683,6 +684,11 @@ Apply them transactionally while the marketing agent is disabled. Then verify:
   `public.marketing_x_mention_opt_outs`, and
   `public.marketing_x_compliance_events` have RLS enabled and no direct table
   grants for `anon`, `authenticated`, or `service_role`;
+- the compliance checkpoint, subject-observation, reply-subject, outbound
+  admission, and retention-event tables have RLS enabled and no direct table
+  grants for `anon`, `authenticated`, or `service_role`;
+- the retention-event identity sequence has no `SELECT`, `UPDATE`, or
+  `USAGE` privilege for `anon`, `authenticated`, or `service_role`;
 - only `service_role` can execute the public marketing RPCs, including the new
   reviewed-campaign claim and the bounded syndication cursor, discovery, list,
   claim, attach, fail, skip, and sync RPCs;
