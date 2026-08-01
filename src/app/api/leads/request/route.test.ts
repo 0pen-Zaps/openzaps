@@ -182,6 +182,21 @@ describe("POST /api/leads/request", () => {
     expect(mocks.start).toHaveBeenCalledOnce();
   });
 
+  it("does not make durable acceptance wait for advisory workflow startup", async () => {
+    mockedSubmit.mockResolvedValue("accepted");
+    mocks.start.mockReturnValue(new Promise(() => {}));
+
+    const response = await Promise.race<Response | null>([
+      POST(request()),
+      new Promise((resolve) => setTimeout(() => resolve(null), 250)),
+    ]);
+
+    expect(response).toBeInstanceOf(Response);
+    expect(response?.status).toBe(202);
+    expect(mocks.start).toHaveBeenCalledOnce();
+    expect(mocks.track).toHaveBeenCalledOnce();
+  });
+
   it("keeps durable acceptance successful when conversion analytics fails", async () => {
     mockedSubmit.mockResolvedValue("accepted");
     mocks.track.mockRejectedValue(new Error("analytics unavailable"));
@@ -193,7 +208,7 @@ describe("POST /api/leads/request", () => {
     expect(mocks.track).toHaveBeenCalledOnce();
   });
 
-  it("keeps durable acceptance successful when analytics scheduling fails", async () => {
+  it("keeps durable acceptance successful when background scheduling fails", async () => {
     mockedSubmit.mockResolvedValue("accepted");
     mocks.after.mockImplementationOnce(() => {
       throw new Error("background scheduling unavailable");
