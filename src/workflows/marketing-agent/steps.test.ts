@@ -19,9 +19,11 @@ const mocks = vi.hoisted(() => ({
   verifyDiscordDestination: vi.fn(),
   verifyCampaignClaim: vi.fn(),
   verifyXIdentity: vi.fn(),
-  verifyXReplyTarget: vi.fn(),
+  getXReplySubject: vi.fn(),
+  postXReplySubject: vi.fn(),
+  createTutorialHandoff: vi.fn(),
+  loadTutorial: vi.fn(),
   xBroadcast: vi.fn(),
-  xReply: vi.fn(),
 }));
 
 vi.mock("server-only", () => ({}));
@@ -51,12 +53,18 @@ vi.mock("@/lib/marketing/channels", async (importOriginal) => {
     postDiscordMessage: mocks.discord,
     postDiscordWebhook: mocks.discordWebhook,
     postXBroadcast: mocks.xBroadcast,
-    postXReply: mocks.xReply,
     verifyDiscordPublishDestination: mocks.verifyDiscordDestination,
     verifyXAuthenticatedIdentity: mocks.verifyXIdentity,
-    verifyXReplyTarget: mocks.verifyXReplyTarget,
   };
 });
+vi.mock("@/lib/marketing/x-compliance-server", () => ({
+  getMarketingXReplySubject: mocks.getXReplySubject,
+  postMarketingXReplyFromSubject: mocks.postXReplySubject,
+}));
+vi.mock("@/lib/marketing/tutorial-handoff-source", () => ({
+  createSourceControlledTutorialEditorHandoff: mocks.createTutorialHandoff,
+  loadSourceControlledTutorialApprovalBundle: mocks.loadTutorial,
+}));
 
 import {
   buildScheduledMarketingDraftStep,
@@ -424,10 +432,7 @@ function scheduledRequest(channel: "x" | "discord") {
 function replyBundle(): MarketingDraftBundle {
   const base = bundle();
   const interaction = {
-    id: "123456789",
-    targetUrl: "https://x.com/community/status/123456789",
-    authorId: "200",
-    authenticatedAccountId: "100",
+    id: "8".repeat(30),
     trigger: "mention" as const,
     observedAt: CREATED_AT,
   };
@@ -446,7 +451,7 @@ function replyBundle(): MarketingDraftBundle {
       brief: "Paraphrased question about bounded agent authority.",
       channels: ["x"],
       sourceUrls: [],
-      interactionUrl: interaction.targetUrl,
+      interactionReference: interaction.id,
     },
     sourcePacket,
     candidates: [candidate],
@@ -501,6 +506,11 @@ function substackBundle(): MarketingDraftBundle {
     ].join("\n"),
     links: ["https://www.0xzaps.com/docs"],
   };
+  const sourceSha256 = "a".repeat(64);
+  const bodySha256 = "b".repeat(64);
+  const title = "Give the Agent the Trigger, Never the Authority";
+  const subtitle = "A source-backed guide to bounded agent execution";
+  const tags = ["OpenZaps", "DeFi"];
   return {
     ...base,
     request: {
@@ -508,14 +518,48 @@ function substackBundle(): MarketingDraftBundle {
       brief: "Explain bounded agent authority in a verified tutorial.",
       channels: ["substack"],
       sourceUrls: [],
+      tutorialId: "paper-trade-first-authority-map",
+    },
+    tutorialHandoff: {
+      version: 1,
+      channel: "substack",
+      status: "requires_owner_approval",
+      tutorialId: "paper-trade-first-authority-map",
+      manifestStatus: "draft",
+      sourcePath: "docs/tutorials/paper-trade-first-authority-map.md",
+      sourceSha256,
+      bodySha256,
+      title,
+      subtitle,
+      tags,
+      topics: candidate.topics,
+      disclosures: candidate.disclosures,
+      claims: candidate.claims,
+      links: candidate.links,
+      bodyMarkdown: candidate.body,
+      editorUrl: "https://defitutorials.substack.com/publish/post",
+      publicationUrl: "https://defitutorials.substack.com",
+      modelRewriteAllowed: false,
+      apiWriteAttempted: false,
+      privateEndpointUsed: false,
+      approval: {
+        required: true,
+        decision: "pending",
+        scope: "exact_source_and_body_sha256",
+        tutorialId: "paper-trade-first-authority-map",
+        sourceSha256,
+        bodySha256,
+        statement:
+          "Approve only these exact source and editor-body hashes for a human-only DeFi Tutorials handoff.",
+      },
     },
     candidates: [candidate],
     presentations: [{
       candidateId: candidate.id,
       channel: "substack",
-      title: "Give the Agent the Trigger, Never the Authority",
-      subtitle: "A source-backed guide to bounded agent execution",
-      tags: ["OpenZaps", "DeFi"],
+      title,
+      subtitle,
+      tags,
     }],
     policy: [{
       ...base.policy[0],
@@ -534,6 +578,28 @@ beforeEach(() => {
     authenticatedAccountId: "100",
     authenticatedUsername: "0xzaps",
     observedAt: CREATED_AT,
+  });
+  const sourceBundle = substackBundle().tutorialHandoff!;
+  mocks.loadTutorial.mockReturnValue(sourceBundle);
+  mocks.createTutorialHandoff.mockReturnValue({
+    status: "requires-human-publish",
+    editorUrl: "https://defitutorials.substack.com/publish/post",
+    apiWriteAttempted: false,
+    privateEndpointUsed: false,
+    draft: {
+      title: sourceBundle.title,
+      subtitle: sourceBundle.subtitle,
+      bodyMarkdown: sourceBundle.bodyMarkdown,
+      tags: sourceBundle.tags,
+    },
+    source: {
+      version: 1,
+      tutorialId: sourceBundle.tutorialId,
+      sourcePath: sourceBundle.sourcePath,
+      sourceSha256: sourceBundle.sourceSha256,
+      bodySha256: sourceBundle.bodySha256,
+      modelRewriteAllowed: false,
+    },
   });
 });
 
@@ -911,6 +977,13 @@ describe("durable marketing delivery admission", () => {
     const approval = {
       decision: "approve" as const,
       approvedBy: "Nodar",
+      tutorialApproval: {
+        decision: "approve" as const,
+        approvedBy: "Nodar",
+        tutorialId: reviewedBundle.tutorialHandoff!.tutorialId,
+        sourceSha256: reviewedBundle.tutorialHandoff!.sourceSha256,
+        bodySha256: reviewedBundle.tutorialHandoff!.bodySha256,
+      },
     };
 
     await expect(
@@ -940,6 +1013,11 @@ describe("durable marketing delivery admission", () => {
       status: "requires_human_publish",
       providerUrl: "https://defitutorials.substack.com/publish/post",
     });
+    expect(mocks.createTutorialHandoff).toHaveBeenCalledWith(
+      reviewedBundle.tutorialHandoff,
+      approval.tutorialApproval,
+      "draft:abc:substack",
+    );
 
     await expect(
       publishMarketingBundleStep(reviewedBundle, approval),
@@ -954,21 +1032,35 @@ describe("durable marketing delivery admission", () => {
     expect(mocks.claim).toHaveBeenCalledTimes(2);
     expect(mocks.complete).toHaveBeenCalledOnce();
     expect(mocks.xBroadcast).not.toHaveBeenCalled();
-    expect(mocks.xReply).not.toHaveBeenCalled();
+    expect(mocks.postXReplySubject).not.toHaveBeenCalled();
     expect(mocks.discord).not.toHaveBeenCalled();
     expect(mocks.discordWebhook).not.toHaveBeenCalled();
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it("blocks a reply when reverified identity differs from immutable evidence", async () => {
+  it("blocks Substack before durable admission when exact tutorial hashes are not approved", async () => {
+    setLiveEnvironment();
+    mocks.getSnapshot.mockResolvedValue(zeroSnapshot());
+
+    await expect(
+      publishMarketingBundleStep(substackBundle(), {
+        decision: "approve",
+        approvedBy: "Nodar",
+      }),
+    ).resolves.toMatchObject([{
+      channel: "substack",
+      status: "blocked",
+      error: expect.stringContaining("hash-bound owner approval"),
+    }]);
+    expect(mocks.claim).not.toHaveBeenCalled();
+    expect(mocks.createTutorialHandoff).not.toHaveBeenCalled();
+  });
+
+  it("blocks a reply when the bound X identity cannot be reverified", async () => {
     setLiveEnvironment();
     vi.stubEnv("OPENZAPS_X_AI_REPLY_APPROVED", "true");
     mocks.getSnapshot.mockResolvedValue(zeroSnapshot());
-    mocks.verifyXIdentity.mockResolvedValue({
-      authenticatedAccountId: "999",
-      authenticatedUsername: "0xzaps",
-      observedAt: CREATED_AT,
-    });
+    mocks.verifyXIdentity.mockRejectedValue(new Error("identity mismatch"));
 
     await expect(
       publishMarketingBundleStep(replyBundle(), {
@@ -978,14 +1070,14 @@ describe("durable marketing delivery admission", () => {
     ).resolves.toMatchObject([
       {
         status: "blocked",
-        error: expect.stringContaining("immutable reply verification"),
+        error: expect.stringContaining("identity verification failed"),
       },
     ]);
     expect(mocks.claim).not.toHaveBeenCalled();
-    expect(mocks.xReply).not.toHaveBeenCalled();
+    expect(mocks.postXReplySubject).not.toHaveBeenCalled();
   });
 
-  it("passes immutable authenticated account id into an admitted X reply", async () => {
+  it("passes only the opaque interaction reference into an admitted X reply", async () => {
     setLiveEnvironment();
     vi.stubEnv("OPENZAPS_X_AI_REPLY_APPROVED", "true");
     mocks.getSnapshot.mockResolvedValue(zeroSnapshot());
@@ -995,7 +1087,7 @@ describe("durable marketing delivery admission", () => {
       currentCount: 1,
       day: zeroSnapshot().usage.day,
     });
-    mocks.xReply.mockResolvedValue({
+    mocks.postXReplySubject.mockResolvedValue({
       providerMessageId: "321",
       providerUrl: "https://x.com/i/web/status/321",
     });
@@ -1013,12 +1105,11 @@ describe("durable marketing delivery admission", () => {
     expect(mocks.verifyXIdentity.mock.invocationCallOrder[0]).toBeLessThan(
       mocks.claim.mock.invocationCallOrder[0],
     );
-    expect(mocks.xReply).toHaveBeenCalledWith(
-      expect.objectContaining({
-        inReplyToTweetId: "123456789",
-        authenticatedAccountId: "100",
-      }),
-    );
+    expect(mocks.postXReplySubject).toHaveBeenCalledWith({
+      interactionReference: "8".repeat(30),
+      text: expect.any(String),
+      idempotencyKey: expect.any(String),
+    });
   });
 
   it("blocks a duplicate verified X interaction before durable admission or provider delivery", async () => {
@@ -1026,7 +1117,7 @@ describe("durable marketing delivery admission", () => {
     vi.stubEnv("OPENZAPS_X_AI_REPLY_APPROVED", "true");
     mocks.getSnapshot.mockResolvedValue({
       ...zeroSnapshot(),
-      repliedInteractionIds: ["123456789"],
+      repliedInteractionIds: ["8".repeat(30)],
     });
 
     await expect(
@@ -1036,7 +1127,7 @@ describe("durable marketing delivery admission", () => {
       }),
     ).resolves.toMatchObject([{ status: "blocked" }]);
     expect(mocks.claim).not.toHaveBeenCalled();
-    expect(mocks.xReply).not.toHaveBeenCalled();
+    expect(mocks.postXReplySubject).not.toHaveBeenCalled();
   });
 
   it("never auto-publishes the externally fulfilled X campaign", async () => {
@@ -1225,7 +1316,10 @@ describe("durable marketing delivery admission", () => {
       currentCount: 1,
       day: zeroSnapshot().usage.day,
     });
-    mocks.discord.mockResolvedValue({ providerMessageId: "888" });
+    mocks.discord.mockResolvedValue({
+      providerMessageId: "888",
+      providerUrl: "https://discord.com/channels/456/789/888",
+    });
     mocks.complete.mockResolvedValue({
       result: "finalized",
       status: "published",
@@ -1239,7 +1333,12 @@ describe("durable marketing delivery admission", () => {
     await expect(
       publishScheduledMarketingBundleStep(draft),
     ).resolves.toMatchObject([
-      { channel: "discord", status: "published", providerMessageId: "888" },
+      {
+        channel: "discord",
+        status: "published",
+        providerMessageId: "888",
+        providerUrl: "https://discord.com/channels/456/789/888",
+      },
     ]);
 
     expect(mocks.verifyDiscordDestination).toHaveBeenCalledOnce();
@@ -1251,6 +1350,14 @@ describe("durable marketing delivery admission", () => {
       }),
     );
     expect(mocks.discord).toHaveBeenCalledOnce();
+    expect(mocks.complete).toHaveBeenCalledWith(
+      expect.objectContaining({
+        channel: "discord",
+        status: "published",
+        providerMessageId: "888",
+        providerUrl: "https://discord.com/channels/456/789/888",
+      }),
+    );
   });
 
   it("fails closed when a later run reuses a claimed template key", async () => {
@@ -1363,14 +1470,15 @@ describe("durable marketing delivery admission", () => {
 describe("bounded source collection", () => {
   it("persists only API-verified reply metadata and source facts", async () => {
     const interaction = {
-      id: "123456789",
-      targetUrl: "https://x.com/community/status/123456789",
-      authorId: "200",
-      authenticatedAccountId: "100",
+      id: "8".repeat(30),
       trigger: "mention" as const,
       observedAt: CREATED_AT,
     };
-    mocks.verifyXReplyTarget.mockResolvedValue(interaction);
+    mocks.getXReplySubject.mockResolvedValue({
+      result: "found",
+      interaction,
+      expiresAt: "2026-07-30T12:00:00.000Z",
+    });
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(Response.json({})));
 
     const result = await collectMarketingSourcesStep({
@@ -1378,21 +1486,22 @@ describe("bounded source collection", () => {
       brief: "Paraphrased question about bounded agent authority.",
       channels: ["x"],
       sourceUrls: [],
-      interactionUrl: interaction.targetUrl,
+      interactionReference: interaction.id,
     });
 
-    expect(mocks.verifyXReplyTarget).toHaveBeenCalledWith(interaction.targetUrl);
+    expect(mocks.getXReplySubject).toHaveBeenCalledWith(interaction.id);
     expect(result.interaction).toEqual(interaction);
     expect(result.facts).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
           key: "x.interaction.trigger",
           value: "mention",
-          sourceUrl: interaction.targetUrl,
+          sourceUrl: "https://api.x.com/2/tweets",
         }),
       ]),
     );
     expect(JSON.stringify(result)).not.toContain("target post text");
+    expect(JSON.stringify(result)).not.toContain("x.com/community/status");
   });
 
   it("confirms feature facts only from live page markers and canonical market marks", async () => {
@@ -1981,8 +2090,36 @@ describe("bounded source collection", () => {
     await generateMarketingDraftStep(request, input.sourcePacket, input.runId);
 
     const prompt = mocks.generateText.mock.calls[0]?.[0]?.prompt;
-    expect(prompt).toContain("Syndicate the already-public tutorial");
+    expect(prompt).toContain("Syndicate the source-controlled tutorial");
     expect(prompt).not.toContain("For Substack, write");
+  });
+
+  it("builds Substack-only review data from exact source bytes without calling the model", async () => {
+    const input = substackBundle();
+    const result = await generateMarketingDraftStep(
+      input.request,
+      input.sourcePacket,
+      input.runId,
+    );
+
+    expect(mocks.generateText).not.toHaveBeenCalled();
+    expect(mocks.loadTutorial).toHaveBeenCalledWith(
+      "paper-trade-first-authority-map",
+    );
+    expect(result.model).toBe("deterministic/source-controlled-tutorial/v1");
+    expect(result.tutorialHandoff).toEqual(input.tutorialHandoff);
+    expect(result.candidates).toHaveLength(1);
+    expect(result.candidates[0]).toMatchObject({
+      channel: "substack",
+      body: input.tutorialHandoff!.bodyMarkdown,
+      links: input.tutorialHandoff!.links,
+      claims: input.tutorialHandoff!.claims,
+    });
+    expect(result.usage).toEqual({
+      inputTokens: 0,
+      outputTokens: 0,
+      totalTokens: 0,
+    });
   });
 
   it("disables Workflow retries for review notifications and publishing", () => {

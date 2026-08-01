@@ -17,6 +17,7 @@ import {
   pollRetryDelay,
   readinessRows,
   shouldRetryPoll,
+  sourceControlledTutorialSelections,
   syndicationDeferredCount,
   syndicationItemCanDraft,
   syndicationRepairMatchesItem,
@@ -25,6 +26,7 @@ import {
   SyndicationSkipControls,
   SubstackHandoff,
   substackVerificationResponseIsCurrent,
+  tutorialApprovalEchoFromDraft,
   type OperatorSyndicationItem,
   writeSubstackClipboard,
   xIdentityRequestIsCurrent,
@@ -480,6 +482,54 @@ describe("Substack handoff helpers", () => {
     candidateId: "draft:paper-trade:substack",
     canonicalUrl: "https://defitutorials.substack.com/p/paper-trade-first",
   };
+
+  it("accepts only bounded byte-verified tutorial selectors and approval echoes", () => {
+    const sourceSha256 = "a".repeat(64);
+    const bodySha256 = "b".repeat(64);
+    expect(sourceControlledTutorialSelections([{
+      tutorialId: "paper-trade-first-authority-map",
+      title: "Paper Trade First",
+      manifestStatus: "draft",
+      sourcePath: "docs/tutorials/paper-trade-first-authority-map.md",
+      sourceSha256,
+      bodySha256,
+    }, {
+      tutorialId: "paper-trade-first-authority-map",
+      title: "Duplicate",
+      manifestStatus: "draft",
+      sourcePath: "docs/tutorials/paper-trade-first-authority-map.md",
+      sourceSha256,
+      bodySha256,
+    }])).toHaveLength(1);
+
+    const handoff = {
+      tutorialHandoff: {
+        channel: "substack",
+        status: "requires_owner_approval",
+        modelRewriteAllowed: false,
+        tutorialId: "paper-trade-first-authority-map",
+        sourceSha256,
+        bodySha256,
+        approval: {
+          decision: "pending",
+          tutorialId: "paper-trade-first-authority-map",
+          sourceSha256,
+          bodySha256,
+        },
+      },
+    };
+    expect(tutorialApprovalEchoFromDraft(handoff)).toEqual({
+      tutorialId: "paper-trade-first-authority-map",
+      sourceSha256,
+      bodySha256,
+    });
+    expect(tutorialApprovalEchoFromDraft({
+      tutorialHandoff: {
+        ...handoff.tutorialHandoff,
+        bodySha256: "c".repeat(64),
+      },
+    })).toBeNull();
+  });
 
   it("unlocks RSS verification only for the recorded official editor handoff", () => {
     expect(

@@ -1,7 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const { getRunMock, verifyMock } = vi.hoisted(() => ({
+const { getRunMock, loadTutorialMock, verifyMock } = vi.hoisted(() => ({
   getRunMock: vi.fn(),
+  loadTutorialMock: vi.fn(),
   verifyMock: vi.fn(),
 }));
 
@@ -11,6 +12,15 @@ vi.mock("workflow/api", () => ({ getRun: getRunMock }));
 vi.mock("@/lib/marketing/channels", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/marketing/channels")>();
   return { ...actual, verifySubstackPublication: verifyMock };
+});
+vi.mock("@/lib/marketing/tutorial-handoff-source", async (importOriginal) => {
+  const actual = await importOriginal<
+    typeof import("@/lib/marketing/tutorial-handoff-source")
+  >();
+  return {
+    ...actual,
+    loadSourceControlledTutorialApprovalBundle: loadTutorialMock,
+  };
 });
 
 import { ChannelAdapterError } from "@/lib/marketing/channels";
@@ -38,6 +48,50 @@ function workflowResult() {
     externalData: [],
     interaction: null,
   };
+  const tutorialId = "paper-trade-first-authority-map";
+  const sourceSha256 = "a".repeat(64);
+  const bodySha256 = "b".repeat(64);
+  const bodyMarkdown = [
+    "Paper trade first, before granting an agent any onchain trigger.",
+    "OpenZaps Virtual Trading uses read-only quotes and browser-local state, so a builder can inspect the route without connecting a wallet, approving a token, signing a message, or sending a transaction.",
+    "That rehearsal is not a promise of execution or returns. OpenZaps remains pre-audit software; verify the exact policy, contracts, assets, limits, and recovery path before any live use.",
+  ].join("\n\n");
+  const tutorialHandoff = {
+    version: 1,
+    channel: "substack",
+    status: "requires_owner_approval",
+    tutorialId,
+    manifestStatus: "draft",
+    sourcePath: `docs/tutorials/${tutorialId}.md`,
+    sourceSha256,
+    bodySha256,
+    title: "Paper Trade First",
+    tags: ["OpenZaps", "DeFi"],
+    topics: ["protocol", "simulation"],
+    disclosures: ["pre_audit"],
+    claims: [{
+      text: "Virtual Trading is wallet-free.",
+      factKeys: ["virtual-trading"],
+      treatment: "asserted",
+    }],
+    links: ["https://www.0xzaps.com/virtual-trading"],
+    bodyMarkdown,
+    editorUrl: "https://defitutorials.substack.com/publish/post",
+    publicationUrl: "https://defitutorials.substack.com",
+    modelRewriteAllowed: false,
+    apiWriteAttempted: false,
+    privateEndpointUsed: false,
+    approval: {
+      required: true,
+      decision: "pending",
+      scope: "exact_source_and_body_sha256",
+      tutorialId,
+      sourceSha256,
+      bodySha256,
+      statement:
+        "Approve only these exact source and editor-body hashes for a human-only DeFi Tutorials handoff.",
+    },
+  };
   const draft = {
     id: "draft:paper-trade",
     runId: RUN_ID,
@@ -48,19 +102,17 @@ function workflowResult() {
       brief: "Explain paper trading before bounded authority.",
       channels: ["substack"],
       sourceUrls: [],
+      tutorialId,
     },
     sourcePacket,
+    tutorialHandoff,
     candidates: [{
       id: CANDIDATE_ID,
       channel: "substack",
       action: "prepare_tutorial",
       kind: "tutorial",
       topics: ["protocol", "simulation"],
-      body: [
-        "Paper trade first, before granting an agent any onchain trigger.",
-        "OpenZaps Virtual Trading uses read-only quotes and browser-local state, so a builder can inspect the route without connecting a wallet, approving a token, signing a message, or sending a transaction.",
-        "That rehearsal is not a promise of execution or returns. OpenZaps remains pre-audit software; verify the exact policy, contracts, assets, limits, and recovery path before any live use.",
-      ].join("\n\n"),
+      body: bodyMarkdown,
       links: ["https://www.0xzaps.com/virtual-trading"],
       disclosures: ["pre_audit"],
       claims: [{
@@ -110,6 +162,13 @@ function workflowResult() {
     approval: {
       decision: "approve",
       approvedBy: "authenticated-operator",
+      tutorialApproval: {
+        decision: "approve",
+        approvedBy: "authenticated-operator",
+        tutorialId,
+        sourceSha256,
+        bodySha256,
+      },
     },
     deliveries: [{
       channel: "substack",
@@ -156,6 +215,7 @@ beforeEach(() => {
     status: Promise.resolve("completed"),
     returnValue: Promise.resolve(workflowResult()),
   });
+  loadTutorialMock.mockReturnValue(workflowResult().draft.tutorialHandoff);
   verifyMock.mockResolvedValue({
     channel: "substack",
     status: "rss_confirmed",
@@ -213,12 +273,27 @@ describe("Substack verification route", () => {
       candidateId: CANDIDATE_ID,
       status: "rss_confirmed",
       persisted: false,
+      tutorialId: "paper-trade-first-authority-map",
+      sourceSha256: "a".repeat(64),
+      bodySha256: "b".repeat(64),
     });
     expect(getRunMock).toHaveBeenCalledWith(RUN_ID);
     expect(verifyMock).toHaveBeenCalledWith({
       canonicalUrl: CANONICAL_URL,
       approvedTitle: "Paper Trade First",
     });
+  });
+
+  it("rejects RSS verification when the source bundle changed after approval", async () => {
+    loadTutorialMock.mockReturnValue({
+      ...workflowResult().draft.tutorialHandoff,
+      bodySha256: "c".repeat(64),
+    });
+
+    const response = await POST(request(verificationRequest()));
+
+    expect(response.status).toBe(409);
+    expect(verifyMock).not.toHaveBeenCalled();
   });
 
   it("rejects an incomplete run or a candidate without the approved handoff", async () => {

@@ -19,8 +19,29 @@ const ApprovalRequestSchema = z
     runId: z.string().min(1).max(200).refine((value) => !/[\s/\\]/u.test(value)),
     decision: z.enum(["approve", "reject"]),
     comment: z.string().trim().max(1_000).optional(),
+    tutorialApproval: z
+      .object({
+        tutorialId: z
+          .string()
+          .min(1)
+          .max(200)
+          .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/u),
+        sourceSha256: z.string().regex(/^[0-9a-f]{64}$/u),
+        bodySha256: z.string().regex(/^[0-9a-f]{64}$/u),
+      })
+      .strict()
+      .optional(),
   })
-  .strict();
+  .strict()
+  .superRefine((approval, context) => {
+    if (approval.decision === "reject" && approval.tutorialApproval) {
+      context.addIssue({
+        code: "custom",
+        message: "A rejection cannot include a tutorial approval.",
+        path: ["tutorialApproval"],
+      });
+    }
+  });
 
 export async function POST(request: Request): Promise<Response> {
   if (!isMarketingAdminAuthorized(request)) {
@@ -46,13 +67,24 @@ export async function POST(request: Request): Promise<Response> {
   }
 
   try {
+    const approvedBy =
+      process.env.OPENZAPS_MARKETING_APPROVER_ID?.trim()
+      || "authenticated-operator";
     const resumed = await marketingApprovalHook.resume(
       marketingApprovalToken(parsed.data.runId),
       {
         decision: parsed.data.decision,
-        approvedBy:
-          process.env.OPENZAPS_MARKETING_APPROVER_ID?.trim() || "authenticated-operator",
+        approvedBy,
         ...(parsed.data.comment ? { comment: parsed.data.comment } : {}),
+        ...(parsed.data.decision === "approve" && parsed.data.tutorialApproval
+          ? {
+              tutorialApproval: {
+                decision: "approve" as const,
+                approvedBy,
+                ...parsed.data.tutorialApproval,
+              },
+            }
+          : {}),
       },
     );
     if (!resumed) {

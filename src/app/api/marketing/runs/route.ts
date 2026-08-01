@@ -7,7 +7,13 @@ import {
   marketingAdminUnauthorizedResponse,
 } from "@/lib/marketing/auth";
 import { BoundedJsonBodyError, readBoundedJsonBody } from "@/lib/request-body";
-import { MarketingDraftRequestSchema } from "@/workflows/marketing-agent/contracts";
+import { verifyXReplyTarget } from "@/lib/marketing/channels/x";
+import { createMarketingXReplySubject } from "@/lib/marketing/x-compliance-server";
+import {
+  MarketingDraftApiRequestSchema,
+  MarketingDraftRequestSchema,
+  type MarketingDraftRequest,
+} from "@/workflows/marketing-agent/contracts";
 import { openZapsMarketingWorkflow } from "@/workflows/marketing-agent";
 
 export const dynamic = "force-dynamic";
@@ -28,7 +34,7 @@ export async function POST(request: Request): Promise<Response> {
       { status, headers: { "cache-control": "private, no-store" } },
     );
   }
-  const parsed = MarketingDraftRequestSchema.safeParse(body);
+  const parsed = MarketingDraftApiRequestSchema.safeParse(body);
   if (!parsed.success) {
     return NextResponse.json(
       { error: "The draft request is invalid.", issues: parsed.error.issues },
@@ -45,7 +51,27 @@ export async function POST(request: Request): Promise<Response> {
   }
 
   try {
-    const run = await start(openZapsMarketingWorkflow, [parsed.data]);
+    const {
+      interactionUrl,
+      ...commonRequest
+    } = parsed.data;
+    let workflowRequest: MarketingDraftRequest;
+    if (parsed.data.kind === "community_reply" && interactionUrl) {
+      // Raw X subject metadata is verified and vaulted before Workflow starts.
+      // Only the random opaque reference crosses the durable Workflow boundary.
+      const verified = await verifyXReplyTarget(interactionUrl);
+      const subject = await createMarketingXReplySubject(verified);
+      if (subject.result !== "created" || !subject.interaction) {
+        throw new Error("X reply subject was not created.");
+      }
+      workflowRequest = MarketingDraftRequestSchema.parse({
+        ...commonRequest,
+        interactionReference: subject.interaction.id,
+      });
+    } else {
+      workflowRequest = MarketingDraftRequestSchema.parse(commonRequest);
+    }
+    const run = await start(openZapsMarketingWorkflow, [workflowRequest]);
     return NextResponse.json(
       { runId: run.runId, status: "queued" },
       { status: 202, headers: { "cache-control": "private, no-store" } },

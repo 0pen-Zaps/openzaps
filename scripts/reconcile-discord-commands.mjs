@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 
+import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -226,6 +227,19 @@ function normalizedDesiredOptions(command) {
   return Array.isArray(command.options) ? command.options : [];
 }
 
+function normalizedCommandForHash(command) {
+  return {
+    name: command.name,
+    description: command.description,
+    type: command.type,
+    options: normalizedDesiredOptions(command),
+  };
+}
+
+function sha256Json(value) {
+  return createHash("sha256").update(JSON.stringify(value), "utf8").digest("hex");
+}
+
 function changedFields(desired, remote) {
   const fields = [];
   if (remote.description !== desired.description) fields.push("description");
@@ -281,6 +295,66 @@ export function buildCommandDiff(desiredValue, remoteValue) {
       delete: remove.length,
     },
     changes: { create, update, delete: remove },
+  };
+}
+
+/**
+ * Bind a GET readback to the exact application and guild before treating a
+ * content diff as operational evidence. The returned hashes contain no ids,
+ * descriptions, or credentials; equal hashes prove the managed provider
+ * projection matches the exact source-controlled manifest.
+ *
+ * @param {{
+ *   desiredValue: unknown,
+ *   remoteValue: unknown,
+ *   applicationId: string,
+ *   guildId: string,
+ * }} input
+ */
+export function verifyGuildCommandReadback({
+  desiredValue,
+  remoteValue,
+  applicationId,
+  guildId,
+}) {
+  if (
+    !DISCORD_SNOWFLAKE.test(applicationId)
+    || !DISCORD_SNOWFLAKE.test(guildId)
+  ) {
+    fail("invalid-environment", "Discord command readback target is invalid.");
+  }
+  const desired = validateDesiredCommands(desiredValue);
+  const remote = parseRemoteCommands(remoteValue);
+  for (const command of remote.values()) {
+    if (
+      !DISCORD_SNOWFLAKE.test(command.id)
+      || command.application_id !== applicationId
+      || command.guild_id !== guildId
+    ) {
+      fail(
+        "invalid-response",
+        "Discord command readback did not match the configured application and guild.",
+      );
+    }
+  }
+  const diff = buildCommandDiff(desired, remoteValue);
+  const manifestProjection = desired.map(normalizedCommandForHash);
+  const managedReadbackProjection = desired.map((command) => {
+    const remoteCommand = remote.get(commandKey(1, command.name));
+    return remoteCommand
+      ? normalizedCommandForHash({
+          name: remoteCommand.name,
+          description: remoteCommand.description,
+          type: remoteCommand.type,
+          options: normalizeRemoteOptions(remoteCommand.options),
+        })
+      : null;
+  });
+  return {
+    ...diff,
+    providerReadbackVerified: true,
+    manifestSha256: sha256Json(manifestProjection),
+    managedReadbackSha256: sha256Json(managedReadbackProjection),
   };
 }
 
@@ -444,7 +518,12 @@ export async function reconcileDiscordCommands({
     method: "GET",
     timeoutMs,
   });
-  const diff = buildCommandDiff(desired, current);
+  const diff = verifyGuildCommandReadback({
+    desiredValue: desired,
+    remoteValue: current,
+    applicationId,
+    guildId,
+  });
   if (!apply || managedCommandsInSync(diff)) {
     return {
       schemaVersion: 1,
@@ -454,6 +533,9 @@ export async function reconcileDiscordCommands({
       managedCommandsInSync: managedCommandsInSync(diff),
       applied: false,
       verified: true,
+      providerReadbackVerified: diff.providerReadbackVerified,
+      manifestSha256: diff.manifestSha256,
+      managedReadbackSha256: diff.managedReadbackSha256,
       counts: diff.counts,
       changes: diff.changes,
     };
@@ -484,7 +566,12 @@ export async function reconcileDiscordCommands({
     method: "GET",
     timeoutMs,
   });
-  const verification = buildCommandDiff(desired, verifiedCommands);
+  const verification = verifyGuildCommandReadback({
+    desiredValue: desired,
+    remoteValue: verifiedCommands,
+    applicationId,
+    guildId,
+  });
   if (!managedCommandsInSync(verification)) {
     fail("verification-error", "Discord command reconciliation did not converge.");
   }
@@ -496,6 +583,9 @@ export async function reconcileDiscordCommands({
     managedCommandsInSync: true,
     applied: true,
     verified: true,
+    providerReadbackVerified: verification.providerReadbackVerified,
+    manifestSha256: verification.manifestSha256,
+    managedReadbackSha256: verification.managedReadbackSha256,
     counts: diff.counts,
     changes: diff.changes,
   };

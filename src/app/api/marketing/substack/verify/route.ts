@@ -13,6 +13,10 @@ import {
 } from "@/lib/marketing/channels";
 import { BoundedJsonBodyError, readBoundedJsonBody } from "@/lib/request-body";
 import {
+  TutorialHandoffSourceError,
+  loadSourceControlledTutorialApprovalBundle,
+} from "@/lib/marketing/tutorial-handoff-source";
+import {
   MarketingWorkflowResultSchema,
   type MarketingWorkflowResult,
 } from "@/workflows/marketing-agent/contracts";
@@ -113,14 +117,33 @@ export async function POST(request: Request): Promise<Response> {
         && item.status === "requires_human_publish"
         && item.editorUrl === DEFITUTORIALS_EDITOR_URL,
     );
+    const tutorialHandoff = result.data.draft.tutorialHandoff;
+    const tutorialApproval = result.data.approval.tutorialApproval;
     if (
       candidates.length !== 1
       || presentations.length !== 1
       || !presentations[0].title
       || deliveries.length !== 1
+      || !tutorialHandoff
+      || !tutorialApproval
+      || tutorialApproval.tutorialId !== tutorialHandoff.tutorialId
+      || tutorialApproval.sourceSha256 !== tutorialHandoff.sourceSha256
+      || tutorialApproval.bodySha256 !== tutorialHandoff.bodySha256
     ) {
       return NextResponse.json(
         { error: "The selected candidate has no approved Substack handoff." },
+        { status: 409, headers: PRIVATE_HEADERS },
+      );
+    }
+    const currentTutorial = loadSourceControlledTutorialApprovalBundle(
+      tutorialHandoff.tutorialId,
+    );
+    if (JSON.stringify(currentTutorial) !== JSON.stringify(tutorialHandoff)) {
+      return NextResponse.json(
+        {
+          error:
+            "The source-controlled tutorial changed after approval; start a fresh review.",
+        },
         { status: 409, headers: PRIVATE_HEADERS },
       );
     }
@@ -133,11 +156,23 @@ export async function POST(request: Request): Promise<Response> {
       ...verification,
       runId: parsed.data.runId,
       candidateId: parsed.data.candidateId,
+      tutorialId: tutorialHandoff.tutorialId,
+      sourceSha256: tutorialHandoff.sourceSha256,
+      bodySha256: tutorialHandoff.bodySha256,
     }, {
       status: 200,
       headers: PRIVATE_HEADERS,
     });
   } catch (error) {
+    if (error instanceof TutorialHandoffSourceError) {
+      return NextResponse.json(
+        {
+          error:
+            "The source-controlled tutorial no longer matches its approved handoff.",
+        },
+        { status: 409, headers: PRIVATE_HEADERS },
+      );
+    }
     if (error instanceof ChannelAdapterError && error.code === "invalid-input") {
       return NextResponse.json(
         {

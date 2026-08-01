@@ -39,6 +39,20 @@ type SyndicationStatus =
   | "failed";
 type JsonRecord = Record<string, unknown>;
 
+export type SourceControlledTutorialSelection = {
+  tutorialId: string;
+  title: string;
+  manifestStatus: "draft" | "approved_handoff";
+  sourcePath: string;
+  sourceSha256: string;
+  bodySha256: string;
+};
+
+export type TutorialApprovalEcho = Pick<
+  SourceControlledTutorialSelection,
+  "tutorialId" | "sourceSha256" | "bodySha256"
+>;
+
 type SubstackVerification = {
   runId: string;
   candidateId: string;
@@ -145,6 +159,80 @@ function isRecord(value: unknown): value is JsonRecord {
 
 function text(value: unknown): string | null {
   return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+export function sourceControlledTutorialSelections(
+  value: unknown,
+): SourceControlledTutorialSelection[] {
+  if (!Array.isArray(value)) return [];
+  const selections: SourceControlledTutorialSelection[] = [];
+  const seen = new Set<string>();
+  for (const item of value) {
+    if (!isRecord(item)) continue;
+    const tutorialId = text(item.tutorialId);
+    const title = text(item.title);
+    const manifestStatus = text(item.manifestStatus);
+    const sourcePath = text(item.sourcePath);
+    const sourceSha256 = text(item.sourceSha256);
+    const bodySha256 = text(item.bodySha256);
+    if (
+      !tutorialId
+      || !/^[a-z0-9]+(?:-[a-z0-9]+)*$/u.test(tutorialId)
+      || seen.has(tutorialId)
+      || !title
+      || title.length > 200
+      || (manifestStatus !== "draft" && manifestStatus !== "approved_handoff")
+      || sourcePath !== `docs/tutorials/${tutorialId}.md`
+      || !sourceSha256
+      || !/^[0-9a-f]{64}$/u.test(sourceSha256)
+      || !bodySha256
+      || !/^[0-9a-f]{64}$/u.test(bodySha256)
+    ) continue;
+    seen.add(tutorialId);
+    selections.push({
+      tutorialId,
+      title,
+      manifestStatus,
+      sourcePath,
+      sourceSha256,
+      bodySha256,
+    });
+  }
+  return selections;
+}
+
+export function tutorialApprovalEchoFromDraft(
+  value: unknown,
+): TutorialApprovalEcho | null {
+  if (!isRecord(value) || !isRecord(value.tutorialHandoff)) return null;
+  const handoff = value.tutorialHandoff;
+  const tutorialId = text(handoff.tutorialId);
+  const sourceSha256 = text(handoff.sourceSha256);
+  const bodySha256 = text(handoff.bodySha256);
+  const approval = isRecord(handoff.approval) ? handoff.approval : null;
+  if (
+    handoff.channel !== "substack"
+    || handoff.status !== "requires_owner_approval"
+    || handoff.modelRewriteAllowed !== false
+    || !tutorialId
+    || !/^[a-z0-9]+(?:-[a-z0-9]+)*$/u.test(tutorialId)
+    || !sourceSha256
+    || !/^[0-9a-f]{64}$/u.test(sourceSha256)
+    || !bodySha256
+    || !/^[0-9a-f]{64}$/u.test(bodySha256)
+    || approval?.decision !== "pending"
+    || approval?.tutorialId !== tutorialId
+    || approval?.sourceSha256 !== sourceSha256
+    || approval?.bodySha256 !== bodySha256
+  ) return null;
+  return { tutorialId, sourceSha256, bodySha256 };
+}
+
+function draftRequestsSubstack(value: unknown): boolean {
+  if (!isRecord(value) || !Array.isArray(value.candidates)) return false;
+  return value.candidates.some(
+    (candidate) => isRecord(candidate) && candidate.channel === "substack",
+  );
 }
 
 function isBoundedTimestamp(value: string | null): value is string {
@@ -990,7 +1078,8 @@ export function MarketingOperator(): React.JSX.Element {
   const [brief, setBrief] = useState("");
   const [interactionUrl, setInteractionUrl] = useState("");
   const [sourceUrls, setSourceUrls] = useState("");
-  const [channels, setChannels] = useState<Channel[]>(["x", "discord", "substack"]);
+  const [channels, setChannels] = useState<Channel[]>(["x", "discord"]);
+  const [tutorialId, setTutorialId] = useState("");
   const [runId, setRunId] = useState("");
   const [run, setRun] = useState<JsonRecord | null>(null);
   const [comment, setComment] = useState("");
@@ -1030,6 +1119,15 @@ export function MarketingOperator(): React.JSX.Element {
   const xIdentityRequestGeneration = useRef(0);
 
   const readiness = useMemo(() => readinessRows(status), [status]);
+  const tutorialSelections = useMemo(
+    () => sourceControlledTutorialSelections(status?.sourceControlledTutorials),
+    [status],
+  );
+  const selectedTutorialId = tutorialSelections.some(
+    (selection) => selection.tutorialId === tutorialId,
+  )
+    ? tutorialId
+    : tutorialSelections[0]?.tutorialId ?? "";
   const currentStatus = runStatus(run);
   const draft = draftFrom(run);
   const result = resultFrom(run);
@@ -1037,9 +1135,13 @@ export function MarketingOperator(): React.JSX.Element {
   const displayedDraftKey = runId && draftId ? `${runId}:${draftId}` : "";
   const reviewAcknowledged =
     Boolean(displayedDraftKey) && acknowledgedDraftKey === displayedDraftKey;
+  const tutorialApproval = tutorialApprovalEchoFromDraft(draft);
+  const needsTutorialApproval = draftRequestsSubstack(draft);
   const canDecide =
     Boolean(draft) && currentStatus === "awaiting_approval" && !busy;
-  const canApprove = canDecide && reviewAcknowledged;
+  const canApprove = canDecide
+    && reviewAcknowledged
+    && (!needsTutorialApproval || tutorialApproval !== null);
 
   const rememberSyndicationRepair = (
     repair: SyndicationRepairPair | null,
@@ -1669,6 +1771,7 @@ export function MarketingOperator(): React.JSX.Element {
 
   const toggleChannel = (channel: Channel): void => {
     if (kind === "community_reply" && channel !== "x") return;
+    if (channel === "substack" && kind !== "tutorial") return;
     setChannels((current) =>
       current.includes(channel)
         ? current.filter((candidate) => candidate !== channel)
@@ -1684,6 +1787,13 @@ export function MarketingOperator(): React.JSX.Element {
     }
     if (channels.length === 0) {
       setNotice("Select at least one channel.");
+      return;
+    }
+    if (
+      channels.includes("substack")
+      && !selectedTutorialId
+    ) {
+      setNotice("Select a byte-verified source-controlled tutorial for Substack.");
       return;
     }
     let verifiedInteractionUrl: string | undefined;
@@ -1719,6 +1829,9 @@ export function MarketingOperator(): React.JSX.Element {
           kind,
           brief: brief.trim(),
           channels,
+          ...(channels.includes("substack")
+            ? { tutorialId: selectedTutorialId }
+            : {}),
           ...(verifiedInteractionUrl ? { interactionUrl: verifiedInteractionUrl } : {}),
           ...(parsedSources.length ? { sourceUrls: parsedSources } : {}),
         }),
@@ -1754,6 +1867,9 @@ export function MarketingOperator(): React.JSX.Element {
           runId,
           decision,
           ...(comment.trim() ? { comment: comment.trim() } : {}),
+          ...(decision === "approve" && tutorialApproval
+            ? { tutorialApproval }
+            : {}),
         }),
       });
       if (draftFrom(body) || resultFrom(body) || text(body.status)) {
@@ -2310,7 +2426,13 @@ export function MarketingOperator(): React.JSX.Element {
                   onChange={(event) => {
                     const nextKind = event.target.value as DraftKind;
                     setKind(nextKind);
-                    if (nextKind === "community_reply") setChannels(["x"]);
+                    if (nextKind === "community_reply") {
+                      setChannels(["x"]);
+                    } else if (nextKind !== "tutorial") {
+                      setChannels((current) =>
+                        current.filter((channel) => channel !== "substack")
+                      );
+                    }
                   }}
                 >
                   <option value="product_update">Product update</option>
@@ -2328,7 +2450,10 @@ export function MarketingOperator(): React.JSX.Element {
                         type="checkbox"
                         checked={channels.includes(channel)}
                         onChange={() => toggleChannel(channel)}
-                        disabled={kind === "community_reply" && channel !== "x"}
+                        disabled={
+                          (kind === "community_reply" && channel !== "x")
+                          || (channel === "substack" && kind !== "tutorial")
+                        }
                       />
                       <span>{channel === "x" ? "X" : titleCase(channel)}</span>
                     </label>
@@ -2336,6 +2461,29 @@ export function MarketingOperator(): React.JSX.Element {
                 </div>
               </fieldset>
             </div>
+
+            {channels.includes("substack") ? (
+              <label className={styles.field}>
+                <span>Source-controlled Substack tutorial</span>
+                <select
+                  value={selectedTutorialId}
+                  onChange={(event) => setTutorialId(event.target.value)}
+                  disabled={tutorialSelections.length === 0}
+                >
+                  {tutorialSelections.length === 0 ? (
+                    <option value="">No byte-verified tutorial is available</option>
+                  ) : tutorialSelections.map((selection) => (
+                    <option key={selection.tutorialId} value={selection.tutorialId}>
+                      {selection.title} · {titleCase(selection.manifestStatus)}
+                    </option>
+                  ))}
+                </select>
+                <small>
+                  Substack copy comes from the selected reviewed Markdown file.
+                  The model cannot rewrite it, and approval binds both exact hashes.
+                </small>
+              </label>
+            ) : null}
 
             <label className={styles.field}>
               <span>
@@ -2469,7 +2617,9 @@ export function MarketingOperator(): React.JSX.Element {
                     />
                     <span>
                       I reviewed this run&apos;s channel copy, evidence, disclosures,
-                      and policy gates. I understand approval may publish immediately.
+                      and policy gates. For Substack, I am approving the exact source
+                      and editor-body hashes shown in this run. I understand other
+                      ready channels may publish immediately.
                     </span>
                   </label>
                   <div className={styles.decisionButtons}>
@@ -2750,6 +2900,10 @@ export function SubstackHandoff({
 
   if (!draft) return <DraftCopy value={value} />;
   const richText = prepareSubstackRichText(draft.bodyMarkdown);
+  const source = isRecord(value) ? value : null;
+  const tutorialSourcePath = text(source?.sourcePath);
+  const tutorialSourceSha256 = text(source?.sourceSha256);
+  const tutorialBodySha256 = text(source?.bodySha256);
 
   const copyRichText = async (): Promise<void> => {
     setCopyState("idle");
@@ -2831,6 +2985,19 @@ export function SubstackHandoff({
         <strong>{draft.title}</strong>
         {draft.subtitle ? <p>{draft.subtitle}</p> : null}
         {draft.tags.length ? <small>{draft.tags.join(" · ")}</small> : null}
+        {tutorialSourcePath ? <small>Source: {tutorialSourcePath}</small> : null}
+        {tutorialSourceSha256 ? (
+          <p>
+            Source SHA-256<br />
+            <code>{tutorialSourceSha256}</code>
+          </p>
+        ) : null}
+        {tutorialBodySha256 ? (
+          <p>
+            Editor body SHA-256<br />
+            <code>{tutorialBodySha256}</code>
+          </p>
+        ) : null}
       </div>
 
       {verificationEnabled ? (
@@ -2947,11 +3114,16 @@ function extractChannelEntries(record: JsonRecord): Array<[Channel, unknown]> {
       const presentation = presentations.find((item) =>
         isRecord(item) && text(item.candidateId) === candidateId
       );
+      const tutorialHandoff = channel === "substack" && isRecord(record.tutorialHandoff)
+        ? record.tutorialHandoff
+        : null;
       return [[
         channel as Channel,
-        presentation && isRecord(presentation)
-          ? { ...value, ...presentation }
-          : value,
+        {
+          ...value,
+          ...(presentation && isRecord(presentation) ? presentation : {}),
+          ...(tutorialHandoff ?? {}),
+        },
       ]];
     });
     if (entries.length) return entries;

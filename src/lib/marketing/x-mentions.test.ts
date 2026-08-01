@@ -12,6 +12,7 @@ import {
   X_MENTION_TEMPLATE_REGISTRY_DIGEST,
   type XMentionForClassification,
 } from "./x-mentions";
+import type { XComplianceHealth } from "./x-compliance-server";
 
 const NOW = Date.parse("2026-08-01T16:00:00.000Z");
 const BASE: XMentionForClassification = {
@@ -164,15 +165,32 @@ describe("X mention automation", () => {
         X_MENTION_TEMPLATE_REGISTRY_DIGEST,
       OPENZAPS_X_AUTO_REPLY_DAILY_CAP: "1",
     } as const;
+    const nowMs = Date.parse("2026-08-01T12:00:00.000Z");
+    const healthyCompliance: XComplianceHealth = {
+      result: "healthy" as const,
+      checkpointId: "00000000-0000-4000-8000-000000000099",
+      checkedAt: "2026-08-01T11:55:00.000Z",
+      validUntil: "2026-08-01T12:25:00.000Z",
+      subjectCount: 3,
+      nonPresentCount: 0,
+      hold: false,
+    };
+    const config = (
+      candidateEnv: Readonly<Record<string, string | undefined>>,
+      health: XComplianceHealth | null = healthyCompliance,
+    ) => readXMentionAutomationConfig(candidateEnv, health, nowMs);
 
-    expect(readXMentionAutomationConfig(env)).toMatchObject({
+    expect(config(env)).toMatchObject({
       ingestReady: true,
       autoReplyReady: true,
+      complianceAttested: true,
+      complianceReady: true,
+      complianceHealth: "healthy",
       dailyCap: 1,
       blockers: [],
     });
     expect(
-      readXMentionAutomationConfig({
+      config({
         ...env,
         OPENZAPS_X_AUTO_RESPONSE_APPROVED: "false",
       }),
@@ -181,7 +199,7 @@ describe("X mention automation", () => {
       autoReplyReady: false,
     });
     expect(
-      readXMentionAutomationConfig({
+      config({
         ...env,
         OPENZAPS_X_COMMERCIAL_USE_APPROVED: "false",
       }),
@@ -191,7 +209,7 @@ describe("X mention automation", () => {
       commercialUseApproved: false,
     });
     expect(
-      readXMentionAutomationConfig({
+      config({
         ...env,
         OPENZAPS_X_COMPLIANCE_READY: "false",
       }),
@@ -201,7 +219,7 @@ describe("X mention automation", () => {
       complianceReady: false,
     });
     expect(
-      readXMentionAutomationConfig({
+      config({
         ...env,
         OPENZAPS_X_AUTO_RESPONSE_APPROVAL_DIGEST: "0".repeat(64),
       }),
@@ -211,7 +229,7 @@ describe("X mention automation", () => {
       templateApprovalDigestValid: false,
     });
     expect(
-      readXMentionAutomationConfig({
+      config({
         ...env,
         OPENZAPS_X_MENTION_HASH_SECRET: "short",
       }),
@@ -220,7 +238,7 @@ describe("X mention automation", () => {
       autoReplyReady: false,
     });
     expect(
-      readXMentionAutomationConfig({
+      config({
         ...env,
         OPENZAPS_MARKETING_AUTO_PUBLISH: "invalid",
       }),
@@ -229,7 +247,7 @@ describe("X mention automation", () => {
       autoReplyReady: false,
     });
     expect(
-      readXMentionAutomationConfig({
+      config({
         ...env,
         OPENZAPS_MARKETING_DAILY_X_REPLY_CAP: "0",
       }),
@@ -237,6 +255,23 @@ describe("X mention automation", () => {
       ingestReady: true,
       autoReplyReady: false,
       dailyCap: 0,
+    });
+    expect(readXMentionAutomationConfig(env, null, nowMs)).toMatchObject({
+      ingestReady: false,
+      autoReplyReady: false,
+      complianceAttested: true,
+      complianceReady: false,
+      complianceHealth: "unavailable",
+    });
+    expect(config(env, {
+      ...healthyCompliance,
+      result: "stale",
+      validUntil: "2026-08-01T11:59:59.000Z",
+    })).toMatchObject({
+      ingestReady: false,
+      autoReplyReady: false,
+      complianceReady: false,
+      complianceHealth: "stale",
     });
   });
 });
