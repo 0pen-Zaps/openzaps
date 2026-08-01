@@ -157,6 +157,7 @@ export default async function RequestAZapPage({
         </header>
 
         <RequestZapForm
+          isPreviewDeployment={process.env.VERCEL_ENV === "preview"}
           initialValues={{
             persona: initialPersona(params),
             project: first(params, "project", 120),
