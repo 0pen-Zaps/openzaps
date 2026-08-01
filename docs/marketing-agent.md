@@ -18,11 +18,17 @@ always stops at a human editor handoff.
 The inbound request queue and separate review-only Lead Scout are documented
 in [lead-engine.md](lead-engine.md).
 
+The public `/learn` hub is the owned distribution surface for this loop. It
+renders only source-reviewed OpenZaps feed items and tutorials whose exact title
+and canonical URL are already `rss_confirmed` in the release manifest. Drafts
+and prepared editor handoffs cannot appear there. Every content path retains a
+measurable, privacy-minimized handoff to `/request-a-zap`.
+
 ## Operating invariants
 
 | Invariant | Enforcement |
 | --- | --- |
-| Evidence before copy | Each run reads the production health, protocol activity, pot, Virtual Trading markets, a fresh read-only quote, and lead-intake readiness, then verifies bounded markers on the two promoted feature pages. Optional source URLs are restricted to OpenZaps, DeFi Tutorials, and the canonical GitHub repository. |
+| Evidence before copy | Each run reads the production health, protocol activity, pot, Virtual Trading markets, a fresh read-only quote, and lead-intake readiness, then verifies bounded markers on the promoted feature pages. The Learn launch additionally requires the exact source-derived catalog digest and rendered item identities, and rejects every tutorial title still withheld by the release manifest. Optional source URLs are restricted to OpenZaps, DeFi Tutorials, and the canonical GitHub repository. |
 | External text is data | Fetched text is marked `instructionsTrusted: false` and cannot widen the operator brief or policy. |
 | Claims cite facts | Every asserted or qualified generated claim must cite a source-packet fact key. Unavailable data is `null`, never zero. |
 | Pre-audit disclosure | Public copy includes `Pre-audit software. Verify before use.` while the protocol remains pre-audit. |
@@ -73,6 +79,7 @@ not invoke the model or the approval workflow.
 | Surface | Purpose | Authentication |
 | --- | --- | --- |
 | `/marketing` | Private operator UI for readiness, drafting, review, approval, and rejection | The page shell is public and `noindex`; every data/action API requires the operator bearer token. |
+| `/learn` | Public, indexable catalog of reviewed product updates and RSS-confirmed DeFi Tutorials, with RSS/community follow paths and a bounded Request-a-Zap CTA | Public; source-controlled catalog only, with no provider write or draft access. |
 | `GET /api/marketing/status` | Secret-free readiness and policy posture | `Authorization: Bearer <OPENZAPS_MARKETING_ADMIN_TOKEN>` |
 | `GET /api/marketing/x/identity` | Operator-triggered, read-only verification that the active X credentials resolve to the configured account id and username | Operator bearer token |
 | `POST /api/marketing/runs` | Start a durable draft workflow | Operator bearer token |
@@ -191,7 +198,11 @@ post is independently visible at
 `https://x.com/0xzaps/status/2083287458976870428`, but it has no durable X API
 receipt and is not represented as one. A later append-only migration queues the
 distinct Discord-only Agent Kit announcement for the first eligible weekday;
-no duplicate row or fabricated historical delivery receipt is created.
+no duplicate row or fabricated historical delivery receipt is created. The
+OpenZaps Learn release adds a second append-only migration with one X row and
+one Discord row. Both rows may exist in the durable queue, but automatic
+delivery remains blocked until the deployed `/learn` page proves the reviewed
+catalog boundary. Each row has its own immutable content hash and delivery key.
 
 The separate feed-discovery route runs at `30 13 * * *`: 13:30 UTC every
 day. It becomes operational only after the syndication migration is applied
@@ -528,6 +539,7 @@ supabase/migrations/20260729095505_harden_verified_receipt_provenance.sql
 supabase/migrations/20260801024005_durable_reviewed_marketing_campaign_queue.sql
 supabase/migrations/20260801041508_marketing_syndication_inbox.sql
 supabase/migrations/20260801062000_queue_agent_kit_discord_campaign.sql
+supabase/migrations/20260801100000_queue_learn_hub_campaign.sql
 ```
 
 If any file is already recorded remotely, apply only the missing exact files
@@ -550,7 +562,9 @@ Apply them transactionally while the marketing agent is disabled. Then verify:
   claim, attach, fail, skip, and sync RPCs;
 - the initial queue migration remains empty for the already-public
   `virtual-trading-request-zap-v2` update, while the later append-only migration
-  contains exactly one Discord-only `agent-kit-published-v1` artifact;
+  contains exactly one Discord-only `agent-kit-published-v1` artifact and the
+  Learn migration contains exactly one X and one Discord
+  `learn-hub-launched-v1` artifact;
 - before that artifact's `not_before`, an empty eligible queue returns
   `no_pending_campaign` without inserting a schedule claim or starting a
   workflow;
@@ -642,8 +656,13 @@ channel, and `not_before` while provider writes are disabled. Re-enable the
 Discord-only schedule and redeploy only after those checks pass. The first
 eligible `agent-kit-published-v1` invocation is expected to return `202` with a
 run id and record `auto_authorized`, not `no_pending_campaign`. Confirm the
-canonical provider receipt, then replay the same campaign and prove the stable
-delivery key returns the stored receipt without a second provider call.
+canonical Discord receipt, then replay the same campaign and prove the stable
+delivery key returns the stored receipt without a second provider call. Before
+enabling the later `learn-hub-launched-v1` rows, verify `/learn` in production
+and change `OPENZAPS_MARKETING_SCHEDULE_CHANNELS` to `x,discord`. The next
+eligible weekday should deliver the X row, and the following eligible weekday
+should deliver the Discord row because cron claims at most one row per run.
+Verify each canonical provider receipt independently.
 Written X approval remains an additional requirement for AI replies, which are
 never part of this automatic lane. Leave every model-generated run and every
 reply on the approval hook.

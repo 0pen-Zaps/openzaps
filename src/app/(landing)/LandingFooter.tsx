@@ -33,6 +33,7 @@ export function LandingFooter({ githubUrl }: { githubUrl: string }): React.JSX.E
               Request a Zap
             </Link>
             <Link href="/explore">Explore</Link>
+            <Link href="/learn">Updates &amp; tutorials</Link>
             <Link href="/token">{TOKEN.symbol} token</Link>
             <Link href={LINKS.buyWithOpenZaps}>Zap in with OpenZaps</Link>
             <Link href="/roadmap">Roadmap</Link>

@@ -179,6 +179,16 @@ describe("analytics privacy boundary", () => {
     expect(storage.length).toBe(2);
   });
 
+  it("accepts the bounded owned learning-hub attribution", () => {
+    stubBrowser();
+
+    expect(
+      captureAnalyticsAttribution(
+        "?utm_source=openzaps&utm_medium=website&utm_campaign=request_a_zap&utm_content=learn_hub",
+      ),
+    ).toBe("openzaps|website|request_a_zap|learn_hub");
+  });
+
   it("uses two intentional properties when no acquisition is available", () => {
     expect(
       providerAnalyticsPayload(

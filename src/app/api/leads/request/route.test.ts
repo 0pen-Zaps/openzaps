@@ -153,6 +153,24 @@ describe("POST /api/leads/request", () => {
     );
   });
 
+  it("preserves the owned learning-hub attribution as a coarse source", async () => {
+    mockedSubmit.mockResolvedValue("accepted");
+
+    const response = await POST(
+      request({
+        ...body,
+        attribution: { utmSource: "openzaps" },
+      }),
+    );
+
+    expect(response.status).toBe(202);
+    expect(mocks.track).toHaveBeenCalledWith(
+      "lead_request_accepted",
+      { source: "openzaps", score_band: "3_5" },
+      { headers: expect.any(Headers) },
+    );
+  });
+
   it("keeps durable acceptance successful when advisory workflow start fails", async () => {
     mockedSubmit.mockResolvedValue("accepted");
     mocks.start.mockRejectedValue(new Error("workflow unavailable"));

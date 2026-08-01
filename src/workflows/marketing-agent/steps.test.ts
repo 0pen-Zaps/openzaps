@@ -2,6 +2,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { MarketingLedgerError } from "@/lib/marketing/ledger-server";
 import { MAX_VOLATILE_MARKETING_SOURCE_AGE_MS } from "@/lib/marketing/policy";
+import {
+  NON_PUBLIC_TUTORIAL_TITLES,
+  PUBLIC_CONTENT_CATALOG_DIGEST,
+  PUBLIC_CONTENT_ITEMS,
+} from "@/lib/marketing/public-content";
 import type { MarketingDraftBundle } from "@/workflows/marketing-agent/contracts";
 
 const mocks = vi.hoisted(() => ({
@@ -82,6 +87,26 @@ const VALID_NPM_RELEASE = {
     },
   },
 };
+
+const LEARN_PAGE_HTML = [
+  `<main data-publication-boundary="reviewed-feed-and-rss-confirmed" data-public-content-count="${PUBLIC_CONTENT_ITEMS.length}" data-public-content-digest="${PUBLIC_CONTENT_CATALOG_DIGEST}">`,
+  ...PUBLIC_CONTENT_ITEMS.map(
+    (item) =>
+      `<article data-public-content-id="${item.id}"><h3>${item.title}</h3><a href="${item.canonicalUrl}">Read</a></article>`,
+  ),
+  "</main>",
+].join("");
+
+const SWAPPED_LEARN_CARD_HTML = LEARN_PAGE_HTML
+  .replace(PUBLIC_CONTENT_ITEMS[0]!.title, "__FIRST_TITLE__")
+  .replace(PUBLIC_CONTENT_ITEMS[1]!.title, PUBLIC_CONTENT_ITEMS[0]!.title)
+  .replace("__FIRST_TITLE__", PUBLIC_CONTENT_ITEMS[1]!.title)
+  .replace(PUBLIC_CONTENT_ITEMS[0]!.canonicalUrl, "__FIRST_URL__")
+  .replace(
+    PUBLIC_CONTENT_ITEMS[1]!.canonicalUrl,
+    PUBLIC_CONTENT_ITEMS[0]!.canonicalUrl,
+  )
+  .replace("__FIRST_URL__", PUBLIC_CONTENT_ITEMS[1]!.canonicalUrl);
 
 describe("npm release provenance evidence", () => {
   it("requires the exact package, version, repository, directory, and attestation", () => {
@@ -1403,6 +1428,13 @@ describe("bounded source collection", () => {
           ),
         );
       }
+      if (input.endsWith("/learn")) {
+        return Promise.resolve(
+          new Response(LEARN_PAGE_HTML, {
+            headers: { "content-type": "text/html; charset=utf-8" },
+          }),
+        );
+      }
       if (input.includes("@openzaps%2fsdk/0.1.0")) {
         return Promise.resolve(
           Response.json({
@@ -1440,7 +1472,7 @@ describe("bounded source collection", () => {
       sourceUrls: [],
     });
 
-    expect(fetchMock).toHaveBeenCalledTimes(11);
+    expect(fetchMock).toHaveBeenCalledTimes(12);
     expect(result.facts).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -1486,8 +1518,59 @@ describe("bounded source collection", () => {
           status: "confirmed",
           sourceUrl: "https://www.0xzaps.com/docs",
         }),
+        expect.objectContaining({
+          key: "product.learn_hub",
+          status: "confirmed",
+          sourceUrl: "https://www.0xzaps.com/learn",
+        }),
       ]),
     );
+  });
+
+  it.each([
+    [
+      "catalog digest drift",
+      LEARN_PAGE_HTML.replace(PUBLIC_CONTENT_CATALOG_DIGEST, "0".repeat(64)),
+    ],
+    [
+      "missing rendered identity",
+      LEARN_PAGE_HTML.replace(
+        ` data-public-content-id="${PUBLIC_CONTENT_ITEMS[0]!.id}"`,
+        "",
+      ),
+    ],
+    [
+      "withheld tutorial exposure",
+      LEARN_PAGE_HTML.replace(
+        "</main>",
+        `${NON_PUBLIC_TUTORIAL_TITLES[0]!}</main>`,
+      ),
+    ],
+    ["swapped card content", SWAPPED_LEARN_CARD_HTML],
+  ])("rejects Learn evidence with %s", async (_label, learnHtml) => {
+    const fetchMock = vi.fn().mockImplementation((input: string) =>
+      Promise.resolve(
+        input.endsWith("/learn")
+          ? new Response(learnHtml, {
+              headers: { "content-type": "text/html; charset=utf-8" },
+            })
+          : Response.json({}),
+      ),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await collectMarketingSourcesStep({
+      kind: "product_update",
+      brief: "Collect a verified product update.",
+      channels: ["x"],
+      sourceUrls: [],
+    });
+    const learnFact = result.facts.find(
+      (fact) => fact.key === "product.learn_hub",
+    );
+
+    expect(learnFact).toMatchObject({ status: "unavailable", value: null });
+    expect(fetchMock).toHaveBeenCalledTimes(12);
   });
 
   it.each([
@@ -1648,7 +1731,7 @@ describe("bounded source collection", () => {
       sourceUrls: [],
     });
 
-    expect(fetchMock).toHaveBeenCalledTimes(11);
+    expect(fetchMock).toHaveBeenCalledTimes(12);
     for (const [, init] of fetchMock.mock.calls as Array<[string, RequestInit]>) {
       expect(init.redirect).toBe("error");
     }
@@ -1719,7 +1802,7 @@ describe("bounded source collection", () => {
       sourceUrls: ["https://defitutorials.substack.com/p/openzaps"],
     });
 
-    expect(fetchMock).toHaveBeenCalledTimes(12);
+    expect(fetchMock).toHaveBeenCalledTimes(13);
     for (const [, init] of fetchMock.mock.calls as Array<[string, RequestInit]>) {
       expect(init.redirect).toBe("error");
     }
@@ -1769,7 +1852,7 @@ describe("bounded source collection", () => {
       sourceUrls: ["https://defitutorials.substack.com/p/openzaps"],
     });
 
-    expect(fetchMock).toHaveBeenCalledTimes(12);
+    expect(fetchMock).toHaveBeenCalledTimes(13);
     expect(result.externalData).toEqual([]);
     expect(JSON.stringify(result)).not.toContain("example-secret-token");
   });

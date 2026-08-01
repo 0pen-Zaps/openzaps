@@ -10,6 +10,7 @@ import {
 } from "@/lib/marketing/scheduled-template";
 import {
   AGENT_KIT_MARKETING_CAMPAIGN_ID,
+  LEARN_HUB_MARKETING_CAMPAIGN_ID,
   type MarketingCandidate,
 } from "@/lib/marketing/types";
 
@@ -151,4 +152,72 @@ describe("source-reviewed marketing campaigns", () => {
       ),
     ).toBe(false);
   });
+
+  it.each(["x", "discord"] as const)(
+    "auto-authorizes the Learn hub %s campaign only with its exact live receipt",
+    (channel) => {
+      const campaign = reviewedMarketingCampaign(
+        LEARN_HUB_MARKETING_CAMPAIGN_ID,
+        channel,
+      );
+      const observedAt = "2026-08-04T14:00:00.000Z";
+      const candidate: MarketingCandidate = {
+        id: `learn-hub-campaign-${channel}`,
+        channel,
+        action: "broadcast",
+        kind: "product_update",
+        topics: [...campaign.topics],
+        body: campaign.body,
+        links: [...campaign.links],
+        disclosures: [...campaign.disclosures],
+        claims: campaign.claims.map((claim) => ({
+          ...claim,
+          factKeys: [...claim.factKeys],
+        })),
+        flags: { ...campaign.flags },
+        interaction: null,
+        sourcePacket: {
+          id: `learn-hub-campaign-${channel}-sources`,
+          createdAt: observedAt,
+          protocolPreAudit: true,
+          externalData: [],
+          interaction: null,
+          facts: campaign.requiredFacts.map((fact) => ({
+            key: fact.key,
+            label: fact.key,
+            value: "confirmed",
+            status: "confirmed" as const,
+            sourceUrl: fact.sourceUrl,
+            observedAt,
+          })),
+        },
+      };
+
+      expect(
+        isReviewedMarketingCampaignCandidate(
+          candidate,
+          LEARN_HUB_MARKETING_CAMPAIGN_ID,
+        ),
+      ).toBe(true);
+      expect(
+        isReviewedMarketingCampaignCandidate(
+          {
+            ...candidate,
+            sourcePacket: {
+              ...candidate.sourcePacket,
+              facts: candidate.sourcePacket.facts.map((fact) => ({
+                ...fact,
+                status: "unavailable" as const,
+                value: null,
+              })),
+            },
+          },
+          LEARN_HUB_MARKETING_CAMPAIGN_ID,
+        ),
+      ).toBe(false);
+      if (channel === "x") {
+        expect(Array.from(campaign.body)).toHaveLength(265);
+      }
+    },
+  );
 });
