@@ -117,7 +117,7 @@ contract AtomicSeedQuoterMock is IOzSeedV4Quoter {
         ++quoteCalls;
         if (quoteCalls == 1) {
             require(params.poolKey.currency0 == AEWETH && params.poolKey.currency1 == ZAPS, "first pool");
-            require(!params.zeroForOne && uint256(params.exactAmount) == 65_000 ether, "first quote");
+            require(!params.zeroForOne && uint256(params.exactAmount) == 110_000 ether, "first quote");
             return (quotedAeweth, 0);
         }
         require(quoteCalls == 2, "too many quotes");
@@ -194,7 +194,7 @@ contract AtomicSeedRouteMock is IOzSeedRouteAdapter {
         returns (address tokenOut, uint256 measuredAmountOut)
     {
         ++executeCalls;
-        require(tokenIn == ZAPS && amountIn == 65_000 ether, "wrong input");
+        require(tokenIn == ZAPS && amountIn == 110_000 ether, "wrong input");
         require(abi.decode(data, (uint256)) <= amountOut, "floor too high");
         require(AtomicSeedTokenMock(ZAPS).transferFrom(msg.sender, address(this), amountIn), "pull");
         AtomicSeedTokenMock(ZAPS).burn(address(this), amountIn);
@@ -276,10 +276,12 @@ contract AtomicSeedScriptOwnerCaller {
 }
 
 contract SeedOzUSDGRobinhoodTest is Test {
+    uint256 internal constant ZAPS_INPUT = 110_000 ether;
+    uint256 internal constant OWNER_ZAPS_BALANCE = 150_000 ether;
     uint256 internal constant OWNER_USDG_INPUT = 946_460;
-    uint256 internal constant QUOTED_AEWETH = 28_760_364_065_631;
-    uint256 internal constant QUOTED_USDG = 54_990;
-    uint256 internal constant MINIMUM_USDG = 54_440;
+    uint256 internal constant QUOTED_AEWETH = 31_553_315_794_183;
+    uint256 internal constant QUOTED_USDG = 57_858;
+    uint256 internal constant MINIMUM_USDG = 57_279;
 
     address internal constant OWNER = 0x5a52D4B820Ae7F02880d270562950918ACb14aA2;
     address internal constant OTHER = address(0xBEEF);
@@ -307,13 +309,16 @@ contract SeedOzUSDGRobinhoodTest is Test {
         SeedOzUSDGRobinhood.Result memory result = AtomicSeedScriptOwnerCaller(OWNER).run(script);
         OzUSDGAtomicSeeder helper = result.helper;
 
+        assertEq(script.ZAPS_INPUT(), ZAPS_INPUT);
+        assertEq(helper.ZAPS_INPUT(), ZAPS_INPUT);
+        assertEq(helper.VERSION(), "ozUSDG-atomic-seeder-2");
         assertTrue(helper.seeded());
         assertEq(result.ownerUsdGBefore, OWNER_USDG_INPUT);
         assertEq(result.ownerUsdGInput, OWNER_USDG_INPUT);
         assertEq(result.minimumUsdG, MINIMUM_USDG);
         assertEq(result.atomic.measuredSwapOutput, QUOTED_USDG);
         assertEq(result.atomic.seedShares, 1_000_000_000);
-        assertEq(result.atomic.refundedUsdG, 1_450);
+        assertEq(result.atomic.refundedUsdG, 4_318);
         assertEq(AtomicSeedQuoterMock(V4_QUOTER).quoteCalls(), 2);
         assertEq(AtomicSeedTokenMock(ZAPS).approveCallsByOwner(OWNER), 1);
         assertEq(AtomicSeedTokenMock(USDG).approveCallsByOwner(OWNER), 1);
@@ -321,7 +326,7 @@ contract SeedOzUSDGRobinhoodTest is Test {
         assertEq(AtomicSeedTokenMock(USDG).approveCallsByOwner(address(helper)), 1);
         assertEq(AtomicSeedRouteMock(ROUTE_ADAPTER).executeCalls(), 1);
         assertEq(AtomicSeedVaultMock(OZ_USDG).depositCalls(), 1);
-        _assertSuccessState(helper, 1_450);
+        _assertSuccessState(helper, 4_318);
     }
 
     function test_scriptLeavesExtraOwnerUsdGUntouched() public {
@@ -333,7 +338,7 @@ contract SeedOzUSDGRobinhoodTest is Test {
         assertEq(result.ownerUsdGInput, OWNER_USDG_INPUT);
         assertEq(result.shortfall, 53_540);
         assertEq(result.atomic.ownerUsdGInput, OWNER_USDG_INPUT);
-        assertEq(AtomicSeedTokenMock(USDG).balanceOf(OWNER), 101_450);
+        assertEq(AtomicSeedTokenMock(USDG).balanceOf(OWNER), 104_318);
         assertEq(AtomicSeedTokenMock(USDG).allowance(OWNER, address(result.helper)), 0);
     }
 
@@ -349,7 +354,7 @@ contract SeedOzUSDGRobinhoodTest is Test {
 
         assertEq(AtomicSeedTokenMock(ZAPS).balanceOf(OWNER), zapsBefore);
         assertEq(AtomicSeedTokenMock(USDG).balanceOf(OWNER), usdGBefore);
-        assertEq(AtomicSeedTokenMock(ZAPS).allowance(OWNER, address(helper)), 65_000 ether);
+        assertEq(AtomicSeedTokenMock(ZAPS).allowance(OWNER, address(helper)), ZAPS_INPUT);
         assertEq(AtomicSeedTokenMock(USDG).allowance(OWNER, address(helper)), OWNER_USDG_INPUT);
         assertFalse(helper.seeded());
     }
@@ -383,9 +388,9 @@ contract SeedOzUSDGRobinhoodTest is Test {
 
         assertEq(result.refundedZaps, 11 ether);
         assertEq(result.refundedAeweth, 22);
-        assertEq(result.refundedUsdG, 1_483);
+        assertEq(result.refundedUsdG, 4_351);
         assertEq(result.refundedOzUsdG, 44);
-        _assertSuccessState(helper, 1_483);
+        _assertSuccessState(helper, 4_351);
         assertEq(AtomicSeedTokenMock(AEWETH).balanceOf(OWNER), 22);
         assertEq(AtomicSeedVaultMock(OZ_USDG).balanceOf(OWNER), 44);
     }
@@ -399,8 +404,8 @@ contract SeedOzUSDGRobinhoodTest is Test {
 
         assertEq(result.ownerUsdGBefore, OWNER_USDG_INPUT + 7);
         assertEq(result.ownerUsdGInput, OWNER_USDG_INPUT);
-        assertEq(result.refundedUsdG, 1_450);
-        assertEq(AtomicSeedTokenMock(USDG).balanceOf(OWNER), 1_457);
+        assertEq(result.refundedUsdG, 4_318);
+        assertEq(AtomicSeedTokenMock(USDG).balanceOf(OWNER), 4_325);
     }
 
     function test_reentrantTokenCallbackIsBlockedWithoutBreakingSeed() public {
@@ -454,22 +459,17 @@ contract SeedOzUSDGRobinhoodTest is Test {
     function test_seedRejectsNonExactZapsAllowanceBeforePulls() public {
         AtomicSeederHarness helper = _deployAndApprove();
         vm.prank(OWNER);
-        AtomicSeedTokenMock(ZAPS).approve(address(helper), 65_000 ether + 1);
+        AtomicSeedTokenMock(ZAPS).approve(address(helper), ZAPS_INPUT + 1);
 
         vm.expectRevert(
             abi.encodeWithSelector(
-                OzUSDGAtomicSeeder.AllowanceMismatch.selector,
-                ZAPS,
-                OWNER,
-                address(helper),
-                65_000 ether + 1,
-                65_000 ether
+                OzUSDGAtomicSeeder.AllowanceMismatch.selector, ZAPS, OWNER, address(helper), ZAPS_INPUT + 1, ZAPS_INPUT
             )
         );
         vm.prank(OWNER);
         helper.seed(OWNER_USDG_INPUT, MINIMUM_USDG);
 
-        assertEq(AtomicSeedTokenMock(ZAPS).balanceOf(OWNER), 100_000 ether);
+        assertEq(AtomicSeedTokenMock(ZAPS).balanceOf(OWNER), OWNER_ZAPS_BALANCE);
         assertEq(AtomicSeedTokenMock(USDG).balanceOf(OWNER), OWNER_USDG_INPUT);
         assertFalse(helper.seeded());
     }
@@ -492,7 +492,7 @@ contract SeedOzUSDGRobinhoodTest is Test {
         vm.prank(OWNER);
         helper.seed(OWNER_USDG_INPUT, MINIMUM_USDG);
 
-        assertEq(AtomicSeedTokenMock(ZAPS).balanceOf(OWNER), 100_000 ether);
+        assertEq(AtomicSeedTokenMock(ZAPS).balanceOf(OWNER), OWNER_ZAPS_BALANCE);
         assertEq(AtomicSeedTokenMock(USDG).balanceOf(OWNER), OWNER_USDG_INPUT);
         assertFalse(helper.seeded());
     }
@@ -507,18 +507,18 @@ contract SeedOzUSDGRobinhoodTest is Test {
         vm.prank(OWNER);
         helper.seed(OWNER_USDG_INPUT, shortfall - 1);
 
-        assertEq(AtomicSeedTokenMock(ZAPS).balanceOf(OWNER), 100_000 ether);
+        assertEq(AtomicSeedTokenMock(ZAPS).balanceOf(OWNER), OWNER_ZAPS_BALANCE);
         assertEq(AtomicSeedTokenMock(USDG).balanceOf(OWNER), OWNER_USDG_INPUT);
         assertFalse(helper.seeded());
     }
 
     function test_seedRejectsInsufficientOwnerZapsBalanceBeforePulls() public {
         AtomicSeederHarness helper = _deployAndApprove();
-        AtomicSeedTokenMock(ZAPS).burn(OWNER, 35_000 ether + 1);
-        uint256 remaining = 65_000 ether - 1;
+        AtomicSeedTokenMock(ZAPS).burn(OWNER, OWNER_ZAPS_BALANCE - ZAPS_INPUT + 1);
+        uint256 remaining = ZAPS_INPUT - 1;
 
         vm.expectRevert(
-            abi.encodeWithSelector(OzUSDGAtomicSeeder.OwnerBalanceInsufficient.selector, ZAPS, remaining, 65_000 ether)
+            abi.encodeWithSelector(OzUSDGAtomicSeeder.OwnerBalanceInsufficient.selector, ZAPS, remaining, ZAPS_INPUT)
         );
         vm.prank(OWNER);
         helper.seed(OWNER_USDG_INPUT, MINIMUM_USDG);
@@ -539,7 +539,7 @@ contract SeedOzUSDGRobinhoodTest is Test {
         vm.prank(OWNER);
         helper.seed(OWNER_USDG_INPUT, MINIMUM_USDG);
 
-        assertEq(AtomicSeedTokenMock(ZAPS).balanceOf(OWNER), 100_000 ether);
+        assertEq(AtomicSeedTokenMock(ZAPS).balanceOf(OWNER), OWNER_ZAPS_BALANCE);
         assertFalse(helper.seeded());
     }
 
@@ -576,6 +576,37 @@ contract SeedOzUSDGRobinhoodTest is Test {
         assertEq(AtomicSeedQuoterMock(V4_QUOTER).quoteCalls(), 0);
     }
 
+    function test_scriptRejectsQuoteWhoseFloorMissesShortfallBeforeApprovals() public {
+        AtomicSeedQuoterMock(V4_QUOTER).configure(QUOTED_AEWETH, 54_080);
+        AtomicSeedScriptHarness script = new AtomicSeedScriptHarness();
+
+        vm.expectRevert(
+            abi.encodeWithSelector(SeedOzUSDGRobinhood.QuoteDoesNotCoverShortfall.selector, 53_539, 53_540, 54_080)
+        );
+        AtomicSeedScriptOwnerCaller(OWNER).run(script);
+
+        // The quote call counter rolls back with the guarded script preflight.
+        assertEq(AtomicSeedQuoterMock(V4_QUOTER).quoteCalls(), 0);
+        assertEq(AtomicSeedTokenMock(ZAPS).approveCallsByOwner(OWNER), 0);
+        assertEq(AtomicSeedTokenMock(USDG).approveCallsByOwner(OWNER), 0);
+        assertEq(AtomicSeedRouteMock(ROUTE_ADAPTER).executeCalls(), 0);
+        assertEq(AtomicSeedVaultMock(OZ_USDG).depositCalls(), 0);
+    }
+
+    function test_scriptRejectsInsufficientRevisedZapsInputBeforeQuoteOrApprovals() public {
+        AtomicSeedTokenMock(ZAPS).burn(OWNER, OWNER_ZAPS_BALANCE - ZAPS_INPUT + 1);
+        AtomicSeedScriptHarness script = new AtomicSeedScriptHarness();
+
+        vm.expectRevert(
+            abi.encodeWithSelector(SeedOzUSDGRobinhood.InsufficientZaps.selector, ZAPS_INPUT - 1, ZAPS_INPUT)
+        );
+        AtomicSeedScriptOwnerCaller(OWNER).run(script);
+
+        assertEq(AtomicSeedQuoterMock(V4_QUOTER).quoteCalls(), 0);
+        assertEq(AtomicSeedTokenMock(ZAPS).approveCallsByOwner(OWNER), 0);
+        assertEq(AtomicSeedTokenMock(USDG).approveCallsByOwner(OWNER), 0);
+    }
+
     function _deployAndApprove() internal returns (AtomicSeederHarness helper) {
         helper = new AtomicSeederHarness();
         _approve(helper, OWNER_USDG_INPUT);
@@ -583,7 +614,7 @@ contract SeedOzUSDGRobinhoodTest is Test {
 
     function _approve(OzUSDGAtomicSeeder helper, uint256 usdGInput) internal {
         vm.startPrank(OWNER);
-        AtomicSeedTokenMock(ZAPS).approve(address(helper), 65_000 ether);
+        AtomicSeedTokenMock(ZAPS).approve(address(helper), ZAPS_INPUT);
         AtomicSeedTokenMock(USDG).approve(address(helper), usdGInput);
         vm.stopPrank();
     }
@@ -636,7 +667,7 @@ contract SeedOzUSDGRobinhoodTest is Test {
         AtomicSeedRegistryMock(TOKEN_ALLOWLIST).setAllowed(OZ_USDG, true);
         AtomicSeedQuoterMock(V4_QUOTER).configure(QUOTED_AEWETH, QUOTED_USDG);
         AtomicSeedRouteMock(ROUTE_ADAPTER).configure(QUOTED_USDG);
-        AtomicSeedTokenMock(ZAPS).mint(OWNER, 100_000 ether);
+        AtomicSeedTokenMock(ZAPS).mint(OWNER, OWNER_ZAPS_BALANCE);
         AtomicSeedTokenMock(USDG).mint(OWNER, OWNER_USDG_INPUT);
     }
 }

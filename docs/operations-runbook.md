@@ -149,9 +149,12 @@ performed.
 The guarded, atomic four-transaction ozUSDG seed procedure is documented in
 [`2026-07-29-ozusdg-seed-runbook.md`](2026-07-29-ozusdg-seed-runbook.md). It pins the helper,
 quoter, route, vault, exact token inputs, empty-vault state, approval recovery, and post-state
-evidence. The source still fails closed, but the fixed 65,000 0xZAPS plan is currently blocked
-because its fresh one-percent quote floor does not cover the USDG shortfall. No signature,
-broadcast, inclusion, or finality is claimed; changing the fixed input requires a new review.
+evidence. The fixed 65,000 0xZAPS v1 plan failed its documented pinned preflights because its
+one-percent quote floor did not cover the USDG shortfall, and that plan is now invalid. A revised
+fail-closed v2 review candidate fixes the input at 110,000 0xZAPS; its pinned fork and
+no-broadcast rehearsal cover the shortfall, but this does not authorize the owner spend. No
+signature, broadcast, inclusion, or finality is claimed. A fresh rehearsal and separate explicit
+owner approval remain mandatory before any broadcast.
 
 ## Testnet soak
 

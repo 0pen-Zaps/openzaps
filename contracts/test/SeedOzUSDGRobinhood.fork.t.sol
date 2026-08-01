@@ -25,7 +25,7 @@ contract AtomicSeedForkScriptHarness is SeedOzUSDGRobinhood {
 /// @notice Opt-in, local-only rehearsal of the atomic helper path against the audited Robinhood
 ///         snapshot. Owner impersonation exists only inside the disposable fork.
 contract SeedOzUSDGRobinhoodForkTest is Test {
-    uint256 internal constant AUDITED_FORK_BLOCK = 22_303_042;
+    uint256 internal constant AUDITED_FORK_BLOCK = 25_314_000;
 
     address internal constant OWNER = 0x5a52D4B820Ae7F02880d270562950918ACb14aA2;
     address internal constant DEAD = 0x000000000000000000000000000000000000dEaD;
@@ -50,14 +50,17 @@ contract SeedOzUSDGRobinhoodForkTest is Test {
         SeedOzUSDGRobinhood.Result memory result = AtomicSeedForkOwnerCaller(OWNER).run(script);
         OzUSDGAtomicSeeder helper = result.helper;
 
+        assertEq(script.ZAPS_INPUT(), 110_000 ether);
+        assertEq(helper.ZAPS_INPUT(), 110_000 ether);
+        assertEq(helper.VERSION(), "ozUSDG-atomic-seeder-2");
         assertTrue(helper.seeded());
         assertEq(address(helper).codehash, keccak256(type(OzUSDGAtomicSeeder).runtimeCode));
-        assertEq(result.quotedAeweth, 28_760_364_065_631);
-        assertEq(result.quotedUsdG, 54_990);
-        assertEq(result.minimumUsdG, 54_440);
-        assertEq(result.atomic.measuredSwapOutput, 54_990);
+        assertEq(result.quotedAeweth, 31_553_315_794_183);
+        assertEq(result.quotedUsdG, 57_897);
+        assertEq(result.minimumUsdG, 57_318);
+        assertEq(result.atomic.measuredSwapOutput, 57_897);
         assertEq(result.atomic.seedShares, 1_000_000_000);
-        assertEq(result.atomic.refundedUsdG, 1_450);
+        assertEq(result.atomic.refundedUsdG, 4_357);
 
         assertEq(IOzSeedERC20(ZAPS).allowance(OWNER, address(helper)), 0);
         assertEq(IOzSeedERC20(USDG).allowance(OWNER, address(helper)), 0);
