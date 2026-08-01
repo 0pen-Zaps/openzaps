@@ -328,9 +328,10 @@ Deployment prerequisites, in order:
    conversion leg (only needed for zaps whose output is not already 0xZAPS).
 5. Broadcast only from the current owner of both reused live registries, with both `pendingOwner`
    values zero. The deployment script enforces this before and after its seven top-level transactions.
-6. Fill `OPENZAP_V3_2_CONTRACTS` in `src/lib/robinhood.ts` and the seven
-   `NEXT_PUBLIC_OPENZAP_V3_2_*` production build values as one set. An explicit zero, malformed, or
-   partial override keeps `openZapV3_2Configured()` false.
+6. Pin the independently read-back addresses as the verified `OPENZAP_V3_2_CONTRACTS` defaults in
+   `src/lib/robinhood.ts`. If a deployment supplies any of the seven `NEXT_PUBLIC_OPENZAP_V3_2_*`
+   overrides, it must supply the complete verified set; an explicit zero, malformed, or partial
+   override keeps `openZapV3_2Configured()` false.
 7. Apply `supabase/migrations/20260726000000_allow_recurring_stack_kind.sql` before activation, or
    every publish of a stacking intent returns an opaque `Relay storage failed (400)` from the `kind`
    CHECK constraint. Production records this migration as applied.
@@ -393,16 +394,22 @@ the legacy creation gateway/pot were byte-identical; the legacy creation pot rem
 
 **App configuration and release**
 
-- [ ] Set all seven production build values from the independent readback:
+- [x] Confirm the seven v3.2 addresses are pinned as verified defaults in `src/lib/robinhood.ts` and
+  that production supplies either no overrides or the complete matching set:
   `NEXT_PUBLIC_OPENZAP_V3_2_IMPLEMENTATION`, `NEXT_PUBLIC_OPENZAP_V3_2_FACTORY`,
-  `NEXT_PUBLIC_OPENZAP_V3_2_LOTTERY_POT`, `NEXT_PUBLIC_OPENZAP_V3_2_PRICE_SOURCE_REGISTRY`, and
+  `NEXT_PUBLIC_OPENZAP_V3_2_LOTTERY_POT`, `NEXT_PUBLIC_OPENZAP_V3_2_PRICE_SOURCE_REGISTRY`,
   `NEXT_PUBLIC_OPENZAP_V3_2_ORIENTED_PRICE_SOURCE`, `NEXT_PUBLIC_OPENZAP_V3_2_CREATION_GATEWAY`, and
-  `NEXT_PUBLIC_OPENZAP_V3_2_CREATION_FEE_POT`. Do not copy predicted dry-run addresses.
+  `NEXT_PUBLIC_OPENZAP_V3_2_CREATION_FEE_POT`. Predicted dry-run addresses were not used.
 - [x] Confirm the recurring-stack Supabase migration is applied.
-- [ ] Build and test the exact app commit. Deploy a fresh production build so the `NEXT_PUBLIC_*`
-  values are embedded; aliasing an older build does not activate v3.2.
-- [ ] Read the deployed production build back, confirm `openZapV3_2Configured()` is true, and verify
-  Automate exposes stacking while an intentionally incomplete preview configuration still hides it.
+- [x] Build and test the app with the verified defaults, then deploy a fresh production build. The
+  2026-08-01 production build at `dc0d2bfdc3ae8c673e4269fd3e83b3c2fc5d5a12` is deployment
+  `dpl_9t7VnBaYx2rRnyWAGX1BBcXMDtk1`; aliasing an older build was not used for this acceptance step.
+- [x] Read production back through `/api/health` and confirm `recurringStack` is open. Source tests
+  separately prove that one valid override cannot be mixed with the verified defaults. This
+  configuration check does not replace the browser or transaction canaries below.
+- [ ] Verify in a production browser that Automate exposes stacking, and that a separately built,
+  intentionally incomplete preview configuration hides it. Preserve both immutable deployment URLs
+  and screenshots; a local build or `/api/health` response alone does not complete this UI gate.
 
 **Mainnet smoke**
 

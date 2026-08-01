@@ -361,6 +361,10 @@ const syndicationInboxMigration =
   "20260801041508_marketing_syndication_inbox.sql";
 const xMentionInboxMigration =
   "20260801143000_marketing_x_mentions.sql";
+const subscriptionGrantHardeningMigration =
+  "20260801224100_harden_subscription_authorization_grants.sql";
+const retentionSequenceHardeningMigration =
+  "20260801224202_harden_marketing_retention_sequence_grants.sql";
 const reviewedCampaignFixture = "pg16-reviewed-campaign";
 const reviewedCampaignContentHash = "de".repeat(32);
 const agentKitCampaignId = "agent-kit-published-v1";
@@ -672,6 +676,47 @@ try {
           "verified receipt provenance migration did not reject an inconsistent implementation code hash",
         );
       }
+      if (pass === 0 && filename === subscriptionGrantHardeningMigration) {
+        // Supabase projects can carry service_role default privileges that
+        // predate this repository. Reproduce that shared-project posture so
+        // the corrective migration proves it removes inherited table grants.
+        psql(`
+          grant all privileges
+            on table public.policy_template_subscription_authorizations
+            to service_role;
+        `);
+        assert(
+          psqlScalar(`
+            select has_table_privilege(
+              'service_role',
+              'public.policy_template_subscription_authorizations',
+              'delete'
+            );
+          `) === "t",
+          "subscription authorization privilege-drift fixture was not installed",
+        );
+      }
+      if (pass === 0 && filename === retentionSequenceHardeningMigration) {
+        // Supabase's shared-project defaults can grant every Data API role
+        // access to identity sequences even when the owning table is closed.
+        // Reproduce that posture so the forward migration proves it removes
+        // both direct grants and privileges inherited through PUBLIC.
+        psql(`
+          grant all privileges
+            on sequence public.marketing_x_retention_events_event_id_seq
+            to public, anon, authenticated, service_role;
+        `);
+        assert(
+          psqlScalar(`
+            select has_sequence_privilege(
+              'anon',
+              'public.marketing_x_retention_events_event_id_seq',
+              'usage'
+            );
+          `) === "t",
+          "marketing retention sequence privilege-drift fixture was not installed",
+        );
+      }
       psqlFile(join(migrations, filename));
     }
   }
@@ -774,10 +819,25 @@ try {
         from pg_catalog.unnest(
           array[${xMentionRpcArray}]::text[]
         ) as rpc(signature)
+      ),
+      (
+        select not bool_or(
+          has_sequence_privilege(
+            role_name,
+            'public.marketing_x_retention_events_event_id_seq',
+            privilege_name
+          )
+        )
+        from pg_catalog.unnest(
+          array['anon', 'authenticated', 'service_role']::text[]
+        ) as roles(role_name)
+        cross join pg_catalog.unnest(
+          array['select', 'update', 'usage']::text[]
+        ) as privileges(privilege_name)
       );
   `);
   assert(
-    xMentionPrivileges === "t|f|t|f",
+    xMentionPrivileges === "t|f|t|f|t",
     `unexpected X mention inbox privileges: ${xMentionPrivileges}`,
   );
 
@@ -3389,6 +3449,50 @@ Pre-audit software. Verify before use.$campaign$)::text
   assert(
     hardenedPrivileges.join("|") === "t|f|f|t|t|t|f|f|f|f|f|f|t|f|f|t",
     `unexpected hardened service privileges: ${hardenedPrivileges.join(", ")}`,
+  );
+
+  const subscriptionAuthorizationPrivileges = psqlScalar(`
+    select
+      has_table_privilege(
+        'service_role',
+        'public.policy_template_subscription_authorizations',
+        'select'
+      ),
+      has_table_privilege(
+        'service_role',
+        'public.policy_template_subscription_authorizations',
+        'insert'
+      ),
+      has_table_privilege(
+        'service_role',
+        'public.policy_template_subscription_authorizations',
+        'update'
+      ),
+      has_table_privilege(
+        'service_role',
+        'public.policy_template_subscription_authorizations',
+        'delete'
+      ),
+      has_table_privilege(
+        'service_role',
+        'public.policy_template_subscription_authorizations',
+        'truncate'
+      ),
+      has_table_privilege(
+        'service_role',
+        'public.policy_template_subscription_authorizations',
+        'references'
+      ),
+      has_table_privilege(
+        'service_role',
+        'public.policy_template_subscription_authorizations',
+        'trigger'
+      );
+  `).split("|");
+  assert(
+    subscriptionAuthorizationPrivileges.join("|") ===
+      "t|t|t|f|f|f|f",
+    `unexpected subscription authorization privileges: ${subscriptionAuthorizationPrivileges.join(", ")}`,
   );
 
   const notificationOutputColumns = psqlScalar(`

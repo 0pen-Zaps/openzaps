@@ -7,6 +7,7 @@ import {
   compileExactPolicy,
   type PolicyChainReader,
 } from "@/lib/policy-exact";
+import { EXACT_POLICY_QUICKSTART_BODY } from "@/lib/policy-exact-example";
 import { OPENZAP_CONTRACTS, ROBINHOOD_CHAIN_ID } from "@/lib/robinhood";
 
 const OWNER = getAddress("0x1000000000000000000000000000000000000001");
@@ -23,10 +24,8 @@ describe("compileExactPolicy", () => {
     const calls: Array<Record<string, unknown>> = [];
     const client = fakeClient(calls);
     const artifact = await compileExactPolicy(client, {
-      routeId: "robinhood-v4-weth-zaps",
+      ...EXACT_POLICY_QUICKSTART_BODY,
       owner: OWNER,
-      amount: "0.01",
-      slippageBps: 150,
     });
 
     expect(artifact.mode).toBe("chain-exact");

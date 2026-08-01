@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { zeroAddress } from "viem";
+import { getAddress, zeroAddress } from "viem";
 
 const V3_2_ENV_NAMES = [
   "NEXT_PUBLIC_OPENZAP_V3_2_IMPLEMENTATION",
@@ -31,7 +31,7 @@ describe("v3.2 deployment environment overrides", () => {
     expect(openZapV3_2Configured()).toBe(false);
   });
 
-  it("fails closed when one explicit override makes the deployment set partial", async () => {
+  it("fails closed when one explicit zero disables the deployment set", async () => {
     vi.stubEnv("NEXT_PUBLIC_OPENZAP_V3_2_CREATION_FEE_POT", zeroAddress);
     vi.resetModules();
 
@@ -41,6 +41,25 @@ describe("v3.2 deployment environment overrides", () => {
       optionalContractSetState,
     } = await import("@/lib/robinhood");
 
+    expect(optionalContractSetState(OPENZAP_V3_2_CONTRACTS)).toBe("absent");
+    expect(openZapV3_2Configured()).toBe(false);
+  });
+
+  it("does not mix one valid override with the verified deployment defaults", async () => {
+    const factoryOverride = getAddress(
+      "0x1111111111111111111111111111111111111111",
+    );
+    vi.stubEnv("NEXT_PUBLIC_OPENZAP_V3_2_FACTORY", factoryOverride);
+    vi.resetModules();
+
+    const {
+      OPENZAP_V3_2_CONTRACTS,
+      openZapV3_2Configured,
+      optionalContractSetState,
+    } = await import("@/lib/robinhood");
+
+    expect(OPENZAP_V3_2_CONTRACTS.factory).toBe(factoryOverride);
+    expect(OPENZAP_V3_2_CONTRACTS.implementation).toBe(zeroAddress);
     expect(optionalContractSetState(OPENZAP_V3_2_CONTRACTS)).toBe("partial");
     expect(openZapV3_2Configured()).toBe(false);
   });

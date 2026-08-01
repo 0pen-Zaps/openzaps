@@ -317,10 +317,12 @@ Robinhood 4663 — deployed but app-gated while ozUSDG totalSupply == 0:
   wallet balance (USDG) → ZapVault receipt → send
   ozUSDG balance → redeem → USDG → send
 
+Robinhood 4663 — deployed candidate, explorer verification and activation canaries pending:
+  v3.2 → recurring output stacking into owner tickets
+
 Source-only, absent from live immutable implementations:
   base v1.2.0-candidate → irreversible owner halt + witnessed Permit2 first-step owner pull
   all future lineage sources → irreversible per-policy owner halt
-  v3.2 → recurring output stacking into owner tickets
 ```
 
 `docs/deployments.md` is the authority for live addresses and gates. A configured address alone is
