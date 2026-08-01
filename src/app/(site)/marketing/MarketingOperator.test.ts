@@ -9,12 +9,22 @@ import {
   leadOperationIsCurrent,
   leadReplyHref,
   operatorLeads,
+  operatorSyndicationItems,
+  operatorResetClearsSyndicationRepair,
+  parseSyndicationRepairPair,
   parseSubstackVerification,
   pollRetryDelay,
   readinessRows,
   shouldRetryPoll,
+  syndicationDeferredCount,
+  syndicationItemCanDraft,
+  syndicationRepairMatchesItem,
+  syndicationNoticeAfterReconciliation,
+  syndicationSkipTriggerId,
+  SyndicationSkipControls,
   SubstackHandoff,
   substackVerificationResponseIsCurrent,
+  type OperatorSyndicationItem,
   writeSubstackClipboard,
 } from "./MarketingOperator";
 
@@ -58,6 +68,141 @@ describe("operator lead queue parsing", () => {
     expect(
       operatorLeads({ leads: Array.from({ length: 101 }, () => VALID_LEAD) }),
     ).toEqual([]);
+  });
+});
+
+describe("operator syndication inbox parsing", () => {
+  const VALID_ITEM = {
+    itemId: "ab".repeat(32),
+    source: "defitutorials",
+    title: "Give an Agent the Trigger, Never the Authority",
+    canonicalUrl:
+      "https://defitutorials.substack.com/p/give-an-agent-the-trigger-never-the",
+    publishedAt: "2026-07-29T16:55:32.000Z",
+    classification: "reviewable",
+    status: "pending",
+    campaignSlug: "give-an-agent-the-trigger-never-the-authority",
+    workflowRunId: null,
+    discoveredAt: "2026-08-01T04:00:00.000Z",
+    updatedAt: "2026-08-01T04:00:00.000Z",
+  } satisfies OperatorSyndicationItem;
+
+  it("keeps only bounded, canonical syndication items", () => {
+    expect(operatorSyndicationItems({ items: [VALID_ITEM] })).toEqual([
+      VALID_ITEM,
+    ]);
+    expect(
+      operatorSyndicationItems({
+        items: [
+          { ...VALID_ITEM, canonicalUrl: "https://example.com/post" },
+          { ...VALID_ITEM, status: "ready_to_spam" },
+          { ...VALID_ITEM, workflowRunId: "" },
+        ],
+      }),
+    ).toEqual([]);
+
+    expect(operatorSyndicationItems({
+      items: [{
+        ...VALID_ITEM,
+        status: "drafting",
+        workflowRunId: "wrun_syndication_1",
+      }],
+    })).toHaveLength(1);
+    expect(operatorSyndicationItems({
+      items: [{
+        ...VALID_ITEM,
+        status: "pending",
+        workflowRunId: "wrun_syndication_1",
+      }],
+    })).toEqual([]);
+    expect(operatorSyndicationItems({
+      items: [{ ...VALID_ITEM, title: "x".repeat(201) }],
+    })).toEqual([]);
+    expect(operatorSyndicationItems({
+      items: [{ ...VALID_ITEM, campaignSlug: `a${"b".repeat(96)}` }],
+    })).toEqual([]);
+  });
+
+  it("refuses oversized inbox payloads", () => {
+    expect(
+      operatorSyndicationItems({
+        items: Array.from({ length: 21 }, () => VALID_ITEM),
+      }),
+    ).toEqual([]);
+  });
+
+  it("accepts only a strict, bounded workflow repair pair", () => {
+    const repair = {
+      itemId: VALID_ITEM.itemId,
+      runId: "wrun_original_1",
+      repairProof: "a".repeat(43),
+    };
+    expect(parseSyndicationRepairPair(JSON.stringify(repair))).toEqual(repair);
+    expect(parseSyndicationRepairPair(JSON.stringify({ ...repair, extra: true })))
+      .toBeNull();
+    expect(parseSyndicationRepairPair(JSON.stringify({
+      ...repair,
+      itemId: "not-an-item",
+    }))).toBeNull();
+    expect(parseSyndicationRepairPair(JSON.stringify({
+      ...repair,
+      runId: "bad/run",
+    }))).toBeNull();
+    expect(parseSyndicationRepairPair("x".repeat(401))).toBeNull();
+  });
+
+  it("offers repair only for the exact unlinked drafting item", () => {
+    const drafting = {
+      ...VALID_ITEM,
+      status: "drafting" as const,
+    };
+    const repair = {
+      itemId: VALID_ITEM.itemId,
+      runId: "wrun_original_1",
+      repairProof: "a".repeat(43),
+    };
+    expect(syndicationRepairMatchesItem(drafting, repair)).toBe(true);
+    expect(syndicationRepairMatchesItem(
+      { ...drafting, workflowRunId: repair.runId },
+      repair,
+    )).toBe(false);
+    expect(syndicationRepairMatchesItem(
+      { ...drafting, itemId: "cd".repeat(32) },
+      repair,
+    )).toBe(false);
+  });
+
+  it("preserves an exact repair proof across bearer rotation but clears it on explicit forget", () => {
+    expect(operatorResetClearsSyndicationRepair("auth_rejected")).toBe(false);
+    expect(operatorResetClearsSyndicationRepair("explicit_forget")).toBe(true);
+  });
+
+  it("surfaces only bounded deferred reconciliation counts", () => {
+    expect(syndicationDeferredCount({ reconciliation: { deferred: 2 } })).toBe(2);
+    expect(syndicationDeferredCount({ reconciliation: { deferred: 21 } })).toBe(0);
+    expect(syndicationDeferredCount({ reconciliation: { deferred: "2" } })).toBe(0);
+  });
+
+  it("refreshes stale reconciliation warnings without clobbering action notices", () => {
+    const warning = syndicationNoticeAfterReconciliation("", 2);
+    expect(warning).toContain("2 attached workflows could not be reconciled");
+    expect(syndicationNoticeAfterReconciliation(warning, 0)).toBe("");
+    expect(syndicationNoticeAfterReconciliation(
+      "Review draft started for X and Discord. Nothing has been published.",
+      0,
+    )).toBe(
+      "Review draft started for X and Discord. Nothing has been published.",
+    );
+  });
+
+  it("refuses a claim before an exact attributed X URL consumes its copy budget", () => {
+    expect(syndicationItemCanDraft(VALID_ITEM)).toBe(true);
+    expect(syndicationItemCanDraft({
+      ...VALID_ITEM,
+      canonicalUrl:
+        `https://defitutorials.substack.com/p/${"a".repeat(120)}`,
+      campaignSlug: `defitutorials-${"b".repeat(80)}`,
+    })).toBe(false);
   });
 });
 
@@ -214,6 +359,37 @@ describe("lead deletion controls", () => {
     expect(expanded).toContain("Hide delete options");
     expect(expanded).toContain("Confirm permanent delete");
     expect(expanded).toContain('aria-label="Permanent deletion confirmation"');
+  });
+});
+
+describe("syndication skip controls", () => {
+  it("requires an explicit permanent-skip confirmation", () => {
+    const itemId = "ab".repeat(32);
+    const props = {
+      itemId,
+      busy: false,
+      submitting: false,
+      onToggle: vi.fn(),
+      onConfirm: vi.fn(),
+      onCancel: vi.fn(),
+    };
+    const triggerId = syndicationSkipTriggerId(itemId);
+    const collapsed = renderToStaticMarkup(
+      createElement(SyndicationSkipControls, { ...props, expanded: false }),
+    );
+    const expanded = renderToStaticMarkup(
+      createElement(SyndicationSkipControls, { ...props, expanded: true }),
+    );
+
+    expect(collapsed).toContain(`id="${triggerId}"`);
+    expect(collapsed).toContain('aria-expanded="false"');
+    expect(collapsed).not.toContain("Confirm permanent skip");
+    expect(expanded).toContain('aria-expanded="true"');
+    expect(expanded).toContain("Hide skip options");
+    expect(expanded).toContain("Confirm permanent skip");
+    expect(expanded).toContain(
+      'aria-label="Permanent syndication skip confirmation"',
+    );
   });
 });
 

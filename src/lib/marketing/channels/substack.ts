@@ -262,10 +262,17 @@ function validSubstackPostUrl(raw: string): string | undefined {
 }
 
 export function parseSubstackRss(xml: string): SubstackFeedPost[] {
+  const trimmedXml = xml.trim();
+  const root = trimmedXml.match(/<(rss|feed)\b[^>]*>/iu)?.[1];
   if (
-    !xml.trim() ||
+    !trimmedXml ||
     xml.length > SUBSTACK_FEED_MAX_BYTES ||
-    !/<(?:rss|feed)\b/i.test(xml)
+    !root ||
+    !new RegExp(`<\\/${root}>\\s*$`, "iu").test(trimmedXml) ||
+    (root.toLowerCase() === "rss"
+      && !/<channel\b[^>]*>[\s\S]*<\/channel>\s*<\/rss>\s*$/iu.test(
+        trimmedXml,
+      ))
   ) {
     throw new ChannelAdapterError(
       "substack",
@@ -278,7 +285,7 @@ export function parseSubstackRss(xml: string): SubstackFeedPost[] {
     .slice(0, SUBSTACK_FEED_MAX_ITEMS)
     .map((match) => match[1]);
   const posts: SubstackFeedPost[] = [];
-  const seen = new Set<string>();
+  const seenUrls = new Set<string>();
 
   for (const block of blocks) {
     const rawTitle = xmlElement(block, "title");
@@ -293,7 +300,7 @@ export function parseSubstackRss(xml: string): SubstackFeedPost[] {
       !id ||
       id.length > SUBSTACK_FEED_ID_MAX ||
       title.length > SUBSTACK_FEED_TITLE_MAX ||
-      seen.has(id)
+      seenUrls.has(url)
     ) {
       continue;
     }
@@ -306,7 +313,7 @@ export function parseSubstackRss(xml: string): SubstackFeedPost[] {
     const rawAuthor =
       xmlElement(block, "dc:creator") ?? xmlElement(block, "author");
 
-    seen.add(id);
+    seenUrls.add(url);
     posts.push({
       id,
       title,

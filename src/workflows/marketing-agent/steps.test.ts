@@ -1644,6 +1644,119 @@ describe("bounded source collection", () => {
     expect(generateMarketingDraftStep.maxRetries).toBe(0);
   });
 
+  it("requires the exact attributed link in both reviewed body and metadata", async () => {
+    const input = bundle();
+    const sourceUrl = "https://www.0xzaps.com/virtual-trading";
+    const attributedUrl =
+      `${sourceUrl}?utm_source=x&utm_medium=social&utm_campaign=virtual-trading&utm_content=feed_update`;
+    const request = {
+      ...input.request,
+      sourceUrls: [sourceUrl],
+      requiredChannelLinks: { x: attributedUrl },
+    };
+    const draft = {
+      channel: "x" as const,
+      body: `Tracked update. Pre-audit software. Verify before use. ${attributedUrl}`,
+      links: [attributedUrl],
+      claims: [{
+        text: "The update is live.",
+        factKeys: ["release_status"],
+        treatment: "asserted" as const,
+      }],
+      topics: ["protocol" as const],
+      title: null,
+      subtitle: null,
+      tags: null,
+    };
+    mocks.generateText.mockResolvedValueOnce({
+      output: { items: [draft] },
+      usage: {},
+    });
+
+    const result = await generateMarketingDraftStep(
+      request,
+      input.sourcePacket,
+      input.runId,
+    );
+
+    expect(result.candidates[0]).toMatchObject({
+      body: expect.stringContaining(attributedUrl),
+      links: [attributedUrl],
+    });
+    expect(mocks.generateText.mock.calls[0]?.[0]?.prompt).toContain(
+      `include this exact URL verbatim in both the public body and links array: ${attributedUrl}`,
+    );
+
+    mocks.generateText.mockResolvedValueOnce({
+      output: {
+        items: [{
+          ...draft,
+          body: "Tracked update. Pre-audit software. Verify before use.",
+          links: [sourceUrl],
+        }],
+      },
+      usage: {},
+    });
+    await expect(generateMarketingDraftStep(
+      request,
+      input.sourcePacket,
+      input.runId,
+    )).rejects.toThrow(
+      "The model omitted an exact required channel attribution link.",
+    );
+
+    mocks.generateText.mockResolvedValueOnce({
+      output: {
+        items: [{
+          ...draft,
+          body: `Tracked update. Pre-audit software. ${attributedUrl}&utm_campaign=other`,
+        }],
+      },
+      usage: {},
+    });
+    await expect(generateMarketingDraftStep(
+      request,
+      input.sourcePacket,
+      input.runId,
+    )).rejects.toThrow(
+      "The model omitted an exact required channel attribution link.",
+    );
+  });
+
+  it("asks X-only tutorial syndication for social copy, not a new article", async () => {
+    const input = bundle();
+    const request = {
+      ...input.request,
+      kind: "tutorial" as const,
+      channels: ["x" as const],
+    };
+    mocks.generateText.mockResolvedValueOnce({
+      output: {
+        items: [{
+          channel: "x",
+          body: "A concise tutorial update. Pre-audit software. Verify before use.",
+          links: ["https://www.0xzaps.com/docs"],
+          claims: [{
+            text: "The tutorial covers bounded execution.",
+            factKeys: ["release_status"],
+            treatment: "asserted",
+          }],
+          topics: ["protocol"],
+          title: null,
+          subtitle: null,
+          tags: null,
+        }],
+      },
+      usage: {},
+    });
+
+    await generateMarketingDraftStep(request, input.sourcePacket, input.runId);
+
+    const prompt = mocks.generateText.mock.calls[0]?.[0]?.prompt;
+    expect(prompt).toContain("Syndicate the already-public tutorial");
+    expect(prompt).not.toContain("For Substack, write");
+  });
+
   it("disables Workflow retries for review notifications and publishing", () => {
     expect(publishMarketingBundleStep.maxRetries).toBe(0);
     expect(publishScheduledMarketingBundleStep.maxRetries).toBe(0);

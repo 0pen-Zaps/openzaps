@@ -172,6 +172,40 @@ describe("Substack RSS ingestion", () => {
     ]);
   });
 
+  it("deduplicates by canonical URL rather than untrusted RSS GUID", () => {
+    const feed = `
+      <rss><channel>
+        <item>
+          <title>First post</title>
+          <link>https://defitutorials.substack.com/p/first-post</link>
+          <guid>shared-guid</guid>
+        </item>
+        <item>
+          <title>Second post</title>
+          <link>https://defitutorials.substack.com/p/second-post</link>
+          <guid>shared-guid</guid>
+        </item>
+        <item>
+          <title>Duplicate first post</title>
+          <link>https://defitutorials.substack.com/p/first-post</link>
+          <guid>different-guid</guid>
+        </item>
+      </channel></rss>`;
+
+    expect(parseSubstackRss(feed).map((post) => post.url)).toEqual([
+      "https://defitutorials.substack.com/p/first-post",
+      "https://defitutorials.substack.com/p/second-post",
+    ]);
+  });
+
+  it("rejects a truncated feed even when it contains one complete item", () => {
+    const truncated = FEED.slice(0, FEED.lastIndexOf("</channel>"));
+
+    expect(() => parseSubstackRss(truncated)).toThrow(
+      "Substack returned an invalid feed.",
+    );
+  });
+
   it("fetches only the public feed and returns cache validators", async () => {
     const fetchMock = vi.fn().mockResolvedValue(
       new Response(FEED, {

@@ -63,6 +63,13 @@ export const MarketingDraftRequestSchema = z
     brief: z.string().trim().min(8).max(4_000),
     channels: z.array(z.enum(DEPLOYED_MARKETING_CHANNELS)).min(1).max(3),
     sourceUrls: z.array(canonicalSourceUrl).max(5).default([]),
+    requiredChannelLinks: z
+      .object({
+        x: canonicalSourceUrl.optional(),
+        discord: canonicalSourceUrl.optional(),
+      })
+      .strict()
+      .optional(),
     interactionUrl: canonicalXInteractionUrl.optional(),
   })
   .strict()
@@ -99,6 +106,48 @@ export const MarketingDraftRequestSchema = z
           "The brief appears to contain a credential. Remove it before model processing.",
         path: ["brief"],
       });
+    }
+    if (request.requiredChannelLinks) {
+      const entries = Object.entries(request.requiredChannelLinks);
+      if (entries.length === 0) {
+        context.addIssue({
+          code: "custom",
+          message: "Required channel links cannot be empty.",
+          path: ["requiredChannelLinks"],
+        });
+      }
+      if (request.kind === "community_reply") {
+        context.addIssue({
+          code: "custom",
+          message: "Community replies cannot require promotional links.",
+          path: ["requiredChannelLinks"],
+        });
+      }
+      const sourceDestinations = new Set(request.sourceUrls.map((raw) => {
+        const url = new URL(raw);
+        url.search = "";
+        url.hash = "";
+        return url.toString();
+      }));
+      for (const [channel, raw] of entries) {
+        if (!request.channels.includes(channel as "x" | "discord")) {
+          context.addIssue({
+            code: "custom",
+            message: "A required link must target a requested channel.",
+            path: ["requiredChannelLinks", channel],
+          });
+        }
+        const url = new URL(raw);
+        url.search = "";
+        url.hash = "";
+        if (!sourceDestinations.has(url.toString())) {
+          context.addIssue({
+            code: "custom",
+            message: "A required link must attribute one of the canonical sources.",
+            path: ["requiredChannelLinks", channel],
+          });
+        }
+      }
     }
   });
 
@@ -259,6 +308,23 @@ export const DeployedMarketingCandidateSchema = MarketingCandidateSchema.extend(
 
 export type DeployedMarketingCandidate = z.infer<typeof DeployedMarketingCandidateSchema>;
 
+export function marketingBodyContainsExactUrl(
+  body: string,
+  requiredUrl: string,
+): boolean {
+  const candidates = body.match(/https:\/\/[^\s<>"']+/gu) ?? [];
+  return candidates.some(
+    (candidate) => candidate.replace(/[\])}>.,!?;:]+$/gu, "") === requiredUrl,
+  );
+}
+
+export function reviewMarketingDeliveryIdempotencyKey(
+  bundleId: string,
+  channel: (typeof DEPLOYED_MARKETING_CHANNELS)[number],
+): string {
+  return `${bundleId.replace(/[^A-Za-z0-9._:-]/gu, "_")}:${channel}`;
+}
+
 export const MarketingDraftBundleSchema = z
   .object({
     id: z.string().min(1),
@@ -368,6 +434,10 @@ export const MarketingDraftBundleSchema = z
       const presentation = bundle.presentations.find(
         (entry) => entry.candidateId === candidate.id,
       );
+      const requiredChannelLink = candidate.channel === "x"
+        || candidate.channel === "discord"
+        ? bundle.request.requiredChannelLinks?.[candidate.channel]
+        : undefined;
       if (
         candidate.kind !== bundle.request.kind ||
         JSON.stringify(candidate.sourcePacket) !==
@@ -401,6 +471,20 @@ export const MarketingDraftBundleSchema = z
           path: ["presentations"],
         });
         continue;
+      }
+      if (
+        requiredChannelLink
+        && (
+          !candidate.links.includes(requiredChannelLink)
+          || !marketingBodyContainsExactUrl(candidate.body, requiredChannelLink)
+        )
+      ) {
+        context.addIssue({
+          code: "custom",
+          message:
+            "Every required channel link must remain exact in both reviewed body copy and candidate links.",
+          path: ["candidates"],
+        });
       }
       if (
         candidate.channel === "substack"

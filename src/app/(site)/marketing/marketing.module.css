@@ -543,6 +543,113 @@
   font-size: 11.5px;
 }
 
+.syndicationInbox {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.syndicationCard {
+  min-width: 0;
+  padding: 15px;
+  border: 1px solid var(--line-2);
+  border-radius: var(--r-card-sm);
+  background: var(--panel-2);
+}
+
+.syndicationCard > header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.syndicationCard > header > div {
+  min-width: 0;
+}
+
+.syndicationCard h3 {
+  margin: 5px 0 0;
+  color: var(--ink);
+  font-family: var(--font-serif), Georgia, serif;
+  font-size: 19px;
+  font-weight: 500;
+  letter-spacing: -0.02em;
+  overflow-wrap: anywhere;
+}
+
+.syndicationCard header p {
+  margin: 4px 0 0;
+  color: var(--ink-3);
+  font-size: 10.5px;
+}
+
+.syndicationLink {
+  display: inline-flex;
+  margin-top: 12px;
+  color: var(--zap-wash-ink);
+  font-size: 11.5px;
+  font-weight: 650;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.syndicationMeta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.syndicationMeta span {
+  max-width: 100%;
+  padding: 3px 7px;
+  border-radius: var(--r-chip);
+  background: var(--chip);
+  color: var(--ink-3);
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-size: 9px;
+  overflow-wrap: anywhere;
+}
+
+.syndicationActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 12px;
+  padding-top: 11px;
+  border-top: 1px solid var(--line-soft);
+}
+
+.syndicationActions button {
+  flex: 1 1 150px;
+  min-height: 42px;
+  padding: 8px 11px;
+  border: 1px solid var(--line-2);
+  border-radius: var(--r-ctl-sm);
+  background: var(--sunk);
+  color: var(--ink-2);
+  cursor: pointer;
+  font-size: 10.5px;
+  font-weight: 650;
+}
+
+.syndicationActions button:hover:not(:disabled) {
+  border-color: var(--line-strong);
+  color: var(--ink);
+}
+
+.syndicationActions button[data-danger] {
+  border-color: var(--danger-line);
+  background: var(--danger-wash);
+  color: var(--danger-ink);
+}
+
+.syndicationActions button:disabled {
+  cursor: wait;
+  opacity: 0.55;
+}
+
 .formGrid {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1.3fr);
@@ -1079,6 +1186,7 @@
   .readinessGrid,
   .formGrid,
   .leadBrief,
+  .syndicationInbox,
   .copyGrid,
   .reviewMeta {
     grid-template-columns: 1fr;
@@ -1112,6 +1220,7 @@
   }
 
   .leadActions > button,
+  .syndicationActions button,
   .deleteConfirmation,
   .deleteConfirmation button {
     flex-basis: 100%;

@@ -30,6 +30,8 @@ in [lead-engine.md](lead-engine.md).
 | Human review | Every model-generated item and every reply remains review-only. Tutorials, incidents, security, token/trading, partnerships, roadmaps, and new deployments always require approval. |
 | Paper simulation | The `simulation` topic is reserved for wallet-free, no-real-funds practice surfaces. Live or token trading remains `trading` and always requires approval. |
 | Bounded scheduled campaigns | Automatic delivery accepts only an immutable campaign/channel row that exactly matches the source-reviewed registry and its SHA-256 content binding, only for tier-1 X/Discord broadcasts. It rechecks typed source requirements, freshness, provider identity/destination, caps, and the durable delivery claim immediately before writing. A changed body, fact source, claim, or channel cannot inherit that authority. |
+| Review-only feed discovery | A separate daily cron reads only the source-controlled OpenZaps feed and public DeFi Tutorials RSS metadata. Its first complete snapshots are baselined, later canonical items are deduplicated into a private inbox, and it cannot start a workflow or call a provider. |
+| Exact syndication attribution | An operator-started inbox workflow binds a deterministic, non-personal X or Discord UTM URL to the canonical source and campaign slug. Generation fails unless the exact channel URL appears in both the reviewed body and its link metadata. |
 | Prohibited means prohibited | A human cannot override credential exposure, guaranteed-return claims, impersonation, policy bypasses, unsolicited bulk messaging, unavailable-as-zero claims, or non-canonical links. |
 | No unverified X replies | An operator supplies only a canonical `x.com/<user>/status/<id>` URL and a paraphrase. The agent verifies the author and explicit mention/owned quote through X's API, stores metadata but not post text, requires human approval, and enforces one lifetime reply per interaction. There is no polling or browser scraping. |
 | No undocumented publishing | X uses `POST /2/tweets`; Discord uses official webhooks/REST; Substack uses its official editor and public RSS feed. There is no browser scraping, session-cookie automation, or private endpoint. |
@@ -55,6 +57,12 @@ cron
   -> fresh automatic-authority and provider checks
   -> durable once-per-campaign/channel claim
   -> X / Discord delivery
+
+discovery cron
+  -> source-controlled OpenZaps feed + public DeFi Tutorials RSS metadata
+  -> require a complete first baseline, including every RSS-confirmed tutorial
+  -> durable deduplication inbox only
+  -> zero workflows and zero provider writes
 ```
 
 Discord slash-command answers are a separate deterministic FAQ path. They do
@@ -70,6 +78,9 @@ not invoke the model or the approval workflow.
 | `GET /api/marketing/runs/:runId` | Read the latest run event/result | Operator bearer token |
 | `POST /api/marketing/approvals` | Resume the one-shot approval hook | Operator bearer token |
 | `GET /api/marketing/cron` | Claim and start the next bounded reviewed-campaign workflow | `Authorization: Bearer <CRON_SECRET>` |
+| `GET /api/marketing/syndication` | List the private feed inbox and reconcile attached workflow evidence | Operator bearer token |
+| `POST /api/marketing/syndication` | Draft, skip, or repair the durable run link for one exact inbox item | Operator bearer token |
+| `GET /api/marketing/syndication/cron` | Discover and deduplicate public feed metadata; never starts a workflow or provider write | `Authorization: Bearer <CRON_SECRET>` |
 | `POST /api/marketing/substack/verify` | Read-only canonical-URL check against public DeFi Tutorials RSS, bound to one completed, approved editor handoff whose recorded title is used server-side | Operator bearer token |
 | `POST /api/marketing/discord/interactions` | Receive Discord application commands | Discord Ed25519 request signature and a five-minute freshness window |
 | `GET /api/leads/request` | Return non-secret, non-mutating lead-intake RPC readiness for fail-closed campaign evidence | Public; private/no-store response, with `503` while unavailable |
@@ -102,7 +113,7 @@ or interactive `vercel env add`; never commit `.env` files.
 | `AI_GATEWAY_API_KEY` | unset | Local/non-Vercel model authentication only. Vercel production uses automatically managed OIDC; do not add an OpenAI key for this agent. |
 | `OPENZAPS_MARKETING_SUPABASE_PROJECT_REF` | unset | Exact lowercase project ref for the OpenZaps Supabase project. Cloud ledger access remains blocked unless this value matches the host in `SUPABASE_URL`. |
 | `SUPABASE_URL` | unset | Existing server-only OpenZaps Supabase project URL. It must exactly equal `https://<OPENZAPS_MARKETING_SUPABASE_PROJECT_REF>.supabase.co` (or use loopback HTTP in local development). |
-| `SUPABASE_SERVICE_ROLE_KEY` | unset | Existing server-only service-role key used only for the reviewed marketing ledger RPCs. Never expose it to the browser or a model. |
+| `SUPABASE_SERVICE_ROLE_KEY` | unset | Existing server-only service-role key used for the reviewed marketing RPCs and domain-separated syndication attachment-repair proofs. Never expose it to the browser, operator, or a model. |
 
 Vercel Workflow and AI Gateway use deployment OIDC automatically. For local
 development, `vercel env pull` can supply a short-lived OIDC token, or a scoped
@@ -176,6 +187,14 @@ and content hash; never date-salt identical text to manufacture a new delivery.
 The initial queue is empty because the Virtual Trading and Request-a-Zap update
 was already published to both X and Discord. No duplicate pending row or
 fabricated historical delivery receipt is created.
+
+The separate feed-discovery route runs at `30 13 * * *`: 13:30 UTC every
+day. It becomes operational only after the syndication migration is applied
+and the exact durable Supabase binding is enabled. It reads approved public
+metadata, updates the private inbox and validators, and returns
+`providerWritesAttempted: false` and `workflowsStarted: false`. It never uses
+`OPENZAPS_MARKETING_AUTO_PUBLISH`, never starts the marketing workflow, and
+never calls X, Discord, or a Substack write surface.
 
 ### X
 
@@ -386,16 +405,25 @@ The operator must:
    id, candidate id, and canonical URL. The server loads the completed workflow,
    requires its approved official-editor handoff, derives the recorded title,
    and requires that URL and title to appear together in the public feed.
-6. Record the canonical public post URL with the run id. The verifier currently
+6. Update that tutorial's source-controlled entry in
+   `docs/tutorials/manifest.json`: keep its reviewed source path and stable id,
+   set the exact approved title, `status: "rss_confirmed"`, canonical public
+   URL, and RSS publication timestamp. Review, commit, and deploy that manifest
+   change before expecting discovery to authorize a social draft. The verifier
+   does not mutate the manifest.
+7. Record the canonical public post URL with the run id. The verifier currently
    reports `persisted: false`; it does not append a publication receipt to the
    durable ledger.
-7. Start a new, reviewed X/Discord syndication run using the canonical
-   Substack URL as a source.
+8. Confirm the next discovery run promotes or finds the RSS-confirmed item in the private
+   feed inbox. Select **Draft X + Discord** to start the existing review
+   workflow, then review and explicitly approve it as a separate outbound run.
 
-The repository includes a bounded public-RSS parser with ETag and
-`Last-Modified` support, but no deployed cron currently turns feed items into
-social posts. Treat RSS syndication as a manual follow-up until that trigger
-has its own durable deduplication ledger and tests.
+The daily discovery cron uses bounded public-RSS parsing plus validated ETag and
+`Last-Modified` cursors. The first complete snapshot is historical baseline,
+not an outbound queue. Later items become private inbox entries only. Discovery
+cannot turn a feed item into a social post; the operator action creates an
+X/Discord draft with exact attributed links, and every generated post still
+waits for owner approval.
 
 ## Deploy safely
 
@@ -475,7 +503,7 @@ Verify that the authenticated status endpoint reports disabled/dry-run and
 does not return any secret values. Verify unauthorized requests return `401`
 with `Cache-Control: private, no-store`.
 
-### 4. Apply and verify the durable ledger and reviewed queue
+### 4. Apply and verify the durable ledger, reviewed queue, and feed inbox
 
 The production Supabase database is shared. Do not run a blind `supabase db
 push`, repair unrelated migration history, or replay SQL copied from an
@@ -485,13 +513,14 @@ apply only:
 ```text
 supabase/migrations/20260729035549_marketing_delivery_ledger.sql
 supabase/migrations/20260801024005_durable_reviewed_marketing_campaign_queue.sql
+supabase/migrations/20260801041508_marketing_syndication_inbox.sql
 ```
 
-If the first file is already recorded remotely, apply only the second exact
-file. Do not use `db push` to cross unrelated or intentionally unapplied rows in
-the shared migration history.
+If any file is already recorded remotely, apply only the missing exact files
+in timestamp order. Do not use `db push` to cross unrelated or intentionally
+unapplied rows in the shared migration history.
 
-Apply it transactionally while the marketing agent is disabled. Then verify:
+Apply them transactionally while the marketing agent is disabled. Then verify:
 
 - the exact migration timestamp/name is recorded once;
 - `public.marketing_delivery_ledger` has RLS enabled and no direct table grants
@@ -499,8 +528,12 @@ Apply it transactionally while the marketing agent is disabled. Then verify:
 - `public.marketing_reviewed_campaigns` and
   `public.marketing_campaign_schedule_claims` have RLS enabled and no direct
   table grants for `anon`, `authenticated`, or `service_role`;
+- `public.marketing_syndication_sources` and
+  `public.marketing_syndication_items` have RLS enabled and no direct table
+  grants for `anon`, `authenticated`, or `service_role`;
 - only `service_role` can execute the public marketing RPCs, including the new
-  reviewed-campaign claim;
+  reviewed-campaign claim and the bounded syndication cursor, discovery, list,
+  claim, attach, fail, skip, and sync RPCs;
 - the initial reviewed-campaign queue is empty because the
   `virtual-trading-request-zap-v2` update was already public on both X and
   Discord before the queue existed;
@@ -509,10 +542,19 @@ Apply it transactionally while the marketing agent is disabled. Then verify:
 - the snapshot returns the current UTC day and zero or expected counters;
 - an idempotency replay returns the stored claim/receipt and never inserts a
   second row;
-- concurrent claims at a cap of one admit exactly one caller.
+- concurrent claims at a cap of one admit exactly one caller;
+- an empty first syndication snapshot is rejected and writes no cursor;
+- the first complete OpenZaps and DeFi Tutorials snapshots create only
+  `baseline` rows, including every current `rss_confirmed` manifest URL;
+- an exact discovery replay creates no pending item, workflow, or provider
+  write; a later new canonical item creates one `pending` inbox row;
+- attaching a workflow run id retains `drafting`; only verified workflow draft
+  evidence may advance it to `awaiting_approval`;
+- a partial X/Discord delivery is recorded as failed/incomplete, never as a
+  fully published syndication item.
 
-Keep a record of the verification output with the release. The migration is an
-append-only audit/idempotency boundary; do not add a destructive rollback.
+Keep a record of the verification output with the release. The migrations are
+append-only audit/idempotency boundaries; do not add a destructive rollback.
 Application rollback remains compatible with the table.
 
 After verification, set:
@@ -527,12 +569,25 @@ database host. The flag is an assertion that the reviewed database boundary
 exists. Setting either value before the migration is applied does not create
 the schema and makes live work fail closed.
 
+After the redeploy, invoke `/api/marketing/syndication/cron` with the cron
+bearer credential before the scheduled window. Initialization is transactional
+per source, not across both feeds: if the later Substack fetch fails, the
+OpenZaps baseline may already be durable. Across the first successful attempts,
+require each source to report `initialized` exactly once, every first-seen row
+to be `baseline`, and both `providerWritesAttempted` and `workflowsStarted` to
+remain `false`. Then invoke it again and prove no item becomes pending. If
+either baseline is empty, incomplete, or unavailable, stop; do not repair the
+cursor by hand or expect both sources to initialize in the same response.
+
 ### 5. Enable production dry-run
 
 Set only `OPENZAPS_MARKETING_ENABLED=true`, redeploy, and run one X/Discord
 product update plus one Substack tutorial. Both must end as dry runs with no
 provider side effect. Review the exact source packet, model usage, and readiness
-report. Dry-run does not consume durable delivery counters.
+report. Dry-run does not consume durable delivery counters. Open the private
+feed inbox and verify baseline rows have no draft action, while a controlled
+later source fixture becomes one pending review item without starting a
+workflow until the operator selects it.
 
 ### 6. Enable review-only delivery
 
@@ -602,6 +657,31 @@ curl --fail-with-body --silent --show-error \
   --header "Authorization: Bearer ${MARKETING_OPERATOR_TOKEN}" \
   "${MARKETING_BASE_URL}/api/marketing/status"
 ```
+
+List the review-only feed inbox:
+
+```bash
+curl --fail-with-body --silent --show-error \
+  --header "Authorization: Bearer ${MARKETING_OPERATOR_TOKEN}" \
+  "${MARKETING_BASE_URL}/api/marketing/syndication"
+```
+
+Starting a draft from `/marketing` is preferred. The bounded API action accepts
+only one exact pending item id:
+
+```bash
+export SYNDICATION_ITEM_ID="64-character-item-id"
+curl --fail-with-body --silent --show-error \
+  --request POST \
+  --header "Authorization: Bearer ${MARKETING_OPERATOR_TOKEN}" \
+  --header "Content-Type: application/json" \
+  --data "{\"action\":\"draft\",\"itemId\":\"${SYNDICATION_ITEM_ID}\"}" \
+  "${MARKETING_BASE_URL}/api/marketing/syndication"
+```
+
+The returned run remains `drafting` until its real workflow event proves that
+the review bundle is waiting for approval. Starting the workflow never implies
+approval or publication.
 
 Start a source-backed run:
 
@@ -736,6 +816,40 @@ Starting a fresh run creates a new bundle and idempotency key, so an
 unreconciled ambiguity can still become a duplicate if an operator bypasses
 this procedure.
 
+### Feed-inbox workflow attachment recovery
+
+The inbox first claims a pending item, starts one workflow, and then attaches
+the returned run id without changing the item from `drafting`. A verified
+`draft.awaiting_approval` workflow event is the only evidence that advances it
+to `awaiting_approval`.
+
+If workflow start returns a run id but the attachment write fails, the
+authenticated response includes that known run id plus a narrow HMAC repair
+proof bound to the exact item/run pair. `/marketing` keeps that pair only in
+tab-scoped session storage, opens the run, and retries only the idempotent
+attachment; it never starts a replacement workflow. The proof grants no draft,
+approval, or provider-write authority and is signed with a server-only durable
+store credential the operator never receives. If that credential rotates, the
+proof becomes invalid. If manual repair is required, use the exact values from
+that authenticated response without logging them:
+
+```bash
+export MARKETING_RUN_ID="original-returned-run-id"
+export MARKETING_REPAIR_PROOF="original-returned-repair-proof"
+curl --fail-with-body --silent --show-error \
+  --request POST \
+  --header "Authorization: Bearer ${MARKETING_OPERATOR_TOKEN}" \
+  --header "Content-Type: application/json" \
+  --data "{\"action\":\"attach\",\"itemId\":\"${SYNDICATION_ITEM_ID}\",\"runId\":\"${MARKETING_RUN_ID}\",\"repairProof\":\"${MARKETING_REPAIR_PROOF}\"}" \
+  "${MARKETING_BASE_URL}/api/marketing/syndication"
+```
+
+Do not call `draft` again, create a new workflow, or mutate the inbox row. If
+the exact proof is absent, invalid, substituted, or invalidated by credential
+rotation, do not reconstruct it from either identifier. Leave the item
+unresolved and inspect the deployment-pinned Workflow history before taking
+further action.
+
 ### Emergency stop
 
 Use the narrowest effective control:
@@ -776,6 +890,8 @@ deployment must be made unable to publish.
 | X publishing is policy-blocked | Confirm user-context credentials and keep `OPENZAPS_X_AUTOMATED_LABEL_CONFIRMED=false` until the automated label/operator disclosure is visibly configured. Replies also require the separate X approval attestation and API-verified engagement. |
 | Substack says `requires_human_publish` | Expected behavior; open the official editor and complete the human checklist. |
 | Approval returns `409` | The run is not waiting, already decided, or the run id is wrong. Inspect the run before doing anything else. |
+| Inbox item is `drafting` without a run link | Do not start another draft. Recover the exact original run id and repair proof from the authenticated response and use the bounded `attach` action; never substitute either value. If the proof is unavailable or the run does not exist, leave it unresolved. |
+| Syndication cron returns `503` on first run | Confirm the feed is non-empty, contains every current `rss_confirmed` manifest URL, returns valid ETag/Last-Modified values, and the exact inbox migration is applied. Never baseline an incomplete response manually. |
 | Old run differs from current code | Expected Workflow version pinning. Review it under the deployment that created it or reject it and start fresh. |
 
 ## Monitoring and operating cadence
@@ -798,9 +914,10 @@ A useful low-volume loop is:
 5. Record reach, meaningful replies, Discord command usage, tutorial reads,
    and resulting product actions separately from vanity impressions.
 
-The durable ledger records delivery admission and receipts, not audience
-analytics, campaign attribution, or semantic duplicate detection. Do not claim
-attribution the implementation does not measure, and do not use engagement
+The durable ledger records delivery admission and receipts, while syndication
+drafts carry deterministic per-channel UTM links. Neither surface proves visits,
+conversions, or semantic duplicate detection. Do not claim measured attribution
+until the analytics destination records it, and do not use engagement
 automation, bulk DMs, follow churn, trend hijacking, or substantially duplicate
 posts to manufacture reach.
 

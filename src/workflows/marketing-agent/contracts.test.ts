@@ -110,6 +110,51 @@ describe("marketing workflow request contracts", () => {
     }
   });
 
+  it("binds exact channel attribution links to requested channels and sources", () => {
+    const sourceUrl = "https://www.0xzaps.com/virtual-trading";
+    const xUrl = `${sourceUrl}?utm_source=x&utm_medium=social&utm_campaign=virtual-trading&utm_content=feed_update`;
+    const discordUrl = `${sourceUrl}?utm_source=discord&utm_medium=community&utm_campaign=virtual-trading&utm_content=feed_update`;
+
+    expect(MarketingDraftRequestSchema.parse({
+      kind: "product_update",
+      brief: "Syndicate one approved OpenZaps product update.",
+      channels: ["x", "discord"],
+      sourceUrls: [sourceUrl],
+      requiredChannelLinks: { x: xUrl, discord: discordUrl },
+    })).toMatchObject({
+      requiredChannelLinks: { x: xUrl, discord: discordUrl },
+    });
+
+    for (const request of [
+      {
+        kind: "product_update",
+        brief: "Syndicate one approved OpenZaps product update.",
+        channels: ["discord"],
+        sourceUrls: [sourceUrl],
+        requiredChannelLinks: { x: xUrl },
+      },
+      {
+        kind: "product_update",
+        brief: "Syndicate one approved OpenZaps product update.",
+        channels: ["x"],
+        sourceUrls: [sourceUrl],
+        requiredChannelLinks: {
+          x: "https://www.0xzaps.com/docs?utm_source=x",
+        },
+      },
+      {
+        kind: "community_reply",
+        brief: "Answer a verified question about bounded authority.",
+        channels: ["x"],
+        interactionUrl: "https://x.com/community/status/123456789",
+        sourceUrls: [sourceUrl],
+        requiredChannelLinks: { x: xUrl },
+      },
+    ]) {
+      expect(MarketingDraftRequestSchema.safeParse(request).success).toBe(false);
+    }
+  });
+
   it("accepts community replies only for one explicit X interaction", () => {
     expect(MarketingDraftRequestSchema.parse({
       kind: "community_reply",
@@ -267,6 +312,39 @@ describe("generated marketing output contracts", () => {
     };
   }
 
+  function validRequiredLinkBundle(): MarketingDraftBundle {
+    const bundle = validReviewBundle();
+    const sourceUrl = "https://www.0xzaps.com/virtual-trading";
+    const requiredUrl =
+      `${sourceUrl}?utm_source=x&utm_medium=social&utm_campaign=virtual-trading&utm_content=feed_update`;
+    bundle.request = {
+      kind: "product_update",
+      brief: "Syndicate one approved OpenZaps product update.",
+      channels: ["x"],
+      sourceUrls: [sourceUrl],
+      requiredChannelLinks: { x: requiredUrl },
+    };
+    bundle.candidates[0] = {
+      ...bundle.candidates[0],
+      id: "candidate:x",
+      channel: "x",
+      action: "broadcast",
+      kind: "product_update",
+      body: `Paper-trade a deployed route with read-only quotes. ${requiredUrl}`,
+      links: [requiredUrl],
+    };
+    bundle.presentations[0] = {
+      candidateId: "candidate:x",
+      channel: "x",
+    };
+    bundle.policy[0] = {
+      ...bundle.policy[0],
+      candidateId: "candidate:x",
+      dailyCounter: "xPosts",
+    };
+    return bundle;
+  }
+
   it("enforces channel-specific lengths and Substack presentation fields", () => {
     expect(
       GeneratedChannelDraftSchema.safeParse({
@@ -414,6 +492,25 @@ describe("generated marketing output contracts", () => {
   it("accepts a one-to-one candidate, presentation, and policy bundle", () => {
     expect(MarketingDraftBundleSchema.safeParse(validReviewBundle()).success)
       .toBe(true);
+  });
+
+  it("re-enforces exact required channel links on the final reviewed bundle", () => {
+    expect(
+      MarketingDraftBundleSchema.safeParse(validRequiredLinkBundle()).success,
+    ).toBe(true);
+
+    const missingLinkMetadata = validRequiredLinkBundle();
+    missingLinkMetadata.candidates[0].links = [];
+    expect(
+      MarketingDraftBundleSchema.safeParse(missingLinkMetadata).success,
+    ).toBe(false);
+
+    const substringOnlyBody = validRequiredLinkBundle();
+    substringOnlyBody.candidates[0].body =
+      `${substringOnlyBody.request.requiredChannelLinks?.x}&unexpected=1`;
+    expect(
+      MarketingDraftBundleSchema.safeParse(substringOnlyBody).success,
+    ).toBe(false);
   });
 
   it.each([

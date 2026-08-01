@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 
 /**
- * Disposable PostgreSQL 16 integration test for relay and subscription admission.
+ * Disposable PostgreSQL 16 integration test for relay, subscriptions, durable
+ * marketing delivery, syndication admission, and lead notifications.
  *
  * This intentionally lives outside the default Vitest suite because it needs
  * local `initdb`, `postgres`, `pg_ctl`, and `psql` binaries. It applies every
@@ -250,6 +251,61 @@ function submitLeadFixture({
   `);
 }
 
+function sqlJson(value) {
+  return `'${JSON.stringify(value).replaceAll("'", "''")}'::jsonb`;
+}
+
+function syndicationSnapshot({
+  sourceKey,
+  items = [],
+  etag = null,
+  lastModified = null,
+  notModified = false,
+}) {
+  return {
+    source_key: sourceKey,
+    etag,
+    last_modified: lastModified,
+    not_modified: notModified,
+    items,
+  };
+}
+
+function syndicationItem({
+  itemId,
+  canonicalUrl,
+  title,
+  campaignSlug,
+  publishedAt,
+  classification,
+}) {
+  return {
+    source_item_key: itemId,
+    canonical_url: canonicalUrl,
+    title,
+    campaign_slug: campaignSlug,
+    published_at: publishedAt,
+    classification,
+  };
+}
+
+function discoverSyndication(snapshot, initializeAsBaseline) {
+  return psqlScalar(`
+    select
+      result_code,
+      source_key,
+      discovered_count,
+      baseline_count,
+      pending_count,
+      existing_count,
+      reclassified_count
+    from public.discover_marketing_syndication_items(
+      ${sqlJson(snapshot)},
+      ${initializeAsBaseline ? "true" : "false"}
+    );
+  `);
+}
+
 const owner = "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 const firstZap = "0x1111111111111111111111111111111111111111";
 const cappedZap = "0x2222222222222222222222222222222222222222";
@@ -267,11 +323,21 @@ const receiptProvenanceMigration =
   "20260729095505_harden_verified_receipt_provenance.sql";
 const reviewedCampaignQueueMigration =
   "20260801024005_durable_reviewed_marketing_campaign_queue.sql";
+const syndicationInboxMigration =
+  "20260801041508_marketing_syndication_inbox.sql";
 const reviewedCampaignFixture = "pg16-reviewed-campaign";
 const reviewedCampaignContentHash = "de".repeat(32);
 const reviewedCampaignMonday = "2026-08-03T15:00:00Z";
 const reviewedCampaignTuesday = "2026-08-04T15:00:00Z";
 const reviewedCampaignWednesday = "2026-08-05T15:00:00Z";
+const syndicationBaselineKnown = "10".repeat(32);
+const syndicationBaselineUnknown = "20".repeat(32);
+const syndicationPendingKnown = "30".repeat(32);
+const syndicationPendingUnknown = "40".repeat(32);
+const syndicationPendingFailure = "50".repeat(32);
+const syndicationOpenZapsBaseline = "60".repeat(32);
+const syndicationOversizedXLink = "70".repeat(32);
+const syndicationMetadataDriftNew = "80".repeat(32);
 const malformedReceiptHash = `0x${"aa".repeat(32)}`;
 const rejectedMalformedReceiptHash = `0x${"bb".repeat(32)}`;
 const v3Factory = "0x70fcfd3615ea6651a670b6c4cd6b8ba1506717e9";
@@ -408,14 +474,23 @@ try {
   // migrations that deliberately reject an unexpected history replay.
   for (let pass = 0; pass < 2; pass += 1) {
     for (const filename of migrationFiles) {
-      if (pass === 1 && filename === reviewedCampaignQueueMigration) {
+      if (
+        pass === 1 &&
+        [reviewedCampaignQueueMigration, syndicationInboxMigration].includes(
+          filename,
+        )
+      ) {
         const replayProbe = psqlFileProbe(join(migrations, filename), "select 1;");
+        const expectedRelation =
+          filename === reviewedCampaignQueueMigration
+            ? "marketing_reviewed_campaigns"
+            : "marketing_syndication_sources";
         assert(
           replayProbe.status !== 0 &&
-            /relation "marketing_reviewed_campaigns" already exists/.test(
+            new RegExp(`relation "${expectedRelation}" already exists`).test(
               `${replayProbe.stdout}${replayProbe.stderr}`,
             ),
-          "reviewed campaign queue migration did not fail closed on an unexpected replay",
+          `${filename} did not fail closed on an unexpected replay`,
         );
         continue;
       }
@@ -568,6 +643,770 @@ try {
   assert(
     replayState.join("|") === "0|0|0|5",
     `full-chain replay left unexpected relay state: ${replayState.join(", ")}`,
+  );
+
+  const syndicationRpcs = [
+    "public.get_marketing_syndication_source_cursor(text)",
+    "public.discover_marketing_syndication_items(jsonb,boolean)",
+    "public.list_marketing_syndication_items(integer)",
+    "public.claim_marketing_syndication_draft(text)",
+    "public.attach_marketing_syndication_workflow(text,text)",
+    "public.fail_marketing_syndication_draft(text)",
+    "public.skip_marketing_syndication_item(text)",
+    "public.sync_marketing_syndication_item(text,text,text)",
+  ];
+  const syndicationRpcArray = syndicationRpcs
+    .map((signature) => `'${signature}'`)
+    .join(",");
+  const syndicationPrivileges = psqlScalar(`
+    select
+      (
+        select relrowsecurity
+        from pg_catalog.pg_class
+        where oid = 'public.marketing_syndication_sources'::regclass
+      ),
+      (
+        select relrowsecurity
+        from pg_catalog.pg_class
+        where oid = 'public.marketing_syndication_items'::regclass
+      ),
+      has_table_privilege(
+        'service_role',
+        'public.marketing_syndication_sources',
+        'select'
+      ),
+      has_table_privilege(
+        'service_role',
+        'public.marketing_syndication_items',
+        'select'
+      ),
+      (
+        select bool_and(
+          has_function_privilege('service_role', rpc.signature, 'execute')
+        )
+        from pg_catalog.unnest(
+          array[${syndicationRpcArray}]::text[]
+        ) as rpc(signature)
+      ),
+      (
+        select bool_or(
+          has_function_privilege('anon', rpc.signature, 'execute')
+        )
+        from pg_catalog.unnest(
+          array[${syndicationRpcArray}]::text[]
+        ) as rpc(signature)
+      ),
+      (
+        select bool_or(
+          has_function_privilege('authenticated', rpc.signature, 'execute')
+        )
+        from pg_catalog.unnest(
+          array[${syndicationRpcArray}]::text[]
+        ) as rpc(signature)
+      );
+  `);
+  assert(
+    syndicationPrivileges === "t|t|f|f|t|f|f",
+    `unexpected syndication inbox privileges: ${syndicationPrivileges}`,
+  );
+
+  const serviceCursorRead = await psqlScalarSession(`
+    set role service_role;
+    select result_code
+    from public.get_marketing_syndication_source_cursor('defitutorials');
+  `);
+  assert(
+    serviceCursorRead.status === 0 &&
+      /(?:^|\n)not_initialized(?:\n|$)/.test(serviceCursorRead.stdout),
+    `service role could not read the bounded syndication cursor: ${serviceCursorRead.stdout}${serviceCursorRead.stderr}`,
+  );
+
+  const directSyndicationRead = await psqlScalarSession(`
+    set role service_role;
+    select * from public.marketing_syndication_items;
+  `);
+  assert(
+    directSyndicationRead.status !== 0 &&
+      /permission denied/.test(
+        `${directSyndicationRead.stdout}${directSyndicationRead.stderr}`,
+      ),
+    "service role unexpectedly read the syndication inbox directly",
+  );
+
+  const unauthorizedSyndicationRpc = await psqlScalarSession(`
+    set role authenticated;
+    select * from public.list_marketing_syndication_items(20);
+  `);
+  assert(
+    unauthorizedSyndicationRpc.status !== 0 &&
+      /permission denied/.test(
+        `${unauthorizedSyndicationRpc.stdout}${unauthorizedSyndicationRpc.stderr}`,
+      ),
+    "authenticated role unexpectedly executed a syndication RPC",
+  );
+
+  const baselineItems = [
+    syndicationItem({
+      itemId: syndicationBaselineKnown,
+      canonicalUrl: "https://defitutorials.substack.com/p/baseline-known",
+      title: "Baseline known tutorial",
+      campaignSlug: "baseline-known",
+      publishedAt: "2026-07-01T12:00:00Z",
+      classification: "tutorial",
+    }),
+    syndicationItem({
+      itemId: syndicationBaselineUnknown,
+      canonicalUrl: "https://defitutorials.substack.com/p/baseline-unknown",
+      title: "Baseline unclassified post",
+      campaignSlug: "defitutorials-baseline-unknown",
+      publishedAt: "2026-07-02T12:00:00Z",
+      classification: "unknown",
+    }),
+  ];
+  const baselineSnapshot = syndicationSnapshot({
+    sourceKey: "defitutorials",
+    etag: 'W/"defi-v1"',
+    lastModified: "Fri, 31 Jul 2026 12:00:00 GMT",
+    items: baselineItems,
+  });
+
+  const emptyBaselineDiscovery = await psqlScalarSession(`
+    select result_code
+    from public.discover_marketing_syndication_items(
+      ${sqlJson(syndicationSnapshot({ sourceKey: "defitutorials" }))},
+      true
+    );
+  `);
+  assert(
+    emptyBaselineDiscovery.status !== 0 &&
+      /invalid marketing syndication snapshot/.test(
+        `${emptyBaselineDiscovery.stdout}${emptyBaselineDiscovery.stderr}`,
+      ),
+    "syndication discovery accepted an empty first baseline",
+  );
+
+  const malformedBodySnapshot = syndicationSnapshot({
+    sourceKey: "defitutorials",
+    items: [{ ...baselineItems[0], body: "must never be stored" }],
+  });
+  const malformedBodyDiscovery = await psqlScalarSession(`
+    select result_code
+    from public.discover_marketing_syndication_items(
+      ${sqlJson(malformedBodySnapshot)},
+      true
+    );
+  `);
+  assert(
+    malformedBodyDiscovery.status !== 0 &&
+      /invalid marketing syndication item shape/.test(
+        `${malformedBodyDiscovery.stdout}${malformedBodyDiscovery.stderr}`,
+      ),
+    "syndication discovery accepted a content body",
+  );
+
+  const missingBaseline = discoverSyndication(baselineSnapshot, false);
+  const missingBaselineState = psqlScalar(`
+    select
+      (select count(*) from public.marketing_syndication_sources),
+      (select count(*) from public.marketing_syndication_items);
+  `);
+  assert(
+    missingBaseline === "baseline_required|defitutorials|0|0|0|0|0" &&
+      missingBaselineState === "0|0",
+    `first discovery did not fail closed without a baseline: ${missingBaseline}|${missingBaselineState}`,
+  );
+
+  const baselineResult = discoverSyndication(baselineSnapshot, true);
+  const baselineState = psqlScalar(`
+    select
+      count(*) filter (where state = 'baseline'),
+      count(*) filter (where state = 'pending'),
+      count(*) filter (
+        where classification = 'unknown'
+          and source_published_at is not null
+      )
+    from public.marketing_syndication_items
+    where source_key = 'defitutorials';
+  `);
+  assert(
+    baselineResult === "baselined|defitutorials|2|2|0|0|0" &&
+      baselineState === "2|0|1",
+    `first successful snapshot was not baselined: ${baselineResult}|${baselineState}`,
+  );
+
+  const emptyInitializedSnapshot = syndicationSnapshot({
+    sourceKey: "defitutorials",
+    etag: 'W/"empty-poison"',
+    lastModified: "Fri, 31 Jul 2026 12:30:00 GMT",
+  });
+  const emptyInitializedDiscovery = await psqlScalarSession(`
+    select result_code
+    from public.discover_marketing_syndication_items(
+      ${sqlJson(emptyInitializedSnapshot)},
+      false
+    );
+  `);
+  const emptyInitializedState = psqlScalar(`
+    select
+      etag,
+      last_modified,
+      (
+        select count(*)
+        from public.marketing_syndication_items
+        where source_key = 'defitutorials'
+      )
+    from public.marketing_syndication_sources
+    where source_key = 'defitutorials';
+  `);
+  assert(
+    emptyInitializedDiscovery.status !== 0 &&
+      /invalid marketing syndication snapshot/.test(
+        `${emptyInitializedDiscovery.stdout}${emptyInitializedDiscovery.stderr}`,
+      ) &&
+      emptyInitializedState ===
+        'W/"defi-v1"|Fri, 31 Jul 2026 12:00:00 GMT|2',
+    `an empty successful snapshot advanced durable validators: ${emptyInitializedDiscovery.stdout}${emptyInitializedDiscovery.stderr}|${emptyInitializedState}`,
+  );
+
+  const defitutorialsCursor = psqlScalar(`
+    select
+      result_code,
+      source_key,
+      initialized_at is not null,
+      etag,
+      last_modified,
+      last_checked_at >= initialized_at
+    from public.get_marketing_syndication_source_cursor('defitutorials');
+  `);
+  assert(
+    defitutorialsCursor ===
+      'found|defitutorials|t|W/"defi-v1"|Fri, 31 Jul 2026 12:00:00 GMT|t',
+    `syndication cursor did not persist validators: ${defitutorialsCursor}`,
+  );
+
+  const notModifiedSnapshot = syndicationSnapshot({
+    sourceKey: "defitutorials",
+    etag: 'W/"defi-v1"',
+    lastModified: "Fri, 31 Jul 2026 12:00:00 GMT",
+    notModified: true,
+  });
+  const notModifiedResult = discoverSyndication(notModifiedSnapshot, false);
+  const notModifiedState = psqlScalar(`
+    select
+      (select count(*) from public.marketing_syndication_sources),
+      (select count(*) from public.marketing_syndication_items);
+  `);
+  assert(
+    notModifiedResult === "not_modified|defitutorials|0|0|0|0|0" &&
+      notModifiedState === "1|2",
+    `304 discovery mutated inbox items: ${notModifiedResult}|${notModifiedState}`,
+  );
+
+  const openZapsSnapshot = syndicationSnapshot({
+    sourceKey: "openzaps",
+    etag: '"openzaps-v1"',
+    items: [
+      syndicationItem({
+        itemId: syndicationOpenZapsBaseline,
+        canonicalUrl: "https://www.0xzaps.com/updates/baseline-release",
+        title: "Baseline OpenZaps release",
+        campaignSlug: "baseline-release",
+        publishedAt: "2026-07-30T12:00:00Z",
+        classification: "product_update",
+      }),
+    ],
+  });
+  const concurrentBaselines = await Promise.all([
+    psqlScalarSession(`
+      select result_code
+      from public.discover_marketing_syndication_items(
+        ${sqlJson(openZapsSnapshot)},
+        true
+      );
+    `),
+    psqlScalarSession(`
+      select result_code
+      from public.discover_marketing_syndication_items(
+        ${sqlJson(openZapsSnapshot)},
+        true
+      );
+    `),
+  ]);
+  assert(
+    concurrentBaselines.every((result) => result.status === 0),
+    `concurrent baseline calls failed: ${concurrentBaselines
+      .map((result) => `${result.stdout}${result.stderr}`)
+      .join("\n")}`,
+  );
+  const concurrentBaselineCodes = concurrentBaselines
+    .map((result) => result.stdout.trim())
+    .sort();
+  assert(
+    concurrentBaselineCodes.join("|") === "already_initialized|baselined",
+    `first-run baseline was not serialized exactly once: ${concurrentBaselineCodes.join("|")}`,
+  );
+
+  const pendingItems = [
+    baselineItems[0],
+    {
+      ...baselineItems[1],
+      title: "Approved baseline tutorial title",
+      published_at: "2026-07-02T12:00:00Z",
+      classification: "tutorial",
+    },
+    syndicationItem({
+      itemId: syndicationPendingKnown,
+      canonicalUrl: "https://defitutorials.substack.com/p/new-bounded-zap",
+      title: "A new bounded Zap tutorial",
+      campaignSlug: "new-bounded-zap",
+      publishedAt: "2026-08-01T03:00:00Z",
+      classification: "tutorial",
+    }),
+    syndicationItem({
+      itemId: syndicationPendingUnknown,
+      canonicalUrl: "https://defitutorials.substack.com/p/new-unclassified-post",
+      title: "A new unclassified post",
+      campaignSlug: "new-unclassified-post",
+      publishedAt: null,
+      classification: "unknown",
+    }),
+    syndicationItem({
+      itemId: syndicationPendingFailure,
+      canonicalUrl: "https://defitutorials.substack.com/p/new-failure-probe",
+      title: "A new failure-path tutorial",
+      campaignSlug: "new-failure-probe",
+      publishedAt: "2026-08-01T04:00:00Z",
+      classification: "tutorial",
+    }),
+  ];
+  const pendingSnapshot = syndicationSnapshot({
+    sourceKey: "defitutorials",
+    etag: 'W/"defi-v2"',
+    lastModified: "Sat, 01 Aug 2026 04:00:00 GMT",
+    items: pendingItems,
+  });
+  const pendingDiscovery = discoverSyndication(pendingSnapshot, false);
+  const pendingDiscoveryState = psqlScalar(`
+    select
+      count(*) filter (where state = 'baseline'),
+      count(*) filter (where state = 'pending'),
+      count(*) filter (
+        where source_item_key = '${syndicationBaselineUnknown}'
+          and classification = 'tutorial'
+          and title = 'Approved baseline tutorial title'
+          and source_published_at is not null
+      )
+    from public.marketing_syndication_items
+    where source_key = 'defitutorials';
+  `);
+  assert(
+    pendingDiscovery === "discovered|defitutorials|5|0|3|2|1" &&
+      pendingDiscoveryState === "2|3|1",
+    `later discovery did not preserve baseline and queue only new items: ${pendingDiscovery}|${pendingDiscoveryState}`,
+  );
+
+  const pendingReplay = discoverSyndication(pendingSnapshot, false);
+  assert(
+    pendingReplay === "discovered|defitutorials|5|0|0|5|0",
+    `exact discovery replay was not idempotent: ${pendingReplay}`,
+  );
+
+  const oversizedXLinkSnapshot = syndicationSnapshot({
+    sourceKey: "defitutorials",
+    items: [syndicationItem({
+      itemId: syndicationOversizedXLink,
+      canonicalUrl:
+        `https://defitutorials.substack.com/p/${"a".repeat(120)}`,
+      title: "A tutorial whose exact X attribution URL cannot fit",
+      campaignSlug: `defitutorials-${"b".repeat(80)}`,
+      publishedAt: "2026-08-01T04:01:00Z",
+      classification: "tutorial",
+    })],
+  });
+  const oversizedXLinkDiscovery = discoverSyndication(
+    oversizedXLinkSnapshot,
+    false,
+  );
+  const oversizedXLinkClaim = psqlScalar(`
+    select result_code, state
+    from public.claim_marketing_syndication_draft(
+      '${syndicationOversizedXLink}'
+    );
+  `);
+  assert(
+    oversizedXLinkDiscovery === "discovered|defitutorials|1|0|1|0|0" &&
+      oversizedXLinkClaim === "not_claimable|pending",
+    `an impossible X attribution link became claimable: ${oversizedXLinkDiscovery}|${oversizedXLinkClaim}`,
+  );
+
+  const baselineClaim = psqlScalar(`
+    select result_code, state, classification
+    from public.claim_marketing_syndication_draft(
+      '${syndicationBaselineUnknown}'
+    );
+  `);
+  assert(
+    baselineClaim === "not_claimable|baseline|tutorial",
+    `baseline item became claimable after classification: ${baselineClaim}`,
+  );
+
+  const unknownClaim = psqlScalar(`
+    select result_code, state, classification
+    from public.claim_marketing_syndication_draft(
+      '${syndicationPendingUnknown}'
+    );
+  `);
+  assert(
+    unknownClaim === "unknown_classification|pending|unknown",
+    `unknown syndication item was claimable: ${unknownClaim}`,
+  );
+
+  const skipUnknown = psqlScalar(`
+    select result_code, state
+    from public.skip_marketing_syndication_item(
+      '${syndicationPendingUnknown}'
+    );
+  `);
+  const skipUnknownReplay = psqlScalar(`
+    select result_code, state
+    from public.skip_marketing_syndication_item(
+      '${syndicationPendingUnknown}'
+    );
+  `);
+  assert(
+    skipUnknown === "skipped|skipped" &&
+      skipUnknownReplay === "already_skipped|skipped",
+    `syndication skip was not retry-safe: ${skipUnknown}|${skipUnknownReplay}`,
+  );
+
+  const skippedPromotionSnapshot = syndicationSnapshot({
+    sourceKey: "defitutorials",
+    etag: 'W/"defi-v3"',
+    lastModified: "Sat, 01 Aug 2026 05:00:00 GMT",
+    items: pendingItems.map((item) =>
+      item.source_item_key === syndicationPendingUnknown
+        ? {
+            ...item,
+            published_at: "2026-08-01T05:00:00Z",
+            classification: "tutorial",
+          }
+        : item,
+    ),
+  });
+  const skippedPromotionDiscovery = discoverSyndication(
+    skippedPromotionSnapshot,
+    false,
+  );
+  const skippedPromotionState = psqlScalar(`
+    select
+      state,
+      classification,
+      source_published_at is null,
+      workflow_run_id is null
+    from public.marketing_syndication_items
+    where source_item_key = '${syndicationPendingUnknown}';
+  `);
+  assert(
+    skippedPromotionDiscovery === "discovered|defitutorials|5|0|0|5|0" &&
+      skippedPromotionState === "skipped|unknown|t|t",
+    `a terminal skipped item was mutated or blocked later discovery: ${skippedPromotionDiscovery}|${skippedPromotionState}`,
+  );
+
+  const metadataDriftNewItem = syndicationItem({
+    itemId: syndicationMetadataDriftNew,
+    canonicalUrl:
+      "https://defitutorials.substack.com/p/new-after-metadata-drift",
+    title: "A new tutorial after ordinary feed metadata drift",
+    campaignSlug: "new-after-metadata-drift",
+    publishedAt: "2026-08-01T06:00:00Z",
+    classification: "tutorial",
+  });
+  const metadataDriftSnapshot = syndicationSnapshot({
+    sourceKey: "defitutorials",
+    etag: 'W/"defi-v4"',
+    lastModified: "Sat, 01 Aug 2026 06:00:00 GMT",
+    items: [
+      ...pendingItems.map((item) =>
+        item.source_item_key === syndicationBaselineKnown
+          ? {
+              ...item,
+              title: "Edited title that must not replace stored evidence",
+              published_at: "2026-07-01T13:00:00Z",
+            }
+          : item,
+      ),
+      metadataDriftNewItem,
+    ],
+  });
+  const metadataDriftDiscovery = discoverSyndication(
+    metadataDriftSnapshot,
+    false,
+  );
+  const metadataDriftState = psqlScalar(`
+    select
+      (
+        select title
+        from public.marketing_syndication_items
+        where source_item_key = '${syndicationBaselineKnown}'
+      ),
+      (
+        select source_published_at = '2026-07-01T12:00:00Z'::timestamptz
+        from public.marketing_syndication_items
+        where source_item_key = '${syndicationBaselineKnown}'
+      ),
+      (
+        select state
+        from public.marketing_syndication_items
+        where source_item_key = '${syndicationMetadataDriftNew}'
+      ),
+      (
+        select etag
+        from public.marketing_syndication_sources
+        where source_key = 'defitutorials'
+      );
+  `);
+  assert(
+    metadataDriftDiscovery === "discovered|defitutorials|6|0|1|5|0" &&
+      metadataDriftState ===
+        'Baseline known tutorial|t|pending|W/"defi-v4"',
+    `ordinary metadata drift blocked discovery or replaced stored evidence: ${metadataDriftDiscovery}|${metadataDriftState}`,
+  );
+
+  const concurrentDraftClaims = await Promise.all([
+    psqlScalarSession(`
+      select result_code, state
+      from public.claim_marketing_syndication_draft(
+        '${syndicationPendingKnown}'
+      );
+    `),
+    psqlScalarSession(`
+      select result_code, state
+      from public.claim_marketing_syndication_draft(
+        '${syndicationPendingKnown}'
+      );
+    `),
+  ]);
+  assert(
+    concurrentDraftClaims.every((result) => result.status === 0),
+    `concurrent syndication claims failed: ${concurrentDraftClaims
+      .map((result) => `${result.stdout}${result.stderr}`)
+      .join("\n")}`,
+  );
+  const concurrentDraftCodes = concurrentDraftClaims
+    .map((result) => result.stdout.trim())
+    .sort();
+  assert(
+    concurrentDraftCodes.join("|") ===
+      "already_claimed|drafting|claimed|drafting",
+    `syndication draft was not claimed exactly once: ${concurrentDraftCodes.join("|")}`,
+  );
+
+  const claimedSnapshot = psqlScalar(`
+    select
+      result_code,
+      item_id,
+      campaign_slug,
+      state,
+      workflow_run_id is null
+    from public.claim_marketing_syndication_draft(
+      '${syndicationPendingKnown}'
+    );
+  `);
+  assert(
+    claimedSnapshot ===
+      `already_claimed|${syndicationPendingKnown}|new-bounded-zap|drafting|t`,
+    `claim did not return the exact durable item snapshot: ${claimedSnapshot}`,
+  );
+
+  const syncBeforeAttachment = psqlScalar(`
+    select result_code, state, workflow_run_id is null
+    from public.sync_marketing_syndication_item(
+      '${syndicationPendingKnown}',
+      'run:syndication-1',
+      'awaiting_approval'
+    );
+  `);
+  assert(
+    syncBeforeAttachment === "invalid_transition|drafting|t",
+    `workflow evidence attached a missing run identity: ${syncBeforeAttachment}`,
+  );
+
+  const attachedDraft = psqlScalar(`
+    select result_code, state, workflow_run_id
+    from public.attach_marketing_syndication_workflow(
+      '${syndicationPendingKnown}',
+      'run:syndication-1'
+    );
+  `);
+  const attachedDraftReplay = psqlScalar(`
+    select result_code, state, workflow_run_id
+    from public.attach_marketing_syndication_workflow(
+      '${syndicationPendingKnown}',
+      'run:syndication-1'
+    );
+  `);
+  assert(
+    attachedDraft === "attached|drafting|run:syndication-1" &&
+      attachedDraftReplay ===
+        "already_attached|drafting|run:syndication-1",
+    `workflow attachment was not retry-safe: ${attachedDraft}|${attachedDraftReplay}`,
+  );
+
+  const awaitingApprovalSync = psqlScalar(`
+    select result_code, state, workflow_run_id
+    from public.sync_marketing_syndication_item(
+      '${syndicationPendingKnown}',
+      'run:syndication-1',
+      'awaiting_approval'
+    );
+  `);
+  assert(
+    awaitingApprovalSync ===
+      "synced|awaiting_approval|run:syndication-1",
+    `draft evidence did not advance awaiting approval: ${awaitingApprovalSync}`,
+  );
+
+  const conflictingSync = psqlScalar(`
+    select result_code, state, workflow_run_id
+    from public.sync_marketing_syndication_item(
+      '${syndicationPendingKnown}',
+      'run:different',
+      'published'
+    );
+  `);
+  const publishedSync = psqlScalar(`
+    select result_code, state, workflow_run_id
+    from public.sync_marketing_syndication_item(
+      '${syndicationPendingKnown}',
+      'run:syndication-1',
+      'published'
+    );
+  `);
+  const publishedSyncReplay = psqlScalar(`
+    select result_code, state, workflow_run_id
+    from public.sync_marketing_syndication_item(
+      '${syndicationPendingKnown}',
+      'run:syndication-1',
+      'published'
+    );
+  `);
+  assert(
+    conflictingSync ===
+      "workflow_conflict|awaiting_approval|run:syndication-1" &&
+      publishedSync === "synced|published|run:syndication-1" &&
+      publishedSyncReplay === "already_synced|published|run:syndication-1",
+    `workflow reconciliation was not exact and retry-safe: ${conflictingSync}|${publishedSync}|${publishedSyncReplay}`,
+  );
+
+  const completedClaimReplay = psqlScalar(`
+    select result_code, state, workflow_run_id
+    from public.claim_marketing_syndication_draft(
+      '${syndicationPendingKnown}'
+    );
+  `);
+  assert(
+    completedClaimReplay ===
+      "already_completed|published|run:syndication-1",
+    `completed syndication was reclaimed: ${completedClaimReplay}`,
+  );
+
+  const failureClaim = psqlScalar(`
+    select result_code, state
+    from public.claim_marketing_syndication_draft(
+      '${syndicationPendingFailure}'
+    );
+  `);
+  const failedStart = psqlScalar(`
+    select result_code, state, workflow_run_id is null
+    from public.fail_marketing_syndication_draft(
+      '${syndicationPendingFailure}'
+    );
+  `);
+  const failedStartReplay = psqlScalar(`
+    select result_code, state
+    from public.fail_marketing_syndication_draft(
+      '${syndicationPendingFailure}'
+    );
+  `);
+  const failedClaimReplay = psqlScalar(`
+    select result_code, state
+    from public.claim_marketing_syndication_draft(
+      '${syndicationPendingFailure}'
+    );
+  `);
+  assert(
+    failureClaim === "claimed|drafting" &&
+      failedStart === "failed|failed|t" &&
+      failedStartReplay === "already_failed|failed" &&
+      failedClaimReplay === "failed|failed",
+    `ambiguous workflow start was retryable: ${failureClaim}|${failedStart}|${failedStartReplay}|${failedClaimReplay}`,
+  );
+
+  const boundedList = psqlScalar(`
+    select item_id, campaign_slug, source_published_at is not null
+    from public.list_marketing_syndication_items(100)
+    where item_id = '${syndicationPendingKnown}';
+  `);
+  assert(
+    boundedList === `${syndicationPendingKnown}|new-bounded-zap|t`,
+    `bounded syndication list lost durable source metadata: ${boundedList}`,
+  );
+  const oversizedList = await psqlScalarSession(`
+    select * from public.list_marketing_syndication_items(101);
+  `);
+  assert(
+    oversizedList.status !== 0 &&
+      /invalid marketing syndication list limit/.test(
+        `${oversizedList.stdout}${oversizedList.stderr}`,
+      ),
+    "syndication list accepted an unbounded limit",
+  );
+
+  for (const [mutation, expectedError] of [
+    [
+      `update public.marketing_syndication_items
+       set canonical_url = canonical_url || '-changed'
+       where source_item_key = '${syndicationBaselineKnown}'`,
+      "marketing syndication item identity is immutable",
+    ],
+    [
+      `update public.marketing_syndication_items
+       set state = 'published'
+       where source_item_key = '${syndicationBaselineKnown}'`,
+      "invalid marketing syndication state transition",
+    ],
+    [
+      `delete from public.marketing_syndication_items
+       where source_item_key = '${syndicationBaselineKnown}'`,
+      "marketing syndication evidence is append-only",
+    ],
+    [
+      "truncate public.marketing_syndication_items",
+      "marketing syndication evidence is append-only",
+    ],
+  ]) {
+    const mutationAttempt = await psqlScalarSession(mutation);
+    assert(
+      mutationAttempt.status !== 0 &&
+        `${mutationAttempt.stdout}${mutationAttempt.stderr}`.includes(
+          expectedError,
+        ),
+      `syndication artifact mutation was not rejected: ${mutation}\n${mutationAttempt.stdout}${mutationAttempt.stderr}`,
+    );
+  }
+
+  const immutableSyndicationState = psqlScalar(`
+    select
+      (select count(*) from public.marketing_syndication_sources),
+      (select count(*) from public.marketing_syndication_items),
+      count(*) filter (where state = 'published'),
+      count(*) filter (where state = 'skipped'),
+      count(*) filter (where state = 'failed')
+    from public.marketing_syndication_items;
+  `);
+  assert(
+    immutableSyndicationState === "2|8|1|1|1",
+    `rejected syndication mutations changed durable state: ${immutableSyndicationState}`,
   );
 
   const initialReviewedCampaignState = psqlScalar(`
@@ -2775,7 +3614,7 @@ try {
   );
 
   console.log(
-    "PostgreSQL 16 relay, marketing, and lead-notification integration: passed",
+    "PostgreSQL 16 relay, marketing, syndication, and lead-notification integration: passed",
   );
 } finally {
   spawnSync("pg_ctl", ["-D", dataDirectory, "-m", "immediate", "stop"], {

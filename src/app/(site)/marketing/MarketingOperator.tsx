@@ -18,6 +18,8 @@ import styles from "./marketing.module.css";
 const TOKEN_STORAGE_KEY = "openzaps:marketing:operator-token";
 const LEAD_TOKEN_STORAGE_KEY = "openzaps:marketing:lead-desk-token";
 const RUN_STORAGE_KEY = "openzaps:marketing:run-id";
+const SYNDICATION_REPAIR_STORAGE_KEY =
+  "openzaps:marketing:syndication-repair";
 const POLL_INTERVAL_MS = 2_500;
 const POLL_MAX_INTERVAL_MS = 30_000;
 
@@ -25,6 +27,16 @@ const CHANNELS = ["x", "discord", "substack"] as const;
 type Channel = (typeof CHANNELS)[number];
 type DraftKind = "product_update" | "tutorial" | "community_reply";
 type LeadStatus = "new" | "contacted" | "qualified" | "closed";
+type SyndicationSource = "openzaps" | "defitutorials";
+type SyndicationClassification = "reviewable" | "needs_classification";
+type SyndicationStatus =
+  | "baseline"
+  | "pending"
+  | "drafting"
+  | "awaiting_approval"
+  | "published"
+  | "skipped"
+  | "failed";
 type JsonRecord = Record<string, unknown>;
 
 type SubstackVerification = {
@@ -39,7 +51,11 @@ type SubstackVerification = {
   persisted: false;
 };
 
-type OperatorError = Error & { status?: number };
+type OperatorError = Error & {
+  status?: number;
+  runId?: string;
+  repairProof?: string;
+};
 
 export type ReadinessRow = {
   key: string;
@@ -70,6 +86,47 @@ export type OperatorLead = {
   expiresAt: string;
 };
 
+export type OperatorSyndicationItem = {
+  itemId: string;
+  source: SyndicationSource;
+  title: string;
+  canonicalUrl: string;
+  publishedAt: string | null;
+  classification: SyndicationClassification;
+  status: SyndicationStatus;
+  campaignSlug: string;
+  workflowRunId: string | null;
+  discoveredAt: string;
+  updatedAt: string;
+};
+
+export type SyndicationRepairPair = {
+  itemId: string;
+  runId: string;
+  repairProof: string;
+};
+
+type OperatorSessionResetReason = "explicit_forget" | "auth_rejected";
+
+export function operatorResetClearsSyndicationRepair(
+  reason: OperatorSessionResetReason,
+): boolean {
+  return reason === "explicit_forget";
+}
+
+export function syndicationNoticeAfterReconciliation(
+  current: string,
+  deferred: number,
+): string {
+  if (deferred > 0) {
+    return `${deferred} attached workflow${deferred === 1 ? "" : "s"} could not be reconciled yet. No item was marked published without complete evidence.`;
+  }
+  return /^\d+ attached workflows? could not be reconciled yet\. No item was marked published without complete evidence\.$/u
+    .test(current)
+    ? ""
+    : current;
+}
+
 const LEAD_DATE_FORMATTER = new Intl.DateTimeFormat("en-US", {
   dateStyle: "medium",
   timeStyle: "short",
@@ -82,6 +139,14 @@ function isRecord(value: unknown): value is JsonRecord {
 
 function text(value: unknown): string | null {
   return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+function isBoundedTimestamp(value: string | null): value is string {
+  return Boolean(
+    value
+    && value.length <= 40
+    && Number.isFinite(Date.parse(value)),
+  );
 }
 
 function titleCase(value: string): string {
@@ -115,6 +180,14 @@ async function operatorRequest(
       text(body.error) ?? text(body.message) ?? `Request failed (${response.status}).`,
     ) as OperatorError;
     error.status = response.status;
+    const responseRunId = runIdFrom(body);
+    if (responseRunId && /^[^\s/\\]{1,200}$/u.test(responseRunId)) {
+      error.runId = responseRunId;
+    }
+    const repairProof = text(body.repairProof);
+    if (repairProof && /^[A-Za-z0-9_-]{43}$/u.test(repairProof)) {
+      error.repairProof = repairProof;
+    }
     throw error;
   }
   return body;
@@ -509,6 +582,111 @@ export function operatorLeads(body: JsonRecord): OperatorLead[] {
   });
 }
 
+export function operatorSyndicationItems(
+  body: JsonRecord,
+): OperatorSyndicationItem[] {
+  if (!Array.isArray(body.items) || body.items.length > 20) return [];
+  const sources = new Set<SyndicationSource>(["openzaps", "defitutorials"]);
+  const classifications = new Set<SyndicationClassification>([
+    "reviewable",
+    "needs_classification",
+  ]);
+  const statuses = new Set<SyndicationStatus>([
+    "baseline",
+    "pending",
+    "drafting",
+    "awaiting_approval",
+    "published",
+    "skipped",
+    "failed",
+  ]);
+
+  return body.items.flatMap((value): OperatorSyndicationItem[] => {
+    if (!isRecord(value)) return [];
+    const itemId = text(value.itemId);
+    const source = text(value.source);
+    const title = text(value.title);
+    const canonicalUrl = text(value.canonicalUrl);
+    const publishedAt = value.publishedAt === null
+      ? null
+      : text(value.publishedAt);
+    const classification = text(value.classification);
+    const status = text(value.status);
+    const campaignSlug = text(value.campaignSlug);
+    const workflowRunId = value.workflowRunId === null
+      ? null
+      : text(value.workflowRunId);
+    const discoveredAt = text(value.discoveredAt);
+    const updatedAt = text(value.updatedAt);
+    let parsedUrl: URL;
+    try {
+      parsedUrl = new URL(canonicalUrl ?? "");
+    } catch {
+      return [];
+    }
+    const allowedUrl =
+      parsedUrl.protocol === "https:"
+      && !parsedUrl.username
+      && !parsedUrl.password
+      && !parsedUrl.port
+      && !parsedUrl.search
+      && !parsedUrl.hash
+      && (
+        (
+          source === "openzaps"
+          && parsedUrl.hostname === "www.0xzaps.com"
+        )
+        || (
+          source === "defitutorials"
+          && parsedUrl.hostname === "defitutorials.substack.com"
+          && /^\/p\/[a-z0-9](?:[a-z0-9-]{0,198}[a-z0-9])?\/?$/u.test(
+            parsedUrl.pathname,
+          )
+        )
+      );
+    if (
+      !itemId
+      || !/^[0-9a-f]{64}$/u.test(itemId)
+      || !source
+      || !sources.has(source as SyndicationSource)
+      || !title
+      || Array.from(title).length > 200
+      || !canonicalUrl
+      || !allowedUrl
+      || (value.publishedAt !== null && !publishedAt)
+      || (publishedAt !== null && !isBoundedTimestamp(publishedAt))
+      || !classification
+      || !classifications.has(classification as SyndicationClassification)
+      || !status
+      || !statuses.has(status as SyndicationStatus)
+      || !campaignSlug
+      || !/^[a-z0-9][a-z0-9-]{0,95}$/u.test(campaignSlug)
+      || (value.workflowRunId !== null && !workflowRunId)
+      || (workflowRunId !== null && !/^[^\s/\\]{1,200}$/u.test(workflowRunId))
+      || (["baseline", "pending", "skipped"].includes(status) && workflowRunId !== null)
+      || (["awaiting_approval", "published"].includes(status) && workflowRunId === null)
+      || !discoveredAt
+      || !isBoundedTimestamp(discoveredAt)
+      || !updatedAt
+      || !isBoundedTimestamp(updatedAt)
+    ) return [];
+
+    return [{
+      itemId,
+      source: source as SyndicationSource,
+      title,
+      canonicalUrl,
+      publishedAt,
+      classification: classification as SyndicationClassification,
+      status: status as SyndicationStatus,
+      campaignSlug,
+      workflowRunId,
+      discoveredAt,
+      updatedAt,
+    }];
+  });
+}
+
 export function leadReplyHref(email: string): string {
   return `mailto:${encodeURIComponent(email)}?subject=${encodeURIComponent(
     "Your OpenZaps Zap request",
@@ -517,6 +695,73 @@ export function leadReplyHref(email: string): string {
 
 export function leadDeleteTriggerId(id: string): string {
   return `lead-delete-trigger-${encodeURIComponent(id)}`;
+}
+
+export function syndicationSkipTriggerId(id: string): string {
+  return `syndication-skip-trigger-${encodeURIComponent(id)}`;
+}
+
+export function parseSyndicationRepairPair(
+  value: string,
+): SyndicationRepairPair | null {
+  if (!value || value.length > 400) return null;
+  try {
+    const parsed: unknown = JSON.parse(value);
+    if (!isRecord(parsed) || Object.keys(parsed).length !== 3) return null;
+    const itemId = text(parsed.itemId);
+    const runId = text(parsed.runId);
+    const repairProof = text(parsed.repairProof);
+    if (
+      !itemId
+      || !/^[0-9a-f]{64}$/u.test(itemId)
+      || !runId
+      || !/^[^\s/\\]{1,200}$/u.test(runId)
+      || !repairProof
+      || !/^[A-Za-z0-9_-]{43}$/u.test(repairProof)
+    ) return null;
+    return { itemId, runId, repairProof };
+  } catch {
+    return null;
+  }
+}
+
+export function syndicationDeferredCount(body: JsonRecord): number {
+  const reconciliation = isRecord(body.reconciliation)
+    ? body.reconciliation
+    : null;
+  const deferred = reconciliation?.deferred;
+  return typeof deferred === "number"
+    && Number.isSafeInteger(deferred)
+    && deferred >= 0
+    && deferred <= 20
+    ? deferred
+    : 0;
+}
+
+export function syndicationRepairMatchesItem(
+  item: OperatorSyndicationItem,
+  repair: SyndicationRepairPair | null,
+): boolean {
+  return Boolean(
+    repair
+    && item.status === "drafting"
+    && item.workflowRunId === null
+    && item.itemId === repair.itemId,
+  );
+}
+
+export function syndicationItemCanDraft(
+  item: OperatorSyndicationItem,
+): boolean {
+  if (item.classification !== "reviewable" || item.status !== "pending") {
+    return false;
+  }
+  const url = new URL(item.canonicalUrl);
+  url.searchParams.set("utm_source", "x");
+  url.searchParams.set("utm_medium", "social");
+  url.searchParams.set("utm_campaign", item.campaignSlug);
+  url.searchParams.set("utm_content", "feed_update");
+  return Array.from(url.toString()).length <= 200;
 }
 
 export function pollRetryDelay(failureCount: number): number {
@@ -714,16 +959,29 @@ export function MarketingOperator(): React.JSX.Element {
   const [leadActionId, setLeadActionId] = useState("");
   const [leadDeleteConfirmId, setLeadDeleteConfirmId] = useState("");
   const [leadActionNotice, setLeadActionNotice] = useState("");
+  const [syndicationItems, setSyndicationItems] = useState<
+    OperatorSyndicationItem[]
+  >([]);
+  const [syndicationState, setSyndicationState] = useState<
+    "idle" | "loading" | "ready" | "error"
+  >("idle");
+  const [syndicationError, setSyndicationError] = useState("");
+  const [syndicationActionId, setSyndicationActionId] = useState("");
+  const [syndicationNotice, setSyndicationNotice] = useState("");
+  const [syndicationRepair, setSyndicationRepair] =
+    useState<SyndicationRepairPair | null>(null);
+  const [syndicationSkipConfirmId, setSyndicationSkipConfirmId] = useState("");
   const [busy, setBusy] = useState<
     "connect" | "create" | "approve" | "reject" | ""
   >("");
   const [notice, setNotice] = useState(
-    "Enter both operator tokens to load readiness and the private lead queue.",
+    "Enter both operator tokens to load readiness and the operator queues.",
   );
   const [pollRevision, setPollRevision] = useState(0);
   const leadRequestGeneration = useRef(0);
   const leadSessionGeneration = useRef(0);
   const leadActionGeneration = useRef(0);
+  const syndicationRequestGeneration = useRef(0);
 
   const readiness = useMemo(() => readinessRows(status), [status]);
   const currentStatus = runStatus(run);
@@ -737,13 +995,30 @@ export function MarketingOperator(): React.JSX.Element {
     Boolean(draft) && currentStatus === "awaiting_approval" && !busy;
   const canApprove = canDecide && reviewAcknowledged;
 
-  const forgetToken = (message = "Operator token forgotten for this tab."): void => {
+  const rememberSyndicationRepair = (
+    repair: SyndicationRepairPair | null,
+  ): void => {
+    setSyndicationRepair(repair);
+    if (repair) {
+      sessionWrite(SYNDICATION_REPAIR_STORAGE_KEY, JSON.stringify(repair));
+    } else {
+      sessionRemove(SYNDICATION_REPAIR_STORAGE_KEY);
+    }
+  };
+
+  const clearOperatorSession = (
+    reason: OperatorSessionResetReason,
+    message: string,
+  ): void => {
+    const clearRepair = operatorResetClearsSyndicationRepair(reason);
     sessionRemove(TOKEN_STORAGE_KEY);
     sessionRemove(LEAD_TOKEN_STORAGE_KEY);
     sessionRemove(RUN_STORAGE_KEY);
+    if (clearRepair) sessionRemove(SYNDICATION_REPAIR_STORAGE_KEY);
     leadRequestGeneration.current += 1;
     leadSessionGeneration.current += 1;
     leadActionGeneration.current += 1;
+    syndicationRequestGeneration.current += 1;
     setToken("");
     setTokenInput("");
     setLeadToken("");
@@ -757,14 +1032,31 @@ export function MarketingOperator(): React.JSX.Element {
     setLeadActionId("");
     setLeadDeleteConfirmId("");
     setLeadActionNotice("");
+    setSyndicationItems([]);
+    setSyndicationState("idle");
+    setSyndicationError("");
+    setSyndicationActionId("");
+    setSyndicationNotice("");
+    if (clearRepair) setSyndicationRepair(null);
+    setSyndicationSkipConfirmId("");
     setAcknowledgedDraftKey("");
     setNotice(message);
+  };
+
+  const forgetToken = (): void => {
+    clearOperatorSession(
+      "explicit_forget",
+      "Operator tokens and any pending syndication repair proof were forgotten for this tab.",
+    );
   };
 
   const handleError = (error: unknown, fallback: string): void => {
     const requestError = error as OperatorError;
     if (requestError?.status === 401) {
-      forgetToken("The operator token was rejected and removed from this tab.");
+      clearOperatorSession(
+        "auth_rejected",
+        "The operator tokens were rejected and removed from this tab. Any pending original-run repair proof was preserved; reconnect with the rotated tokens to retry it.",
+      );
       return;
     }
     setNotice(error instanceof Error ? error.message : fallback);
@@ -808,6 +1100,222 @@ export function MarketingOperator(): React.JSX.Element {
           ? error.message
           : "The lead queue could not be loaded.",
       );
+    }
+  };
+
+  const loadSyndicationInbox = async (
+    candidateToken: string,
+    expectedSessionGeneration = leadSessionGeneration.current,
+  ): Promise<void> => {
+    if (leadSessionGeneration.current !== expectedSessionGeneration) return;
+    const requestGeneration = syndicationRequestGeneration.current + 1;
+    syndicationRequestGeneration.current = requestGeneration;
+    setSyndicationState("loading");
+    setSyndicationError("");
+    try {
+      const body = await operatorRequest(
+        "/api/marketing/syndication",
+        candidateToken,
+      );
+      if (
+        syndicationRequestGeneration.current !== requestGeneration
+        || leadSessionGeneration.current !== expectedSessionGeneration
+      ) return;
+      const nextItems = operatorSyndicationItems(body);
+      setSyndicationItems(nextItems);
+      setSyndicationState("ready");
+      setSyndicationSkipConfirmId((current) =>
+        current && nextItems.some(
+          (item) => item.itemId === current && item.status === "pending",
+        )
+          ? current
+          : ""
+      );
+      const deferred = syndicationDeferredCount(body);
+      setSyndicationNotice((current) =>
+        syndicationNoticeAfterReconciliation(current, deferred)
+      );
+      const pendingRepair = parseSyndicationRepairPair(
+        sessionRead(SYNDICATION_REPAIR_STORAGE_KEY),
+      ) ?? syndicationRepair;
+      if (
+        pendingRepair
+        && nextItems.some(
+          (item) => item.itemId === pendingRepair.itemId
+            && item.workflowRunId === pendingRepair.runId,
+        )
+      ) {
+        rememberSyndicationRepair(null);
+      }
+    } catch (error) {
+      if (
+        syndicationRequestGeneration.current !== requestGeneration
+        || leadSessionGeneration.current !== expectedSessionGeneration
+      ) return;
+      const requestError = error as OperatorError;
+      if (requestError?.status === 401) {
+        handleError(error, "The syndication inbox could not be loaded.");
+        return;
+      }
+      setSyndicationItems([]);
+      setSyndicationState("error");
+      setSyndicationError(
+        error instanceof Error
+          ? error.message
+          : "The syndication inbox could not be loaded.",
+      );
+    }
+  };
+
+  const openSyndicationRun = (nextRunId: string): void => {
+    setRunId(nextRunId);
+    setRun(null);
+    setComment("");
+    setAcknowledgedDraftKey("");
+    sessionWrite(RUN_STORAGE_KEY, nextRunId);
+    setNotice("Loading the selected syndication draft run.");
+    setPollRevision((value) => value + 1);
+  };
+
+  const actOnSyndicationItem = async (
+    itemId: string,
+    action: "draft" | "skip",
+  ): Promise<void> => {
+    if (!token || syndicationActionId) return;
+    const actionId = `${action}:${itemId}`;
+    const sessionGeneration = leadSessionGeneration.current;
+    setSyndicationActionId(actionId);
+    setSyndicationNotice("");
+    try {
+      const body = await operatorRequest("/api/marketing/syndication", token, {
+        method: "POST",
+        body: JSON.stringify({ action, itemId }),
+      });
+      if (leadSessionGeneration.current !== sessionGeneration) return;
+      if (action === "draft") {
+        const nextRunId = runIdFrom(body);
+        if (!nextRunId) {
+          throw new Error(
+            "The syndication draft started without returning its workflow run ID.",
+          );
+        }
+        openSyndicationRun(nextRunId);
+        setSyndicationNotice(
+          "Review draft started for X and Discord. Nothing has been published.",
+        );
+      } else {
+        setSyndicationSkipConfirmId("");
+        setSyndicationNotice("Syndication item skipped. No draft or post was created.");
+      }
+      await loadSyndicationInbox(token, sessionGeneration);
+    } catch (error) {
+      if (leadSessionGeneration.current !== sessionGeneration) return;
+      const requestError = error as OperatorError;
+      if (
+        action === "draft"
+        && requestError.runId
+        && requestError.repairProof
+      ) {
+        const startedRunId = requestError.runId;
+        const repair = {
+          itemId,
+          runId: startedRunId,
+          repairProof: requestError.repairProof,
+        };
+        rememberSyndicationRepair(repair);
+        openSyndicationRun(startedRunId);
+        try {
+          await operatorRequest("/api/marketing/syndication", token, {
+            method: "POST",
+            body: JSON.stringify({
+              action: "attach",
+              itemId,
+              runId: startedRunId,
+              repairProof: repair.repairProof,
+            }),
+          });
+          setSyndicationNotice(
+            "Review draft started and its durable inbox link was repaired. Nothing has been published.",
+          );
+          rememberSyndicationRepair(null);
+          await loadSyndicationInbox(token, sessionGeneration);
+        } catch (repairError) {
+          if ((repairError as OperatorError)?.status === 401) {
+            handleError(
+              repairError,
+              "The original syndication workflow link could not be repaired.",
+            );
+            return;
+          }
+          setSyndicationNotice(
+            repairError instanceof Error
+              ? `The draft run is open, but its inbox link still needs repair: ${repairError.message}`
+              : "The draft run is open, but its inbox link still needs repair.",
+          );
+        }
+        return;
+      }
+      if (action === "draft" && requestError.runId) {
+        openSyndicationRun(requestError.runId);
+        setSyndicationNotice(
+          "The draft run is open, but no valid durable repair proof was returned. Do not start a replacement workflow.",
+        );
+        return;
+      }
+      if (requestError?.status === 401) {
+        handleError(error, "The syndication action could not be completed.");
+      } else {
+        setSyndicationNotice(
+          error instanceof Error
+            ? error.message
+            : "The syndication action could not be completed.",
+        );
+      }
+    } finally {
+      if (leadSessionGeneration.current === sessionGeneration) {
+        setSyndicationActionId("");
+      }
+    }
+  };
+
+  const retrySyndicationRepair = async (): Promise<void> => {
+    const repair = syndicationRepair;
+    if (!token || !repair || syndicationActionId) return;
+    const sessionGeneration = leadSessionGeneration.current;
+    setSyndicationActionId(`attach:${repair.itemId}`);
+    setSyndicationNotice("");
+    openSyndicationRun(repair.runId);
+    try {
+      await operatorRequest("/api/marketing/syndication", token, {
+        method: "POST",
+        body: JSON.stringify({
+          action: "attach",
+          itemId: repair.itemId,
+          runId: repair.runId,
+          repairProof: repair.repairProof,
+        }),
+      });
+      if (leadSessionGeneration.current !== sessionGeneration) return;
+      rememberSyndicationRepair(null);
+      setSyndicationNotice(
+        "The original review run is now durably linked. Nothing has been published.",
+      );
+      await loadSyndicationInbox(token, sessionGeneration);
+    } catch (error) {
+      if (leadSessionGeneration.current !== sessionGeneration) return;
+      if ((error as OperatorError)?.status === 401) {
+        handleError(error, "The original syndication workflow link could not be repaired.");
+      } else {
+        setSyndicationNotice(
+          error instanceof Error
+            ? `The original run link still needs repair: ${error.message}`
+            : "The original run link still needs repair.",
+        );
+      }
+    } finally {
+      if (leadSessionGeneration.current === sessionGeneration) {
+        setSyndicationActionId("");
+      }
     }
   };
 
@@ -928,6 +1436,10 @@ export function MarketingOperator(): React.JSX.Element {
         setLeadTokenInput(storedLeadToken);
         setLeadToken(storedLeadToken);
         setStatus(body);
+        const storedRepairValue = sessionRead(SYNDICATION_REPAIR_STORAGE_KEY);
+        const storedRepair = parseSyndicationRepairPair(storedRepairValue);
+        if (storedRepair) setSyndicationRepair(storedRepair);
+        else if (storedRepairValue) sessionRemove(SYNDICATION_REPAIR_STORAGE_KEY);
         const recoveredRunId =
           marketingRunIdFromSearch(window.location.search)
           || sessionRead(RUN_STORAGE_KEY);
@@ -936,6 +1448,7 @@ export function MarketingOperator(): React.JSX.Element {
           setRunId(recoveredRunId);
         }
         void loadLeadQueue(storedLeadToken, 3, sessionGeneration);
+        void loadSyndicationInbox(storedToken, sessionGeneration);
         setNotice("Operator session restored. Readiness is current.");
       })
       .catch((error: unknown) => {
@@ -957,6 +1470,10 @@ export function MarketingOperator(): React.JSX.Element {
     let failureCount = 0;
 
     const poll = async (): Promise<void> => {
+      if (document.hidden) {
+        timeout = setTimeout(() => void poll(), POLL_MAX_INTERVAL_MS);
+        return;
+      }
       try {
         const body = await operatorRequest(`/api/marketing/runs/${encodeURIComponent(runId)}`, token);
         if (cancelled) return;
@@ -969,8 +1486,15 @@ export function MarketingOperator(): React.JSX.Element {
             ? `Draft ready · ${titleCase(nextStatus)}.`
             : `Generating draft · ${titleCase(nextStatus)}.`,
         );
-        if (!terminalStatus(nextStatus)) {
-          timeout = setTimeout(() => void poll(), POLL_INTERVAL_MS);
+        if (terminalStatus(nextStatus)) {
+          void loadSyndicationInbox(token, leadSessionGeneration.current);
+        } else {
+          timeout = setTimeout(
+            () => void poll(),
+            nextStatus === "awaiting_approval"
+              ? POLL_MAX_INTERVAL_MS
+              : POLL_INTERVAL_MS,
+          );
         }
       } catch (error) {
         if (cancelled) return;
@@ -1005,6 +1529,7 @@ export function MarketingOperator(): React.JSX.Element {
     leadSessionGeneration.current = sessionGeneration;
     leadRequestGeneration.current += 1;
     leadActionGeneration.current += 1;
+    syndicationRequestGeneration.current += 1;
     try {
       const body = await operatorRequest("/api/marketing/status", candidate);
       if (leadSessionGeneration.current !== sessionGeneration) return;
@@ -1013,6 +1538,10 @@ export function MarketingOperator(): React.JSX.Element {
       setToken(candidate);
       setLeadToken(candidateLeadToken);
       setStatus(body);
+      const storedRepairValue = sessionRead(SYNDICATION_REPAIR_STORAGE_KEY);
+      const storedRepair = parseSyndicationRepairPair(storedRepairValue);
+      if (storedRepair) setSyndicationRepair(storedRepair);
+      else if (storedRepairValue) sessionRemove(SYNDICATION_REPAIR_STORAGE_KEY);
       const recoveredRunId =
         marketingRunIdFromSearch(window.location.search)
         || sessionRead(RUN_STORAGE_KEY);
@@ -1021,11 +1550,14 @@ export function MarketingOperator(): React.JSX.Element {
         setRunId(recoveredRunId);
       }
       setNotice("Connected. Readiness is current.");
-      await loadLeadQueue(
-        candidateLeadToken,
-        leadScoreFloor,
-        sessionGeneration,
-      );
+      await Promise.all([
+        loadLeadQueue(
+          candidateLeadToken,
+          leadScoreFloor,
+          sessionGeneration,
+        ),
+        loadSyndicationInbox(candidate, sessionGeneration),
+      ]);
     } catch (error) {
       handleError(error, "Could not load marketing readiness.");
     } finally {
@@ -1437,10 +1969,194 @@ export function MarketingOperator(): React.JSX.Element {
             </p>
           </section>
 
-          <section className={styles.panel} aria-labelledby="create-marketing-draft">
+          <section className={styles.panel} aria-labelledby="syndication-inbox">
             <div className={styles.sectionHead}>
               <div>
                 <span className={styles.step}>04</span>
+                <h2 id="syndication-inbox">Feed syndication inbox</h2>
+              </div>
+              <button
+                className={styles.textButton}
+                type="button"
+                onClick={() => void loadSyndicationInbox(token)}
+                disabled={
+                  syndicationState === "loading"
+                  || Boolean(syndicationActionId)
+                }
+              >
+                {syndicationState === "loading" ? "Refreshing…" : "Refresh"}
+              </button>
+            </div>
+            <p className={styles.readinessScope}>
+              New approved OpenZaps updates and RSS-confirmed DeFi Tutorials
+              posts are deduplicated here. Discovery cannot publish or enter
+              the automatic campaign queue.
+            </p>
+            {syndicationState === "error" ? (
+              <div className={styles.queueError} role="alert">
+                <span>{syndicationError}</span>
+                <button
+                  className={styles.textButton}
+                  type="button"
+                  onClick={() => void loadSyndicationInbox(token)}
+                >
+                  Try again
+                </button>
+              </div>
+            ) : null}
+            {syndicationItems.length ? (
+              <div className={styles.syndicationInbox}>
+                {syndicationItems.map((item) => {
+                  const canDraft = syndicationItemCanDraft(item);
+                  const canSkip = item.status === "pending";
+                  const canRepair = syndicationRepairMatchesItem(
+                    item,
+                    syndicationRepair,
+                  );
+                  const itemBusy = syndicationActionId.endsWith(item.itemId);
+                  return (
+                    <article className={styles.syndicationCard} key={item.itemId}>
+                      <header>
+                        <div>
+                          <span className={styles.leadPersona}>
+                            {item.source === "openzaps"
+                              ? "OpenZaps update"
+                              : "DeFi Tutorials"}
+                          </span>
+                          <h3>{item.title}</h3>
+                          <p>
+                            {item.publishedAt
+                              ? `Published ${leadDate(item.publishedAt)}`
+                              : "Publication time unavailable"}
+                          </p>
+                        </div>
+                        <StatusChip
+                          ready={[
+                            "pending",
+                            "drafting",
+                            "awaiting_approval",
+                            "published",
+                          ].includes(item.status)}
+                          label={item.status}
+                        />
+                      </header>
+                      <a
+                        className={styles.syndicationLink}
+                        href={item.canonicalUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                      >
+                        Open canonical source
+                      </a>
+                      <div className={styles.syndicationMeta}>
+                        <span>{titleCase(item.classification)}</span>
+                        <span>Campaign {item.campaignSlug}</span>
+                      </div>
+                      {item.classification === "needs_classification" ? (
+                        <p className={styles.hint}>
+                          This Substack item does not match an RSS-confirmed
+                          tutorial manifest entry and cannot create a draft.
+                        </p>
+                      ) : null}
+                      {item.classification === "reviewable"
+                        && item.status === "pending"
+                        && !canDraft ? (
+                          <p className={styles.hint} role="alert">
+                            This canonical source is too long for the exact X
+                            attribution link plus the mandatory disclosure. It
+                            cannot be claimed; skip it instead.
+                          </p>
+                        ) : null}
+                      {item.status === "drafting" && !item.workflowRunId ? (
+                        <p className={styles.hint} role="alert">
+                          A workflow start was claimed without a durable run
+                          link. Use the authenticated repair action with the
+                          original run ID; do not start a replacement workflow.
+                        </p>
+                      ) : null}
+                      {item.workflowRunId || canDraft || canSkip || canRepair ? (
+                        <div className={styles.syndicationActions}>
+                          {item.workflowRunId ? (
+                            <button
+                              type="button"
+                              onClick={() => openSyndicationRun(item.workflowRunId!)}
+                              disabled={Boolean(syndicationActionId)}
+                            >
+                              Open draft run
+                            </button>
+                          ) : null}
+                          {canDraft ? (
+                            <button
+                              type="button"
+                              onClick={() => void actOnSyndicationItem(
+                                item.itemId,
+                                "draft",
+                              )}
+                              disabled={Boolean(syndicationActionId)}
+                            >
+                              {itemBusy && syndicationActionId.startsWith("draft:")
+                                ? "Starting…"
+                                : "Draft X + Discord"}
+                            </button>
+                          ) : null}
+                          {canRepair ? (
+                            <button
+                              type="button"
+                              onClick={() => void retrySyndicationRepair()}
+                              disabled={Boolean(syndicationActionId)}
+                            >
+                              {itemBusy && syndicationActionId.startsWith("attach:")
+                                ? "Repairing…"
+                                : "Retry original run link"}
+                            </button>
+                          ) : null}
+                          {canSkip ? (
+                            <SyndicationSkipControls
+                              itemId={item.itemId}
+                              expanded={syndicationSkipConfirmId === item.itemId}
+                              busy={Boolean(syndicationActionId)}
+                              submitting={
+                                itemBusy
+                                && syndicationActionId.startsWith("skip:")
+                              }
+                              onToggle={() => setSyndicationSkipConfirmId(
+                                syndicationSkipConfirmId === item.itemId
+                                  ? ""
+                                  : item.itemId,
+                              )}
+                              onConfirm={() => {
+                                setSyndicationSkipConfirmId("");
+                                void actOnSyndicationItem(item.itemId, "skip");
+                              }}
+                              onCancel={() => setSyndicationSkipConfirmId("")}
+                            />
+                          ) : null}
+                        </div>
+                      ) : null}
+                    </article>
+                  );
+                })}
+              </div>
+            ) : syndicationState === "ready" ? (
+              <p className={styles.empty}>No feed items need operator action.</p>
+            ) : syndicationState === "loading" ? (
+              <p className={styles.empty}>Loading the review-only inbox…</p>
+            ) : null}
+            {syndicationNotice ? (
+              <p className={styles.queueNotice} role="status" aria-live="polite">
+                {syndicationNotice}
+              </p>
+            ) : null}
+            <p className={styles.hint}>
+              “Draft X + Discord” starts the existing source-backed workflow.
+              Every generated post still requires explicit owner approval.
+            </p>
+          </section>
+
+          <section className={styles.panel} aria-labelledby="create-marketing-draft">
+            <div className={styles.sectionHead}>
+              <div>
+                <span className={styles.step}>05</span>
                 <h2 id="create-marketing-draft">Create a review draft</h2>
               </div>
             </div>
@@ -1544,7 +2260,7 @@ export function MarketingOperator(): React.JSX.Element {
             <section className={styles.panel} aria-labelledby="review-marketing-draft">
               <div className={styles.sectionHead}>
                 <div>
-                  <span className={styles.step}>05</span>
+                  <span className={styles.step}>06</span>
                   <h2 id="review-marketing-draft">Review and decide</h2>
                 </div>
                 <StatusChip
@@ -1708,6 +2424,69 @@ export function LeadDeleteControls({
             disabled={busy}
           >
             Confirm permanent delete
+          </button>
+          <button type="button" onClick={cancel} disabled={busy}>
+            Cancel
+          </button>
+        </div>
+      ) : null}
+    </>
+  );
+}
+
+export function SyndicationSkipControls({
+  itemId,
+  expanded,
+  busy,
+  submitting,
+  onToggle,
+  onConfirm,
+  onCancel,
+}: {
+  itemId: string;
+  expanded: boolean;
+  busy: boolean;
+  submitting: boolean;
+  onToggle: () => void;
+  onConfirm: () => void;
+  onCancel: () => void;
+}): React.JSX.Element {
+  const triggerId = syndicationSkipTriggerId(itemId);
+  const confirmationId = `${triggerId}-confirmation`;
+  const cancel = (): void => {
+    onCancel();
+    window.setTimeout(() => {
+      document.getElementById(triggerId)?.focus();
+    }, 0);
+  };
+
+  return (
+    <>
+      <button
+        id={triggerId}
+        type="button"
+        data-danger
+        aria-controls={expanded ? confirmationId : undefined}
+        aria-expanded={expanded}
+        onClick={onToggle}
+        disabled={busy}
+      >
+        {expanded ? "Hide skip options" : "Skip"}
+      </button>
+      {expanded ? (
+        <div
+          className={styles.deleteConfirmation}
+          id={confirmationId}
+          role="group"
+          aria-label="Permanent syndication skip confirmation"
+        >
+          <button
+            type="button"
+            data-danger
+            onClick={onConfirm}
+            disabled={busy}
+          >
+            {submitting ? "Skipping…" : "Confirm permanent skip"}
           </button>
           <button type="button" onClick={cancel} disabled={busy}>
             Cancel
