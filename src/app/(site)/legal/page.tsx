@@ -83,6 +83,22 @@ export default function LegalPage(): React.JSX.Element {
             </p>
           </div>
           <div className={styles.def}>
+            <strong className={styles.defTerm}>Privacy-minimized product analytics</strong>
+            <p className={styles.defBody}>
+              OpenZaps uses Vercel Web Analytics to understand which public
+              routes and product actions are useful. Query strings and URL
+              fragments are removed before pageviews are sent, and EVM
+              identifiers in route paths are replaced. Custom events contain
+              at most two coarse labels. A controlled first-touch campaign
+              label may remain in the current tab&apos;s session storage; raw
+              campaign text, form contact fields, wallet addresses,
+              transaction hashes, workflows, and project details are not sent
+              as analytics event properties. Vercel receives limited standard
+              request context needed to aggregate these events under its Web
+              Analytics service.
+            </p>
+          </div>
+          <div className={styles.def}>
             <strong className={styles.defTerm}>How long it remains</strong>
             <p className={styles.defBody}>
               Request-desk database records expire after 180 days. A

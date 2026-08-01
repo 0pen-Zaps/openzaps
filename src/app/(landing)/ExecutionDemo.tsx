@@ -11,6 +11,7 @@ import {
   type ChainNode,
 } from "@/lib/blocks";
 import { CHAIN } from "@/lib/config";
+import { trackEvent } from "@/lib/analytics";
 import { reducedMotion } from "./motion";
 import styles from "./landing.module.css";
 
@@ -93,9 +94,11 @@ export function ExecutionDemo(): React.JSX.Element {
   const preview = () => {
     if (!compiled) return;
     clearTimers();
+    trackEvent("homepage_demo_preview", { recipe: recipe.id });
     if (reducedMotion()) {
       setStage(compiled.checks.length + 1);
       setPhase("done");
+      trackEvent("homepage_demo_completed", { recipe: recipe.id });
       return;
     }
     setPhase("running");
@@ -107,6 +110,7 @@ export function ExecutionDemo(): React.JSX.Element {
       window.setTimeout(() => {
         setStage(compiled.checks.length + 1);
         setPhase("done");
+        trackEvent("homepage_demo_completed", { recipe: recipe.id });
       }, 260 * (compiled.checks.length + 1) + 200),
     );
   };
@@ -259,13 +263,34 @@ export function ExecutionDemo(): React.JSX.Element {
                 Output amounts are quoted live at sign time, never estimated here.
               </p>
               <div className={styles.demoActions}>
-                <Link href={requestHref} className="btn btnPrimary" data-magnetic>
+                <Link
+                  href={requestHref}
+                  className="btn btnPrimary"
+                  data-magnetic
+                  data-analytics-event="request_zap_clicked"
+                  data-analytics-cta="request_this_zap"
+                  data-analytics-content="execution_demo"
+                >
                   <span>Request this Zap</span>
                 </Link>
-                <Link href={shareHref} className="btn btnGhost" data-magnetic>
+                <Link
+                  href={shareHref}
+                  className="btn btnGhost"
+                  data-magnetic
+                  data-analytics-event="builder_cta_clicked"
+                  data-analytics-cta="open_builder"
+                  data-analytics-content="execution_demo"
+                >
                   <span>Open in builder</span>
                 </Link>
-                <Link href="/zap?view=sign" className="btn btnGhost" data-magnetic>
+                <Link
+                  href="/zap?view=sign"
+                  className="btn btnGhost"
+                  data-magnetic
+                  data-analytics-event="zap_now_clicked"
+                  data-analytics-cta="zap_now"
+                  data-analytics-content="execution_demo"
+                >
                   <span>Zap now</span>
                 </Link>
               </div>

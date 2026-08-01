@@ -305,6 +305,9 @@ function SidebarNav({ view }: { view: ZapView | null }): React.JSX.Element {
                 href={item.href}
                 className={styles.navItem}
                 data-active={active || undefined}
+                data-analytics-event={item.href === "/request-a-zap" ? "request_zap_clicked" : undefined}
+                data-analytics-cta={item.href === "/request-a-zap" ? "request_zap" : undefined}
+                data-analytics-content={item.href === "/request-a-zap" ? "app_nav" : undefined}
                 aria-current={active ? "page" : undefined}
               >
                 <Glyph name={item.icon} className={styles.navIcon} />

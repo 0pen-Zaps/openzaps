@@ -95,6 +95,8 @@ const RECENT_PATHS = [
       "Trade the four pinned USDG routes with 10,000 virtual USDG. Quotes are pinned to one canonical chain head; fills and PnL stay in this browser.",
     href: "/virtual-trading",
     action: "Open Virtual Trading",
+    analyticsEvent: "virtual_trading_clicked",
+    analyticsCta: "virtual_trading",
   },
   {
     glyph: "sparkle",
@@ -105,6 +107,8 @@ const RECENT_PATHS = [
       "Describe one workflow. We map its targets, assets, recipient, trigger, limits, recovery, and forbidden authority—with no wallet or integration commitment.",
     href: "/request-a-zap",
     action: "Request a Zap",
+    analyticsEvent: "request_zap_clicked",
+    analyticsCta: "request_zap",
   },
   {
     glyph: "plug",
@@ -115,6 +119,8 @@ const RECENT_PATHS = [
       "Pin an executor address inside a standing intent. The agent may choose when to submit an eligible run; it cannot change the route or its terms.",
     href: "/zap?view=connect",
     action: "Connect an agent",
+    analyticsEvent: "builder_cta_clicked",
+    analyticsCta: "connect_agent",
   },
   {
     glyph: "repeat",
@@ -125,6 +131,8 @@ const RECENT_PATHS = [
       "The v3.2 stack is deployed and pre-audit. It remains a release candidate until its creation, execution, permanent-halt, and evidence canaries pass.",
     href: "/roadmap#foundation",
     action: "See the release map",
+    analyticsEvent: "growth_link_clicked",
+    analyticsCta: "release_map",
   },
 ] as const;
 
@@ -228,10 +236,20 @@ export default function LandingPage(): React.JSX.Element {
                 href="/request-a-zap?utm_source=homepage&utm_medium=website&utm_campaign=request_a_zap&utm_content=hero"
                 className="btn btnPrimary btnLg"
                 data-magnetic
+                data-analytics-event="request_zap_clicked"
+                data-analytics-cta="request_zap"
+                data-analytics-content="hero"
               >
                 <span>Request a Zap</span>
               </Link>
-              <Link href="/zap" className="btn btnGhost btnLg" data-magnetic>
+              <Link
+                href="/zap"
+                className="btn btnGhost btnLg"
+                data-magnetic
+                data-analytics-event="builder_cta_clicked"
+                data-analytics-cta="start_zapping"
+                data-analytics-content="hero"
+              >
                 <span>Start Zapping</span>
               </Link>
             </div>
@@ -306,7 +324,13 @@ export default function LandingPage(): React.JSX.Element {
                   </div>
                   <h3>{path.title}</h3>
                   <p>{path.detail}</p>
-                  <Link href={path.href} className={styles.recentLink}>
+                  <Link
+                    href={path.href}
+                    className={styles.recentLink}
+                    data-analytics-event={path.analyticsEvent}
+                    data-analytics-cta={path.analyticsCta}
+                    data-analytics-content="homepage_recent"
+                  >
                     {path.action} <span aria-hidden="true">→</span>
                   </Link>
                 </Reveal>
@@ -390,7 +414,14 @@ export default function LandingPage(): React.JSX.Element {
                   <li>Undo the whole insertion as one canvas edit.</li>
                   <li>Review the resolved bounds before the wallet signs.</li>
                 </ol>
-                <Link href="/zap?view=design" className="btn btnPrimary" data-magnetic>
+                <Link
+                  href="/zap?view=design"
+                  className="btn btnPrimary"
+                  data-magnetic
+                  data-analytics-event="builder_cta_clicked"
+                  data-analytics-cta="compose_policy"
+                  data-analytics-content="developer_section"
+                >
                   <span>Compose execution policy</span>
                 </Link>
               </Reveal>
@@ -527,6 +558,9 @@ export default function LandingPage(): React.JSX.Element {
                 rel="noreferrer noopener"
                 className="btn btnGhost"
                 data-magnetic
+                data-analytics-event="growth_link_clicked"
+                data-analytics-cta="github"
+                data-analytics-content="developer_section"
               >
                 <span>View GitHub ↗</span>
               </a>
@@ -667,10 +701,20 @@ export default function LandingPage(): React.JSX.Element {
                 href="/request-a-zap?utm_source=homepage&utm_medium=website&utm_campaign=request_a_zap&utm_content=final_cta"
                 className="btn btnPrimary btnLg"
                 data-magnetic
+                data-analytics-event="request_zap_clicked"
+                data-analytics-cta="request_zap"
+                data-analytics-content="final_cta"
               >
                 <span>Request a Zap</span>
               </Link>
-              <Link href="/zap" className="btn btnGhost btnLg" data-magnetic>
+              <Link
+                href="/zap"
+                className="btn btnGhost btnLg"
+                data-magnetic
+                data-analytics-event="builder_cta_clicked"
+                data-analytics-cta="compose_zap"
+                data-analytics-content="final_cta"
+              >
                 <span>Compose a Zap</span>
               </Link>
             </div>

@@ -8,15 +8,23 @@ import {
 } from "vitest";
 
 const mocks = vi.hoisted(() => ({
+  after: vi.fn((callback: () => unknown) => callback()),
   configured: vi.fn(),
   storeReady: vi.fn(),
   start: vi.fn(),
+  track: vi.fn(),
   workflow: vi.fn(),
 }));
 
 vi.mock("server-only", () => ({}));
 vi.mock("workflow/api", () => ({
   start: mocks.start,
+}));
+vi.mock("@vercel/analytics/server", () => ({
+  track: mocks.track,
+}));
+vi.mock("next/server", () => ({
+  after: mocks.after,
 }));
 vi.mock("@/lib/leads/notification-server", () => ({
   leadNotificationDeliveryConfigured: mocks.configured,
@@ -75,9 +83,11 @@ function readinessRequest(): Request {
 }
 
 beforeEach(() => {
+  mocks.after.mockImplementation((callback: () => unknown) => callback());
   mocks.configured.mockReturnValue(true);
   mocks.storeReady.mockResolvedValue(true);
   mocks.start.mockResolvedValue({ runId: "wrun_lead_notification_1" });
+  mocks.track.mockResolvedValue(undefined);
 });
 
 afterEach(() => {
@@ -112,6 +122,34 @@ describe("POST /api/leads/request", () => {
     expect(raw).not.toContain("qualification");
     expect(mockedSubmit).toHaveBeenCalledOnce();
     expect(mocks.start).toHaveBeenCalledWith(mocks.workflow);
+    expect(mocks.after).toHaveBeenCalledOnce();
+    expect(mocks.track).toHaveBeenCalledWith(
+      "lead_request_accepted",
+      { source: "other", score_band: "3_5" },
+      { headers: expect.any(Headers) },
+    );
+    const analyticsHeaders = mocks.track.mock.calls[0]?.[2]?.headers as Headers;
+    expect(analyticsHeaders.get("referer")).toBe("https://www.0xzaps.com/request-a-zap");
+    expect(analyticsHeaders.get("cookie")).toBeNull();
+    expect(analyticsHeaders.get("x-forwarded-for")).toBe("203.0.113.72");
+  });
+
+  it("preserves supported owned newsletter attribution as a coarse source", async () => {
+    mockedSubmit.mockResolvedValue("accepted");
+
+    const response = await POST(
+      request({
+        ...body,
+        attribution: { utmSource: "newsletter" },
+      }),
+    );
+
+    expect(response.status).toBe(202);
+    expect(mocks.track).toHaveBeenCalledWith(
+      "lead_request_accepted",
+      { source: "newsletter", score_band: "3_5" },
+      { headers: expect.any(Headers) },
+    );
   });
 
   it("keeps durable acceptance successful when advisory workflow start fails", async () => {
@@ -123,6 +161,30 @@ describe("POST /api/leads/request", () => {
     expect(response.status).toBe(202);
     expect(await response.json()).toEqual({ accepted: true });
     expect(mocks.start).toHaveBeenCalledOnce();
+  });
+
+  it("keeps durable acceptance successful when conversion analytics fails", async () => {
+    mockedSubmit.mockResolvedValue("accepted");
+    mocks.track.mockRejectedValue(new Error("analytics unavailable"));
+
+    const response = await POST(request());
+
+    expect(response.status).toBe(202);
+    expect(await response.json()).toEqual({ accepted: true });
+    expect(mocks.track).toHaveBeenCalledOnce();
+  });
+
+  it("keeps durable acceptance successful when analytics scheduling fails", async () => {
+    mockedSubmit.mockResolvedValue("accepted");
+    mocks.after.mockImplementationOnce(() => {
+      throw new Error("background scheduling unavailable");
+    });
+
+    const response = await POST(request());
+
+    expect(response.status).toBe(202);
+    expect(await response.json()).toEqual({ accepted: true });
+    expect(mocks.track).not.toHaveBeenCalled();
   });
 
   it("does not attempt workflow start when notification delivery is not ready", async () => {
@@ -144,6 +206,7 @@ describe("POST /api/leads/request", () => {
     expect(await response.json()).toEqual({ accepted: true });
     expect(mockedSubmit).not.toHaveBeenCalled();
     expect(mocks.start).not.toHaveBeenCalled();
+    expect(mocks.track).not.toHaveBeenCalled();
   });
 
   it("rejects missing or cross-origin browser provenance before reading", async () => {
@@ -192,6 +255,7 @@ describe("POST /api/leads/request", () => {
     });
     expect(raw).not.toContain("fingerprint");
     expect(mocks.start).not.toHaveBeenCalled();
+    expect(mocks.track).not.toHaveBeenCalled();
   });
 
   it("fails closed when durable storage is unavailable", async () => {
@@ -204,5 +268,6 @@ describe("POST /api/leads/request", () => {
       error: "Lead intake is temporarily unavailable.",
     });
     expect(mocks.start).not.toHaveBeenCalled();
+    expect(mocks.track).not.toHaveBeenCalled();
   });
 });

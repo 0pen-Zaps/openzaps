@@ -169,11 +169,23 @@ a secret. Re-run only after the blocker is corrected.
 
 ## Measurement
 
-`src/lib/analytics.ts` forwards allowlisted anonymous funnel properties to
-Vercel Analytics. Wallet addresses, transaction hashes, email addresses,
-contact details, URLs, secret-like values, unknown keys, and oversized values
-are dropped before transmission. Lead conversion events include only the
-sanitized persona, source, medium, campaign, content label, and HTTP outcome.
+`src/components/OpenZapsAnalytics.tsx` removes every query string and fragment
+from Vercel pageviews and replaces EVM identifiers embedded in route paths.
+`src/lib/analytics.ts` forwards no more than two allowlisted anonymous funnel
+properties per custom event, matching the production Pro-plan limit. Wallet
+addresses, transaction hashes, email addresses, contact details, URLs,
+secret-like values, unknown keys, nested values, and oversized values are
+dropped before transmission. Raw UTM values are reduced to controlled source,
+medium, campaign, and content categories; a first-touch category is kept only
+in the current tab's `sessionStorage`. One `campaign_arrival` event per tab and
+coarse first touch supplies the campaign denominator without preserving the raw
+UTM values.
+
+`lead_request_accepted` is emitted server-side only after the private store
+returns durable acceptance. It contains a coarse source and score band. The
+honeypot's decoy `202`, validation failures, quota responses, and store failures
+emit no accepted conversion event, and analytics failure cannot change an
+accepted request's response.
 
 Review these metrics weekly:
 

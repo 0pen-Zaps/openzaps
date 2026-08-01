@@ -94,11 +94,21 @@ export function LandingNav({ githubUrl }: { githubUrl: string }): React.JSX.Elem
             target="_blank"
             rel="noreferrer noopener"
             className={styles.navLink}
+            data-analytics-event="growth_link_clicked"
+            data-analytics-cta="github"
+            data-analytics-content="nav"
           >
             GitHub<span className={styles.navExt}>↗</span>
           </a>
         </nav>
-        <Link href="/request-a-zap" className={styles.navCta} data-magnetic>
+        <Link
+          href="/request-a-zap"
+          className={styles.navCta}
+          data-magnetic
+          data-analytics-event="request_zap_clicked"
+          data-analytics-cta="request_zap"
+          data-analytics-content="nav"
+        >
           <span>Request a Zap</span>
         </Link>
       </div>

@@ -168,10 +168,6 @@ export function RequestZapForm({
       }
 
       setSubmission("success");
-      trackEvent("lead_request_accepted", {
-        ...analyticsAttribution,
-        persona: selectedPersona,
-      });
       requestAnimationFrame(() => statusRef.current?.focus());
     } catch {
       setErrorMessage("We could not reach the request desk. Check your connection and try again.");
@@ -203,7 +199,13 @@ export function RequestZapForm({
           a private key, seed phrase, signature, deposit, or wallet access.
         </p>
         <div className={styles.successActions}>
-          <Link href="/zap?view=design" className="btn btnPrimary">
+          <Link
+            href="/zap?view=design"
+            className="btn btnPrimary"
+            data-analytics-event="builder_cta_clicked"
+            data-analytics-cta="try_builder"
+            data-analytics-content="request_success"
+          >
             Try the builder
           </Link>
           <a
@@ -211,6 +213,9 @@ export function RequestZapForm({
             target="_blank"
             rel="noreferrer noopener"
             className="btn btnGhost"
+            data-analytics-event="growth_link_clicked"
+            data-analytics-cta="discord"
+            data-analytics-content="request_success"
           >
             Join Discord
           </a>
