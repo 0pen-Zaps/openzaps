@@ -2,6 +2,7 @@ import Link from "next/link";
 
 import { mcpClientSnippet, OPENZAPS_AGENT_KIT_PUBLISHED } from "@/lib/agent-kit";
 import { CHAIN, CONTRACTS, LINKS, STATUS, TOKEN, explorer } from "@/lib/config";
+import { EXACT_POLICY_QUICKSTART_JSON } from "@/lib/policy-exact-example";
 import { POLICY_TEMPLATES } from "@/lib/policy";
 import { JsonLd } from "@/components/JsonLd";
 import { STATIC_PAGE_SEO, SITE_URL, breadcrumbJsonLd, pageMetadata, webPageJsonLd } from "@/lib/seo";
@@ -269,18 +270,7 @@ export default function DocsPage(): React.JSX.Element {
           <div className={styles.code}>
             <pre>{`curl -X POST ${SITE_URL}/api/policies/simulate \\
   -H "content-type: application/json" \\
-  -d '{
-    "templateId": "recurring-dca",
-    "authorityModel": "deposit",
-    "tokenIn": "USDC",
-    "tokenOut": "WETH",
-    "amount": "250",
-    "maxSpend": "1000",
-    "frequency": "weekly",
-    "slippageBps": 50,
-    "privateSubmission": true,
-    "humanApproval": false
-  }'`}</pre>
+  -d '${EXACT_POLICY_QUICKSTART_JSON}'`}</pre>
           </div>
         </section>
 
@@ -359,29 +349,35 @@ Automate handoff:
         <section className={styles.section} id="api">
           <h2 className={styles.h2}>Simulation API</h2>
           <p className={styles.prose}>
-            The endpoint returns the normalized policy, a hash, the check results, an estimated output, a relayer fee
-            cap, a gas envelope, and broadcast: false. It never submits anything, so it is safe to run in CI or as an
-            agent preflight. The hash is a local checksum that tells two drafts apart; it is not the onchain policy
-            hash. The estimate is computed from fixed rates held in this app, not read from a pool, so it is not a
-            price. In production the endpoint fails closed unless both the exact-policy API and durable-quota gates are
-            active; an unavailable response is not a simulated pass.
+            The chain-exact endpoint pins every required read and route quote to one canonical Robinhood Chain block.
+            It returns the block identity, live adapter and token allowlists, runtime code hashes, a seeded-vault proof
+            when the route requires one, the block-pinned quote and minimum output, the Solidity-exact policy hash, an
+            unsigned EIP-712 draft, and an ephemeral factory <code>eth_call</code>. Stress-quote failures stay explicit
+            and produce a warning instead of synthetic output. The endpoint never signs or broadcasts. In production
+            it fails closed unless both the exact-policy API and durable-quota gates are active; an unavailable response
+            is not a simulated pass.
           </p>
           <div className={styles.code}>
-            <pre>{`type SimulationResponse = {
-  policy: PolicyDraft
-  simulation: {
-    status: "pass" | "warn" | "block"
-    policyHash: string
-    estimatedOut: string
-    relayerFee: string
-    gasEstimate: string
-    checks: Array<{
-      label: string
-      detail: string
-      status: "pass" | "warn" | "block"
-    }>
+            <pre>{`type ExactPolicyArtifact = {
+  status: "pass" | "warn"
+  mode: "chain-exact"
+  chain: {
+    chainId: 4663
+    blockNumber: string
+    blockHash: \`0x\${string}\`
+    rpcStatus: "verified"
   }
-  broadcast: false
+  allowlists: { adapterAllowed: true; tokens: Array<{ allowed: true }> }
+  runtimeCode: { factory: object; implementation: object; adapters: object[] }
+  quote: { amountIn: string; amountOut: string; minOut: string; blockNumber: string }
+  compiled: {
+    policyHash: \`0x\${string}\`
+    predictedZap: \`0x\${string}\`
+    unsignedEip712: object
+  }
+  ethCall: { method: "eth_call"; broadcast: false }
+  stressCases: Array<{ status: "quoted" | "rpc-failure" }>
+  authority: { signed: false; broadcast: false }
 }`}</pre>
           </div>
         </section>

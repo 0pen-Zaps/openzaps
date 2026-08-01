@@ -14,6 +14,7 @@ import {
   type ExactPolicyProviderEnvironment,
   type ExactPolicyProviderResolution,
 } from "@/lib/policy-exact-provider";
+import { EXACT_POLICY_QUICKSTART_BODY } from "@/lib/policy-exact-example";
 import { serverRateLimited } from "@/lib/relay-rate-limit";
 import { BoundedJsonBodyError, readBoundedJsonBody } from "@/lib/request-body";
 
@@ -226,12 +227,7 @@ export function GET(): NextResponse {
       endpoint: "/api/policies/simulate",
       method: "POST",
       mode: "chain-exact",
-      body: {
-        routeId: "robinhood-v4-weth-zaps",
-        owner: "0x0000000000000000000000000000000000000001",
-        amount: "0.01",
-        slippageBps: 150,
-      },
+      body: EXACT_POLICY_QUICKSTART_BODY,
       returns: [
         "one canonical block number and hash",
         "live adapter and token allowlist results",

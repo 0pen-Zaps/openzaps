@@ -22,12 +22,15 @@ Production application storage is additionally bound in the server to
 the dashboard or CLI is not enough; confirm that exact host before running any
 migration or setting a storage-backed feature flag.
 
-Authenticated dashboard verification on 29 July 2026 identified the production
+Authenticated CLI verification on 1 August 2026 identified the production
 shared project as `pool-fans-v2` with ref `jhzpyfzkdsyavgnnuzyu`, and
-`20260728230000_bounded_relay_admission.sql` as the latest applied OpenZaps
-migration. Treat that as dated evidence: reverify the project and migration
-ledger before a write. Setting the Vercel project-ref binding does not apply a
-migration or redeploy the app.
+`20260801143000_marketing_x_mentions.sql` as the latest applied OpenZaps
+migration before this release. The forward-only
+`20260801214552_harden_subscription_authorization_grants.sql` migration must be
+recorded separately after it is reviewed and applied. Treat all of this as
+dated evidence: reverify the project and migration ledger before a write.
+Setting the Vercel project-ref binding does not apply a migration or redeploy
+the app.
 
 `20260729095505_harden_verified_receipt_provenance.sql` deliberately stops if a
 row claims `provenance_verified = true` without the complete canonical

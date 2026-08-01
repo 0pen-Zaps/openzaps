@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 
 import { PolicyRpcError } from "@/lib/policy-exact";
+import { EXACT_POLICY_QUICKSTART_BODY } from "@/lib/policy-exact-example";
 
 vi.mock("server-only", () => ({}));
 
@@ -31,6 +32,20 @@ afterEach(() => {
 });
 
 describe("chain-exact policy API operational gates", () => {
+  it("advertises the shared runnable Quickstart body", async () => {
+    vi.stubEnv("NODE_ENV", "test");
+    vi.stubEnv("OPENZAPS_EXACT_POLICY_RPC_URL", "");
+
+    const response = GET();
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      method: "POST",
+      mode: "chain-exact",
+      body: EXACT_POLICY_QUICKSTART_BODY,
+    });
+  });
+
   it("defaults off in production until quota and a dedicated HTTPS RPC are configured", async () => {
     expect(exactPolicyApiEnabled({ NODE_ENV: "production" })).toBe(false);
     expect(exactPolicyApiEnabled({

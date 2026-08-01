@@ -268,39 +268,33 @@ export function openZapV3_1Configured(): boolean {
  * Independent receipt, runtime, immutable-binding, and finality evidence is recorded in
  * `docs/deployments.md`.
  */
-export const OPENZAP_V3_2_CONTRACTS = {
-  implementation: optionalAddress(
-    process.env.NEXT_PUBLIC_OPENZAP_V3_2_IMPLEMENTATION,
-    "0x5882e3dC1Ca0A7162d8F80ab59BC98E2fB8da987",
-  ),
-  factory: optionalAddress(
-    process.env.NEXT_PUBLIC_OPENZAP_V3_2_FACTORY,
-    "0xd9134F778E523E9CF2fD75FFCb98499E9046457B",
-  ),
-  lotteryPot: optionalAddress(
-    process.env.NEXT_PUBLIC_OPENZAP_V3_2_LOTTERY_POT,
-    "0x7B8791e36f2e42FB80D209e340aE04aE94Fd411F",
-  ),
-  priceSourceRegistry: optionalAddress(
-    process.env.NEXT_PUBLIC_OPENZAP_V3_2_PRICE_SOURCE_REGISTRY,
-    "0xe0b5240B079896111cB9c4a36CcAfAd85a444a12",
-  ),
+const OPENZAP_V3_2_DEFAULTS = {
+  implementation: "0x5882e3dC1Ca0A7162d8F80ab59BC98E2fB8da987",
+  factory: "0xd9134F778E523E9CF2fD75FFCb98499E9046457B",
+  lotteryPot: "0x7B8791e36f2e42FB80D209e340aE04aE94Fd411F",
+  priceSourceRegistry: "0xe0b5240B079896111cB9c4a36CcAfAd85a444a12",
   /** IOrientedPriceSource for the main leg — same shape v3.1 uses. */
-  orientedPriceSource: optionalAddress(
-    process.env.NEXT_PUBLIC_OPENZAP_V3_2_ORIENTED_PRICE_SOURCE,
-    "0xc11D92bF92EeeE280a68eabe35E48c7a2e94e42e",
-  ),
+  orientedPriceSource: "0xc11D92bF92EeeE280a68eabe35E48c7a2e94e42e",
   /** Stack-only exact-fee gateway. It can call only the v3.2 factory. */
-  creationGateway: optionalAddress(
-    process.env.NEXT_PUBLIC_OPENZAP_V3_2_CREATION_GATEWAY,
-    "0xa4D3bE6b97b320F1C81975038EcD5e1C5d7b3291",
-  ),
+  creationGateway: "0xa4D3bE6b97b320F1C81975038EcD5e1C5d7b3291",
   /** Dedicated no-drain creation prize pot, bound inside the gateway constructor. */
-  creationFeePot: optionalAddress(
-    process.env.NEXT_PUBLIC_OPENZAP_V3_2_CREATION_FEE_POT,
-    "0x6a1eb88408ce53C7C9e1eb460Cc68a8BD485dC12",
-  ),
-} as const;
+  creationFeePot: "0x6a1eb88408ce53C7C9e1eb460Cc68a8BD485dC12",
+} as const satisfies Readonly<Record<string, Address>>;
+
+export const OPENZAP_V3_2_CONTRACTS = resolveOptionalAddressSet(
+  {
+    implementation: process.env.NEXT_PUBLIC_OPENZAP_V3_2_IMPLEMENTATION,
+    factory: process.env.NEXT_PUBLIC_OPENZAP_V3_2_FACTORY,
+    lotteryPot: process.env.NEXT_PUBLIC_OPENZAP_V3_2_LOTTERY_POT,
+    priceSourceRegistry:
+      process.env.NEXT_PUBLIC_OPENZAP_V3_2_PRICE_SOURCE_REGISTRY,
+    orientedPriceSource:
+      process.env.NEXT_PUBLIC_OPENZAP_V3_2_ORIENTED_PRICE_SOURCE,
+    creationGateway: process.env.NEXT_PUBLIC_OPENZAP_V3_2_CREATION_GATEWAY,
+    creationFeePot: process.env.NEXT_PUBLIC_OPENZAP_V3_2_CREATION_FEE_POT,
+  },
+  OPENZAP_V3_2_DEFAULTS,
+);
 
 export function openZapV3_2Configured(): boolean {
   return optionalContractSetState(OPENZAP_V3_2_CONTRACTS) === "configured";
@@ -1704,6 +1698,30 @@ function optionalAddress(value: string | undefined, fallback: Address): Address 
   } catch {
     return zeroAddress;
   }
+}
+
+/**
+ * Resolve a deployed optional lineage atomically. With no non-empty override,
+ * the verified defaults are used. Once any override is supplied, every role
+ * must be supplied and valid; missing or malformed siblings collapse to zero
+ * so `optionalContractSetState` fails closed instead of creating a hybrid set.
+ */
+function resolveOptionalAddressSet<
+  const T extends Readonly<Record<string, Address>>,
+>(
+  overrides: { readonly [K in keyof T]: string | undefined },
+  defaults: T,
+): { readonly [K in keyof T]: Address } {
+  const useDefaults = !Object.values(overrides).some((value) => value?.trim());
+  return Object.fromEntries(
+    (Object.keys(defaults) as Array<keyof T>).map((key) => [
+      key,
+      optionalAddress(
+        useDefaults ? undefined : overrides[key],
+        useDefaults ? defaults[key] : zeroAddress,
+      ),
+    ]),
+  ) as { readonly [K in keyof T]: Address };
 }
 
 function walletErrorCode(error: unknown): number | null {

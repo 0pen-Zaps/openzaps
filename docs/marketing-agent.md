@@ -573,6 +573,7 @@ supabase/migrations/20260801024005_durable_reviewed_marketing_campaign_queue.sql
 supabase/migrations/20260801041508_marketing_syndication_inbox.sql
 supabase/migrations/20260801062000_queue_agent_kit_discord_campaign.sql
 supabase/migrations/20260801100000_queue_learn_hub_campaign.sql
+supabase/migrations/20260801143000_marketing_x_mentions.sql
 ```
 
 If any file is already recorded remotely, apply only the missing exact files
@@ -590,9 +591,18 @@ Apply them transactionally while the marketing agent is disabled. Then verify:
 - `public.marketing_syndication_sources` and
   `public.marketing_syndication_items` have RLS enabled and no direct table
   grants for `anon`, `authenticated`, or `service_role`;
+- `public.marketing_x_mention_accounts`, `public.marketing_x_mentions`,
+  `public.marketing_x_mention_opt_outs`, and
+  `public.marketing_x_compliance_events` have RLS enabled and no direct table
+  grants for `anon`, `authenticated`, or `service_role`;
 - only `service_role` can execute the public marketing RPCs, including the new
   reviewed-campaign claim and the bounded syndication cursor, discovery, list,
   claim, attach, fail, skip, and sync RPCs;
+- all eleven public X mention wrappers are `SECURITY INVOKER`, use an empty
+  `search_path`, and are executable only by `service_role`: poll claim,
+  discovery commit, poll deferral, inbox list, reply claim, reply completion,
+  reply failure, opt-out recording, compliance erasure, compliance-hold clear,
+  and interaction-reference lookup;
 - the initial queue migration remains empty for the already-public
   `virtual-trading-request-zap-v2` update, while the later append-only migration
   contains exactly one Discord-only `agent-kit-published-v1` artifact and the
