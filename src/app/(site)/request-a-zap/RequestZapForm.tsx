@@ -29,6 +29,25 @@ type RequestZapFormProps = {
 
 type SubmissionState = "idle" | "pending" | "success" | "error";
 
+const INVALID_REQUEST_MESSAGES: Readonly<Record<string, string>> = {
+  persona: "Choose which path describes you before sending the request.",
+  name: "Enter your name before sending the request.",
+  email: "Enter a valid work email before sending the request.",
+  projectUrl: "Use a secure project URL beginning with https://, or leave it blank.",
+  workflow: "Describe what the Zap should accomplish in at least 20 characters.",
+  trigger: "Describe the trigger or cadence before sending the request.",
+  guardrails: "Describe what the agent must never be allowed to change.",
+  timeline: "Choose when you would test the Zap.",
+  consent: "Agree to the request data-use notice before sending.",
+};
+
+export function requestValidationMessage(fieldName: string | null): string {
+  if (fieldName && INVALID_REQUEST_MESSAGES[fieldName]) {
+    return INVALID_REQUEST_MESSAGES[fieldName];
+  }
+  return "Complete every required field marked with an asterisk before sending.";
+}
+
 const PERSONAS: readonly {
   value: LeadPersona;
   index: string;
@@ -99,7 +118,15 @@ export function RequestZapForm({
     if (submission === "pending") return;
 
     const form = event.currentTarget;
-    if (!form.reportValidity()) return;
+    if (!form.checkValidity()) {
+      const firstInvalid = form.querySelector<
+        HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement
+      >("[name]:invalid");
+      setErrorMessage(requestValidationMessage(firstInvalid?.name ?? null));
+      setSubmission("error");
+      requestAnimationFrame(() => statusRef.current?.focus());
+      return;
+    }
 
     const data = new FormData(form);
     const payload = leadRequestPayload(data, attribution, document.referrer);
@@ -193,7 +220,7 @@ export function RequestZapForm({
   }
 
   return (
-    <form className={styles.form} onSubmit={submitRequest}>
+    <form className={styles.form} onSubmit={submitRequest} noValidate>
       <div className={styles.progress} aria-label="Request steps">
         <span>1 · Pick your path</span>
         <span>2 · Map the workflow</span>

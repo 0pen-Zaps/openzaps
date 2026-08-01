@@ -2,7 +2,10 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 
-import { RequestZapForm } from "./RequestZapForm";
+import {
+  RequestZapForm,
+  requestValidationMessage,
+} from "./RequestZapForm";
 
 const PROPS = {
   attribution: { landingPath: "/request-a-zap" as const },
@@ -31,6 +34,19 @@ describe("RequestZapForm deployment boundary", () => {
 
     expect(markup).toContain("Request my Zap review");
     expect(markup).toContain('name="email"');
+    expect(markup).toContain("noValidate");
     expect(markup).not.toContain("Preview deployment");
+  });
+
+  it("returns actionable validation messages for the first invalid field", () => {
+    expect(requestValidationMessage("persona")).toBe(
+      "Choose which path describes you before sending the request.",
+    );
+    expect(requestValidationMessage("projectUrl")).toBe(
+      "Use a secure project URL beginning with https://, or leave it blank.",
+    );
+    expect(requestValidationMessage(null)).toBe(
+      "Complete every required field marked with an asterisk before sending.",
+    );
   });
 });
