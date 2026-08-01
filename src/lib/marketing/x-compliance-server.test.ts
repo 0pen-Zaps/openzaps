@@ -20,6 +20,7 @@ import {
   finalizeMarketingXOutboundAdmission,
   getMarketingXComplianceHealth,
   getMarketingXReplySubject,
+  initializeMarketingXComplianceAccount,
   listMarketingXComplianceSubjects,
   postMarketingXReplyFromSubject,
   purgeMarketingXRetention,
@@ -72,6 +73,58 @@ afterEach(() => {
 });
 
 describe("X compliance store adapter", () => {
+  it("initializes only the exact identity-bound account boundary", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonRow({
+        result_code: "created",
+        account_id: "100",
+        eligibility_cutoff_at: OBSERVED_AT,
+      }))
+      .mockResolvedValueOnce(jsonRow({
+        result_code: "already_exists",
+        account_id: "100",
+        eligibility_cutoff_at: OBSERVED_AT,
+      }))
+      .mockResolvedValueOnce(jsonRow({
+        result_code: "already_exists",
+        account_id: "100",
+        eligibility_cutoff_at: OBSERVED_AT,
+        initialized_at: OBSERVED_AT,
+      }));
+
+    await expect(initializeMarketingXComplianceAccount(
+      { accountId: "100", verifiedAt: OBSERVED_AT },
+      { env: ENV, fetchImpl: fetchMock },
+    )).resolves.toEqual({
+      result: "created",
+      accountId: "100",
+      eligibilityCutoffAt: OBSERVED_AT,
+    });
+    const [url, init] = fetchMock.mock.calls[0] as [URL, RequestInit];
+    expect(url.pathname).toContain(
+      "/rpc/initialize_marketing_x_compliance_account",
+    );
+    expect(JSON.parse(String(init.body))).toEqual({
+      p_account_id: "100",
+      p_verified_at: OBSERVED_AT,
+    });
+
+    await expect(initializeMarketingXComplianceAccount(
+      { accountId: "100", verifiedAt: OBSERVED_AT },
+      { env: ENV, fetchImpl: fetchMock },
+    )).resolves.toEqual({
+      result: "already_exists",
+      accountId: "100",
+      eligibilityCutoffAt: OBSERVED_AT,
+    });
+
+    await expect(initializeMarketingXComplianceAccount(
+      { accountId: "100", verifiedAt: OBSERVED_AT },
+      { env: ENV, fetchImpl: fetchMock },
+    )).rejects.toMatchObject({ code: "invalid_response" });
+  });
+
   it("vaults raw provider metadata and returns only an opaque safe reference", async () => {
     const fetchMock = vi.fn().mockResolvedValue(jsonRow(safeSubject("created")));
     const result = await createMarketingXReplySubject(

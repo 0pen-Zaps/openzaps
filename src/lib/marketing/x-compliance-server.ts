@@ -17,6 +17,8 @@ const CLAIM_SUBJECT_RPC = "claim_marketing_x_reply_subject_admission";
 const ADMIT_OUTBOUND_RPC = "admit_marketing_x_outbound_delivery";
 const CHECK_OUTBOUND_RPC = "check_marketing_x_outbound_admission";
 const FINALIZE_OUTBOUND_RPC = "finalize_marketing_x_outbound_admission";
+const INITIALIZE_COMPLIANCE_ACCOUNT_RPC =
+  "initialize_marketing_x_compliance_account";
 const LIST_COMPLIANCE_RPC = "list_marketing_x_compliance_subjects";
 const RECORD_COMPLIANCE_RPC = "record_marketing_x_compliance_checkpoint";
 const GET_COMPLIANCE_HEALTH_RPC = "get_marketing_x_compliance_health";
@@ -29,6 +31,7 @@ type RpcName =
   | typeof ADMIT_OUTBOUND_RPC
   | typeof CHECK_OUTBOUND_RPC
   | typeof FINALIZE_OUTBOUND_RPC
+  | typeof INITIALIZE_COMPLIANCE_ACCOUNT_RPC
   | typeof LIST_COMPLIANCE_RPC
   | typeof RECORD_COMPLIANCE_RPC
   | typeof GET_COMPLIANCE_HEALTH_RPC
@@ -149,6 +152,12 @@ export interface XComplianceSubjectList {
   accountId: string;
   subjectCount: number;
   subjects: XComplianceSubject[];
+}
+
+export interface XComplianceAccountInitialization {
+  result: "created" | "already_exists";
+  accountId: string;
+  eligibilityCutoffAt: string;
 }
 
 export interface XComplianceObservation {
@@ -808,6 +817,42 @@ export async function listMarketingXComplianceSubjects(
     accountId,
     subjectCount,
     subjects,
+  };
+}
+
+export async function initializeMarketingXComplianceAccount(
+  input: { accountId: string; verifiedAt: string },
+  dependencies: XComplianceDependencies = {},
+): Promise<XComplianceAccountInitialization> {
+  assertXId(input.accountId, "accountId");
+  if (!Number.isFinite(Date.parse(input.verifiedAt))) {
+    invalidInput("verifiedAt must be a timestamp.");
+  }
+  const row = oneRow(await callRpc(
+    INITIALIZE_COMPLIANCE_ACCOUNT_RPC,
+    {
+      p_account_id: input.accountId,
+      p_verified_at: new Date(input.verifiedAt).toISOString(),
+    },
+    dependencies,
+  ));
+  if (!hasExactKeys(row, [
+    "result_code",
+    "account_id",
+    "eligibility_cutoff_at",
+  ])) invalidResponse();
+  const result = row.result_code;
+  const accountId = nullableString(row.account_id, X_ID);
+  const eligibilityCutoffAt = timestamp(row.eligibility_cutoff_at);
+  if (
+    !["created", "already_exists"].includes(String(result))
+    || accountId !== input.accountId
+    || !eligibilityCutoffAt
+  ) invalidResponse();
+  return {
+    result: result as XComplianceAccountInitialization["result"],
+    accountId,
+    eligibilityCutoffAt,
   };
 }
 
