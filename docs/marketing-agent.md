@@ -512,6 +512,7 @@ apply only:
 
 ```text
 supabase/migrations/20260729035549_marketing_delivery_ledger.sql
+supabase/migrations/20260729095505_harden_verified_receipt_provenance.sql
 supabase/migrations/20260801024005_durable_reviewed_marketing_campaign_queue.sql
 supabase/migrations/20260801041508_marketing_syndication_inbox.sql
 ```
