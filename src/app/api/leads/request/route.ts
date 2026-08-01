@@ -169,30 +169,37 @@ export async function POST(request: Request): Promise<Response> {
       );
     }
     try {
-      if (leadNotificationDeliveryConfigured()) {
-        await start(openZapsLeadNotificationWorkflow);
-      }
-    } catch {
-      // The accepted lead and its notification outbox row are already durable.
-      // The daily retention cron retries advisory workflow enqueueing.
-    }
-    try {
       after(async () => {
-        try {
-          await track(
-            "lead_request_accepted",
-            {
-              source: leadAnalyticsSource(parsed.data.attribution.utmSource),
-              score_band: qualificationScore(parsed.data) >= 3 ? "3_5" : "0_2",
-            },
-            { headers: leadAnalyticsHeaders(request.headers) },
-          );
-        } catch {
-          // Conversion telemetry is advisory; durable intake must remain 202.
-        }
+        await Promise.all([
+          (async () => {
+            try {
+              if (leadNotificationDeliveryConfigured()) {
+                await start(openZapsLeadNotificationWorkflow);
+              }
+            } catch {
+              // The accepted lead and its notification outbox row are already
+              // durable. The daily retention cron retries workflow enqueueing.
+            }
+          })(),
+          (async () => {
+            try {
+              await track(
+                "lead_request_accepted",
+                {
+                  source: leadAnalyticsSource(parsed.data.attribution.utmSource),
+                  score_band:
+                    qualificationScore(parsed.data) >= 3 ? "3_5" : "0_2",
+                },
+                { headers: leadAnalyticsHeaders(request.headers) },
+              );
+            } catch {
+              // Conversion telemetry is advisory; durable intake must remain 202.
+            }
+          })(),
+        ]);
       });
     } catch {
-      // Background registration is advisory too. The lead is already durable.
+      // Background registration is advisory. The lead is already durable.
     }
     return intakeResponse({ accepted: true }, 202);
   } catch (error) {
