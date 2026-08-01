@@ -11,9 +11,27 @@ const SITE_URL = "https://www.0xzaps.com";
 /**
  * Only already-public, maintainer-approved product material belongs here.
  * Draft tutorials are intentionally absent until their canonical publication
- * exists; Substack's own RSS feed triggers their later syndication.
+ * exists; Substack's own RSS feed can source their later reviewed syndication.
  */
 export const OPENZAPS_FEED_ITEMS: readonly OpenZapsFeedItem[] = [
+  {
+    id: "openzaps-virtual-trading-2026-07-30",
+    title: "Practice deployed routes in Virtual Trading",
+    description:
+      "Paper-trade the deployed 0xZAPS/USDG and aeWETH/USDG routes with 10,000 virtual USDG and live read-only quotes, without a wallet or real funds.",
+    url: `${SITE_URL}/virtual-trading`,
+    // Canonical repository commit 02470cf, which shipped Virtual Trading.
+    publishedAt: "2026-07-30T12:01:00.000Z",
+  },
+  {
+    id: "openzaps-request-a-zap-2026-07-30",
+    title: "Request a bounded Zap workflow",
+    description:
+      "Submit one DeFi workflow to request a human-reviewed authority map covering what an agent may trigger and what it can never change.",
+    url: `${SITE_URL}/request-a-zap`,
+    // Canonical repository commit bc4db0a, which shipped the lead engine.
+    publishedAt: "2026-07-30T09:15:30.000Z",
+  },
   {
     id: "openzaps-bounded-agent-authority-2026-07-27",
     title: "Give an agent the trigger, never the authority",

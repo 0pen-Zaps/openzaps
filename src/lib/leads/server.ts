@@ -23,6 +23,7 @@ const PURGE_RPC = "purge_expired_lead_requests";
 const RPC_TIMEOUT_MS = 12_000;
 const MAX_SUBMIT_RESPONSE_BYTES = 4_096;
 const MAX_LIST_RESPONSE_BYTES = 2 * 1_024 * 1_024;
+const MAX_READINESS_RESPONSE_BYTES = 5 * 1_024 * 1_024;
 const SUPABASE_PROJECT_REF = /^[a-z0-9]{20}$/u;
 
 type Environment = Readonly<Record<string, string | undefined>>;
@@ -179,6 +180,51 @@ export function leadStoreConfigured(
   env: Environment = process.env,
 ): boolean {
   return leadConfiguration(env) !== null;
+}
+
+/**
+ * Verify the configured PostgREST origin, service-role authentication, and the
+ * exact intake RPC without reading or mutating any lead rows.
+ */
+export async function probeLeadStoreReadiness(
+  dependencies: LeadDependencies = {},
+): Promise<boolean> {
+  const configuration = leadConfiguration(
+    dependencies.env ?? process.env,
+  );
+  if (!configuration) return false;
+
+  let response: Response;
+  try {
+    response = await (dependencies.fetchImpl ?? fetch)(configuration.restUrl, {
+      headers: {
+        accept: "application/openapi+json",
+        apikey: configuration.serviceRoleKey,
+        authorization: `Bearer ${configuration.serviceRoleKey}`,
+      },
+      cache: "no-store",
+      redirect: "error",
+      signal: AbortSignal.timeout(RPC_TIMEOUT_MS),
+    });
+  } catch {
+    return false;
+  }
+  if (!response.ok) return false;
+
+  try {
+    const schema = await readBoundedJsonBody(
+      response,
+      MAX_READINESS_RESPONSE_BYTES,
+    );
+    const root = isRecord(schema) ? schema : null;
+    const paths = isRecord(root?.paths) ? root.paths : null;
+    const intakeRpc = isRecord(paths?.["/rpc/submit_lead_request"])
+      ? paths["/rpc/submit_lead_request"]
+      : null;
+    return isRecord(intakeRpc?.post);
+  } catch {
+    return false;
+  }
 }
 
 function requireLeadConfiguration(env: Environment): LeadConfiguration {

@@ -16,7 +16,15 @@ import { containsCredentialLikeData } from "@/lib/marketing/source-url";
 export const PRE_AUDIT_DISCLOSURE = "Pre-audit software. Verify before use.";
 export const UNAVAILABLE_DATA_DISCLOSURE = "Unavailable means unknown, not zero.";
 export const MAX_MARKETING_SOURCE_AGE_MS = 6 * 60 * 60 * 1_000;
+export const MAX_VOLATILE_MARKETING_SOURCE_AGE_MS = 30 * 1_000;
 const MAX_MARKETING_CLOCK_SKEW_MS = 5 * 60 * 1_000;
+const MAX_VOLATILE_MARKETING_CLOCK_SKEW_MS = 5 * 1_000;
+
+const VOLATILE_SOURCE_FACT_KEYS = new Set([
+  "product.virtual_trading_markets",
+  "product.virtual_trading_quote",
+  "product.request_a_zap_intake",
+]);
 
 export const CANONICAL_OUTBOUND_HOSTS = [
   "www.0xzaps.com",
@@ -406,8 +414,40 @@ function addSourceFreshnessIssues(
     issues.push({
       code: "source_packet_stale",
       message:
-        "Source evidence is outside the six-hour approval window; create a fresh draft.",
+      "Source evidence is outside the six-hour approval window; create a fresh draft.",
     });
+  }
+
+  if (
+    context.automaticAuthorization?.kind === "scheduled_template"
+    && !context.humanApproved
+  ) {
+    const citedFactKeys = new Set(
+      candidate.claims
+        .filter((claim) => claim.treatment !== "omitted")
+        .flatMap((claim) => claim.factKeys),
+    );
+    const volatileEvidenceStale = candidate.sourcePacket.facts.some((fact) => {
+      if (
+        !VOLATILE_SOURCE_FACT_KEYS.has(fact.key)
+        || !citedFactKeys.has(fact.key)
+      ) {
+        return false;
+      }
+      const observedAt = Date.parse(fact.observedAt);
+      const factAge = evaluatedAt - observedAt;
+      return !Number.isFinite(evaluatedAt)
+        || !Number.isFinite(observedAt)
+        || factAge > MAX_VOLATILE_MARKETING_SOURCE_AGE_MS
+        || factAge < -MAX_VOLATILE_MARKETING_CLOCK_SKEW_MS;
+    });
+    if (volatileEvidenceStale) {
+      issues.push({
+        code: "volatile_source_stale",
+        message:
+          "Live capability evidence is outside the 30-second automatic-delivery window; collect it again before publishing.",
+      });
+    }
   }
 }
 

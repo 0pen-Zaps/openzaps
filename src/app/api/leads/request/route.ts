@@ -5,18 +5,22 @@ import { LeadRequestSchema } from "@/lib/leads/schema";
 import { isSameOriginLeadRequest } from "@/lib/leads/origin";
 import {
   LeadStoreError,
+  probeLeadStoreReadiness,
   submitLeadRequest,
 } from "@/lib/leads/server";
 import {
   BoundedJsonBodyError,
   readBoundedJsonBody,
 } from "@/lib/request-body";
+import { serverRateLimit } from "@/lib/relay-rate-limit";
 import { openZapsLeadNotificationWorkflow } from "@/workflows/lead-notification";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const MAX_LEAD_REQUEST_BYTES = 16 * 1_024;
+const READINESS_RATE_LIMIT_MAX = 30;
+const READINESS_RATE_LIMIT_WINDOW_MS = 60_000;
 const PRIVATE_HEADERS = {
   "cache-control": "private, no-store",
 } as const;
@@ -30,6 +34,35 @@ function intakeResponse(
     status,
     headers: { ...PRIVATE_HEADERS, ...extraHeaders },
   });
+}
+
+export async function GET(request: Request): Promise<Response> {
+  const quota = serverRateLimit(
+    request,
+    "lead-intake-readiness",
+    READINESS_RATE_LIMIT_MAX,
+    READINESS_RATE_LIMIT_WINDOW_MS,
+  );
+  if (quota.limited) {
+    return Response.json(
+      { ready: false },
+      {
+        status: 429,
+        headers: {
+          ...PRIVATE_HEADERS,
+          "retry-after": String(quota.retryAfterSeconds),
+        },
+      },
+    );
+  }
+  const ready = await probeLeadStoreReadiness();
+  return Response.json(
+    { ready },
+    {
+      status: ready ? 200 : 503,
+      headers: PRIVATE_HEADERS,
+    },
+  );
 }
 
 export async function POST(request: Request): Promise<Response> {

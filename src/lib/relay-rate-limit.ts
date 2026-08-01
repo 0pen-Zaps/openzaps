@@ -1,5 +1,3 @@
-import type { NextRequest } from "next/server";
-
 const buckets = new Map<string, { count: number; resetAt: number }>();
 const MAX_BUCKETS = 10_000;
 
@@ -13,7 +11,7 @@ export interface ServerRateLimitResult {
  * as an authorization boundary; every receipt write is independently verified onchain.
  */
 export function serverRateLimit(
-  request: NextRequest,
+  request: Pick<Request, "headers">,
   namespace: string,
   max: number,
   windowMs: number,
@@ -48,7 +46,7 @@ export function serverRateLimit(
 
 /** Compatibility boolean for existing callers that do not surface Retry-After yet. */
 export function serverRateLimited(
-  request: NextRequest,
+  request: Pick<Request, "headers">,
   namespace: string,
   max: number,
   windowMs: number,

@@ -9,6 +9,7 @@ import {
   LeadStoreError,
   leadStoreConfigured,
   listLeadRequests,
+  probeLeadStoreReadiness,
   purgeExpiredLeadRequests,
   submitLeadRequest,
   updateLeadRequestLifecycle,
@@ -99,6 +100,51 @@ describe("lead store configuration", () => {
         SUPABASE_URL: "http://127.0.0.1:54321",
       }),
     ).toBe(true);
+  });
+
+  it("probes the authenticated OpenAPI surface without reading or mutating rows", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      Response.json({
+        paths: {
+          "/rpc/submit_lead_request": { post: { responses: {} } },
+        },
+      }),
+    );
+
+    await expect(
+      probeLeadStoreReadiness({ env: ENV, fetchImpl: fetchMock }),
+    ).resolves.toBe(true);
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe(
+      "https://abcdefghijklmnopqrst.supabase.co/rest/v1/",
+    );
+    expect(init).toMatchObject({ cache: "no-store", redirect: "error" });
+    expect(init).not.toHaveProperty("method");
+    expect(init).not.toHaveProperty("body");
+    expect(init.headers).toMatchObject({
+      accept: "application/openapi+json",
+      apikey: "service-secret",
+      authorization: "Bearer service-secret",
+    });
+  });
+
+  it("fails readiness closed for configuration, auth, network, and schema gaps", async () => {
+    const unused = vi.fn();
+    await expect(
+      probeLeadStoreReadiness({ env: {}, fetchImpl: unused }),
+    ).resolves.toBe(false);
+    expect(unused).not.toHaveBeenCalled();
+
+    for (const fetchImpl of [
+      vi.fn().mockRejectedValue(new Error("network")),
+      vi.fn().mockResolvedValue(Response.json({}, { status: 401 })),
+      vi.fn().mockResolvedValue(Response.json({ paths: {} })),
+      vi.fn().mockResolvedValue(new Response("not-json")),
+    ]) {
+      await expect(
+        probeLeadStoreReadiness({ env: ENV, fetchImpl }),
+      ).resolves.toBe(false);
+    }
   });
 });
 

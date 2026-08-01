@@ -11,7 +11,8 @@ export const MARKETING_POLICY_VERSION = 2 as const;
  * Versioned, server-rendered copy whose exact public fields are checked again
  * immediately before any automatic provider write.
  */
-export const SCHEDULED_MARKETING_TEMPLATE_ID = "bounded-authority-v1" as const;
+export const SCHEDULED_MARKETING_TEMPLATE_ID =
+  "virtual-trading-request-zap-v2" as const;
 
 export const MARKETING_RUN_STATES = [
   "queued",
@@ -71,6 +72,7 @@ export type MarketingContentKind = (typeof MARKETING_CONTENT_KINDS)[number];
 export const MARKETING_TOPICS = [
   "general",
   "protocol",
+  "simulation",
   "incident",
   "security",
   "token",

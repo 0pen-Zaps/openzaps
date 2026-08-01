@@ -9,6 +9,7 @@ import {
 
 const mocks = vi.hoisted(() => ({
   configured: vi.fn(),
+  storeReady: vi.fn(),
   start: vi.fn(),
   workflow: vi.fn(),
 }));
@@ -25,11 +26,12 @@ vi.mock("@/workflows/lead-notification", () => ({
 }));
 vi.mock("@/lib/leads/server", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/leads/server")>()),
+  probeLeadStoreReadiness: mocks.storeReady,
   submitLeadRequest: vi.fn(),
 }));
 
 import { submitLeadRequest } from "@/lib/leads/server";
-import { POST } from "./route";
+import { GET, POST } from "./route";
 
 const mockedSubmit = vi.mocked(submitLeadRequest);
 
@@ -66,13 +68,34 @@ function request(
   });
 }
 
+function readinessRequest(): Request {
+  return new Request("https://www.0xzaps.com/api/leads/request", {
+    headers: { "x-vercel-forwarded-for": "203.0.113.73" },
+  });
+}
+
 beforeEach(() => {
   mocks.configured.mockReturnValue(true);
+  mocks.storeReady.mockResolvedValue(true);
   mocks.start.mockResolvedValue({ runId: "wrun_lead_notification_1" });
 });
 
 afterEach(() => {
   vi.resetAllMocks();
+});
+
+describe("GET /api/leads/request", () => {
+  it("reports only non-secret intake readiness and never caches it", async () => {
+    const ready = await GET(readinessRequest());
+    expect(ready.status).toBe(200);
+    expect(ready.headers.get("cache-control")).toBe("private, no-store");
+    expect(await ready.json()).toEqual({ ready: true });
+
+    mocks.storeReady.mockResolvedValue(false);
+    const unavailable = await GET(readinessRequest());
+    expect(unavailable.status).toBe(503);
+    expect(await unavailable.json()).toEqual({ ready: false });
+  });
 });
 
 describe("POST /api/leads/request", () => {
