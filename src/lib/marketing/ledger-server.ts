@@ -33,6 +33,8 @@ const UTC_DAY = /^\d{4}-\d{2}-\d{2}$/u;
 const FAILURE_CODE = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,99}$/u;
 const X_PROVIDER_MESSAGE_ID = /^\d{1,19}$/u;
 const DISCORD_PROVIDER_MESSAGE_ID = /^\d{1,30}$/u;
+const DISCORD_PROVIDER_URL =
+  /^https:\/\/discord\.com\/channels\/(\d{1,30})\/(\d{1,30})\/(\d{1,30})$/u;
 const SUBSTACK_EDITOR_URL =
   "https://defitutorials.substack.com/publish/post";
 
@@ -449,11 +451,12 @@ function validProviderReceipt(
     );
   }
   if (input.channel === "discord") {
+    const providerUrlMatch = input.providerUrl?.match(DISCORD_PROVIDER_URL);
     return (
       input.status === "published" &&
       typeof input.providerMessageId === "string" &&
       DISCORD_PROVIDER_MESSAGE_ID.test(input.providerMessageId) &&
-      input.providerUrl === undefined
+      providerUrlMatch?.[3] === input.providerMessageId
     );
   }
   return (

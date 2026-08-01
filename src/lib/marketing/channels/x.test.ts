@@ -8,6 +8,7 @@ import { ChannelAdapterError } from "./shared";
 import {
   createXOAuth1AuthorizationHeader,
   fetchXMentionsPage,
+  lookupXComplianceSubjects,
   postXBroadcast,
   postXDeterministicMentionReply,
   postXReply,
@@ -816,7 +817,7 @@ describe("X reply target verification", () => {
     );
 
     expect(evidence).toEqual({
-      id: "123456789",
+      postId: "123456789",
       targetUrl: "https://x.com/community/status/123456789",
       authorId: "200",
       authenticatedAccountId: "100",
@@ -850,7 +851,7 @@ describe("X reply target verification", () => {
         userAccessToken: "token",
         fetchImpl: fetchMock,
       }),
-    ).resolves.toMatchObject({ trigger: "quote", id: "123456789" });
+    ).resolves.toMatchObject({ trigger: "quote", postId: "123456789" });
   });
 
   it.each([
@@ -940,5 +941,90 @@ describe("X reply target verification", () => {
         fetchImpl: fetchMock,
       }),
     ).rejects.toMatchObject({ code: "invalid-input" });
+  });
+});
+
+describe("X compliance lookup", () => {
+  it("maps exact official post and user lookup coverage to bounded statuses", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(xUserResponse())
+      .mockResolvedValueOnce(Response.json({
+        data: [{ id: "11", author_id: "200" }],
+        errors: [{ resource_id: "12", title: "Not Found" }],
+      }))
+      .mockResolvedValueOnce(Response.json({
+        data: [
+          { id: "200", protected: false },
+          { id: "201", protected: true },
+          { id: "202", protected: false, withheld: { country_codes: ["US"] } },
+        ],
+      }));
+
+    await expect(lookupXComplianceSubjects(
+      { postIds: ["11", "12"], userIds: ["200", "201", "202"] },
+      {
+        ...X_IDENTITY,
+        userAccessToken: "token",
+        fetchImpl: fetchMock,
+        nowMs: Date.parse("2026-08-01T12:00:00.000Z"),
+      },
+    )).resolves.toEqual({
+      authenticatedAccountId: "100",
+      observedAt: "2026-08-01T12:00:00.000Z",
+      observations: [
+        { subjectKind: "post", subjectId: "11", status: "present" },
+        { subjectKind: "post", subjectId: "12", status: "absent" },
+        { subjectKind: "user", subjectId: "200", status: "present" },
+        { subjectKind: "user", subjectId: "201", status: "protected" },
+        { subjectKind: "user", subjectId: "202", status: "withheld" },
+      ],
+    });
+    expect(fetchMock.mock.calls[1]?.[0]).toContain(
+      "https://api.x.com/2/tweets?",
+    );
+    expect(fetchMock.mock.calls[2]?.[0]).toContain(
+      "https://api.x.com/2/users?",
+    );
+  });
+
+  it("fails closed when lookup coverage is incomplete or contains unknown ids", async () => {
+    const incomplete = vi
+      .fn()
+      .mockResolvedValueOnce(xUserResponse())
+      .mockResolvedValueOnce(Response.json({
+        data: [{ id: "11", author_id: "200" }],
+      }));
+    await expect(lookupXComplianceSubjects(
+      { postIds: ["11", "12"], userIds: [] },
+      { ...X_IDENTITY, userAccessToken: "token", fetchImpl: incomplete },
+    )).rejects.toMatchObject({ code: "invalid-response" });
+
+    const unknown = vi
+      .fn()
+      .mockResolvedValueOnce(xUserResponse())
+      .mockResolvedValueOnce(Response.json({
+        errors: [{ resource_id: "99", title: "Not Found" }],
+      }));
+    await expect(lookupXComplianceSubjects(
+      { postIds: ["11"], userIds: [] },
+      { ...X_IDENTITY, userAccessToken: "token", fetchImpl: unknown },
+    )).rejects.toMatchObject({ code: "invalid-response" });
+  });
+
+  it("rejects duplicate, empty, or oversized batches before provider access", async () => {
+    const fetchMock = vi.fn();
+    for (const input of [
+      { postIds: [], userIds: [] },
+      { postIds: ["11", "11"], userIds: [] },
+      { postIds: Array.from({ length: 101 }, (_, index) => String(index + 1)), userIds: [] },
+    ]) {
+      await expect(lookupXComplianceSubjects(input, {
+        ...X_IDENTITY,
+        userAccessToken: "token",
+        fetchImpl: fetchMock,
+      })).rejects.toMatchObject({ code: "invalid-input" });
+    }
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 });

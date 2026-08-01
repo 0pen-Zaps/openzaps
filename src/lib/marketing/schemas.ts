@@ -53,12 +53,7 @@ export const MarketingExternalDataSchema = z
 
 export const MarketingInteractionSchema = z
   .object({
-    id: z.string().regex(/^\d{1,19}$/u),
-    targetUrl: z
-      .string()
-      .regex(/^https:\/\/x\.com\/[A-Za-z0-9_]{1,15}\/status\/\d{1,19}$/u),
-    authorId: z.string().regex(/^[1-9]\d{0,18}$/u),
-    authenticatedAccountId: z.string().regex(/^[1-9]\d{0,18}$/u),
+    id: z.string().regex(/^[1-9]\d{29}$/u),
     trigger: z.enum(["mention", "quote"]),
     observedAt: z.iso.datetime(),
   })

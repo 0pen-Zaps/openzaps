@@ -7,6 +7,7 @@ import {
   GeneratedMarketingDraftSchema,
   MarketingApprovalPayloadSchema,
   MarketingDraftBundleSchema,
+  MarketingDraftApiRequestSchema,
   MarketingDraftRequestSchema,
   MarketingScheduledRequestSchema,
   type MarketingDraftBundle,
@@ -37,6 +38,32 @@ describe("marketing workflow request contracts", () => {
         sourceUrls: ["https://attacker.example/instructions"],
       }).success,
     ).toBe(false);
+  });
+
+  it("binds Substack requests to one source-controlled tutorial selection", () => {
+    expect(MarketingDraftRequestSchema.safeParse({
+      kind: "tutorial",
+      brief: "Prepare the reviewed source-controlled tutorial.",
+      channels: ["substack"],
+      tutorialId: "paper-trade-first-authority-map",
+    }).success).toBe(true);
+    expect(MarketingDraftRequestSchema.safeParse({
+      kind: "tutorial",
+      brief: "Prepare a tutorial without a source selection.",
+      channels: ["substack"],
+    }).success).toBe(false);
+    expect(MarketingDraftRequestSchema.safeParse({
+      kind: "product_update",
+      brief: "Try to send generated copy to Substack.",
+      channels: ["substack"],
+      tutorialId: "paper-trade-first-authority-map",
+    }).success).toBe(false);
+    expect(MarketingDraftRequestSchema.safeParse({
+      kind: "tutorial",
+      brief: "Attach a tutorial selection to the wrong channel.",
+      channels: ["x"],
+      tutorialId: "paper-trade-first-authority-map",
+    }).success).toBe(false);
   });
 
   it("binds scheduled workflow input to one reviewed campaign/channel pair", () => {
@@ -151,12 +178,12 @@ describe("marketing workflow request contracts", () => {
         requiredChannelLinks: { x: xUrl },
       },
     ]) {
-      expect(MarketingDraftRequestSchema.safeParse(request).success).toBe(false);
+      expect(MarketingDraftApiRequestSchema.safeParse(request).success).toBe(false);
     }
   });
 
   it("accepts community replies only for one explicit X interaction", () => {
-    expect(MarketingDraftRequestSchema.parse({
+    expect(MarketingDraftApiRequestSchema.parse({
       kind: "community_reply",
       brief: "Paraphrased question about bounded agent authority.",
       channels: ["x"],
@@ -169,8 +196,17 @@ describe("marketing workflow request contracts", () => {
       interactionUrl: "https://x.com/community/status/123456789",
     });
 
+    expect(MarketingDraftRequestSchema.parse({
+      kind: "community_reply",
+      brief: "Paraphrased question about bounded agent authority.",
+      channels: ["x"],
+      interactionReference: "8".repeat(30),
+    })).toMatchObject({
+      interactionReference: "8".repeat(30),
+    });
+
     expect(
-      MarketingDraftRequestSchema.safeParse({
+      MarketingDraftApiRequestSchema.safeParse({
         kind: "community_reply",
         brief: "Answer this explicit OpenZaps mention.",
         channels: ["discord"],
@@ -181,7 +217,7 @@ describe("marketing workflow request contracts", () => {
 
   it("rejects spoofable caller-supplied trigger/count metadata and non-canonical X URLs", () => {
     expect(
-      MarketingDraftRequestSchema.safeParse({
+      MarketingDraftApiRequestSchema.safeParse({
         kind: "community_reply",
         brief: "Paraphrased question about bounded agent authority.",
         channels: ["x"],
@@ -202,7 +238,7 @@ describe("marketing workflow request contracts", () => {
       "https://x.com/community/status/12345678901234567890",
     ]) {
       expect(
-        MarketingDraftRequestSchema.safeParse({
+        MarketingDraftApiRequestSchema.safeParse({
           kind: "community_reply",
           brief: "Paraphrased question about bounded agent authority.",
           channels: ["x"],
@@ -252,13 +288,18 @@ describe("generated marketing output contracts", () => {
       externalData: [],
       interaction: null,
     };
+    const body = "Useful tutorial step. ".repeat(20);
+    const title = "A source-backed OpenZaps tutorial";
+    const tags = ["OpenZaps", "DeFi"];
+    const sourceSha256 = "a".repeat(64);
+    const bodySha256 = "b".repeat(64);
     const candidate = {
       id: "candidate:substack",
       channel: "substack" as const,
       action: "prepare_tutorial" as const,
       kind: "tutorial" as const,
       topics: ["protocol" as const],
-      body: "Useful tutorial step. ".repeat(20),
+      body,
       links: ["https://www.0xzaps.com/docs"],
       disclosures: ["pre_audit" as const],
       claims: [],
@@ -283,14 +324,47 @@ describe("generated marketing output contracts", () => {
         brief: "Explain bounded agent authority in a verified tutorial.",
         channels: ["substack" as const],
         sourceUrls: [],
+        tutorialId: "paper-trade-first-authority-map",
       },
       sourcePacket,
+      tutorialHandoff: {
+        version: 1 as const,
+        channel: "substack" as const,
+        status: "requires_owner_approval" as const,
+        tutorialId: "paper-trade-first-authority-map",
+        manifestStatus: "draft" as const,
+        sourcePath: "docs/tutorials/paper-trade-first-authority-map.md",
+        sourceSha256,
+        bodySha256,
+        title,
+        tags,
+        topics: ["protocol" as const],
+        disclosures: ["pre_audit" as const],
+        claims: [],
+        links: ["https://www.0xzaps.com/docs"],
+        bodyMarkdown: body,
+        editorUrl: "https://defitutorials.substack.com/publish/post" as const,
+        publicationUrl: "https://defitutorials.substack.com" as const,
+        modelRewriteAllowed: false as const,
+        apiWriteAttempted: false as const,
+        privateEndpointUsed: false as const,
+        approval: {
+          required: true as const,
+          decision: "pending" as const,
+          scope: "exact_source_and_body_sha256" as const,
+          tutorialId: "paper-trade-first-authority-map",
+          sourceSha256,
+          bodySha256,
+          statement:
+            "Approve only these exact source and editor-body hashes for a human-only DeFi Tutorials handoff." as const,
+        },
+      },
       candidates: [candidate],
       presentations: [{
         candidateId: candidate.id,
         channel: "substack" as const,
-        title: "A source-backed OpenZaps tutorial",
-        tags: ["OpenZaps", "DeFi"],
+        title,
+        tags,
       }],
       policy: [{
         policyVersion: 2 as const,
@@ -324,6 +398,7 @@ describe("generated marketing output contracts", () => {
       sourceUrls: [sourceUrl],
       requiredChannelLinks: { x: requiredUrl },
     };
+    delete bundle.tutorialHandoff;
     bundle.candidates[0] = {
       ...bundle.candidates[0],
       id: "candidate:x",
@@ -478,8 +553,28 @@ describe("generated marketing output contracts", () => {
       MarketingApprovalPayloadSchema.safeParse({
         decision: "approve",
         approvedBy: "authenticated-operator",
+        tutorialApproval: {
+          decision: "approve",
+          approvedBy: "authenticated-operator",
+          tutorialId: "paper-trade-first-authority-map",
+          sourceSha256: "a".repeat(64),
+          bodySha256: "b".repeat(64),
+        },
       }).success,
     ).toBe(true);
+    expect(
+      MarketingApprovalPayloadSchema.safeParse({
+        decision: "reject",
+        approvedBy: "authenticated-operator",
+        tutorialApproval: {
+          decision: "approve",
+          approvedBy: "authenticated-operator",
+          tutorialId: "paper-trade-first-authority-map",
+          sourceSha256: "a".repeat(64),
+          bodySha256: "b".repeat(64),
+        },
+      }).success,
+    ).toBe(false);
     expect(
       MarketingApprovalPayloadSchema.safeParse({
         decision: "approve",
@@ -611,11 +706,13 @@ describe("generated marketing output contracts", () => {
     );
 
     const nonSubstack = validReviewBundle();
+    delete nonSubstack.tutorialHandoff;
     nonSubstack.request = {
       ...nonSubstack.request,
       kind: "educational",
       channels: ["x"],
     };
+    delete nonSubstack.request.tutorialId;
     nonSubstack.candidates[0] = {
       ...nonSubstack.candidates[0],
       channel: "x",
@@ -647,10 +744,7 @@ describe("generated marketing output contracts", () => {
 
     const wrongTarget = validReviewBundle();
     const interaction = {
-      id: "987654321",
-      targetUrl: "https://x.com/community/status/987654321",
-      authorId: "200",
-      authenticatedAccountId: "100",
+      id: "9".repeat(30),
       trigger: "mention" as const,
       observedAt: wrongTarget.requestedAt,
     };
@@ -659,7 +753,7 @@ describe("generated marketing output contracts", () => {
       brief: "Paraphrased question about bounded agent authority.",
       channels: ["x"],
       sourceUrls: [],
-      interactionUrl: "https://x.com/community/status/123456789",
+      interactionReference: "8".repeat(30),
     };
     wrongTarget.sourcePacket = {
       ...wrongTarget.sourcePacket,

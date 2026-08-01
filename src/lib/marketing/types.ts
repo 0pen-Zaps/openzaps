@@ -142,10 +142,12 @@ export interface MarketingClaim {
 }
 
 export interface MarketingInteraction {
+  /**
+   * Random, short-lived reference to provider metadata held outside Workflow.
+   * This is never an X post id, account id, URL, username, or other provider
+   * subject identifier.
+   */
   id: string;
-  targetUrl: string;
-  authorId: string;
-  authenticatedAccountId: string;
   trigger: "mention" | "quote";
   observedAt: string;
 }

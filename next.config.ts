@@ -2,6 +2,12 @@ import type { NextConfig } from "next";
 import { withWorkflow } from "workflow/next";
 
 const nextConfig: NextConfig = {
+  // Workflow steps load only reviewed tutorial Markdown named by the strict
+  // source manifest. Include that narrow directory in every server trace so a
+  // production handoff can re-read and re-hash the exact approved bytes.
+  outputFileTracingIncludes: {
+    "/*": ["./docs/tutorials/*.md", "./docs/tutorials/manifest.json"],
+  },
   // 308s keep every inbound link — a shared URL, a search result, a bookmark, an
   // onchain-minted capsule link — landing on the page that now holds what it
   // used to, rather than on a 404. Next.js forwards the incoming query string,

@@ -255,6 +255,36 @@ function sqlJson(value) {
   return `'${JSON.stringify(value).replaceAll("'", "''")}'::jsonb`;
 }
 
+function refreshXComplianceCheckpoint(accountId) {
+  const listed = psqlScalar(`
+    select subjects::text
+    from public.list_marketing_x_compliance_subjects('${accountId}', 5000);
+  `);
+  const subjects = JSON.parse(listed);
+  if (subjects.length === 0) {
+    subjects.push({ subject_kind: "account", subject_id: accountId });
+  }
+  const observations = subjects.map((subject) => ({
+    ...subject,
+    outcome: "present",
+  }));
+  const result = psqlScalar(`
+    select result_code || '|' || checkpoint_id::text
+    from public.record_marketing_x_compliance_checkpoint(
+      '${accountId}',
+      pg_catalog.gen_random_uuid(),
+      pg_catalog.clock_timestamp(),
+      pg_catalog.clock_timestamp(),
+      ${sqlJson(observations)}
+    );
+  `).split("|");
+  assert(
+    result[0] === "recorded" && /^[0-9a-f-]{36}$/.test(result[1]),
+    `X compliance checkpoint did not become healthy: ${result.join("|")}`,
+  );
+  return result[1];
+}
+
 function syndicationSnapshot({
   sourceKey,
   items = [],
@@ -692,6 +722,16 @@ try {
     "public.erase_marketing_x_compliance_data(text,text,text,text)",
     "public.clear_marketing_x_compliance_hold(text,text)",
     "public.get_marketing_x_interaction_reference(text,text)",
+    "public.list_marketing_x_compliance_subjects(text,integer)",
+    "public.record_marketing_x_compliance_checkpoint(text,uuid,timestamp with time zone,timestamp with time zone,jsonb)",
+    "public.get_marketing_x_compliance_health(text)",
+    "public.create_marketing_x_reply_subject(text,text,text,text,text,timestamp with time zone)",
+    "public.get_marketing_x_reply_subject(text)",
+    "public.claim_marketing_x_reply_subject_admission(text,text)",
+    "public.admit_marketing_x_outbound_delivery(text,text,text,text,uuid,timestamp with time zone)",
+    "public.check_marketing_x_outbound_admission(uuid)",
+    "public.finalize_marketing_x_outbound_admission(uuid,text,text)",
+    "public.purge_marketing_x_retention(timestamp with time zone)",
   ];
   const xMentionRpcArray = xMentionRpcs
     .map((signature) => `'${signature}'`)
@@ -705,7 +745,12 @@ try {
           'public.marketing_x_mention_accounts'::regclass,
           'public.marketing_x_mentions'::regclass,
           'public.marketing_x_mention_opt_outs'::regclass,
-          'public.marketing_x_compliance_events'::regclass
+          'public.marketing_x_compliance_events'::regclass,
+          'public.marketing_x_compliance_checkpoints'::regclass,
+          'public.marketing_x_compliance_subject_observations'::regclass,
+          'public.marketing_x_reply_subjects'::regclass,
+          'public.marketing_x_outbound_admissions'::regclass,
+          'public.marketing_x_retention_events'::regclass
         )
       ),
       has_table_privilege(
@@ -736,6 +781,7 @@ try {
   );
 
   const emptyXAccountId = "1910000000000000999";
+  refreshXComplianceCheckpoint(emptyXAccountId);
   const emptyXLease = psqlScalar(`
     select lease_token::text
     from public.claim_marketing_x_mention_poll('${emptyXAccountId}');
@@ -762,8 +808,51 @@ try {
     `empty X first-run baseline did not initialize safely: ${emptyXBaseline}`,
   );
 
+  psql(`
+    update public.marketing_x_mention_accounts
+    set next_poll_at = pg_catalog.clock_timestamp() - interval '1 second'
+    where account_id = '${emptyXAccountId}';
+  `);
+  const delayedBaselineLease = psqlScalar(`
+    select lease_token::text
+    from public.claim_marketing_x_mention_poll('${emptyXAccountId}');
+  `);
+  const delayedPreCutoffCommit = psqlScalar(`
+    select result_code
+    from public.commit_marketing_x_mention_discovery(
+      '${emptyXAccountId}',
+      '${delayedBaselineLease}'::uuid,
+      null,
+      '1910000000000000998',
+      null,
+      null,
+      true,
+      ${sqlJson([{
+        post_id: "1910000000000000998",
+        author_id: "1910000000000000997",
+        conversation_id: "1910000000000000996",
+        created_at: new Date(Date.now() - 60_000).toISOString(),
+        content_hmac: "11".repeat(32),
+        classification: "auto_reply",
+        eligibility_reason: "bounded_faq",
+      }])}
+    );
+  `);
+  const delayedPreCutoffState = psqlScalar(`
+    select state
+    from public.marketing_x_mentions
+    where account_id = '${emptyXAccountId}'
+      and post_id = '1910000000000000998';
+  `);
+  assert(
+    delayedPreCutoffCommit === "committed" && delayedPreCutoffState === "baseline",
+    `delayed pre-cutoff X mention escaped the immutable baseline: ${delayedPreCutoffCommit}|${delayedPreCutoffState}`,
+  );
+
   const xAccountId = "1910000000000000001";
   const xObservedAt = new Date(Date.now() - 60_000).toISOString();
+  const xEligibleObservedAt = new Date(Date.now() + 30_000).toISOString();
+  refreshXComplianceCheckpoint(xAccountId);
   const firstXLease = psqlScalar(`
     select result_code || '|' || lease_token::text || '|' || baseline_required
     from public.claim_marketing_x_mention_poll('${xAccountId}');
@@ -850,7 +939,7 @@ try {
       post_id: "1910000000000000202",
       author_id: "1910000000000000302",
       conversation_id: "1910000000000000402",
-      created_at: xObservedAt,
+      created_at: xEligibleObservedAt,
       content_hmac: "14".repeat(32),
       classification: "auto_reply",
       eligibility_reason: "bounded_faq",
@@ -859,7 +948,7 @@ try {
       post_id: "1910000000000000203",
       author_id: "1910000000000000303",
       conversation_id: "1910000000000000402",
-      created_at: xObservedAt,
+      created_at: xEligibleObservedAt,
       content_hmac: "15".repeat(32),
       classification: "auto_reply",
       eligibility_reason: "bounded_faq",
@@ -868,7 +957,7 @@ try {
       post_id: "1910000000000000204",
       author_id: "1910000000000000304",
       conversation_id: "1910000000000000404",
-      created_at: xObservedAt,
+      created_at: xEligibleObservedAt,
       content_hmac: "16".repeat(32),
       classification: "review",
       eligibility_reason: "needs_review",
@@ -877,7 +966,7 @@ try {
       post_id: "1910000000000000205",
       author_id: "1910000000000000302",
       conversation_id: "1910000000000000405",
-      created_at: xObservedAt,
+      created_at: xEligibleObservedAt,
       content_hmac: "17".repeat(32),
       classification: "auto_reply",
       eligibility_reason: "bounded_faq",
@@ -886,7 +975,7 @@ try {
       post_id: "1910000000000000206",
       author_id: "1910000000000000306",
       conversation_id: "1910000000000000406",
-      created_at: xObservedAt,
+      created_at: xEligibleObservedAt,
       content_hmac: "18".repeat(32),
       classification: "auto_reply",
       eligibility_reason: "bounded_faq",
@@ -962,6 +1051,16 @@ try {
     `complete X mention page did not dedupe/advance: ${completeXCommit}`,
   );
 
+  const uncoveredXReplyClaim = psqlScalar(`
+    select result_code
+    from public.claim_next_marketing_x_mention('${xAccountId}', 1);
+  `);
+  assert(
+    uncoveredXReplyClaim === "subject_compliance_stale",
+    `new X mention escaped subject-specific compliance coverage: ${uncoveredXReplyClaim}`,
+  );
+  refreshXComplianceCheckpoint(xAccountId);
+
   const firstXReplyClaim = psqlScalar(`
     select
       result_code,
@@ -979,6 +1078,45 @@ try {
       && /^[1-9][0-9]{29}$/.test(firstXReplyClaim[4])
       && firstXReplyClaim[4] !== firstXReplyClaim[1],
     `oldest eligible X mention was not claimed: ${firstXReplyClaim.join("|")}`,
+  );
+
+  const autoXAdmission = psqlScalar(`
+    select result_code || '|' || admission_token::text
+    from public.admit_marketing_x_outbound_delivery(
+      '${xAccountId}',
+      '${firstXReplyClaim[4]}',
+      '${firstXReplyClaim[1]}',
+      '1910000000000000302',
+      '${firstXReplyClaim[2]}'::uuid,
+      pg_catalog.clock_timestamp()
+    );
+  `).split("|");
+  assert(
+    autoXAdmission[0] === "admitted"
+      && /^[0-9a-f-]{36}$/.test(autoXAdmission[1]),
+    `covered X mention did not receive a final admission fence: ${autoXAdmission.join("|")}`,
+  );
+  const autoXAdmissionCheck = psqlScalar(`
+    select result_code || '|' || allowed
+    from public.check_marketing_x_outbound_admission(
+      '${autoXAdmission[1]}'::uuid
+    );
+  `);
+  assert(
+    autoXAdmissionCheck === "allowed|true",
+    `fresh X mention admission failed its final fence: ${autoXAdmissionCheck}`,
+  );
+  const autoXAdmissionFinalized = psqlScalar(`
+    select result_code || '|' || state
+    from public.finalize_marketing_x_outbound_admission(
+      '${autoXAdmission[1]}'::uuid,
+      'failed',
+      'integration_no_provider'
+    );
+  `);
+  assert(
+    autoXAdmissionFinalized === "finalized|failed",
+    `X mention admission did not finalize terminally: ${autoXAdmissionFinalized}`,
   );
 
   const firstXInteractionLookup = psqlScalar(`
@@ -1047,6 +1185,9 @@ try {
       redacted_interaction text;
       stored_mention_count integer;
       compliance_event_count integer;
+      current_subjects jsonb;
+      healthy_observations jsonb;
+      clearance_checkpoint uuid;
     begin
       select result_code into delivery_result
       from public.claim_marketing_delivery(
@@ -1081,10 +1222,27 @@ try {
         and reason_code = 'source_deleted';
       select result_code into poll_result
       from public.claim_marketing_x_mention_poll('${xAccountId}');
+      select subjects into current_subjects
+      from public.list_marketing_x_compliance_subjects('${xAccountId}', 5000);
+      select coalesce(
+        pg_catalog.jsonb_agg(
+          entries.item || pg_catalog.jsonb_build_object('outcome', 'present')
+        ),
+        '[]'::jsonb
+      ) into healthy_observations
+      from pg_catalog.jsonb_array_elements(current_subjects) as entries(item);
+      select checkpoint_id into clearance_checkpoint
+      from public.record_marketing_x_compliance_checkpoint(
+        '${xAccountId}',
+        pg_catalog.gen_random_uuid(),
+        pg_catalog.clock_timestamp(),
+        pg_catalog.clock_timestamp(),
+        healthy_observations
+      );
       select result_code into clear_result
       from public.clear_marketing_x_compliance_hold(
         '${xAccountId}',
-        'official_source_absence_verified'
+        clearance_checkpoint::text
       );
 
       if delivery_result <> 'claimed'
@@ -1239,6 +1397,185 @@ try {
   assert(
     reviewInboxAfterOptOut === "0",
     `X mention opt-out remained reviewable: ${reviewInboxAfterOptOut}`,
+  );
+
+  const manualXAccountId = "1910000000000000500";
+  refreshXComplianceCheckpoint(manualXAccountId);
+  const firstManualSubject = psqlScalar(`
+    select result_code || '|' || interaction_reference
+    from public.create_marketing_x_reply_subject(
+      '${manualXAccountId}',
+      '1910000000000000501',
+      '1910000000000000502',
+      'https://x.com/community/status/1910000000000000501',
+      'operator_selected_status',
+      pg_catalog.clock_timestamp()
+    );
+  `).split("|");
+  assert(
+    firstManualSubject[0] === "created"
+      && /^[1-9][0-9]{29}$/.test(firstManualSubject[1]),
+    `manual X subject was not vaulted opaquely: ${firstManualSubject.join("|")}`,
+  );
+  const safeManualSubject = psqlScalar(`
+    select result_code || '|' || interaction_reference || '|' || trigger
+    from public.get_marketing_x_reply_subject('${firstManualSubject[1]}');
+  `);
+  assert(
+    safeManualSubject === `found|${firstManualSubject[1]}|operator_selected_status`,
+    `manual X subject safe read was not metadata-only: ${safeManualSubject}`,
+  );
+  const firstManualClaim = psqlScalar(`
+    select
+      result_code || '|' || claim_token::text || '|' || account_id || '|'
+      || post_id || '|' || author_id || '|' || target_url
+    from public.claim_marketing_x_reply_subject_admission(
+      '${firstManualSubject[1]}',
+      'manual-subject-integration-1'
+    );
+  `).split("|");
+  assert(
+    firstManualClaim[0] === "claimed"
+      && /^[0-9a-f-]{36}$/.test(firstManualClaim[1])
+      && firstManualClaim.slice(2).join("|") ===
+        `${manualXAccountId}|1910000000000000501|1910000000000000502|https://x.com/community/status/1910000000000000501`,
+    `manual X subject claim did not reveal raw data only at the provider boundary: ${firstManualClaim.join("|")}`,
+  );
+  const replayedManualClaim = psqlScalar(`
+    select
+      result_code || '|' || (account_id is null) || '|' || (post_id is null)
+      || '|' || (author_id is null) || '|' || (target_url is null)
+    from public.claim_marketing_x_reply_subject_admission(
+      '${firstManualSubject[1]}',
+      'manual-subject-integration-1'
+    );
+  `);
+  assert(
+    replayedManualClaim === "already_claimed|true|true|true|true",
+    `manual X subject replay re-exposed raw provider data: ${replayedManualClaim}`,
+  );
+  const firstManualAdmission = psqlScalar(`
+    select result_code || '|' || admission_token::text
+    from public.admit_marketing_x_outbound_delivery(
+      '${manualXAccountId}',
+      '${firstManualSubject[1]}',
+      '1910000000000000501',
+      '1910000000000000502',
+      '${firstManualClaim[1]}'::uuid,
+      pg_catalog.clock_timestamp()
+    );
+  `).split("|");
+  assert(
+    firstManualAdmission[0] === "admitted"
+      && /^[0-9a-f-]{36}$/.test(firstManualAdmission[1]),
+    `manual X subject did not receive a final admission lease: ${firstManualAdmission.join("|")}`,
+  );
+
+  const manualComplianceSubjects = JSON.parse(psqlScalar(`
+    select subjects::text
+    from public.list_marketing_x_compliance_subjects('${manualXAccountId}', 5000);
+  `));
+  const manualActionObservations = manualComplianceSubjects.map((subject) => ({
+    ...subject,
+    outcome:
+      subject.subject_kind === "post"
+      && subject.subject_id === "1910000000000000501"
+        ? "deleted"
+        : "present",
+  }));
+  const manualActionCheckpoint = psqlScalar(`
+    select result_code || '|' || non_present_count
+    from public.record_marketing_x_compliance_checkpoint(
+      '${manualXAccountId}',
+      pg_catalog.gen_random_uuid(),
+      pg_catalog.clock_timestamp() - interval '1 second',
+      pg_catalog.clock_timestamp(),
+      ${sqlJson(manualActionObservations)}
+    );
+  `);
+  assert(
+    manualActionCheckpoint === "action_required|1",
+    `non-present X provider observation did not atomically enter a hold: ${manualActionCheckpoint}`,
+  );
+  const fencedManualAdmission = psqlScalar(`
+    select result_code || '|' || allowed
+    from public.check_marketing_x_outbound_admission(
+      '${firstManualAdmission[1]}'::uuid
+    );
+  `);
+  const erasedManualSubject = psqlScalar(`
+    select result_code
+    from public.get_marketing_x_reply_subject('${firstManualSubject[1]}');
+  `);
+  const heldManualHealth = psqlScalar(`
+    select result_code || '|' || hold
+    from public.get_marketing_x_compliance_health('${manualXAccountId}');
+  `);
+  assert(
+    fencedManualAdmission === "revoked|false"
+      && erasedManualSubject === "not_found"
+      && heldManualHealth === "hold|true",
+    `X compliance action did not fence, erase, and hold atomically: ${fencedManualAdmission}|${erasedManualSubject}|${heldManualHealth}`,
+  );
+
+  const manualClearanceCheckpoint = refreshXComplianceCheckpoint(manualXAccountId);
+  const manualHoldClear = psqlScalar(`
+    select result_code
+    from public.clear_marketing_x_compliance_hold(
+      '${manualXAccountId}',
+      '${manualClearanceCheckpoint}'
+    );
+  `);
+  assert(
+    manualHoldClear === "cleared",
+    `provider-backed X compliance hold did not clear: ${manualHoldClear}`,
+  );
+
+  const secondManualSubject = psqlScalar(`
+    select interaction_reference
+    from public.create_marketing_x_reply_subject(
+      '${manualXAccountId}',
+      '1910000000000000503',
+      '1910000000000000504',
+      'https://x.com/i/web/status/1910000000000000503',
+      'operator_selected_status',
+      pg_catalog.clock_timestamp()
+    );
+  `);
+  const secondManualClaim = psqlScalar(`
+    select claim_token::text
+    from public.claim_marketing_x_reply_subject_admission(
+      '${secondManualSubject}',
+      'manual-subject-integration-2'
+    );
+  `);
+  const secondManualAdmission = psqlScalar(`
+    select admission_token::text
+    from public.admit_marketing_x_outbound_delivery(
+      '${manualXAccountId}',
+      '${secondManualSubject}',
+      '1910000000000000503',
+      '1910000000000000504',
+      '${secondManualClaim}'::uuid,
+      pg_catalog.clock_timestamp()
+    );
+  `);
+  const completedManualAdmission = psqlScalar(`
+    select result_code || '|' || state
+    from public.finalize_marketing_x_outbound_admission(
+      '${secondManualAdmission}'::uuid,
+      'completed',
+      null
+    );
+  `);
+  const completedManualSubjectGone = psqlScalar(`
+    select result_code
+    from public.get_marketing_x_reply_subject('${secondManualSubject}');
+  `);
+  assert(
+    completedManualAdmission === "finalized|completed"
+      && completedManualSubjectGone === "not_found",
+    `terminal manual X delivery retained raw subject data: ${completedManualAdmission}|${completedManualSubjectGone}`,
   );
 
   const syndicationRpcs = [

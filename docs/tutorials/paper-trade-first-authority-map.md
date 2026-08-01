@@ -10,7 +10,9 @@
 
 **Canonical CTA:** https://www.0xzaps.com/request-a-zap
 
-> Disclosure: I work on OpenZaps. The contracts have not completed an external audit. Virtual Trading uses no wallet or real funds; a live onchain action is different, irreversible, and can lose money.
+<!-- OPENZAPS_SUBSTACK_BODY -->
+
+> Disclosure: I work on OpenZaps. The contracts have not completed an external audit. Virtual Trading uses no wallet or real funds; a live onchain action is different, irreversible, and can lose money. Pre-audit software. Verify before use.
 
 The safest time to discover that an automation idea is underspecified is before anyone connects a wallet.
 

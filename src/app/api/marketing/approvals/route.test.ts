@@ -97,6 +97,37 @@ describe("marketing approval route", () => {
     });
   });
 
+  it("echoes exact tutorial hashes into the owner approval receipt", async () => {
+    const tutorialApproval = {
+      tutorialId: "paper-trade-first-authority-map",
+      sourceSha256: "a".repeat(64),
+      bodySha256: "b".repeat(64),
+    };
+    const response = await POST(request({
+      runId: "wrun_review_1",
+      decision: "approve",
+      tutorialApproval,
+    }));
+
+    expect(response.status).toBe(202);
+    expect(resumeMock).toHaveBeenCalledWith("approval:wrun_review_1", {
+      decision: "approve",
+      approvedBy: "nodar",
+      tutorialApproval: {
+        decision: "approve",
+        approvedBy: "nodar",
+        ...tutorialApproval,
+      },
+    });
+
+    const rejected = await POST(request({
+      runId: "wrun_review_1",
+      decision: "reject",
+      tutorialApproval,
+    }));
+    expect(rejected.status).toBe(400);
+  });
+
   it("classifies a duplicate or stale decision as a conflict", async () => {
     resumeMock.mockResolvedValue(false);
 

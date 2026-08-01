@@ -28,6 +28,15 @@ export interface DiscordCommandReconciliationResult extends DiscordCommandDiff {
   readonly managedCommandsInSync: boolean;
   readonly applied: boolean;
   readonly verified: boolean;
+  readonly providerReadbackVerified: true;
+  readonly manifestSha256: string;
+  readonly managedReadbackSha256: string;
+}
+
+export interface DiscordGuildCommandReadback extends DiscordCommandDiff {
+  readonly providerReadbackVerified: true;
+  readonly manifestSha256: string;
+  readonly managedReadbackSha256: string;
 }
 
 export function validateDesiredCommands(
@@ -38,6 +47,12 @@ export function buildCommandDiff(
   desiredValue: unknown,
   remoteValue: unknown,
 ): DiscordCommandDiff;
+export function verifyGuildCommandReadback(input: {
+  desiredValue: unknown;
+  remoteValue: unknown;
+  applicationId: string;
+  guildId: string;
+}): DiscordGuildCommandReadback;
 export function validateDiscordEnvironment(
   environment: Record<string, string | undefined>,
 ): { applicationId: string; guildId: string; token: string };

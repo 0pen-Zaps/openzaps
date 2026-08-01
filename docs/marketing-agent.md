@@ -41,6 +41,7 @@ measurable, privacy-minimized handoff to `/request-a-zap`.
 | Prohibited means prohibited | A human cannot override credential exposure, guaranteed-return claims, impersonation, policy bypasses, unsolicited bulk messaging, unavailable-as-zero claims, or non-canonical links. |
 | No unverified X replies | Manual replies start from an operator-selected canonical status URL. Proactive discovery uses only X's official mentions endpoint—never search or scraping—baselines the first complete result, stores IDs plus a keyed content HMAC but no post text, re-reads the exact post before delivery, and enforces one lifetime reply per interaction. |
 | Bounded X auto-response | Only exact `/docs`, `/request`, `/virtual`, `/agent`, and `/about` prompts (plus narrowly equivalent questions) can select source-reviewed templates. Protected/withheld observations are not retained; links, media, stale posts, sensitive topics, ambiguity, and freeform text stay review-only or ignored. One reply per invocation, one per author/day, one per conversation/day, a default one/day cap, and explicit opt-out are enforced durably. |
+| Dynamic X compliance gate | `OPENZAPS_X_COMPLIANCE_READY` is only an operator attestation. Mention ingestion and replies additionally require the service-role health RPC to return a fresh `healthy` checkpoint with no hold and a future `validUntil`. The private status route reads that database state on every request; a flag, cached UI value, or successful provider login cannot substitute for it. |
 | No undocumented publishing | X uses `POST /2/tweets`; Discord uses official webhooks/REST; Substack uses its official editor and public RSS feed. There is no browser scraping, session-cookie automation, or private endpoint. |
 | Safe failure | Missing or malformed configuration blocks work. Provider errors are sanitized, publishing is not automatically retried, and Discord mentions are disabled. |
 
@@ -71,6 +72,13 @@ discovery cron
   -> durable deduplication inbox only
   -> zero workflows and zero provider writes
 
+X compliance cron
+  -> current account, post, and author inventory from the durable store
+  -> official X lookup endpoints in batches of at most 100 ids
+  -> exact full-coverage checkpoint, valid for 30 minutes
+  -> hold and identifier suppression on any non-present/protected/withheld result
+  -> zero X writes and zero workflow starts
+
 X mention cron
   -> official GET /2/users/:id/mentions only
   -> first complete result becomes a no-reply baseline
@@ -79,6 +87,11 @@ X mention cron
   -> revalidate identity, post, author, content HMAC, policy, caps, and opt-out
   -> durable interaction and delivery claims
   -> at most one reply; no automatic retry after ambiguity
+
+X retention cron
+  -> service-role-only bounded purge and cursor rebaseline
+  -> rewrite raw post references to opaque interaction references before deletion
+  -> zero X reads or writes and zero workflow starts
 ```
 
 Discord slash-command answers are a separate deterministic FAQ path. They do
@@ -92,8 +105,11 @@ not invoke the model or the approval workflow.
 | `/learn` | Public, indexable catalog of reviewed product updates and RSS-confirmed DeFi Tutorials, with RSS/community follow paths and a bounded Request-a-Zap CTA | Public; source-controlled catalog only, with no provider write or draft access. |
 | `GET /api/marketing/status` | Secret-free readiness and policy posture | `Authorization: Bearer <OPENZAPS_MARKETING_ADMIN_TOKEN>` |
 | `GET /api/marketing/x/identity` | Operator-triggered, read-only verification that the active X credentials resolve to the configured account id and username | Operator bearer token |
+| `GET /api/marketing/discord/preflight` | Operator-triggered, read-only verification that the configured webhook or bot credentials still resolve to the exact OpenZaps guild/channel destination; does not check commands or write | Operator bearer token |
 | `GET /api/marketing/x/mentions` | List the metadata-only mention inbox and review-required count; never returns raw post text, usernames, or profiles | Operator bearer token |
 | `GET /api/marketing/x/mentions/cron` | Poll the official mentions endpoint and, when every independent gate is ready, deliver at most one exact deterministic reply | `Authorization: Bearer <CRON_SECRET>` |
+| `GET /api/marketing/x/compliance/cron` | Reconcile the complete durable X subject inventory through official read endpoints and record a short-lived checkpoint or compliance hold; never posts | `Authorization: Bearer <CRON_SECRET>` |
+| `GET /api/marketing/x/retention` | Apply bounded X identifier retention, opaque-reference rewrites, and cursor rebaselining; never contacts X | `Authorization: Bearer <CRON_SECRET>` |
 | `POST /api/marketing/runs` | Start a durable draft workflow | Operator bearer token |
 | `GET /api/marketing/runs/:runId` | Read the latest run event/result | Operator bearer token |
 | `POST /api/marketing/approvals` | Resume the one-shot approval hook | Operator bearer token |
@@ -161,7 +177,8 @@ later is not sufficient.
 | `OPENZAPS_X_AUTO_RESPONSE_APPROVED` | `false` (set only after X approves the brand auto-response campaign) |
 | `OPENZAPS_X_AUTO_RESPONSE_APPROVAL_DIGEST` | unset (must exactly match the currently reviewed template registry digest) |
 | `OPENZAPS_X_COMMERCIAL_USE_APPROVED` | `false` (set only after the intended OpenZaps use is permitted for the X API access tier) |
-| `OPENZAPS_X_COMPLIANCE_READY` | `false` (set only while the official compliance event consumer is operating within the required window) |
+| `OPENZAPS_X_COMPLIANCE_MONITOR_ENABLED` | `false` (enables the official read-only reconciliation cron; does not authorize ingestion or replies) |
+| `OPENZAPS_X_COMPLIANCE_READY` | `false` (operator attestation only; effective readiness also requires a fresh healthy database checkpoint and no hold) |
 | `OPENZAPS_X_AUTO_REPLY_DAILY_CAP` | `1` (independent automatic-reply cap; accepts 0–5) |
 
 General channel caps accept integers from 0 through 100; the dedicated X
@@ -238,6 +255,19 @@ metadata, updates the private inbox and validators, and returns
 `OPENZAPS_MARKETING_AUTO_PUBLISH`, never starts the marketing workflow, and
 never calls X, Discord, or a Substack write surface.
 
+The X compliance route runs at minutes `5,20,35,50` of every hour and is
+disabled unless `OPENZAPS_X_COMPLIANCE_MONITOR_ENABLED=true`. It reads the
+current account/post/author inventory from the service-role-only store (up to
+5,000 subjects), resolves official X lookups in batches of at most 100 ids,
+requires the authenticated account to remain exact, and records one complete
+checkpoint. A healthy checkpoint expires after 30 minutes. Partial coverage,
+an identity mismatch, a lookup failure, an absent account, or a subject-limit
+breach returns `503` without manufacturing healthy evidence. A confirmed
+non-present, protected, or withheld subject records `action_required`, places
+the account on hold before suppressing affected identifiers, revokes active
+outbound admissions, and forces a later no-reply baseline. The route never
+posts, starts a workflow, or returns provider response bodies.
+
 The independent X mention route runs every 15 minutes even when the weekday
 campaign schedule is disabled. Each provider page is limited to 100 mentions
 and one invocation may read at most five pages. If more than 500 mentions are
@@ -248,6 +278,16 @@ also checkpoints already validated pages when possible; malformed first-page
 metadata fails closed. Rate-limit reset metadata controls the next poll. The
 first complete production snapshot, including an empty one, establishes a
 no-reply baseline; only later observations can become eligible.
+
+The X retention route runs daily at `45 9 * * *` (09:45 UTC). It requires the
+cron bearer and the exact durable Supabase binding; there is no feature flag
+that turns retention into a provider operation. It revokes expired ten-second
+admission leases, removes expired manual reply subjects (24-hour maximum;
+two-minute claims can expire sooner), rewrites raw X reply references to opaque
+interaction references before deletion, resets cursors older than 30 days so
+the next discovery is baselined, and removes eligible mention rows/checkpoints
+after 30 days, opt-outs after 90 days, terminal admissions after 7 days, and
+aggregate compliance/retention events after 365 days. It contacts no provider.
 
 ### X
 
@@ -262,7 +302,8 @@ no-reply baseline; only later observations can become eligible.
 | `OPENZAPS_X_MENTION_INGEST_ENABLED` | Proactive discovery | Enables official mentions-timeline reads after the durable inbox migration and HMAC secret are ready. It does not authorize a reply. |
 | `OPENZAPS_X_MENTION_HASH_SECRET` | Proactive discovery | Server-only HMAC key; minimum 32 characters. Raw post text is never persisted. |
 | `OPENZAPS_X_COMMERCIAL_USE_APPROVED` | Proactive discovery | Attests that the intended OpenZaps use is permitted for the active X API agreement/access tier. |
-| `OPENZAPS_X_COMPLIANCE_READY` | Proactive discovery | Attests that an official recurring compliance stream/batch consumer is live and meeting X deletion, protection, suspension, and withholding deadlines. A manual RPC alone is not sufficient. |
+| `OPENZAPS_X_COMPLIANCE_MONITOR_ENABLED` | Compliance reconciliation | Enables the scheduled official-read reconciliation route. It does not enable mention ingestion, auto-replies, or any X write. |
+| `OPENZAPS_X_COMPLIANCE_READY` | Proactive discovery | Operator attestation that the recurring monitor is intentionally operated. It is necessary but never sufficient: the durable health RPC must also report a fresh `healthy` checkpoint with no hold. |
 | `OPENZAPS_X_AUTO_REPLY_ENABLED` | Deterministic auto-response intent | Enables the exact-template lane only when every other gate is ready. |
 | `OPENZAPS_X_AUTO_RESPONSE_APPROVED` | Deterministic automatic replies | Attests X approval for the brand auto-response campaign. Never set this from an app-install success or the user's product preference alone. |
 | `OPENZAPS_X_AUTO_RESPONSE_APPROVAL_DIGEST` | Deterministic automatic replies | Must equal the exact template-registry digest returned by the operator-only status endpoint after the copy is reviewed. Any template or version change disables replies. |
@@ -307,15 +348,18 @@ one author/day, one conversation/day, and the lifetime interaction uniqueness
 claim. A timeout or ambiguous provider receipt is terminal for automatic
 delivery and requires human reconciliation.
 
-Protected and withheld observations are not written to the inbox. Official X
-deletion, protection, suspension, and withholding events must be processed by a
-recurring authorized compliance consumer within X's required window. The
-service-role erasure RPC removes subject identifiers, rewrites the generic
-delivery receipt to a non-subject reference, and places the account on a
-compliance hold. That hold may be cleared only after the official source proves
-the erased subject is absent. The existence of the RPC or the environment flag
-alone is not operational proof; keep ingestion disabled until the consumer and
-monitoring are live.
+Protected and withheld observations are not written to the inbox. The recurring
+compliance cron re-lists every currently retained account, post, and author and
+records only complete official-provider coverage. Any non-present, protected,
+or withheld result places the account on a compliance hold before affected raw
+identifiers are removed; generic delivery references are rewritten to opaque
+interaction references first. A hold cannot be cleared with a static phrase:
+the operator must supply the UUID of a newer healthy post-hold checkpoint.
+`GET /api/marketing/status` reads the service-role health RPC dynamically and
+returns only the bounded result, timestamps, counts, and hold state. Mention
+ingestion requires that result to be `healthy`, the hold to be false, and
+`validUntil` to remain in the future in addition to the operator attestation.
+If the store is unavailable or the checkpoint expires, readiness fails closed.
 
 The adapter calls `GET /2/users/me` before every `POST /2/tweets` and requires
 both the returned id and username to match `X_EXPECTED_ACCOUNT_ID` and
@@ -367,6 +411,23 @@ use the same webhook verification against
 fails before any provider write; metadata and credentials are never returned
 or logged.
 
+An operator can run the same provider-backed check without publishing through
+`GET /api/marketing/discord/preflight` with the private marketing bearer token.
+The response is deliberately content-free: it reports the selected transport,
+the configured guild/channel scope, whether the destination was verified, and
+`writesPerformed: false`. It reports command readback as `not_checked` because
+destination access does not prove that slash commands are registered or have
+been invoked.
+
+After Discord accepts a webhook or bot message, the adapter does not treat the
+POST body alone as delivery proof. It performs one bounded authenticated GET of
+the exact returned message id, requires the expected channel (and webhook id
+for webhook delivery), then returns the canonical public message URL in the
+form `https://discord.com/channels/{guild}/{channel}/{message}`. The durable
+ledger accepts and stores that URL only when its final message id exactly
+matches the provider message id. A missing or mismatched readback leaves the
+delivery claim for human reconciliation and must not be retried automatically.
+
 Discord interactions are ready only when the public key, application id, and
 guild id are all valid. The endpoint verifies the signature first, then returns
 an empty `403` without answering when the signed payload does not match the
@@ -411,9 +472,15 @@ unset DISCORD_BOT_TOKEN
 ```
 
 The reconciler validates exact application/guild ids, never follows redirects,
-bounds provider responses, sanitizes errors, and performs no `PUT` without the
-explicit `--apply` script. Retain the final in-sync output as release evidence;
-it still does not replace a live signed command invocation.
+bounds provider responses, sanitizes errors, and performs no `PUT`. Dry-run and
+post-apply GETs now require every returned command object to bind to the exact
+configured application and guild. The content-free result includes
+`providerReadbackVerified`, `manifestSha256`, and `managedReadbackSha256`; equal
+hashes plus `managedCommandsInSync: true` prove that the managed provider
+projection matches the exact source-controlled manifest. Only the explicit
+`--apply` script can POST or PATCH a managed command, after which the same GET
+readback runs again. Retain the final in-sync output as release evidence; it
+still does not replace a live signed command invocation.
 
 Test all three commands in the server. Promote them to global commands only if
 the application is intentionally meant for other servers; use the same payload
@@ -434,21 +501,40 @@ is an immediate channel-specific stop.
 Substack has no supported public write API for this workflow. Do not place a
 Substack session cookie, password, or private endpoint in Vercel.
 
+Tutorial handoffs are source-controlled rather than model-authored. The
+operator selects a tutorial id from `docs/tutorials/manifest.json`. The server
+then reads that entry's exact `sourcePath`, requires the first heading to match
+the manifest title, extracts only the Markdown after
+`<!-- OPENZAPS_SUBSTACK_BODY -->`, and verifies both the complete-file
+`sourceSha256` and extracted `bodySha256`. Title, subtitle, tags, topics,
+disclosures, and claim-to-fact bindings also come from the manifest. The model
+may still draft separate X or Discord promotion, but it may not write, rewrite,
+summarize, or repair the selected Substack tutorial.
+
+The review bundle displays the tutorial id, source path, both SHA-256 hashes,
+and exact editor body. Owner approval must repeat the tutorial id and both
+hashes. Immediately before producing a copy-ready handoff, the server re-reads
+the manifest and source and rejects any byte, metadata, marker, link, or hash
+drift. A change therefore requires a fresh review; approval of an older source
+cannot authorize a newer draft.
+
 After approval, a Substack delivery returns:
 
 - `status: "requires_human_publish"`;
 - the official editor URL;
 - an idempotency key bound to the exact candidate.
 
-The reviewed draft bundle persists the approved title, optional subtitle,
-body Markdown, and tags. After the exact handoff is approved, the operator UI
+The reviewed draft bundle persists the approved source path and hashes, title,
+optional subtitle, body Markdown, tags, topics, disclosures, and claim
+bindings. After the exact handoff is approved, the operator UI
 derives sanitized HTML and plain text locally for copying; those derived forms
 are not separate persisted review artifacts.
 
 The operator must:
 
 1. Open the returned `https://defitutorials.substack.com/publish/post` URL.
-2. Use **Copy rich text** for the body and copy the approved title, subtitle,
+2. Confirm the displayed tutorial id, source path, source hash, and editor-body
+   hash still match the approval. Use **Copy rich text** for the body and copy the approved title, subtitle,
    and tags separately. Keep the Markdown view as the immutable audit source;
    Substack's editor does not accept Markdown syntax as an import format. If
    rich clipboard MIME is unavailable, use the copied or selectable plain-text
@@ -462,9 +548,9 @@ The operator must:
    requires its approved official-editor handoff, derives the recorded title,
    and requires that URL and title to appear together in the public feed.
 6. Update that tutorial's source-controlled entry in
-   `docs/tutorials/manifest.json`: keep its reviewed source path and stable id,
-   set the exact approved title, `status: "rss_confirmed"`, canonical public
-   URL, and RSS publication timestamp. Review, commit, and deploy that manifest
+   `docs/tutorials/manifest.json`: keep its reviewed source path, stable id,
+   title, and hashes; set `status: "rss_confirmed"`, the canonical public URL,
+   and RSS publication timestamp. Review, commit, and deploy that manifest
    change before expecting discovery to authorize a social draft. The verifier
    does not mutate the manifest.
 7. Record the canonical public post URL with the run id. The verifier currently
@@ -718,16 +804,20 @@ ambiguous provider outcomes require human reconciliation.
 
 ### 8. Enable official X mention discovery, then deterministic replies
 
-Apply and verify the X mention migration before setting any feature flag. Keep
-both X flags false until all of the following are proven: the public privacy
-notice is deployed; the intended commercial use is permitted; an official X
-compliance stream or recurring batch consumer is running and monitored within
-the provider deadline; deletion/protection/suspension/withholding can invoke the
-erasure RPC; and a compliance hold cannot clear before official absence is
-verified. The current source tree does not make those external proofs by
-itself, so a dormant deployment must leave ingestion disabled.
+Apply and verify both the X mention and X compliance migrations before setting
+any feature flag. Keep mention ingestion and auto-replies false while proving
+the public privacy notice, permitted commercial use, immutable eligibility
+cutoff, hold-before-erasure ordering, final outbound fence, and bounded
+retention. First set only
+`OPENZAPS_X_COMPLIANCE_MONITOR_ENABLED=true`, redeploy, and invoke
+`/api/marketing/x/compliance/cron` with the cron bearer. Require
+`providerWritesAttempted: false`, a complete `recorded` checkpoint, and then a
+private status response whose `xComplianceHealth.result` is `healthy`, whose
+hold is false, and whose `validUntil` is in the future. An absent account,
+coverage conflict, lookup failure, or action-required result is a stop signal;
+do not bypass it by editing health fields or setting an environment flag.
 
-Only after those proofs exist, add a fresh
+Only after that operational proof exists, add a fresh
 `OPENZAPS_X_MENTION_HASH_SECRET`, set
 `OPENZAPS_X_COMMERCIAL_USE_APPROVED=true`,
 `OPENZAPS_X_COMPLIANCE_READY=true`, and
@@ -758,7 +848,10 @@ To stop this independent lane, set
 `OPENZAPS_X_AUTO_REPLY_ENABLED=false` and
 `OPENZAPS_X_MENTION_INGEST_ENABLED=false`, then redeploy. Disabling
 `OPENZAPS_MARKETING_SCHEDULE_ENABLED` stops weekday campaign broadcasts but does
-not stop the separate mention cron.
+not stop the separate mention cron. Disable
+`OPENZAPS_X_COMPLIANCE_MONITOR_ENABLED` only when mention ingestion is already
+off; the last checkpoint then expires naturally. Keep the retention cron
+scheduled so disabled ingestion does not retain identifiers indefinitely.
 
 ## Manual operation
 
