@@ -377,45 +377,6 @@
   letter-spacing: 0.02em;
 }
 
-.allocation {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  height: 12px;
-  margin: 0 16px;
-  overflow: hidden;
-  border: 1px solid var(--line-strong);
-  border-radius: var(--r-pill);
-  background: var(--track);
-}
-
-.campaignHalf {
-  background: var(--zap);
-}
-
-.sponsorHalf {
-  border-left: 1px solid var(--panel);
-  background: var(--token-dot);
-}
-
-.allocationLegend {
-  display: flex;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 8px 16px 15px;
-  color: var(--ink-3);
-  font-size: 10.5px;
-}
-
-.allocationLegend span:last-child {
-  text-align: right;
-}
-
-.allocationLegend strong {
-  color: var(--ink);
-  font-family: var(--font-mono), ui-monospace, monospace;
-  font-weight: 650;
-}
-
 .termList {
   margin: 0;
   border-top: 1px solid var(--line-soft);
@@ -1822,10 +1783,6 @@
 
   .stepArrow {
     display: none;
-  }
-
-  .allocationLegend {
-    font-size: 9.5px;
   }
 
   .actionCard,

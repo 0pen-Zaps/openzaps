@@ -127,6 +127,34 @@ export const ROBINHOOD_LIQUIDITY = {
 export const HOOK_FEE_LABEL = `${ROBINHOOD_LIQUIDITY.hookFeePips / 10_000}%`;
 
 /**
+ * The share of every 0xZAPS swap that reaches the fee campaign, derived — never
+ * hand-typed — from the three values it depends on.
+ *
+ * Verified onchain 2026-08-02 against the Clanker LP locker
+ * (`0x290F…5Bc99`): `tokenRewards(0xZAPS)` returns a single reward recipient,
+ * the fee vault `0x31D6…7338`, holding `rewardBps = 10000` — 100% of this
+ * token's LP fee rewards. So the campaign's cut is the pool fee times the
+ * campaign's share of the vault:
+ *
+ *   1% pool fee x 100% to the vault x 50 of 100 fee shares = 0.5% per swap
+ *
+ * Both inputs can move — the pool is dynamic-fee and the hook owner can change
+ * the rate — so re-read `clankerFee(poolId)` before republishing this figure.
+ * It describes fee capture, not a return: what a staker earns still depends on
+ * trading volume and their share of the stake.
+ */
+export function campaignSwapShareLabel(
+  campaignShares: bigint,
+  totalShares: bigint,
+): string {
+  if (totalShares <= 0n || campaignShares < 0n) return "—";
+  const percentPerSwap =
+    (ROBINHOOD_LIQUIDITY.hookFeePips / 10_000)
+    * (Number(campaignShares) / Number(totalShares));
+  return `${Number(percentPerSwap.toFixed(4))}%`;
+}
+
+/**
  * The aeWETH/USDG pool the `RobinhoodV4PoolAdapter` (0x714E…) is welded to — a
  * DIFFERENT PoolKey from the aeWETH/0xZAPS one above: static fee 450, tickSpacing
  * 9, hookless. Quoting a USDG swap against `robinhoodPoolKey` would silently

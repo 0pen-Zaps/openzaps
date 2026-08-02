@@ -37,6 +37,7 @@ import {
 } from "@/lib/rewards";
 import {
   HOOK_FEE_LABEL,
+  campaignSwapShareLabel,
   ensureRobinhoodChain,
   explorerAddress,
   explorerTransaction,
@@ -99,6 +100,12 @@ const WORKSPACES: readonly { id: RewardsWorkspaceName; label: string; hint: stri
 ];
 
 const STAKE_DECIMALS = 18;
+
+/** Pool fee x the campaign's share of the fee vault. See campaignSwapShareLabel. */
+const CAMPAIGN_SWAP_SHARE_LABEL = campaignSwapShareLabel(
+  FEE_REWARDS_MANIFEST.campaign.feeShareAllocation,
+  FEE_REWARDS_MANIFEST.vault.totalShares,
+);
 const POST_RECEIPT_REFRESH_ATTEMPTS = 8;
 const POST_RECEIPT_REFRESH_DELAY_MS = 2_000;
 const SNAPSHOT_REFRESH_RETRY_ATTEMPTS = 2;
@@ -1102,7 +1109,7 @@ function FeeMechanic({
         <div>
           <h3>What this campaign does not promise</h3>
           <ul>
-            <li><strong>No yield, rate, or APR.</strong> Rewards are only whatever WETH the pool&apos;s trading produces and someone harvests into this campaign.</li>
+            <li><strong>No yield or APR.</strong> The rate above is the share of each swap that reaches the campaign, not a return. What a staker earns depends on trading volume and their share of the stake.</li>
             <li><strong>Holding 0xZAPS earns nothing.</strong> A fee claim accrues only while tokens are staked in this contract.</li>
             <li><strong>The contracts have not been externally audited.</strong> Staking puts funds at risk and confirmed transactions are irreversible.</li>
             <li><strong>Unclaimed WETH expires.</strong> After the claim deadline the sponsor can sweep whatever is left unclaimed.</li>
@@ -1133,18 +1140,12 @@ function CampaignTerms({
           phases with no clock target (settlement, expired) are exactly when a
           reader most needs to see where the window sat. */}
       {data ? <CampaignTimeline estimatedNow={BigInt(data.blockTimestamp)} /> : null}
-      <div className={styles.allocation} aria-label="Launch allocation: 50 fee shares in the campaign and 50 retained by the sponsor">
-        <span className={styles.campaignHalf} />
-        <span className={styles.sponsorHalf} />
-      </div>
-      <div className={styles.allocationLegend}>
-        <span><strong>50</strong> campaign allocation</span>
-        <span><strong>50</strong> retained at launch</span>
-      </div>
       <dl className={styles.termList}>
         <div><dt>Stake token</dt><dd>0xZAPS</dd></div>
         <div><dt>Reward asset</dt><dd>WETH</dd></div>
-        <div><dt>Window</dt><dd>7 days</dd></div>
+        <div><dt>Reward source</dt><dd>LP trading fees</dd></div>
+        <div><dt>Reward rate</dt><dd>{CAMPAIGN_SWAP_SHARE_LABEL} of each swap</dd></div>
+        <div><dt>Duration</dt><dd>7 days</dd></div>
         <div><dt>Starts</dt><dd>{formatDate(FEE_REWARDS_MANIFEST.campaign.startAt)}</dd></div>
         <div><dt>Ends</dt><dd>{formatDate(FEE_REWARDS_MANIFEST.campaign.endAt)}</dd></div>
         <div><dt>Claim by</dt><dd>{formatDate(FEE_REWARDS_MANIFEST.campaign.claimDeadline)}</dd></div>
