@@ -450,7 +450,112 @@
 
 .mechanicHead {
   padding: 22px 24px 20px;
+}
+
+.mechanicHeadRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+/* The rail's verification badge, relocated to the module head now that the
+   rail itself renders as an unchromed band. */
+.mechanicVerified {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--ink-3);
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-size: 10px;
+  font-weight: 650;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.mechanicVerified::before {
+  content: "";
+  width: 7px;
+  height: 7px;
+  border-radius: var(--r-pill);
+  background: var(--warn);
+}
+
+.mechanicVerified[data-verified] {
+  color: var(--ok);
+}
+
+.mechanicVerified[data-verified]::before {
+  background: var(--ok);
+}
+
+/* Inside the explainer the rail drops its own panel chrome: it is a band in
+   a card, not a card in a card. */
+.mechanic .settlement {
+  margin: 0;
+  overflow-x: auto;
+  border: 0;
+  border-top: 1px solid var(--line-soft);
   border-bottom: 1px solid var(--line-soft);
+  border-radius: 0;
+  background: var(--sunk);
+  box-shadow: none;
+}
+
+/* On the narrowest screens the rail's single column costs ~520px of scroll
+   before step 01 — too much for a diagram the steps restate. A 2x2 grid
+   keeps the picture and halves the height. */
+@media (max-width: 440px) {
+  .mechanic .settlementSteps {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .mechanic .settlementSteps li:nth-child(odd) {
+    border-right: 1px solid var(--line-soft);
+  }
+
+  .mechanic .settlementSteps li:nth-child(-n + 2) {
+    border-bottom: 1px solid var(--line-soft);
+  }
+
+  .mechanic .settlementSteps li:nth-child(n + 3) {
+    border-bottom: 0;
+  }
+}
+
+/* The closing cell is an action, not a step: no numeral, and it anchors to
+   the bottom of the grid row like the steps' evidence lines do. */
+.mechanicCta {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 8px;
+  padding: 20px 24px 22px;
+  border-bottom: 1px solid var(--line-soft);
+  background: var(--panel-2);
+}
+
+.mechanicCta h3 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 620;
+  letter-spacing: -0.012em;
+}
+
+.mechanicCta p {
+  margin: 0;
+  color: var(--ink-2);
+  font-size: 13.5px;
+  line-height: 1.62;
+}
+
+/* align-self:start on a flex column shrinks the button to min-content, which
+   wraps the label onto three lines. Keep it on one line and let the box size
+   to the text. */
+.mechanicCta button {
+  margin-top: auto;
+  align-self: start;
+  white-space: nowrap;
 }
 
 .mechanicHead h2 {

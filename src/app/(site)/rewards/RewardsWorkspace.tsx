@@ -22,6 +22,7 @@ import { CopyButton } from "@/components/CopyButton";
 import { Glyph } from "@/components/Glyph";
 import { RollingDigits } from "@/components/RollingDigits";
 import { useCampaignCountdown } from "@/components/useCampaignCountdown";
+import { useReducedMotionPreference } from "@/components/useReducedMotionPreference";
 import { useWalletSession } from "@/components/WalletProvider";
 import {
   FEE_REWARDS_MANIFEST,
@@ -175,6 +176,8 @@ export function RewardsWorkspace({
   const sequence = useRef(0);
   const beneficiarySequence = useRef(0);
   const tabRefs = useRef<Array<HTMLButtonElement | null>>([]);
+  const tabsRef = useRef<HTMLElement | null>(null);
+  const reducedMotion = useReducedMotionPreference();
   const writesEnabled = state.status === "ready" && state.staleSince === null;
 
   const fetchSnapshot = useCallback(async (viewer: Address | null): Promise<FeeRewardsPayload> => {
@@ -243,6 +246,22 @@ export function RewardsWorkspace({
   const refreshAtBoundary = useCallback((): void => {
     void load(account);
   }, [account, load]);
+
+  /**
+   * The explainer's closing action. Switching the workspace alone is
+   * invisible — the tabs sit below the fold — so this also brings them into
+   * view. Smooth scrolling is a motion source, so calm mode jumps instead.
+   */
+  const startStaking = useCallback((): void => {
+    setWorkspace("earn");
+    const url = new URL(window.location.href);
+    url.searchParams.delete("workspace");
+    window.history.replaceState(window.history.state, "", `${url.pathname}${url.search}${url.hash}`);
+    tabsRef.current?.scrollIntoView({
+      block: "start",
+      behavior: reducedMotion ? "auto" : "smooth",
+    });
+  }, [reducedMotion]);
 
   const chooseWorkspace = useCallback((next: RewardsWorkspaceName): void => {
     setWorkspace(next);
@@ -729,21 +748,20 @@ export function RewardsWorkspace({
           <span className={styles.eyebrow}>TOKENIZED FEES · ROBINHOOD CHAIN</span>
           <h1 className={styles.title}>Stake 0xZAPS. Claim WETH from the pool&apos;s trading fees.</h1>
           <p className={styles.lede}>
-            Every swap in the 0xZAPS ↔ aeWETH pool pays a {HOOK_FEE_LABEL} hook fee. OpenZaps tokenized its claim on
-            that fee position into a fixed 100 shares and moved 50 of them into this campaign contract, so for one
-            seven-day window the WETH this campaign harvests is split among stakers by time-weighted stake.
-            Holding 0xZAPS alone grants no fee rights — only a stake in this contract accrues a claim. Every figure
-            below is read from chain 4663 at one verified block.
+            Every swap in the 0xZAPS ↔ aeWETH pool pays a {HOOK_FEE_LABEL} hook fee. This campaign was funded with
+            50 of the 100 tokenized shares in that fee position and, across one seven-day window, splits the WETH
+            it harvests among stakers by time-weighted stake. Holding 0xZAPS alone grants no fee rights — only a
+            stake in this contract accrues a claim. Every figure on this page is read from chain 4663 at one
+            verified block.
           </p>
-          <SettlementRail data={data} />
         </div>
 
         <CampaignTerms data={data} onResync={refreshAtBoundary} />
       </div>
 
-      <FeeMechanic data={data} />
+      <FeeMechanic data={data} onStart={startStaking} />
 
-      <nav className={styles.tabs} aria-label="Fee rewards workspace" role="tablist">
+      <nav ref={tabsRef} className={styles.tabs} aria-label="Fee rewards workspace" role="tablist">
         {WORKSPACES.map((item, index) => (
           <button
             key={item.id}
@@ -827,6 +845,13 @@ export function RewardsWorkspace({
   );
 }
 
+/**
+ * The four-node diagram of the settlement path.
+ *
+ * It renders as a band inside the fee explainer rather than as its own panel:
+ * a diagram and a five-step narration of the same pipeline, stacked as two
+ * separate cards, read as the page saying everything twice.
+ */
 function SettlementRail({ data }: { data: FeeRewardsPayload | null }): React.JSX.Element {
   const verified = Boolean(data?.verification.sourcePositionConfigured && data.verification.vaultActivated);
   const steps = [
@@ -836,11 +861,7 @@ function SettlementRail({ data }: { data: FeeRewardsPayload | null }): React.JSX
     { icon: "coins", label: "WETH claims", detail: "Proportional" },
   ] as const;
   return (
-    <section className={styles.settlement} aria-label="Fee settlement path">
-      <div className={styles.settlementHead}>
-        <span>THE SETTLEMENT RAIL</span>
-        <strong data-verified={verified || undefined}>{data ? (verified ? "verified" : "unavailable") : "reading"}</strong>
-      </div>
+    <div className={styles.settlement} aria-label="Fee settlement path">
       <ol className={styles.settlementSteps} data-flow={verified || undefined}>
         {steps.map((step, index) => (
           <li key={step.label}>
@@ -850,11 +871,7 @@ function SettlementRail({ data }: { data: FeeRewardsPayload | null }): React.JSX
           </li>
         ))}
       </ol>
-      <p>
-        A harvest is a public checkpoint, not a request for wallet funding. The configured path brings Clanker fees
-        through the vault; the campaign can also account for WETH it has already received.
-      </p>
-    </section>
+    </div>
   );
 }
 
@@ -949,8 +966,15 @@ function CampaignTimeline({ estimatedNow }: { estimatedNow: bigint }): React.JSX
  * block is part of the explainer, not a footnote: the same panel that says
  * what a staker gets says what the campaign does not promise.
  */
-function FeeMechanic({ data }: { data: FeeRewardsPayload | null }): React.JSX.Element {
+function FeeMechanic({
+  data,
+  onStart,
+}: {
+  data: FeeRewardsPayload | null;
+  onStart: () => void;
+}): React.JSX.Element {
   const harvested = data ? formatAmount(data.campaign.accountedRewardBalance, "WETH", 8) : null;
+  const verified = Boolean(data?.verification.sourcePositionConfigured && data.verification.vaultActivated);
   const steps: readonly {
     title: string;
     body: React.ReactNode;
@@ -978,7 +1002,8 @@ function FeeMechanic({ data }: { data: FeeRewardsPayload | null }): React.JSX.El
       body: (
         <>
           Harvest and sync are permissionless: they pull accrued WETH through the vault into the
-          campaign, so no operator stands between the fees and the stakers.
+          campaign, or account for WETH it already holds, so no operator stands between the fees and
+          the stakers.
           {" "}
           This UI never asks for or spends the sponsor&apos;s WETH.
         </>
@@ -995,7 +1020,12 @@ function FeeMechanic({ data }: { data: FeeRewardsPayload | null }): React.JSX.El
   return (
     <section className={styles.mechanic} aria-labelledby="rewards-mechanic-title">
       <div className={styles.mechanicHead}>
-        <span className={styles.panelEyebrow}>HOW THE FEES REACH A STAKER</span>
+        <div className={styles.mechanicHeadRow}>
+          <span className={styles.panelEyebrow}>HOW THE FEES REACH A STAKER</span>
+          <strong className={styles.mechanicVerified} data-verified={verified || undefined}>
+            {data ? (verified ? "verified" : "unavailable") : "reading"}
+          </strong>
+        </div>
         <h2 id="rewards-mechanic-title">A swap, a share, a claim.</h2>
         <p>
           Nothing here mints, inflates, or borrows. The reward asset is WETH that the pool&apos;s own
@@ -1003,6 +1033,8 @@ function FeeMechanic({ data }: { data: FeeRewardsPayload | null }): React.JSX.El
           it renders a single figure.
         </p>
       </div>
+
+      <SettlementRail data={data} />
 
       <ol className={styles.mechanicSteps}>
         {steps.map((step, index) => (
@@ -1013,6 +1045,22 @@ function FeeMechanic({ data }: { data: FeeRewardsPayload | null }): React.JSX.El
             <span className={styles.mechanicFact}>{step.fact}</span>
           </li>
         ))}
+        {/* Fills the grid's sixth cell, which would otherwise read as a
+            missing step, and puts the next action where the explanation
+            ends. */}
+        <li className={styles.mechanicCta}>
+          {/* Occupies the numeral slot so this cell's heading sits on the
+              same baseline as the steps beside it. */}
+          <span className={styles.mechanicIndex}>NEXT</span>
+          <h3>Rewards follow time held</h3>
+          <p>
+            Reward weight accrues for as long as a stake sits in the campaign, so the same principal
+            earns more the earlier it is staked within the window.
+          </p>
+          <button className={styles.primaryCompact} onClick={onStart} type="button">
+            <Glyph name="boltFill" />Stake &amp; claim
+          </button>
+        </li>
       </ol>
 
       <div className={styles.mechanicBoundary}>
