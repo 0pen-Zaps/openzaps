@@ -7,6 +7,14 @@ import {
   parseMarketingSourceUrls,
 } from "@/lib/marketing/operator-input";
 import {
+  leadScorecardAttributionDimensionIsValid,
+  leadReviewSla,
+  sortLeadsForReview,
+  type LeadScorecard,
+  type LeadScorecardAttribution,
+  type LeadScorecardWindow,
+} from "@/lib/leads/scorecard";
+import {
   canonicalSubstackPostUrl,
   prepareSubstackRichText,
   substackDraftView,
@@ -932,6 +940,186 @@ export function operatorLeads(body: JsonRecord): OperatorLead[] {
   });
 }
 
+function boundedCount(value: unknown, maximum = 100): number | null {
+  return typeof value === "number"
+    && Number.isSafeInteger(value)
+    && value >= 0
+    && value <= maximum
+    ? value
+    : null;
+}
+
+function leadScorecardWindow(
+  value: unknown,
+  maximum: number,
+): LeadScorecardWindow | null {
+  if (!isRecord(value)) return null;
+  const accepted = boundedCount(value.accepted, maximum);
+  const score3Plus = boundedCount(value.score3Plus, maximum);
+  const progressed = boundedCount(value.progressed, maximum);
+  const currentQualified = boundedCount(value.currentQualified, maximum);
+  if (
+    accepted === null
+    || score3Plus === null
+    || progressed === null
+    || currentQualified === null
+    || score3Plus > accepted
+    || progressed > accepted
+    || currentQualified > progressed
+  ) return null;
+  return { accepted, score3Plus, progressed, currentQualified };
+}
+
+function leadScorecardAttribution(
+  value: unknown,
+  maximum: number,
+): LeadScorecardAttribution | null {
+  if (!isRecord(value)) return null;
+  const source = text(value.source);
+  const campaign = text(value.campaign);
+  const content = text(value.content);
+  const accepted = boundedCount(value.accepted, maximum);
+  const score3Plus = boundedCount(value.score3Plus, maximum);
+  const currentQualified = boundedCount(value.currentQualified, maximum);
+  if (
+    !source
+    || !campaign
+    || !content
+    || !leadScorecardAttributionDimensionIsValid("source", source)
+    || !leadScorecardAttributionDimensionIsValid("campaign", campaign)
+    || !leadScorecardAttributionDimensionIsValid("content", content)
+    || accepted === null
+    || score3Plus === null
+    || currentQualified === null
+    || accepted === 0
+    || score3Plus > accepted
+    || currentQualified > accepted
+  ) return null;
+  return {
+    source,
+    campaign,
+    content,
+    accepted,
+    score3Plus,
+    currentQualified,
+  };
+}
+
+export function parseLeadScorecard(body: JsonRecord): LeadScorecard | null {
+  if (!isRecord(body.scorecard)) return null;
+  const value = body.scorecard;
+  if (
+    value.schemaVersion !== 1
+    || !isBoundedTimestamp(text(value.generatedAt))
+    || !isRecord(value.scope)
+    || value.scope.basis !== "accepted_requests_onward"
+    || value.scope.population !== "nonexpired_stored_requests"
+    || value.scope.selection !== "qualification_score_desc_then_created_at_desc"
+    || value.scope.maxRows !== 100
+  ) return null;
+  const returnedRows = boundedCount(value.scope.returnedRows);
+  if (
+    returnedRows === null
+    || value.scope.truncated !== (returnedRows === 100)
+    || value.scope.complete !== (returnedRows < 100)
+    || !isRecord(value.windows)
+  ) return null;
+  const days7 = leadScorecardWindow(value.windows.days7, returnedRows);
+  const days30 = leadScorecardWindow(value.windows.days30, returnedRows);
+  const overdueReviewCount = boundedCount(
+    value.overdueReviewCount,
+    returnedRows,
+  );
+  if (
+    !days7
+    || !days30
+    || days7.accepted > days30.accepted
+    || days7.score3Plus > days30.score3Plus
+    || days7.progressed > days30.progressed
+    || days7.currentQualified > days30.currentQualified
+    || overdueReviewCount === null
+    || !isRecord(value.stages)
+  ) return null;
+  const stages = value.stages;
+  const stageEntries = ["new", "contacted", "qualified", "closed"] as const;
+  const stageCounts = stageEntries.map((status) =>
+    boundedCount(stages[status], returnedRows));
+  if (
+    stageCounts.some((count) => count === null)
+    || stageCounts.reduce<number>((sum, count) => sum + (count ?? 0), 0)
+      !== returnedRows
+    || overdueReviewCount > (stageCounts[0] ?? 0)
+    || !Array.isArray(value.attribution)
+    || value.attribution.length > 12
+  ) return null;
+  const [newCount, contacted, qualified, closed] = stageCounts as [
+    number,
+    number,
+    number,
+    number,
+  ];
+  if (
+    days30.currentQualified > qualified
+    || days30.progressed > contacted + qualified + closed
+  ) return null;
+  const attribution = value.attribution.map((row) =>
+    leadScorecardAttribution(row, days30.accepted));
+  if (attribution.some((row) => row === null)) return null;
+  const parsedAttribution = attribution as LeadScorecardAttribution[];
+  const remainingRows = parsedAttribution.filter((row) =>
+    row.source === "remaining"
+    || row.campaign === "remaining"
+    || row.content === "remaining");
+  const attributionKeys = new Set(
+    parsedAttribution.map((row) =>
+      JSON.stringify([row.source, row.campaign, row.content])),
+  );
+  const attributionTotals = parsedAttribution.reduce(
+    (totals, row) => ({
+      accepted: totals.accepted + row.accepted,
+      score3Plus: totals.score3Plus + row.score3Plus,
+      currentQualified:
+        totals.currentQualified + row.currentQualified,
+    }),
+    { accepted: 0, score3Plus: 0, currentQualified: 0 },
+  );
+  if (
+    attributionKeys.size !== parsedAttribution.length
+    || remainingRows.some((row) =>
+      row.source !== "remaining"
+      || row.campaign !== "remaining"
+      || row.content !== "remaining")
+    || remainingRows.length > 1
+    || (remainingRows.length === 1
+      && (
+        parsedAttribution.length !== 12
+        || days30.accepted < 13
+        || remainingRows[0].accepted < 2
+        || parsedAttribution.at(-1) !== remainingRows[0]
+      ))
+    || attributionTotals.accepted !== days30.accepted
+    || attributionTotals.score3Plus !== days30.score3Plus
+    || attributionTotals.currentQualified !== days30.currentQualified
+  ) return null;
+  return {
+    schemaVersion: 1,
+    generatedAt: text(value.generatedAt)!,
+    scope: {
+      basis: "accepted_requests_onward",
+      population: "nonexpired_stored_requests",
+      selection: "qualification_score_desc_then_created_at_desc",
+      maxRows: 100,
+      returnedRows,
+      truncated: returnedRows === 100,
+      complete: returnedRows < 100,
+    },
+    windows: { days7, days30 },
+    overdueReviewCount,
+    stages: { new: newCount, contacted, qualified, closed },
+    attribution: parsedAttribution,
+  };
+}
+
 export function operatorSyndicationItems(
   body: JsonRecord,
 ): OperatorSyndicationItem[] {
@@ -1319,6 +1507,11 @@ export function MarketingOperator(): React.JSX.Element {
     "idle" | "loading" | "ready" | "error"
   >("idle");
   const [leadQueueError, setLeadQueueError] = useState("");
+  const [leadScorecard, setLeadScorecard] = useState<LeadScorecard | null>(null);
+  const [leadScorecardState, setLeadScorecardState] = useState<
+    "idle" | "loading" | "ready" | "error"
+  >("idle");
+  const [leadScorecardError, setLeadScorecardError] = useState("");
   const [leadActionId, setLeadActionId] = useState("");
   const [leadDeleteConfirmId, setLeadDeleteConfirmId] = useState("");
   const [leadActionNotice, setLeadActionNotice] = useState("");
@@ -1342,6 +1535,7 @@ export function MarketingOperator(): React.JSX.Element {
   );
   const [pollRevision, setPollRevision] = useState(0);
   const leadRequestGeneration = useRef(0);
+  const leadScorecardRequestGeneration = useRef(0);
   const leadSessionGeneration = useRef(0);
   const leadActionGeneration = useRef(0);
   const syndicationRequestGeneration = useRef(0);
@@ -1394,6 +1588,7 @@ export function MarketingOperator(): React.JSX.Element {
     sessionRemove(RUN_STORAGE_KEY);
     if (clearRepair) sessionRemove(SYNDICATION_REPAIR_STORAGE_KEY);
     leadRequestGeneration.current += 1;
+    leadScorecardRequestGeneration.current += 1;
     leadSessionGeneration.current += 1;
     leadActionGeneration.current += 1;
     syndicationRequestGeneration.current += 1;
@@ -1415,6 +1610,9 @@ export function MarketingOperator(): React.JSX.Element {
     setLeads([]);
     setLeadQueueState("idle");
     setLeadQueueError("");
+    setLeadScorecard(null);
+    setLeadScorecardState("idle");
+    setLeadScorecardError("");
     setLeadActionId("");
     setLeadDeleteConfirmId("");
     setLeadActionNotice("");
@@ -1467,7 +1665,7 @@ export function MarketingOperator(): React.JSX.Element {
         leadRequestGeneration.current !== requestGeneration ||
         leadSessionGeneration.current !== expectedSessionGeneration
       ) return;
-      setLeads(operatorLeads(body));
+      setLeads(sortLeadsForReview(operatorLeads(body)));
       setLeadQueueState("ready");
     } catch (error) {
       if (
@@ -1485,6 +1683,48 @@ export function MarketingOperator(): React.JSX.Element {
         error instanceof Error
           ? error.message
           : "The lead queue could not be loaded.",
+      );
+    }
+  };
+
+  const loadLeadScorecard = async (
+    candidateToken: string,
+    expectedSessionGeneration = leadSessionGeneration.current,
+  ): Promise<void> => {
+    if (leadSessionGeneration.current !== expectedSessionGeneration) return;
+    const requestGeneration = leadScorecardRequestGeneration.current + 1;
+    leadScorecardRequestGeneration.current = requestGeneration;
+    setLeadScorecardState("loading");
+    setLeadScorecardError("");
+    try {
+      const body = await operatorRequest(
+        "/api/leads/scorecard",
+        candidateToken,
+      );
+      if (
+        leadScorecardRequestGeneration.current !== requestGeneration
+        || leadSessionGeneration.current !== expectedSessionGeneration
+      ) return;
+      const parsed = parseLeadScorecard(body);
+      if (!parsed) throw new Error("The lead scorecard response was invalid.");
+      setLeadScorecard(parsed);
+      setLeadScorecardState("ready");
+    } catch (error) {
+      if (
+        leadScorecardRequestGeneration.current !== requestGeneration
+        || leadSessionGeneration.current !== expectedSessionGeneration
+      ) return;
+      const requestError = error as OperatorError;
+      if (requestError?.status === 401) {
+        handleError(error, "The lead scorecard could not be loaded.");
+        return;
+      }
+      setLeadScorecard(null);
+      setLeadScorecardState("error");
+      setLeadScorecardError(
+        error instanceof Error
+          ? error.message
+          : "The lead scorecard could not be loaded.",
       );
     }
   };
@@ -1728,7 +1968,10 @@ export function MarketingOperator(): React.JSX.Element {
       })) return;
       setLeadDeleteConfirmId("");
       setLeadActionNotice(`Request marked ${titleCase(status)}.`);
-      await loadLeadQueue(leadToken, leadScoreFloor, sessionGeneration);
+      await Promise.all([
+        loadLeadQueue(leadToken, leadScoreFloor, sessionGeneration),
+        loadLeadScorecard(leadToken, sessionGeneration),
+      ]);
     } catch (error) {
       if (!leadOperationIsCurrent({
         expectedSessionGeneration: sessionGeneration,
@@ -1775,7 +2018,10 @@ export function MarketingOperator(): React.JSX.Element {
       })) return;
       setLeadDeleteConfirmId("");
       setLeadActionNotice("Request permanently deleted.");
-      await loadLeadQueue(leadToken, leadScoreFloor, sessionGeneration);
+      await Promise.all([
+        loadLeadQueue(leadToken, leadScoreFloor, sessionGeneration),
+        loadLeadScorecard(leadToken, sessionGeneration),
+      ]);
     } catch (error) {
       if (!leadOperationIsCurrent({
         expectedSessionGeneration: sessionGeneration,
@@ -1810,6 +2056,7 @@ export function MarketingOperator(): React.JSX.Element {
     const sessionGeneration = leadSessionGeneration.current + 1;
     leadSessionGeneration.current = sessionGeneration;
     leadRequestGeneration.current += 1;
+    leadScorecardRequestGeneration.current += 1;
     leadActionGeneration.current += 1;
     void operatorRequest("/api/marketing/status", storedToken)
       .then((body) => {
@@ -1834,6 +2081,7 @@ export function MarketingOperator(): React.JSX.Element {
           setRunId(recoveredRunId);
         }
         void loadLeadQueue(storedLeadToken, 3, sessionGeneration);
+        void loadLeadScorecard(storedLeadToken, sessionGeneration);
         void loadSyndicationInbox(storedToken, sessionGeneration);
         setNotice("Operator session restored. Readiness is current.");
       })
@@ -1914,6 +2162,7 @@ export function MarketingOperator(): React.JSX.Element {
     const sessionGeneration = leadSessionGeneration.current + 1;
     leadSessionGeneration.current = sessionGeneration;
     leadRequestGeneration.current += 1;
+    leadScorecardRequestGeneration.current += 1;
     leadActionGeneration.current += 1;
     syndicationRequestGeneration.current += 1;
     xIdentityRequestGeneration.current += 1;
@@ -1950,6 +2199,7 @@ export function MarketingOperator(): React.JSX.Element {
           leadScoreFloor,
           sessionGeneration,
         ),
+        loadLeadScorecard(candidateLeadToken, sessionGeneration),
         loadSyndicationInbox(candidate, sessionGeneration),
       ]);
     } catch (error) {
@@ -2382,15 +2632,102 @@ export function MarketingOperator(): React.JSX.Element {
                 <button
                   className={styles.textButton}
                   type="button"
-                  onClick={() => void loadLeadQueue(leadToken, leadScoreFloor)}
+                  onClick={() => void Promise.all([
+                    loadLeadQueue(leadToken, leadScoreFloor),
+                    loadLeadScorecard(leadToken),
+                  ])}
                   disabled={
-                    leadQueueState === "loading" || Boolean(leadActionId)
+                    leadQueueState === "loading"
+                    || leadScorecardState === "loading"
+                    || Boolean(leadActionId)
                   }
                 >
-                  {leadQueueState === "loading" ? "Loading…" : "Refresh"}
+                  {leadQueueState === "loading" || leadScorecardState === "loading"
+                    ? "Loading…"
+                    : "Refresh"}
                 </button>
               </div>
             </div>
+
+            {leadScorecardState === "loading" ? (
+              <p className={styles.scorecardStatus} role="status" aria-live="polite">
+                Loading the accepted-request scorecard.
+              </p>
+            ) : leadScorecardState === "error" ? (
+              <div className={styles.scorecardError} role="status">
+                <strong>Scorecard unavailable.</strong>
+                <span>{leadScorecardError}</span>
+                <span>The private request queue remains available below.</span>
+              </div>
+            ) : leadScorecard ? (
+              <div className={styles.leadScorecard}>
+                <div className={styles.scorecardGrid}>
+                  <article>
+                    <span>Accepted · 7d</span>
+                    <strong>{leadScorecard.windows.days7.accepted}</strong>
+                    <small>{leadScorecard.windows.days7.score3Plus} scored 3+</small>
+                  </article>
+                  <article>
+                    <span>Accepted · 30d</span>
+                    <strong>{leadScorecard.windows.days30.accepted}</strong>
+                    <small>{leadScorecard.windows.days30.progressed} progressed</small>
+                  </article>
+                  <article>
+                    <span>Score 3+ · 30d</span>
+                    <strong>{leadScorecard.windows.days30.score3Plus}</strong>
+                    <small>Current intake score, not outreach</small>
+                  </article>
+                  <article>
+                    <span>Current qualified · 30d</span>
+                    <strong>
+                      {leadScorecard.windows.days30.currentQualified}
+                    </strong>
+                    <small>Currently in the qualified lifecycle stage</small>
+                  </article>
+                  <article data-alert={leadScorecard.overdueReviewCount > 0 || undefined}>
+                    <span>Review overdue</span>
+                    <strong>{leadScorecard.overdueReviewCount}</strong>
+                    <small>Score 3+ and still new after two business days</small>
+                  </article>
+                </div>
+                {leadScorecard.attribution.length ? (
+                  <div className={styles.scorecardAttribution}>
+                    <h3>30-day accepted-request attribution</h3>
+                    <div role="table" aria-label="Accepted request attribution">
+                      <div role="row">
+                        <span role="columnheader">Source / campaign</span>
+                        <span role="columnheader">Accepted</span>
+                        <span role="columnheader">3+</span>
+                        <span role="columnheader">Current qual.</span>
+                      </div>
+                      {leadScorecard.attribution.map((row) => (
+                        <div
+                          role="row"
+                          key={`${row.source}:${row.campaign}:${row.content}`}
+                        >
+                          <span role="cell">
+                            {titleCase(row.source)} · {titleCase(row.campaign)}
+                            {row.content !== "not_set"
+                              ? ` · ${titleCase(row.content)}`
+                              : ""}
+                          </span>
+                          <span role="cell">{row.accepted}</span>
+                          <span role="cell">{row.score3Plus}</span>
+                          <span role="cell">{row.currentQualified}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
+                <p className={styles.scorecardScope}>
+                  Accepted requests onward only; this does not claim
+                  impression-to-lead or visitor-to-request conversion. {" "}
+                  {leadScorecard.scope.truncated
+                    ? "Based on the top 100 non-expired requests ranked by score, then recency; totals are lower bounds."
+                    : `All ${leadScorecard.scope.returnedRows} currently stored, non-expired requests are represented; retention means this is not an all-time count.`}
+                </p>
+              </div>
+            ) : null}
 
             {leadQueueState === "loading" ? (
               <div className={styles.generating} role="status" aria-live="polite">
@@ -2404,8 +2741,14 @@ export function MarketingOperator(): React.JSX.Element {
               </div>
             ) : leads.length ? (
               <div className={styles.leadQueue}>
-                {leads.map((lead) => (
-                  <article className={styles.leadCard} key={lead.id}>
+                {leads.map((lead) => {
+                  const reviewSla = leadReviewSla(lead);
+                  return (
+                  <article
+                    className={styles.leadCard}
+                    data-review-overdue={reviewSla?.state === "overdue" || undefined}
+                    key={lead.id}
+                  >
                     <header>
                       <div>
                         <span className={styles.leadPersona}>{titleCase(lead.persona)}</span>
@@ -2474,6 +2817,15 @@ export function MarketingOperator(): React.JSX.Element {
                       <span>{titleCase(lead.timeline)}</span>
                       <span>{titleCase(lead.status)}</span>
                       <span>{leadDate(lead.createdAt)} ET</span>
+                      {reviewSla ? (
+                        <span
+                          className={styles.leadReviewSla}
+                          data-overdue={reviewSla.state === "overdue" || undefined}
+                        >
+                          {reviewSla.state === "overdue" ? "Review overdue" : "Review due"}
+                          {" · "}{leadDate(reviewSla.dueAt)} ET
+                        </span>
+                      ) : null}
                       {text(lead.attribution.utmSource) ? (
                         <span>Source: {text(lead.attribution.utmSource)}</span>
                       ) : null}
@@ -2521,7 +2873,8 @@ export function MarketingOperator(): React.JSX.Element {
                       />
                     </div>
                   </article>
-                ))}
+                  );
+                })}
               </div>
             ) : leadQueueState === "ready" ? (
               <p className={styles.empty}>

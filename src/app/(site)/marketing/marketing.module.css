@@ -343,6 +343,124 @@
   font-size: 11.5px;
 }
 
+.scorecardStatus,
+.scorecardScope {
+  margin: 0 0 12px;
+  color: var(--ink-3);
+  font-size: 11.5px;
+  line-height: 1.55;
+}
+
+.scorecardError {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px 9px;
+  margin-bottom: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-ctl-sm);
+  background: var(--warn-wash);
+  color: var(--warn-ink);
+  font-size: 11.5px;
+}
+
+.leadScorecard {
+  margin-bottom: 14px;
+  padding: 12px;
+  border: 1px solid var(--line-2);
+  border-radius: var(--r-card-sm);
+  background: var(--sunk);
+}
+
+.scorecardGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  gap: 8px;
+}
+
+.scorecardGrid article {
+  display: grid;
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--r-ctl-sm);
+  background: var(--panel-2);
+}
+
+.scorecardGrid article[data-alert] {
+  border-color: var(--danger-line);
+  background: var(--danger-wash);
+}
+
+.scorecardGrid span,
+.scorecardGrid small {
+  color: var(--ink-3);
+  font-size: 9.5px;
+  line-height: 1.4;
+}
+
+.scorecardGrid span {
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.scorecardGrid strong {
+  margin: 6px 0 3px;
+  color: var(--ink);
+  font-family: var(--font-serif), Georgia, serif;
+  font-size: 27px;
+  font-weight: 500;
+  line-height: 1;
+}
+
+.scorecardAttribution {
+  margin-top: 11px;
+}
+
+.scorecardAttribution h3 {
+  margin: 0 0 6px;
+  color: var(--ink-2);
+  font-size: 10.5px;
+  font-weight: 650;
+}
+
+.scorecardAttribution [role="table"] {
+  display: grid;
+  gap: 1px;
+  overflow-x: auto;
+}
+
+.scorecardAttribution [role="row"] {
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) repeat(3, minmax(64px, auto));
+  min-width: 440px;
+  border-radius: var(--r-chip);
+  background: var(--panel-2);
+}
+
+.scorecardAttribution [role="cell"],
+.scorecardAttribution [role="columnheader"] {
+  padding: 6px 8px;
+  color: var(--ink-2);
+  font-size: 10px;
+  overflow-wrap: anywhere;
+}
+
+.scorecardAttribution [role="columnheader"] {
+  color: var(--ink-3);
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-size: 8.5px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.scorecardScope {
+  margin: 10px 0 0;
+}
+
 .leadQueue {
   display: grid;
   gap: 10px;
@@ -354,6 +472,10 @@
   border: 1px solid var(--line-2);
   border-radius: var(--r-card-sm);
   background: var(--panel-2);
+}
+
+.leadCard[data-review-overdue] {
+  border-color: var(--danger-line);
 }
 
 .leadCard > header {
@@ -490,6 +612,16 @@
   font-family: var(--font-mono), ui-monospace, monospace;
   font-size: 9px;
   overflow-wrap: anywhere;
+}
+
+.leadCard > footer .leadReviewSla {
+  background: var(--warn-wash);
+  color: var(--warn-ink);
+}
+
+.leadCard > footer .leadReviewSla[data-overdue] {
+  background: var(--danger-wash);
+  color: var(--danger);
 }
 
 .leadActions {

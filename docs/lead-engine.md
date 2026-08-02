@@ -132,6 +132,22 @@ both tokens, displays the scored queue, and supports forward-only status
 changes and two-step permanent deletion. Responses omit fingerprints and all
 network metadata and use `Cache-Control: private, no-store`.
 
+`GET /api/leads/scorecard` uses the same lead-desk credential and returns only
+PII-free aggregates over the existing non-expired queue: rolling 7/30-day
+accepted requests, score-three-plus requests, lifecycle progression,
+current qualified-stage requests, current overdue-review backlog, and coarse
+source/campaign/content groups. It never returns a lead row, identifier,
+contact field, project, URL, workflow, or individual timestamp. The endpoint
+is deliberately queryless and non-cacheable.
+
+The current store can return at most 100 rows ordered by score and then
+recency. When all 100 slots are occupied, the scorecard marks itself
+`truncated` and the operator UI labels every total as a lower bound. With fewer
+than 100 rows, the aggregate covers the current non-expired stored population,
+not all-time history. The two-business-day target uses weekdays in
+`America/New_York`, does not model holidays, and applies only while a request
+scores at least three and remains `new`.
+
 Both operator tokens remain in the current tab's `sessionStorage`. Use a
 dedicated browser profile and select **Forget** before handing the machine to
 another person.
@@ -213,8 +229,17 @@ Review these metrics weekly:
 
 - qualified Zap requests;
 - builder-review-to-request rate;
-- request-to-technical-review rate;
-- technical-review-to-pilot rate; and
+- accepted-request-to-lifecycle-progression rate;
+- current qualified-stage count; and
 - campaign visitor-to-builder activation rate.
+
+The private scorecard covers accepted requests onward. Visitor and campaign
+arrival denominators remain in Vercel Analytics, so it must not be described as
+an impression-to-lead or visitor-to-request conversion report. Technical-review
+and pilot conversion remain target metrics for a future explicit lifecycle;
+the current four-state lead store does not record either event and the UI must
+not synthesize them from `updatedAt`. Likewise, a current `qualified` count is
+a stage snapshot, not an ever-qualified conversion: closing a request removes
+it from that current stage.
 
 Followers and impressions are supporting signals, not the north-star metric.

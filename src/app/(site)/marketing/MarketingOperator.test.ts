@@ -17,6 +17,7 @@ import {
   parseSyndicationRepairPair,
   parseSubstackVerification,
   parseDiscordActivationVerification,
+  parseLeadScorecard,
   parseXIdentityVerification,
   pollRetryDelay,
   readinessRows,
@@ -357,6 +358,216 @@ describe("operator lead queue parsing", () => {
     expect(
       operatorLeads({ leads: Array.from({ length: 101 }, () => VALID_LEAD) }),
     ).toEqual([]);
+  });
+});
+
+describe("operator lead scorecard parsing", () => {
+  const SCORECARD = {
+    schemaVersion: 1,
+    generatedAt: "2026-08-02T05:30:00.000Z",
+    scope: {
+      basis: "accepted_requests_onward",
+      population: "nonexpired_stored_requests",
+      selection: "qualification_score_desc_then_created_at_desc",
+      maxRows: 100,
+      returnedRows: 4,
+      truncated: false,
+      complete: true,
+    },
+    windows: {
+      days7: {
+        accepted: 4,
+        score3Plus: 3,
+        progressed: 2,
+        currentQualified: 1,
+      },
+      days30: {
+        accepted: 4,
+        score3Plus: 3,
+        progressed: 2,
+        currentQualified: 1,
+      },
+    },
+    overdueReviewCount: 1,
+    stages: { new: 2, contacted: 1, qualified: 1, closed: 0 },
+    attribution: [{
+      source: "x",
+      campaign: "agent_kit",
+      content: "feed_update",
+      accepted: 2,
+      score3Plus: 2,
+      currentQualified: 1,
+    }, {
+      source: "discord",
+      campaign: "learn_hub",
+      content: "hero",
+      accepted: 2,
+      score3Plus: 1,
+      currentQualified: 0,
+    }],
+  };
+
+  it("accepts a coherent, bounded, PII-free scorecard", () => {
+    expect(parseLeadScorecard({ scorecard: SCORECARD })).toEqual(SCORECARD);
+  });
+
+  it("fails closed for malformed coverage, stage totals, or dimensions", () => {
+    expect(parseLeadScorecard({
+      scorecard: {
+        ...SCORECARD,
+        scope: { ...SCORECARD.scope, truncated: true },
+      },
+    })).toBeNull();
+    expect(parseLeadScorecard({
+      scorecard: {
+        ...SCORECARD,
+        stages: { ...SCORECARD.stages, new: 3 },
+      },
+    })).toBeNull();
+    expect(parseLeadScorecard({
+      scorecard: {
+        ...SCORECARD,
+        attribution: [{
+          ...SCORECARD.attribution[0],
+          campaign: "person@example.com",
+        }],
+      },
+    })).toBeNull();
+  });
+
+  it("fails closed for duplicate, incomplete, or malformed remaining groups", () => {
+    expect(parseLeadScorecard({
+      scorecard: {
+        ...SCORECARD,
+        attribution: [
+          SCORECARD.attribution[0],
+          SCORECARD.attribution[0],
+        ],
+      },
+    })).toBeNull();
+    expect(parseLeadScorecard({
+      scorecard: {
+        ...SCORECARD,
+        attribution: [{
+          ...SCORECARD.attribution[0],
+          accepted: 1,
+          score3Plus: 1,
+        }],
+      },
+    })).toBeNull();
+    expect(parseLeadScorecard({
+      scorecard: {
+        ...SCORECARD,
+        attribution: [{
+          ...SCORECARD.attribution[0],
+          source: "remaining",
+        }, SCORECARD.attribution[1]],
+      },
+    })).toBeNull();
+  });
+
+  it("accepts only a producer-coherent final remaining bucket", () => {
+    const visible = [
+      "discord",
+      "farcaster",
+      "github",
+      "homepage",
+      "newsletter",
+      "openzaps",
+      "rss",
+      "substack",
+      "x",
+    ].map((source) => ({
+      source,
+      campaign: "agent_kit",
+      content: "feed_update",
+      accepted: 1,
+      score3Plus: 1,
+      currentQualified: 0,
+    }));
+    visible.push({
+      source: "x",
+      campaign: "learn_hub",
+      content: "hero",
+      accepted: 1,
+      score3Plus: 1,
+      currentQualified: 0,
+    }, {
+      source: "discord",
+      campaign: "learn_hub",
+      content: "hero",
+      accepted: 1,
+      score3Plus: 1,
+      currentQualified: 0,
+    });
+    const remaining = {
+      source: "remaining",
+      campaign: "remaining",
+      content: "remaining",
+      accepted: 2,
+      score3Plus: 2,
+      currentQualified: 0,
+    };
+    const coherent = {
+      ...SCORECARD,
+      scope: { ...SCORECARD.scope, returnedRows: 13 },
+      windows: {
+        days7: {
+          accepted: 13,
+          score3Plus: 13,
+          progressed: 0,
+          currentQualified: 0,
+        },
+        days30: {
+          accepted: 13,
+          score3Plus: 13,
+          progressed: 0,
+          currentQualified: 0,
+        },
+      },
+      overdueReviewCount: 0,
+      stages: { new: 13, contacted: 0, qualified: 0, closed: 0 },
+      attribution: [...visible, remaining],
+    };
+
+    expect(parseLeadScorecard({ scorecard: coherent })).toEqual(coherent);
+    expect(parseLeadScorecard({
+      scorecard: {
+        ...coherent,
+        attribution: [...visible.slice(0, -1), remaining],
+      },
+    })).toBeNull();
+  });
+
+  it("rejects window lifecycle counts that exceed the stored stages", () => {
+    expect(parseLeadScorecard({
+      scorecard: {
+        ...SCORECARD,
+        windows: {
+          ...SCORECARD.windows,
+          days30: {
+            ...SCORECARD.windows.days30,
+            currentQualified: 2,
+          },
+        },
+        attribution: SCORECARD.attribution.map((row, index) => ({
+          ...row,
+          currentQualified: index === 0 ? 2 : 0,
+        })),
+      },
+    })).toBeNull();
+    expect(parseLeadScorecard({
+      scorecard: {
+        ...SCORECARD,
+        windows: {
+          ...SCORECARD.windows,
+          days30: {
+            ...SCORECARD.windows.days30,
+            progressed: 4,
+          },
+        },
+      },
+    })).toBeNull();
   });
 });
 
