@@ -1,11 +1,16 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { createPublicClient, formatUnits, http, zeroAddress } from "viem";
 
 import { CopyButton } from "@/components/CopyButton";
-import { trackEvent } from "@/lib/analytics";
+import {
+  capturedAnalyticsAttribution,
+  trackEvent,
+  type CapturedAnalyticsAttribution,
+} from "@/lib/analytics";
 import {
   BLOCKS,
   CATEGORY_LABEL,
@@ -50,6 +55,10 @@ import {
   type SavedDesign,
 } from "@/lib/designs";
 import { edgeScrollDelta } from "@/lib/drag";
+import {
+  builderLeadRequestHandoff,
+  storeBuilderLeadRequestDraftInBrowser,
+} from "@/lib/leads/builder-handoff";
 import { quoteLivePolicy, resolveLivePolicyPlan } from "@/lib/live-policy";
 import { reducedMotionEnabled } from "@/lib/motion-preference";
 import { parseRouterAmount } from "@/lib/openzap";
@@ -313,6 +322,7 @@ export function ZapBuilder({
   /** The `?d=` token, from UseSurface's searchParams; null on a bare /zap. */
   shareToken?: string | null;
 }): React.JSX.Element {
+  const router = useRouter();
   // The chain is whatever the user has edited this session, falling back to the
   // saved draft and finally to the opening blueprint.
   const stored = useSyncExternalStore(
@@ -322,6 +332,8 @@ export function ZapBuilder({
   );
   const origin = useSyncExternalStore(subscribeNever, originSnapshot, serverOrigin);
   const [edited, setEdited] = useState<Draft | null>(null);
+  const [leadAcquisition, setLeadAcquisition] =
+    useState<CapturedAnalyticsAttribution | null>(null);
   const draft = edited ?? stored ?? DEFAULT_DRAFT;
   const chain = draft.chain;
   const recipeId = draft.recipeId;
@@ -363,6 +375,14 @@ export function ZapBuilder({
   const coalesceRef = useRef<string | undefined>(undefined);
 
   const compiled = useMemo(() => compileChain(chain), [chain]);
+  const requestDesignHandoff = useMemo(
+    () => builderLeadRequestHandoff(chain, compiled, leadAcquisition),
+    [chain, compiled, leadAcquisition],
+  );
+
+  useEffect(() => {
+    setLeadAcquisition(capturedAnalyticsAttribution());
+  }, []);
 
   useEffect(() => {
     if (!edited) return;
@@ -2354,6 +2374,21 @@ export function ZapBuilder({
 
           <section className={styles.card}>
             <div className={styles.actions}>
+              {chain.length > 0 ? (
+                <button
+                  type="button"
+                  className={`${styles.actionBtn} ${styles.requestAction}`}
+                  onClick={() => {
+                    storeBuilderLeadRequestDraftInBrowser(requestDesignHandoff.draft);
+                    router.push(requestDesignHandoff.href);
+                  }}
+                  data-analytics-event="request_zap_clicked"
+                  data-analytics-cta="request_this_design"
+                  data-analytics-content="builder_review"
+                >
+                  Request this design
+                </button>
+              ) : null}
               <CopyButton
                 className={styles.actionBtn}
                 value={shareUrl}

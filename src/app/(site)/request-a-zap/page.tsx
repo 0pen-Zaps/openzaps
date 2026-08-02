@@ -172,6 +172,10 @@ export default async function RequestAZapPage({
             utmCampaign: first(params, "utm_campaign", 200),
             utmContent: first(params, "utm_content", 200),
             utmTerm: first(params, "utm_term", 200),
+            entryPoint:
+              first(params, "entry_point", 64) === "builder_review"
+                ? "builder_review"
+                : undefined,
             landingPath: "/request-a-zap",
           }}
         />

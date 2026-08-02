@@ -2477,6 +2477,9 @@ export function MarketingOperator(): React.JSX.Element {
                       {text(lead.attribution.utmSource) ? (
                         <span>Source: {text(lead.attribution.utmSource)}</span>
                       ) : null}
+                      {text(lead.attribution.entryPoint) === "builder_review" ? (
+                        <span>Entry: Builder review</span>
+                      ) : null}
                     </footer>
                     <div className={styles.leadActions}>
                       {lead.status === "new" ? (

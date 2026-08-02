@@ -1,13 +1,23 @@
 "use client";
 
 import Link from "next/link";
-import { useRef, useState, type FormEvent } from "react";
+import {
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+  type FormEvent,
+} from "react";
 
 import { trackEvent } from "@/lib/analytics";
 import {
   leadRequestPayload,
   type LeadClientAttribution,
 } from "@/lib/leads/client";
+import {
+  consumeBuilderLeadRequestDraftInBrowser,
+  type BuilderLeadRequestDraft,
+} from "@/lib/leads/builder-handoff";
 
 import styles from "./request-a-zap.module.css";
 
@@ -84,12 +94,46 @@ const PERSONAS: readonly {
   },
 ] as const;
 
+function noBuilderDraft(): null {
+  return null;
+}
+
+function builderDraftStore(enabled: boolean): {
+  getSnapshot: () => BuilderLeadRequestDraft | null;
+  subscribe: (notify: () => void) => () => void;
+} {
+  let current: BuilderLeadRequestDraft | null = null;
+  let initialized = false;
+  return {
+    getSnapshot: () => current,
+    subscribe: (notify) => {
+      if (!initialized) {
+        initialized = true;
+        current = enabled
+          ? consumeBuilderLeadRequestDraftInBrowser()
+          : null;
+      }
+      let active = true;
+      if (current) queueMicrotask(() => {
+        if (active) notify();
+      });
+      return () => {
+        active = false;
+      };
+    },
+  };
+}
+
 export function RequestZapForm({
   attribution,
   initialValues,
   isPreviewDeployment = false,
 }: RequestZapFormProps): React.JSX.Element {
   const [persona, setPersona] = useState<LeadPersona | "">(initialValues.persona ?? "");
+  const [workflowEdit, setWorkflowEdit] = useState<string | null>(null);
+  const [protocolsAssetsEdit, setProtocolsAssetsEdit] = useState<string | null>(
+    null,
+  );
   const [submission, setSubmission] = useState<SubmissionState>("idle");
   const [errorMessage, setErrorMessage] = useState("");
   const statusRef = useRef<HTMLDivElement>(null);
@@ -99,6 +143,24 @@ export function RequestZapForm({
     campaign: attribution.utmCampaign,
     content: attribution.utmContent,
   };
+  const draftStore = useMemo(
+    () => builderDraftStore(
+      attribution.entryPoint === "builder_review" && !isPreviewDeployment,
+    ),
+    [attribution.entryPoint, isPreviewDeployment],
+  );
+  const builderDraft = useSyncExternalStore(
+    draftStore.subscribe,
+    draftStore.getSnapshot,
+    noBuilderDraft,
+  );
+  const workflow =
+    workflowEdit ?? initialValues.workflow ?? builderDraft?.workflow ?? "";
+  const protocolsAssets =
+    protocolsAssetsEdit
+    ?? initialValues.protocolsAssets
+    ?? builderDraft?.protocolsAssets
+    ?? "";
 
   if (isPreviewDeployment) {
     return (
@@ -110,8 +172,9 @@ export function RequestZapForm({
         <h2 id="preview-request-title">Submit Zap requests on the production site.</h2>
         <p>
           Preview deployments intentionally cannot access the private lead store.
-          Open the verified production form to send your workflow and trigger the
-          submission notification.
+          Your design stays in this preview tab and cannot cross to the production
+          origin automatically. Open the blank production form, then paste the
+          workflow details you want reviewed.
         </p>
         <a
           href="https://www.0xzaps.com/request-a-zap#request-form"
@@ -348,7 +411,8 @@ export function RequestZapForm({
               minLength={20}
               maxLength={4000}
               placeholder="Example: Move a capped amount of USDG into a verified liquidity position when…"
-              defaultValue={initialValues.workflow}
+              value={workflow}
+              onChange={(event) => setWorkflowEdit(event.target.value)}
               required
             />
             <small>Plain language is perfect. Do not paste calldata or credentials.</small>
@@ -362,7 +426,8 @@ export function RequestZapForm({
                 rows={3}
                 maxLength={2000}
                 placeholder="Uniswap v4, USDG, aeWETH…"
-                defaultValue={initialValues.protocolsAssets}
+                value={protocolsAssets}
+                onChange={(event) => setProtocolsAssetsEdit(event.target.value)}
               />
             </label>
             <label className={styles.field}>

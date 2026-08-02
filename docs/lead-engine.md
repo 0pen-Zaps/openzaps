@@ -35,6 +35,24 @@ The browser sends the form to `POST /api/leads/request`. The route:
 The public response is deliberately minimal. It never returns contact data,
 the qualification score, a database identifier, or quota fingerprint.
 
+The Zap Builder review panel can prepare a deterministic link into this form.
+That handoff contains only catalog-owned block names, validated catalog select
+options, the coarse local compiler verdict, and a fixed `builder_review` entry
+point. If the tab already has a controlled first-touch category, the link
+preserves that privacy-reduced source separately instead of replacing it with
+an internal campaign. The CTA is an intentional same-tab button, and the safe
+summary moves through one-shot `sessionStorage` rather than the URL. The request
+form consumes and removes it client-side; when storage is unavailable it falls
+back to an empty form. Preview deployments preserve the tab draft but explain
+that it cannot cross into the production origin. The summary therefore reaches
+the server only in the consented form POST. It does not serialize the share
+token, node identifiers, wallet
+addresses,
+amounts, arbitrary parameters, design fingerprint, or compiler internals. The
+visitor still has to supply the trigger, guardrails, contact details, timeline,
+and consent before anything is submitted. A prepared link therefore grants no
+wallet, signing, deployment, or contact authority.
+
 ## Qualification
 
 The score is one point for each of five signals:
@@ -193,6 +211,7 @@ accepted request's response.
 Review these metrics weekly:
 
 - qualified Zap requests;
+- builder-review-to-request rate;
 - request-to-technical-review rate;
 - technical-review-to-pilot rate; and
 - campaign visitor-to-builder activation rate.
