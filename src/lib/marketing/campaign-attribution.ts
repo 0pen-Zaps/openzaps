@@ -85,6 +85,7 @@ const ATTRIBUTION_CAMPAIGNS = new Set([
   "openzaps-openzaps-live-chain-explorer-2026-07-28",
   "defitutorials-give-an-agent-the-trigger-never-the",
   "defitutorials-paper-trade-first-authority-map",
+  "defitutorials-earn-pool-fees-not-emissions",
 ]);
 
 function normalizedControlledValue(

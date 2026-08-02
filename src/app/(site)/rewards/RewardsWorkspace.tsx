@@ -30,9 +30,11 @@ import {
   formatCampaignPhase,
   formatCountdown,
   permitTokenAbi,
+  projectedPrincipalShare,
   type FeeRewardsPayload,
 } from "@/lib/rewards";
 import {
+  HOOK_FEE_LABEL,
   ensureRobinhoodChain,
   explorerAddress,
   explorerTransaction,
@@ -725,19 +727,21 @@ export function RewardsWorkspace({
       <div className={styles.heroGrid}>
         <div className={styles.heroCopy}>
           <span className={styles.eyebrow}>TOKENIZED FEES · ROBINHOOD CHAIN</span>
-          <h1 className={styles.title}>Inspect the first fixed fee campaign.</h1>
+          <h1 className={styles.title}>Stake 0xZAPS. Claim WETH from the pool&apos;s trading fees.</h1>
           <p className={styles.lede}>
-            Holding 0xZAPS alone grants no fee rights. This separate contract was funded at launch with 50 of 100
-            tokenized fee shares and is configured to allocate campaign-accounted WETH by time-weighted stake during
-            its seven-day window. Its harvest source was configured for Clanker fees; direct WETH transfers can also
-            be synchronized, and this UI never asks for or spends the sponsor&apos;s WETH. Live principal and settlement
-            state are shown below.
+            Every swap in the 0xZAPS ↔ aeWETH pool pays a {HOOK_FEE_LABEL} hook fee. OpenZaps tokenized its claim on
+            that fee position into a fixed 100 shares and moved 50 of them into this campaign contract, so for one
+            seven-day window the WETH this campaign harvests is split among stakers by time-weighted stake.
+            Holding 0xZAPS alone grants no fee rights — only a stake in this contract accrues a claim. Every figure
+            below is read from chain 4663 at one verified block.
           </p>
           <SettlementRail data={data} />
         </div>
 
         <CampaignTerms data={data} onResync={refreshAtBoundary} />
       </div>
+
+      <FeeMechanic data={data} />
 
       <nav className={styles.tabs} aria-label="Fee rewards workspace" role="tablist">
         {WORKSPACES.map((item, index) => (
@@ -937,6 +941,96 @@ function CampaignTimeline({ estimatedNow }: { estimatedNow: bigint }): React.JSX
   );
 }
 
+/**
+ * How a swap becomes a claimable WETH balance, in five steps.
+ *
+ * Each step carries one figure that is either a manifest constant or a live
+ * verified read — never a projection, and never a rate. The closing boundary
+ * block is part of the explainer, not a footnote: the same panel that says
+ * what a staker gets says what the campaign does not promise.
+ */
+function FeeMechanic({ data }: { data: FeeRewardsPayload | null }): React.JSX.Element {
+  const harvested = data ? formatAmount(data.campaign.accountedRewardBalance, "WETH", 8) : null;
+  const steps: readonly {
+    title: string;
+    body: React.ReactNode;
+    fact: React.ReactNode;
+  }[] = [
+    {
+      title: "A trade pays the pool fee",
+      body: "Every swap in the 0xZAPS ↔ aeWETH Uniswap v4 pool pays the Clanker hook fee. Trading is the only thing that creates this cash flow.",
+      fact: <><b>{HOOK_FEE_LABEL}</b> hook fee, read live</>,
+    },
+    {
+      title: "The fee position is tokenized",
+      body: "OpenZaps' claim on that position's reward slot is held by a vault that minted a fixed supply of fee shares. No more can ever be minted.",
+      fact: <><b>100</b> shares, fixed supply</>,
+    },
+    {
+      title: "Half of it funds this campaign",
+      body: "50 of those 100 shares were transferred into the campaign contract before launch. They stay there until settlement returns them to the sponsor.",
+      fact: data?.campaign.feeSharesFunded
+        ? <><b>50</b> shares funded — verified</>
+        : <><b>50</b> shares — funding unverified</>,
+    },
+    {
+      title: "Anyone can harvest",
+      body: (
+        <>
+          Harvest and sync are permissionless: they pull accrued WETH through the vault into the
+          campaign, so no operator stands between the fees and the stakers.
+          {" "}
+          This UI never asks for or spends the sponsor&apos;s WETH.
+        </>
+      ),
+      fact: harvested ? <><b>{harvested}</b> harvested so far</> : <>Permissionless upkeep</>,
+    },
+    {
+      title: "Stakers split it, time-weighted",
+      body: "Your share of campaign-accounted WETH follows your stake and how long you hold it through the fixed end. Claim to your own wallet any time before the deadline.",
+      fact: <>Claim by <b>{formatDate(FEE_REWARDS_MANIFEST.campaign.claimDeadline)}</b></>,
+    },
+  ];
+
+  return (
+    <section className={styles.mechanic} aria-labelledby="rewards-mechanic-title">
+      <div className={styles.mechanicHead}>
+        <span className={styles.panelEyebrow}>HOW THE FEES REACH A STAKER</span>
+        <h2 id="rewards-mechanic-title">A swap, a share, a claim.</h2>
+        <p>
+          Nothing here mints, inflates, or borrows. The reward asset is WETH that the pool&apos;s own
+          traders already paid, routed through contracts whose runtime hashes this page verifies before
+          it renders a single figure.
+        </p>
+      </div>
+
+      <ol className={styles.mechanicSteps}>
+        {steps.map((step, index) => (
+          <li key={step.title}>
+            <span className={styles.mechanicIndex}>{String(index + 1).padStart(2, "0")}</span>
+            <h3>{step.title}</h3>
+            <p>{step.body}</p>
+            <span className={styles.mechanicFact}>{step.fact}</span>
+          </li>
+        ))}
+      </ol>
+
+      <div className={styles.mechanicBoundary}>
+        <Glyph name="alert" />
+        <div>
+          <h3>What this campaign does not promise</h3>
+          <ul>
+            <li><strong>No yield, rate, or APR.</strong> Rewards are only whatever WETH the pool&apos;s trading produces and someone harvests into this campaign.</li>
+            <li><strong>Holding 0xZAPS earns nothing.</strong> A fee claim accrues only while tokens are staked in this contract.</li>
+            <li><strong>The contracts have not been externally audited.</strong> Staking puts funds at risk and confirmed transactions are irreversible.</li>
+            <li><strong>Unclaimed WETH expires.</strong> After the claim deadline the sponsor can sweep whatever is left unclaimed.</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+  );
+}
+
 function CampaignTerms({
   data,
   onResync,
@@ -972,6 +1066,37 @@ function CampaignTerms({
         <p className={styles.blockRead}>State verified at block {Number(data.headBlock).toLocaleString("en-US")}.</p>
       ) : null}
     </aside>
+  );
+}
+
+/**
+ * What a typed stake would be worth as a share of principal right now.
+ *
+ * Deliberately a statement about principal at the verified block, not a
+ * reward forecast: rewards are time-weighted and the reward pool itself
+ * depends on trading fees nobody can promise. The note under the figure
+ * says both things so the number cannot be read as a yield.
+ */
+function StakeShareProjection({
+  stake,
+  totalStaked,
+}: {
+  stake: bigint | null;
+  totalStaked: bigint;
+}): React.JSX.Element | null {
+  if (stake === null) return null;
+  const share = projectedPrincipalShare(stake, totalStaked);
+  if (share === null) return null;
+  return (
+    <p className={styles.shareProjection}>
+      <span>Share of staked principal</span>
+      <strong>{share < 0.01 ? "<0.01%" : `${share}%`}</strong>
+      <em>
+        At this block, against {formatAmount(totalStaked.toString(), "0xZAPS")} already staked.
+        Rewards are time-weighted, so the final split also depends on when you stake and how long
+        you hold — and on the WETH the campaign actually harvests.
+      </em>
+    </p>
   );
 }
 
@@ -1058,6 +1183,10 @@ function EarnWorkspace(props: EarnProps): React.JSX.Element {
             <span>Amount</span>
             <div><input inputMode="decimal" placeholder="0.0" value={props.stakeAmount} onChange={(event) => props.onSetStakeAmount(event.target.value)} /><button type="button" onClick={() => props.onSetStakeAmount(formatUnits(stakeBalance, STAKE_DECIMALS))}>MAX</button><em>0xZAPS</em></div>
           </label>
+          <StakeShareProjection
+            stake={props.parsedStakeAmount}
+            totalStaked={BigInt(props.data.campaign.totalStaked)}
+          />
           <button className={styles.primaryButton} disabled={!props.writesEnabled || !connected || !props.canStake || !props.parsedStakeAmount || props.parsedStakeAmount > stakeBalance || props.actionBusy !== null} onClick={props.onStakeWithPermit} type="button">
             <Glyph name="boltFill" />{props.actionBusy === "Permit + stake" ? "Preparing permit…" : "Sign permit, then stake"}
           </button>

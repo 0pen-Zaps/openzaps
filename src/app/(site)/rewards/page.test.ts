@@ -157,6 +157,28 @@ describe("0xZAPS fee rewards public surface", () => {
     expect(rollingCss).toContain("content: attr(data-prev)");
   });
 
+  it("never paints text with the brand fill token", () => {
+    // --zap is the brand FILL. As a text colour it measures 1.10:1 against
+    // --panel on the Ivory and Paper themes — invisible. Accent text uses
+    // --link (>=4.5:1 on every theme) or --ink.
+    const rewardsCss = read("src/app/(site)/rewards/rewards.module.css");
+    expect(rewardsCss).not.toContain("color: var(--zap)");
+  });
+
+  it("explains the fee path with evidence-anchored steps and a stated boundary", () => {
+    // The explainer may only cite manifest constants or live verified reads,
+    // and the boundary block is part of the section, not an optional footnote.
+    expect(workspace).toContain("HOW THE FEES REACH A STAKER");
+    expect(workspace).toContain("{HOOK_FEE_LABEL}</b> hook fee, read live");
+    expect(workspace).toContain("What this campaign does not promise");
+    expect(workspace).toContain("No yield, rate, or APR.");
+    expect(workspace).toContain("Holding 0xZAPS earns nothing.");
+    // The share readout is a statement about principal, never a forecast.
+    expect(workspace).toContain("Share of staked principal");
+    expect(workspace).toContain("projectedPrincipalShare");
+    expect(workspace).toContain("Rewards are time-weighted");
+  });
+
   it("coalesces concurrent shared-snapshot fills per instance", () => {
     // unstable_cache has no MISS coalescing and the cache key rotates every
     // deploy; without this funnel, landing traffic during a deploy becomes an

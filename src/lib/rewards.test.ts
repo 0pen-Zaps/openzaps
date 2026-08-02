@@ -9,6 +9,7 @@ import {
   formatCampaignPhase,
   formatCountdown,
   permitTokenAbi,
+  projectedPrincipalShare,
 } from "@/lib/rewards";
 
 function functionNames(abi: readonly { type: string; name?: string }[]): string[] {
@@ -68,6 +69,28 @@ describe("campaignPhase", () => {
     expect(formatCampaignPhase("settlement-pending")).toBe("Settlement pending");
     expect(formatCampaignPhase("claim-only")).toBe("Claim only");
     expect(formatCampaignPhase("expired")).toBe("Expired");
+  });
+});
+
+describe("projectedPrincipalShare", () => {
+  const E18 = 10n ** 18n;
+
+  it("projects the stake's share of principal at the verified block", () => {
+    expect(projectedPrincipalShare(100n * E18, 0n)).toBe(100);
+    expect(projectedPrincipalShare(100n * E18, 100n * E18)).toBe(50);
+    expect(projectedPrincipalShare(1n * E18, 999n * E18)).toBe(0.1);
+    expect(projectedPrincipalShare(1n * E18, 3n * E18)).toBe(25);
+  });
+
+  it("truncates rather than rounding up, so a share is never overstated", () => {
+    // 1/3 → 33.33%, not 33.34%.
+    expect(projectedPrincipalShare(1n * E18, 2n * E18)).toBe(33.33);
+  });
+
+  it("stays silent when there is nothing to project", () => {
+    expect(projectedPrincipalShare(0n, 100n * E18)).toBeNull();
+    expect(projectedPrincipalShare(-1n, 100n * E18)).toBeNull();
+    expect(projectedPrincipalShare(100n * E18, -1n)).toBeNull();
   });
 });
 
