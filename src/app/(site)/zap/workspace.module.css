@@ -352,7 +352,7 @@
 
 .intentCard[data-accent="trigger"] .intentTile {
   background: var(--warn-wash);
-  color: var(--warn);
+  color: var(--warn-wash-ink);
 }
 
 .intentCard[data-accent="compose"] .intentTile {

@@ -751,7 +751,7 @@
 
 .nodeChip[data-level="review"] {
   background: var(--warn-wash);
-  color: var(--warn);
+  color: var(--warn-wash-ink);
 }
 
 .nodeChip[data-level="blocked"] {
@@ -1138,7 +1138,7 @@
   border: 1px solid var(--warn);
   border-radius: var(--r-ctl);
   background: var(--warn-wash);
-  color: var(--warn);
+  color: var(--warn-wash-ink);
   font-size: 12.5px;
   line-height: 1.45;
   animation: bodyIn var(--dur-3) var(--ease-emphasis);
@@ -1225,7 +1225,7 @@
 
 .pill[data-tone="warn"] {
   background: var(--warn-wash);
-  color: var(--warn);
+  color: var(--warn-wash-ink);
 }
 
 .pill[data-tone="danger"] {

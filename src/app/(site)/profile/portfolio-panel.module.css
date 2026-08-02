@@ -67,7 +67,7 @@
 
 .headMeta > span[data-status="partial"],
 .provenance > span[data-status="degraded"] {
-  color: var(--warn);
+  color: var(--warn-wash-ink);
   background: var(--warn-wash);
 }
 
@@ -181,7 +181,7 @@
   margin-top: 12px;
   padding: 3px 8px;
   border-radius: var(--r-pill);
-  color: var(--warn);
+  color: var(--warn-wash-ink);
   background: var(--warn-wash);
   font-size: 10.5px;
   font-style: normal;

@@ -108,7 +108,7 @@
 .bannerWarn {
   border: 1px solid var(--warn);
   background: var(--warn-wash);
-  color: var(--warn);
+  color: var(--warn-wash-ink);
 }
 
 .bannerGlyph {
@@ -531,7 +531,7 @@
   border: 1px solid var(--warn);
   border-radius: var(--r-card-sm);
   background: var(--warn-wash);
-  color: var(--warn);
+  color: var(--warn-wash-ink);
   font-size: 12.5px;
   line-height: 1.5;
 }
@@ -947,7 +947,7 @@
 
 .chipWarn {
   background: var(--warn-wash);
-  color: var(--warn);
+  color: var(--warn-wash-ink);
 }
 
 .chipMuted {

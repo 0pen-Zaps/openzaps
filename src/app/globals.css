@@ -77,6 +77,7 @@
   --ok-wash: #0e2013;
   --warn: #ffbd6d;
   --warn-wash: #241a0c;
+  --warn-wash-ink: #ffbd6d;
   --danger: #ff8a8a;
   --danger-wash: #2a1010;
   --danger-wash-2: #3a1616;
@@ -150,6 +151,7 @@
   --ok-wash: #e8f0e7;
   --warn: #9a6407;
   --warn-wash: #fbf0de;
+  --warn-wash-ink: #845606;
   --danger: #a33a1f;
   --danger-wash: #f8e6df;
   --danger-wash-2: #f5dcd3;
@@ -219,6 +221,7 @@
   --ok-wash: #e4f0e8;
   --warn: #8a6300;
   --warn-wash: #f6eedc;
+  --warn-wash-ink: #7b5800;
   --danger: #a32f2f;
   --danger-wash: #f7e3e3;
   --danger-wash-2: #f2d6d6;
@@ -296,6 +299,7 @@
   --ok-wash: #1c2a21;
   --warn: #e2a455;
   --warn-wash: #2e2415;
+  --warn-wash-ink: #e2a455;
   --danger: #f0947c;
   --danger-wash: #2e1a15;
   --danger-wash-2: #3a211a;
@@ -367,6 +371,7 @@
   --ok-wash: #16281f;
   --warn: #e0a85e;
   --warn-wash: #2a2317;
+  --warn-wash-ink: #e0a85e;
   --danger: #f08b8b;
   --danger-wash: #2b1620;
   --danger-wash-2: #371c27;

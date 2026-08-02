@@ -398,7 +398,7 @@
 
 .chipWarn {
   background: var(--warn-wash);
-  color: var(--warn);
+  color: var(--warn-wash-ink);
 }
 
 .chipMuted {
@@ -489,7 +489,9 @@
   padding: 0 6px;
   border-radius: var(--r-chip);
   background: var(--track);
-  color: var(--ink-3);
+  /* --ink-3 is the meta-label ink for --sunk/--panel/--bg; on --track it
+     measures 3.93-4.34:1 on four of the five themes. */
+  color: var(--ink-2);
   font-family: var(--font-mono), ui-monospace, monospace;
   font-size: 10.5px;
   font-weight: 600;

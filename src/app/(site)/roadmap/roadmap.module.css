@@ -393,7 +393,7 @@
 
 .status[data-tone="gated"] {
   background: var(--warn-wash);
-  color: var(--warn);
+  color: var(--warn-wash-ink);
 }
 
 .foundationGrid {
