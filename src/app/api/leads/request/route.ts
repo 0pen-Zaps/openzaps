@@ -150,14 +150,16 @@ export async function POST(request: Request): Promise<Response> {
     );
   }
 
-  // A filled honeypot receives the same minimal success as a real submission,
-  // but it never reaches the store or consumes a quota slot.
-  if (parsed.data.website.length > 0) {
-    return intakeResponse({ accepted: true }, 202);
-  }
+  // Older browser bundles exposed `website` as a honeypot. Password managers
+  // can still autofill that stale field, so never let it turn a legitimate,
+  // otherwise-valid request into a false-positive 202. Same-origin admission,
+  // the strict schema, and the durable per-network quota remain the abuse
+  // boundary. Keeping the legacy wire key empty also preserves compatibility
+  // with the service-layer schema.
+  const durableLead = { ...parsed.data, website: "" };
 
   try {
-    const result = await submitLeadRequest(parsed.data, request.headers);
+    const result = await submitLeadRequest(durableLead, request.headers);
     if (result === "quota_reached") {
       return intakeResponse(
         {
@@ -186,9 +188,9 @@ export async function POST(request: Request): Promise<Response> {
               await track(
                 "lead_request_accepted",
                 {
-                  source: leadAnalyticsSource(parsed.data.attribution.utmSource),
+                  source: leadAnalyticsSource(durableLead.attribution.utmSource),
                   score_band:
-                    qualificationScore(parsed.data) >= 3 ? "3_5" : "0_2",
+                    qualificationScore(durableLead) >= 3 ? "3_5" : "0_2",
                 },
                 { headers: leadAnalyticsHeaders(request.headers) },
               );

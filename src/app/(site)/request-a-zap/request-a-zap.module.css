@@ -524,14 +524,6 @@
   line-height: 1.55;
 }
 
-.honeypot {
-  position: absolute;
-  left: -10000px;
-  width: 1px;
-  height: 1px;
-  overflow: hidden;
-}
-
 .consent {
   display: grid;
   grid-template-columns: 20px 1fr;

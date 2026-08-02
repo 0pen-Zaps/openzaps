@@ -46,16 +46,13 @@ describe("RequestZapForm deployment boundary", () => {
     expect(markup).not.toContain("Preview deployment");
   });
 
-  it("keeps persona cards directly selectable and the honeypot out of autofill", () => {
+  it("keeps persona cards directly selectable and renders no autofill trap", () => {
     const markup = renderToStaticMarkup(createElement(RequestZapForm, PROPS));
     const personaInputRule = styles.match(/\.personaCard input\s*\{([^}]*)\}/u)?.[1];
 
     expect(markup).toContain('for="lead-persona-agent_builder"');
     expect(markup).toContain('id="lead-persona-agent_builder"');
-    expect(markup).toContain('data-1p-ignore="true"');
-    expect(markup).toContain('data-lpignore="true"');
-    expect(markup).toContain('data-bwignore="true"');
-    expect(markup).toContain('name="requestNotes"');
+    expect(markup).not.toContain('name="requestNotes"');
     expect(markup).not.toContain('name="website"');
     expect(personaInputRule).toMatch(/inset:\s*0/u);
     expect(personaInputRule).toMatch(/width:\s*100%/u);

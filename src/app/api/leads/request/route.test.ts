@@ -263,14 +263,40 @@ describe("POST /api/leads/request", () => {
     expect(mocks.start).not.toHaveBeenCalled();
   });
 
-  it("silently accepts the honeypot without touching durable storage", async () => {
+  it("normalizes the legacy honeypot and durably accepts the request", async () => {
+    mockedSubmit.mockResolvedValue("accepted");
+
     const response = await POST(
       request({ ...body, website: "https://spam.example" }),
     );
 
     expect(response.status).toBe(202);
     expect(await response.json()).toEqual({ accepted: true });
-    expect(mockedSubmit).not.toHaveBeenCalled();
+    expect(mockedSubmit).toHaveBeenCalledOnce();
+    expect(mockedSubmit).toHaveBeenCalledWith(
+      { ...body, website: "", attribution: {} },
+      expect.any(Headers),
+    );
+    expect(mocks.start).toHaveBeenCalledOnce();
+    expect(mocks.track).toHaveBeenCalledOnce();
+  });
+
+  it("never turns a legacy honeypot into false success when storage fails", async () => {
+    mockedSubmit.mockRejectedValue(new Error("database unavailable"));
+
+    const response = await POST(
+      request({ ...body, website: "autofilled by a stale client" }),
+    );
+
+    expect(response.status).toBe(503);
+    expect(await response.json()).toEqual({
+      accepted: false,
+      error: "Lead intake is temporarily unavailable.",
+    });
+    expect(mockedSubmit).toHaveBeenCalledWith(
+      { ...body, website: "", attribution: {} },
+      expect.any(Headers),
+    );
     expect(mocks.start).not.toHaveBeenCalled();
     expect(mocks.track).not.toHaveBeenCalled();
   });
