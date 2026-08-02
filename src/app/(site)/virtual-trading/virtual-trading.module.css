@@ -874,6 +874,49 @@
   border-bottom: 1px solid var(--line);
 }
 
+.authorityHandoff {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 1.5rem;
+  align-items: center;
+  margin-top: 0.75rem;
+  padding: 1.25rem;
+  border: 1px solid var(--zap-line);
+  border-radius: var(--r-card);
+  background: var(--zap-tint);
+}
+
+.authorityHandoff h2 {
+  margin-top: 0.35rem;
+  color: var(--ink);
+  font-family: var(--font-serif), Georgia, serif;
+  font-size: clamp(1.35rem, 2.4vw, 2rem);
+  font-weight: 500;
+  letter-spacing: -0.025em;
+}
+
+.authorityHandoff p {
+  max-width: 760px;
+  margin-top: 0.55rem;
+  color: var(--ink-2);
+  font-size: 0.76rem;
+  line-height: 1.6;
+}
+
+.authorityAction {
+  display: grid;
+  gap: 0.55rem;
+  justify-items: stretch;
+  min-width: 245px;
+  text-align: center;
+}
+
+.authorityAction small {
+  color: var(--ink-3);
+  font-size: 0.61rem;
+  line-height: 1.4;
+}
+
 .historyActions {
   display: flex;
   gap: 1rem;
@@ -1113,6 +1156,14 @@
   .historyActions {
     width: 100%;
     justify-content: space-between;
+  }
+
+  .authorityHandoff {
+    grid-template-columns: 1fr;
+  }
+
+  .authorityAction {
+    min-width: 0;
   }
 
   .method > div:first-child {

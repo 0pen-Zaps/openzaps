@@ -18,6 +18,7 @@ import {
   parseVirtualMarketSnapshot,
   parseVirtualPortfolioValuation,
   parseVirtualPortfolio,
+  virtualTradeRequestHref,
   virtualFillPriceWad,
   type VirtualFill,
   type VirtualPortfolioValuation,
@@ -232,6 +233,40 @@ describe("virtual portfolio ledger", () => {
     expect(portfolio.revision).toBe(VIRTUAL_TRADING_MAX_TRADES + 5);
     expect(portfolio.turnoverRaw).toBe(String(VIRTUAL_TRADING_MAX_TRADES + 5));
   });
+});
+
+describe("virtual trade lead handoff", () => {
+  it.each([
+    ["zaps", "buy", "robinhood-v4-route-usdg-zaps", "USDG to 0xZAPS"],
+    ["zaps", "sell", "robinhood-v4-route-zaps-usdg", "0xZAPS to USDG"],
+    ["weth", "buy", "robinhood-v4-usdg-weth", "USDG to aeWETH"],
+    ["weth", "sell", "robinhood-v4-weth-usdg", "aeWETH to USDG"],
+  ] as const)(
+    "prefills the fixed %s %s route without runtime trade data",
+    (marketId, side, routeId, direction) => {
+      const href = virtualTradeRequestHref(marketId, side);
+      const url = new URL(href, "https://www.0xzaps.com");
+
+      expect(url.pathname).toBe("/request-a-zap");
+      expect(url.searchParams.get("intent")).toContain(direction);
+      expect(url.searchParams.get("asset")).toBe(
+        `Robinhood Chain 4663; Uniswap v4; ${direction}; route ${routeId}`,
+      );
+      expect(Object.fromEntries(
+        ["utm_source", "utm_medium", "utm_campaign", "utm_content"].map(
+          (key) => [key, url.searchParams.get(key)],
+        ),
+      )).toEqual({
+        utm_source: "openzaps",
+        utm_medium: "product",
+        utm_campaign: "request_a_zap",
+        utm_content: "virtual_trading",
+      });
+      expect(href).not.toMatch(
+        /(?:1000000000|23258886|order-0001|0xabababab|realizedPnl|clientOrderId)/u,
+      );
+    },
+  );
 });
 
 describe("virtual portfolio persistence", () => {

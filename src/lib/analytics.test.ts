@@ -199,6 +199,43 @@ describe("analytics privacy boundary", () => {
     ).toBe("openzaps|website|request_a_zap|learn_hub");
   });
 
+  it("reduces DeFi Tutorials links to anonymous tutorial attribution", () => {
+    stubBrowser();
+
+    expect(
+      captureAnalyticsAttribution(
+        "?utm_source=substack&utm_medium=email&utm_campaign=defitutorials-paper-trade-first-authority-map&utm_content=virtual_trading",
+      ),
+    ).toBe("substack|email|tutorial_update|virtual_trading");
+  });
+
+  it("records a virtual fill with only its enumerated route and direction", () => {
+    const { dispatchEvent } = stubBrowser();
+
+    trackEvent("virtual_trade_filled", {
+      route: "robinhood-v4-route-usdg-zaps",
+      mode: "buy",
+      amount: "1000000000",
+      order_id: "paper-private-runtime-id",
+    } as unknown as AnalyticsPayload);
+
+    expect(track).toHaveBeenCalledWith("virtual_trade_filled", {
+      route: "robinhood-v4-route-usdg-zaps",
+      mode: "buy",
+    });
+    expect(dispatchEvent.mock.calls[0]?.[0]).toMatchObject({
+      init: {
+        detail: {
+          event: "virtual_trade_filled",
+          payload: {
+            route: "robinhood-v4-route-usdg-zaps",
+            mode: "buy",
+          },
+        },
+      },
+    });
+  });
+
   it("uses two intentional properties when no acquisition is available", () => {
     expect(
       providerAnalyticsPayload(

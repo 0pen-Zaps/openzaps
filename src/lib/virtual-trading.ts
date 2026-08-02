@@ -196,6 +196,40 @@ export function routeForVirtualOrder(marketId: VirtualMarketId, side: VirtualOrd
   return side === "buy" ? market.buyRouteId : market.sellRouteId;
 }
 
+export function virtualTradeDirectionLabel(
+  marketId: VirtualMarketId,
+  side: VirtualOrderSide,
+): string {
+  const market = VIRTUAL_MARKETS[marketId];
+  return side === "buy"
+    ? `USDG to ${market.symbol}`
+    : `${market.symbol} to USDG`;
+}
+
+/**
+ * Build a lead handoff from an enumerated paper route, never from runtime fill
+ * data. Amounts, order ids, block evidence, PnL, and browser state cannot enter
+ * this URL because the helper accepts only the market and direction unions.
+ */
+export function virtualTradeRequestHref(
+  marketId: VirtualMarketId,
+  side: VirtualOrderSide,
+): string {
+  const routeId = routeForVirtualOrder(marketId, side);
+  const direction = virtualTradeDirectionLabel(marketId, side);
+  const params = new URLSearchParams({
+    intent:
+      `Review a bounded live-action hypothesis based on the paper-tested ${direction} route. `
+      + "Map the immutable target, route, assets, recipient, per-run cap, output floor, cadence, expiry, and recovery path.",
+    asset: `Robinhood Chain 4663; Uniswap v4; ${direction}; route ${routeId}`,
+    utm_source: "openzaps",
+    utm_medium: "product",
+    utm_campaign: "request_a_zap",
+    utm_content: "virtual_trading",
+  });
+  return `/request-a-zap?${params.toString()}`;
+}
+
 export function createVirtualPortfolio(now = new Date().toISOString()): VirtualPortfolio {
   return {
     schemaVersion: VIRTUAL_TRADING_SCHEMA_VERSION,
