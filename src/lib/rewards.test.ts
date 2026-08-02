@@ -100,17 +100,18 @@ describe("campaignCountdown", () => {
 });
 
 describe("formatCountdown", () => {
-  it("drops seconds on multi-day spans and leading units at zero", () => {
+  it("drops seconds on multi-day spans and pads non-leading units", () => {
     expect(formatCountdown(6n * 86_400n + 23n * 3_600n + 59n * 60n + 8n)).toBe("6d 23h 59m");
-    expect(formatCountdown(86_400n)).toBe("1d 0h 0m");
-    expect(formatCountdown(13n * 3_600n + 22n * 60n + 8n)).toBe("13h 22m 8s");
-    expect(formatCountdown(22n * 60n + 8n)).toBe("22m 8s");
-    expect(formatCountdown(8n)).toBe("0m 8s");
-    expect(formatCountdown(0n)).toBe("0m 0s");
+    expect(formatCountdown(86_400n)).toBe("1d 00h 00m");
+    expect(formatCountdown(13n * 3_600n + 22n * 60n + 8n)).toBe("13h 22m 08s");
+    expect(formatCountdown(9n * 3_600n + 5n * 60n + 3n)).toBe("9h 05m 03s");
+    expect(formatCountdown(22n * 60n + 8n)).toBe("22m 08s");
+    expect(formatCountdown(8n)).toBe("0m 08s");
+    expect(formatCountdown(0n)).toBe("0m 00s");
   });
 
   it("clamps negative durations instead of showing a negative clock", () => {
-    expect(formatCountdown(-30n)).toBe("0m 0s");
+    expect(formatCountdown(-30n)).toBe("0m 00s");
     expect(formatCountdown(-30n, "minute")).toBe("0m");
   });
 
@@ -119,7 +120,7 @@ describe("formatCountdown", () => {
     expect(formatCountdown(60n, "minute")).toBe("1m");
     expect(formatCountdown(59n, "minute")).toBe("1m");
     expect(formatCountdown(13n * 3_600n + 22n * 60n + 8n, "minute")).toBe("13h 23m");
-    expect(formatCountdown(7n * 86_400n, "minute")).toBe("7d 0h 0m");
+    expect(formatCountdown(7n * 86_400n, "minute")).toBe("7d 00h 00m");
   });
 });
 

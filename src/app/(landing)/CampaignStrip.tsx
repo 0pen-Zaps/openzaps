@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 
+import { RollingDigits } from "@/components/RollingDigits";
 import { useCampaignCountdown } from "@/components/useCampaignCountdown";
 import { formatCountdown, type FeeRewardsPayload } from "@/lib/rewards";
 import styles from "./landing.module.css";
@@ -87,7 +88,12 @@ export function CampaignStrip(): React.JSX.Element | null {
       <span className={styles.campaignStripTime} role="timer">
         {reached
           ? `${countdown.reachedLabel} · confirming onchain`
-          : `${live ? "Live · " : ""}${countdown.label} ${formatCountdown(remaining, reduced ? "minute" : "second")}`}
+          : (
+            <>
+              {`${live ? "Live · " : ""}${countdown.label} `}
+              <RollingDigits animate={!reduced} value={formatCountdown(remaining, reduced ? "minute" : "second")} />
+            </>
+          )}
       </span>
       {/* The rewards app closes new stakes in claim-only; never advertise
           an action the destination refuses. */}

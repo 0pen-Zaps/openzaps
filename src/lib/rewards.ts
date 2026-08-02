@@ -214,7 +214,9 @@ export function campaignCountdown(
  * Formats a remaining duration for the countdown row. Multi-day spans omit
  * seconds so the display only changes once a minute; minute granularity
  * (calm motion) rounds up so a reader never sees a boundary understated as
- * already reached while it is still pending.
+ * already reached while it is still pending. Non-leading units zero-pad to
+ * two digits (flight-board style) so the string keeps a constant width
+ * between unit-tier changes and ticking digits never jiggle the layout.
  */
 export function formatCountdown(
   secondsRemaining: bigint,
@@ -225,11 +227,12 @@ export function formatCountdown(
   const days = total / 86_400n;
   const hours = (total % 86_400n) / 3_600n;
   const minutes = (total % 3_600n) / 60n;
+  const pad = (unit: bigint): string => unit.toString().padStart(2, "0");
   const parts: string[] = [];
   if (days > 0n) parts.push(`${days}d`);
-  if (days > 0n || hours > 0n) parts.push(`${hours}h`);
-  parts.push(`${minutes}m`);
-  if (granularity === "second" && days === 0n) parts.push(`${total % 60n}s`);
+  if (days > 0n || hours > 0n) parts.push(days > 0n ? `${pad(hours)}h` : `${hours}h`);
+  parts.push(parts.length > 0 ? `${pad(minutes)}m` : `${minutes}m`);
+  if (granularity === "second" && days === 0n) parts.push(`${pad(total % 60n)}s`);
   return parts.join(" ");
 }
 
