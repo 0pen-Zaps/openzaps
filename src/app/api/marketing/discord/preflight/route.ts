@@ -6,7 +6,9 @@ import {
 } from "@/lib/marketing/auth";
 import { verifyDiscordPublishDestination } from "@/lib/marketing/channels/discord";
 import { ChannelAdapterError } from "@/lib/marketing/channels/shared";
+import { verifyDiscordGuildCommands } from "@/lib/marketing/discord-command-readback";
 
+export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 function boundedRetryAfter(error: unknown): string | null {
@@ -29,11 +31,27 @@ export async function GET(request: Request): Promise<Response> {
 
   try {
     const destination = await verifyDiscordPublishDestination();
+    let commandReadback;
+    try {
+      commandReadback = await verifyDiscordGuildCommands();
+    } catch {
+      commandReadback = {
+        schemaVersion: 1,
+        status: "unavailable",
+        scope: "configured_application_guild",
+        verified: false,
+        providerReadbackVerified: false,
+        managedCommandsInSync: false,
+        guildPermissionVisibility: "unchecked",
+        liveInvocationVerified: false,
+        writesPerformed: false,
+      } as const;
+    }
     return NextResponse.json(
       {
-        service: "OpenZaps Discord activation preflight",
+        service: "OpenZaps Discord destination and command-manifest preflight",
         destination,
-        commandReadback: "not_checked",
+        commandReadback,
         writesPerformed: false,
       },
       { headers: { "cache-control": "private, no-store" } },

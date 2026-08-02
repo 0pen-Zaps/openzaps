@@ -9,6 +9,7 @@ import {
   AGENT_KIT_MARKETING_CAMPAIGN_ID,
   LEARN_HUB_MARKETING_CAMPAIGN_ID,
   SCHEDULED_MARKETING_TEMPLATE_ID,
+  SHARE_ZAP_DESIGN_MARKETING_CAMPAIGN_ID,
 } from "@/lib/marketing/types";
 
 export const SCHEDULED_MARKETING_CHANNELS = ["x", "discord"] as const;
@@ -191,6 +192,22 @@ const LEARN_HUB_CLAIMS: MarketingClaim[] = [
   },
 ];
 
+const SHARE_ZAP_DESIGN_FACTS: ReviewedMarketingFactRequirement[] = [
+  {
+    key: "product.shareable_zap_design",
+    sourceUrl: "https://www.0xzaps.com/docs",
+  },
+];
+
+const SHARE_ZAP_DESIGN_CLAIMS: MarketingClaim[] = [
+  {
+    text:
+      "An OpenZaps design link carries only a designed chain into the builder, which bounds and validates the untrusted payload before recompiling recognized blocks and parameters; the link grants no wallet authority, design mode never prompts for wallet access, approval, funding, a signature, or a transaction, and any supported live action remains separately wallet-reviewed and signed.",
+    factKeys: ["product.shareable_zap_design"],
+    treatment: "asserted",
+  },
+];
+
 const CAMPAIGNS: readonly ReviewedMarketingCampaign[] = [
   {
     id: SCHEDULED_MARKETING_TEMPLATE_ID,
@@ -297,6 +314,40 @@ const CAMPAIGNS: readonly ReviewedMarketingCampaign[] = [
     contentHash:
       "4f091100fe08207167569a2233d0c6ebe4910c64efd4161347277986478042c9",
   },
+  {
+    id: SHARE_ZAP_DESIGN_MARKETING_CAMPAIGN_ID,
+    channel: "discord",
+    queueOrder: 40,
+    notBefore: "2026-08-07T14:00:00.000Z",
+    body:
+      "**Share a Zap design—not wallet authority.**\n\nOpenZaps can encode a designed chain into a `?d=` link. When someone opens it, the builder validates the design against the current typed-block catalog and recompiles the result. Design mode does not prompt for wallet access, approval, a signature, or a transaction.\n\nA link may carry a live-route design or a design-only blueprint. The receiver still has to review which bounds the selected lineage enforces; any live action requires their own wallet review and signature.\n\nBuild and review:\nhttps://www.0xzaps.com/zap?view=design\n\nPre-audit software. Verify before use.",
+    links: ["https://www.0xzaps.com/zap?view=design"],
+    topics: ["protocol"],
+    disclosures: ["pre_audit"],
+    claims: SHARE_ZAP_DESIGN_CLAIMS,
+    flags: SAFE_FLAGS,
+    requiredFacts: SHARE_ZAP_DESIGN_FACTS,
+    canonicalSourceUrls: SHARE_ZAP_DESIGN_FACTS.map((fact) => fact.sourceUrl),
+    contentHash:
+      "d36350d80f73d71b56c269cb29fe58088db8e74b258d3c75302dc9858e75ab88",
+  },
+  {
+    id: SHARE_ZAP_DESIGN_MARKETING_CAMPAIGN_ID,
+    channel: "x",
+    queueOrder: 41,
+    notBefore: "2026-08-10T14:00:00.000Z",
+    body:
+      "Share a Zap design—not wallet authority.\n\nA link carries a design into the builder. It is validated and recompiled without a wallet prompt, signature, or transaction.\n\nBuild and review:\nhttps://www.0xzaps.com/zap?view=design\n\nPre-audit software. Verify before use.",
+    links: ["https://www.0xzaps.com/zap?view=design"],
+    topics: ["protocol"],
+    disclosures: ["pre_audit"],
+    claims: SHARE_ZAP_DESIGN_CLAIMS,
+    flags: SAFE_FLAGS,
+    requiredFacts: SHARE_ZAP_DESIGN_FACTS,
+    canonicalSourceUrls: SHARE_ZAP_DESIGN_FACTS.map((fact) => fact.sourceUrl),
+    contentHash:
+      "7f28715d95af94e6b99a72c1581172e1c1d030570b39c67a11909d1eeaeefc38",
+  },
 ];
 
 // The v2 X copy has a separately verified public receipt and is intentionally
@@ -312,6 +363,8 @@ const AUTO_DELIVERY_CAMPAIGNS = new Set([
   `${AGENT_KIT_MARKETING_CAMPAIGN_ID}:x`,
   `${LEARN_HUB_MARKETING_CAMPAIGN_ID}:x`,
   `${LEARN_HUB_MARKETING_CAMPAIGN_ID}:discord`,
+  `${SHARE_ZAP_DESIGN_MARKETING_CAMPAIGN_ID}:discord`,
+  `${SHARE_ZAP_DESIGN_MARKETING_CAMPAIGN_ID}:x`,
 ]);
 
 function cloneCampaign(

@@ -11,6 +11,7 @@ import {
 import {
   AGENT_KIT_MARKETING_CAMPAIGN_ID,
   LEARN_HUB_MARKETING_CAMPAIGN_ID,
+  SHARE_ZAP_DESIGN_MARKETING_CAMPAIGN_ID,
   type MarketingCandidate,
 } from "@/lib/marketing/types";
 
@@ -221,6 +222,76 @@ describe("source-reviewed marketing campaigns", () => {
       ).toBe(false);
       if (channel === "x") {
         expect(Array.from(campaign.body)).toHaveLength(265);
+      }
+    },
+  );
+
+  it.each(["discord", "x"] as const)(
+    "auto-authorizes the shareable-design %s campaign only with the exact authority-boundary receipt",
+    (channel) => {
+      const campaign = reviewedMarketingCampaign(
+        SHARE_ZAP_DESIGN_MARKETING_CAMPAIGN_ID,
+        channel,
+      );
+      const observedAt = channel === "discord"
+        ? "2026-08-07T14:00:00.000Z"
+        : "2026-08-10T14:00:00.000Z";
+      const candidate: MarketingCandidate = {
+        id: `share-zap-design-${channel}`,
+        channel,
+        action: "broadcast",
+        kind: "product_update",
+        topics: [...campaign.topics],
+        body: campaign.body,
+        links: [...campaign.links],
+        disclosures: [...campaign.disclosures],
+        claims: campaign.claims.map((claim) => ({
+          ...claim,
+          factKeys: [...claim.factKeys],
+        })),
+        flags: { ...campaign.flags },
+        interaction: null,
+        sourcePacket: {
+          id: `share-zap-design-${channel}-sources`,
+          createdAt: observedAt,
+          protocolPreAudit: true,
+          externalData: [],
+          interaction: null,
+          facts: campaign.requiredFacts.map((fact) => ({
+            key: fact.key,
+            label: fact.key,
+            value: "confirmed",
+            status: "confirmed" as const,
+            sourceUrl: fact.sourceUrl,
+            observedAt,
+          })),
+        },
+      };
+
+      expect(
+        isReviewedMarketingCampaignCandidate(
+          candidate,
+          SHARE_ZAP_DESIGN_MARKETING_CAMPAIGN_ID,
+        ),
+      ).toBe(true);
+      expect(
+        isReviewedMarketingCampaignCandidate(
+          {
+            ...candidate,
+            sourcePacket: {
+              ...candidate.sourcePacket,
+              facts: candidate.sourcePacket.facts.map((fact) => ({
+                ...fact,
+                status: "unavailable" as const,
+                value: null,
+              })),
+            },
+          },
+          SHARE_ZAP_DESIGN_MARKETING_CAMPAIGN_ID,
+        ),
+      ).toBe(false);
+      if (channel === "x") {
+        expect(Array.from(campaign.body).length).toBeLessThanOrEqual(280);
       }
     },
   );

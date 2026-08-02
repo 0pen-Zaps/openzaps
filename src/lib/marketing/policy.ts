@@ -32,6 +32,7 @@ const VOLATILE_SOURCE_FACT_KEYS = new Set([
   "product.agent_kit_boundaries",
   "product.agent_kit_page",
   "product.learn_hub",
+  "product.shareable_zap_design",
 ]);
 
 export const CANONICAL_OUTBOUND_HOSTS = [

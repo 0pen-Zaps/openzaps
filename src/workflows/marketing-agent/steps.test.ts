@@ -1534,7 +1534,7 @@ describe("bounded source collection", () => {
       if (input.endsWith("/docs")) {
         return Promise.resolve(
           new Response(
-            "@openzaps/sdk@0.1.0 @openzaps/mcp@0.1.0 read-only Agent Kit can discover capsules no signing or broadcast method Stays with your wallet or Safe. Lives inside the immutable policy",
+            "@openzaps/sdk@0.1.0 @openzaps/mcp@0.1.0 read-only Agent Kit can discover capsules no signing or broadcast method Stays with your wallet or Safe. Lives inside the immutable policy payload as untrusted The link grants no wallet authority. Design mode never prompts for wallet access, approval, funding, a signature, or a transaction. anything outside the supported routes remains a design-only blueprint.",
             { headers: { "content-type": "text/html; charset=utf-8" } },
           ),
         );
@@ -1590,7 +1590,7 @@ describe("bounded source collection", () => {
       sourceUrls: [],
     });
 
-    expect(fetchMock).toHaveBeenCalledTimes(13);
+    expect(fetchMock).toHaveBeenCalledTimes(14);
     expect(result.facts).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -1646,8 +1646,38 @@ describe("bounded source collection", () => {
           status: "confirmed",
           sourceUrl: "https://www.0xzaps.com/learn",
         }),
+        expect.objectContaining({
+          key: "product.shareable_zap_design",
+          status: "confirmed",
+          sourceUrl: "https://www.0xzaps.com/docs",
+        }),
       ]),
     );
+  });
+
+  it("rejects shareable-design evidence when the authority boundary is missing", async () => {
+    const fetchMock = vi.fn().mockImplementation((input: string) =>
+      Promise.resolve(
+        input.endsWith("/docs")
+          ? new Response("The link grants wallet authority.", {
+              headers: { "content-type": "text/html; charset=utf-8" },
+            })
+          : Response.json({}),
+      ),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await collectMarketingSourcesStep({
+      kind: "product_update",
+      brief: "Collect a verified design-sharing update.",
+      channels: ["x"],
+      sourceUrls: [],
+    });
+
+    expect(result.facts.find(
+      (fact) => fact.key === "product.shareable_zap_design",
+    )).toMatchObject({ status: "unavailable", value: null });
+    expect(fetchMock).toHaveBeenCalledTimes(14);
   });
 
   it.each([
@@ -1693,7 +1723,7 @@ describe("bounded source collection", () => {
     );
 
     expect(learnFact).toMatchObject({ status: "unavailable", value: null });
-    expect(fetchMock).toHaveBeenCalledTimes(13);
+    expect(fetchMock).toHaveBeenCalledTimes(14);
   });
 
   it("rejects Agent Kit evidence when a required authority marker drifts", async () => {
@@ -1723,7 +1753,7 @@ describe("bounded source collection", () => {
     );
 
     expect(agentKitFact).toMatchObject({ status: "unavailable", value: null });
-    expect(fetchMock).toHaveBeenCalledTimes(13);
+    expect(fetchMock).toHaveBeenCalledTimes(14);
   });
 
   it.each([
@@ -1884,7 +1914,7 @@ describe("bounded source collection", () => {
       sourceUrls: [],
     });
 
-    expect(fetchMock).toHaveBeenCalledTimes(13);
+    expect(fetchMock).toHaveBeenCalledTimes(14);
     for (const [, init] of fetchMock.mock.calls as Array<[string, RequestInit]>) {
       expect(init.redirect).toBe("error");
     }
@@ -1962,7 +1992,7 @@ describe("bounded source collection", () => {
       sourceUrls: ["https://defitutorials.substack.com/p/openzaps"],
     });
 
-    expect(fetchMock).toHaveBeenCalledTimes(14);
+    expect(fetchMock).toHaveBeenCalledTimes(15);
     for (const [, init] of fetchMock.mock.calls as Array<[string, RequestInit]>) {
       expect(init.redirect).toBe("error");
     }
@@ -2019,7 +2049,7 @@ describe("bounded source collection", () => {
       sourceUrls: ["https://defitutorials.substack.com/p/openzaps"],
     });
 
-    expect(fetchMock).toHaveBeenCalledTimes(14);
+    expect(fetchMock).toHaveBeenCalledTimes(15);
     expect(result.externalData).toEqual([]);
     expect(JSON.stringify(result)).not.toContain("example-secret-token");
   });

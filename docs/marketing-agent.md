@@ -105,7 +105,7 @@ not invoke the model or the approval workflow.
 | `/learn` | Public, indexable catalog of reviewed product updates and RSS-confirmed DeFi Tutorials, with RSS/community follow paths and a bounded Request-a-Zap CTA | Public; source-controlled catalog only, with no provider write or draft access. |
 | `GET /api/marketing/status` | Secret-free readiness and policy posture | `Authorization: Bearer <OPENZAPS_MARKETING_ADMIN_TOKEN>` |
 | `GET /api/marketing/x/identity` | Operator-triggered, read-only verification that the active X credentials resolve to the configured account id and username | Operator bearer token |
-| `GET /api/marketing/discord/preflight` | Operator-triggered, read-only verification that the configured webhook or bot credentials still resolve to the exact OpenZaps guild/channel destination; does not check commands or write | Operator bearer token |
+| `GET /api/marketing/discord/preflight` | Operator-triggered, read-only verification of the exact OpenZaps guild/channel destination plus an official managed guild-command comparison when the server-side bot credential is configured; never writes | Operator bearer token |
 | `GET /api/marketing/x/mentions` | List the metadata-only mention inbox and review-required count; never returns raw post text, usernames, or profiles | Operator bearer token |
 | `GET /api/marketing/x/mentions/cron` | Poll the official mentions endpoint and, when every independent gate is ready, deliver at most one exact deterministic reply | `Authorization: Bearer <CRON_SECRET>` |
 | `GET /api/marketing/x/compliance/cron` | Reconcile the complete durable X subject inventory through official read endpoints and record a short-lived checkpoint or compliance hold; never posts | `Authorization: Bearer <CRON_SECRET>` |
@@ -245,9 +245,12 @@ duplicate row or fabricated historical delivery receipt is created. A separate
 append-only migration adds the X counterpart only after the dedicated
 `/agent-kit` page exists, preserving the already-queued Discord row byte-for-byte.
 The OpenZaps Learn release has one X row and one Discord row. All rows may exist
-in the durable queue, but automatic delivery remains blocked until each deployed
-page proves its exact reviewed boundary. Each row has its own immutable content
-hash and delivery key.
+in the durable queue. The later `share-zap-design-v1` pair is deliberately
+staggered after those launches: Discord becomes eligible on 7 August and X on
+10 August. It is sourced from the live docs boundary that a shared design is
+untrusted data and not wallet authority. Automatic delivery remains blocked
+until each deployed page proves its exact reviewed boundary. Each row has its
+own immutable content hash and delivery key.
 
 The separate feed-discovery route runs at `30 13 * * *`: 13:30 UTC every
 day. It becomes operational only after the syndication migration is applied
@@ -382,7 +385,7 @@ returns any X credential value.
 | `DISCORD_APPLICATION_PUBLIC_KEY` | For slash commands | Hex public key from the Discord application General Information page. |
 | `OPENZAPS_DISCORD_APPLICATION_ID` | For slash commands | Numeric application id. Every signed interaction, including PING, must match it. |
 | `OPENZAPS_DISCORD_GUILD_ID` | For all Discord features | Numeric OpenZaps server id. Outbound metadata and every application command must match it. A signed endpoint-validation PING may omit `guild_id`, but a present value must match. |
-| `DISCORD_BOT_TOKEN` | Alternate reviewed broadcast option and command registration | Pair with the numeric channel id for REST delivery when no webhook is configured. Keep it in an operator shell for command registration. |
+| `DISCORD_BOT_TOKEN` | Alternate reviewed broadcast option, official guild-command readback, and command registration | Pair with the numeric channel id for REST delivery when no webhook is configured. Production command observability requires it as an encrypted server-side variable; keep it only in an operator shell for explicit registration commands. |
 | `DISCORD_MARKETING_CHANNEL_ID` | For public broadcasts | Numeric public destination channel id required for either webhook or bot REST delivery. |
 
 Discord outbound messages hard-limit content and embed sizes and always send
@@ -417,9 +420,29 @@ An operator can run the same provider-backed check without publishing through
 `GET /api/marketing/discord/preflight` with the private marketing bearer token.
 The response is deliberately content-free: it reports the selected transport,
 the configured guild/channel scope, whether the destination was verified, and
-`writesPerformed: false`. It reports command readback as `not_checked` because
-destination access does not prove that slash commands are registered or have
-been invoked.
+`writesPerformed: false`. When `DISCORD_BOT_TOKEN`, the application id, and the
+guild id are configured server-side, the same response performs one bounded
+official GET of that application's guild commands and compares the managed
+projection to the source-controlled manifest. It returns only bounded counts
+and SHA-256 evidence, never command bodies, ids, or credentials. Successful and
+degraded command results both expose `guildPermissionVisibility: "unchecked"`
+and `liveInvocationVerified: false`. The command-list GET does not inspect
+`default_member_permissions` or guild command-permission overrides, so matching
+hashes prove only the managed manifest projection; they never prove that a
+member can see or invoke a command. A missing or
+locally malformed bot credential reports command readback as `not_configured`
+without degrading an otherwise healthy webhook destination. A well-shaped but
+revoked or rejected credential is a provider read failure and reports
+`unavailable` on the command lane while preserving the verified destination
+evidence.
+
+The production preflight has no apply input and calls a wrapper that always
+forces dry-run mode, so no Discord command write method is reachable from the
+route. The bot credential is still sensitive and Discord-capable; store it only
+as an encrypted server-side variable, redeploy after adding or rotating it, and
+retain explicit command registration in the local `discord:commands:apply`
+operator path. Readback proves only the bounded provider manifest projection;
+guild permission visibility and a live signed invocation remain unverified.
 
 After Discord accepts a webhook or bot message, the adapter does not treat the
 POST body alone as delivery proof. It performs one bounded authenticated GET of
@@ -472,8 +495,8 @@ production deployment before saving these provider fields.
 
 The canonical payload lives in
 `src/lib/marketing/discord-commands.json`; the signed interaction route and
-reconciliation tests consume the same manifest. Keep the bot token in the
-current shell, not a file or command-line argument:
+reconciliation tests consume the same manifest. For local reconciliation, keep
+the bot token in the current shell, not a file or command-line argument:
 
 ```bash
 export OPENZAPS_DISCORD_APPLICATION_ID="your-application-id"
@@ -492,15 +515,20 @@ unset DISCORD_BOT_TOKEN
 ```
 
 The reconciler validates exact application/guild ids, never follows redirects,
-bounds provider responses, sanitizes errors, and performs no `PUT`. Dry-run and
+bounds provider responses, sanitizes errors, and performs no `PUT`. Remote
+command names are validated by command type, so valid mixed-case or spaced
+USER/MESSAGE commands owned by the application remain unrelated evidence rather
+than invalidating the managed slash-command readback. Dry-run and
 post-apply GETs now require every returned command object to bind to the exact
 configured application and guild. The content-free result includes
 `providerReadbackVerified`, `manifestSha256`, and `managedReadbackSha256`; equal
-hashes plus `managedCommandsInSync: true` prove that the managed provider
-projection matches the exact source-controlled manifest. Only the explicit
+hashes plus `managedCommandsInSync: true` prove only that the managed provider
+projection matches the exact source-controlled manifest; they do not prove
+guild permission visibility or command availability. Only the explicit
 `--apply` script can POST or PATCH a managed command, after which the same GET
-readback runs again. Retain the final in-sync output as release evidence; it
-still does not replace a live signed command invocation.
+readback runs again. Retain the final in-sync output as manifest-projection
+release evidence, then separately inspect guild permissions and perform a live
+signed command invocation before claiming the commands are available.
 
 Test all three commands in the server. Promote them to global commands only if
 the application is intentionally meant for other servers; use the same payload
@@ -686,6 +714,7 @@ supabase/migrations/20260801221910_marketing_x_compliance_bootstrap.sql
 supabase/migrations/20260801224100_harden_subscription_authorization_grants.sql
 supabase/migrations/20260801224202_harden_marketing_retention_sequence_grants.sql
 supabase/migrations/20260802010000_queue_agent_kit_x_campaign.sql
+supabase/migrations/20260802020559_queue_share_zap_design_campaign.sql
 ```
 
 If any file is already recorded remotely, apply only the missing exact files
@@ -725,7 +754,9 @@ Apply them transactionally while the marketing agent is disabled. Then verify:
   contains exactly one Discord `agent-kit-published-v1` artifact, the separate
   Agent Kit X migration contains exactly one X counterpart without rewriting
   Discord, and the Learn migration contains exactly one X and one Discord
-  `learn-hub-launched-v1` artifact;
+  `learn-hub-launched-v1` artifact, while the share-design migration contains
+  exactly one Discord and one X `share-zap-design-v1` artifact with distinct
+  `not_before` times;
 - before that artifact's `not_before`, an empty eligible queue returns
   `no_pending_campaign` without inserting a schedule claim or starting a
   workflow;

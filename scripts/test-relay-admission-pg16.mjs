@@ -359,6 +359,8 @@ const agentKitXCampaignMigration =
   "20260802010000_queue_agent_kit_x_campaign.sql";
 const learnHubCampaignMigration =
   "20260801100000_queue_learn_hub_campaign.sql";
+const shareDesignCampaignMigration =
+  "20260802020559_queue_share_zap_design_campaign.sql";
 const syndicationInboxMigration =
   "20260801041508_marketing_syndication_inbox.sql";
 const xMentionInboxMigration =
@@ -379,6 +381,11 @@ const learnHubXContentHash =
   "d1582813d0f9c4a53385e75082bd6d3fba90a5ea0edd2ce86bed873ca7289717";
 const learnHubCommunityContentHash =
   "4f091100fe08207167569a2233d0c6ebe4910c64efd4161347277986478042c9";
+const shareDesignCampaignId = "share-zap-design-v1";
+const shareDesignCommunityContentHash =
+  "d36350d80f73d71b56c269cb29fe58088db8e74b258d3c75302dc9858e75ab88";
+const shareDesignXContentHash =
+  "7f28715d95af94e6b99a72c1581172e1c1d030570b39c67a11909d1eeaeefc38";
 const reviewedCampaignMonday = "2026-07-27T15:00:00Z";
 const reviewedCampaignTuesday = "2026-07-28T15:00:00Z";
 const reviewedCampaignWednesday = "2026-07-29T15:00:00Z";
@@ -532,6 +539,7 @@ try {
           agentKitCampaignMigration,
           agentKitXCampaignMigration,
           learnHubCampaignMigration,
+          shareDesignCampaignMigration,
         ].includes(filename)
       ) {
         const replayProbe = psqlFileProbe(join(migrations, filename), "select 1;");
@@ -2694,8 +2702,8 @@ try {
       );
   `);
   assert(
-    initialReviewedCampaignState === "4|0|2",
-    `reviewed campaign queue did not contain the four exact release artifacts: ${initialReviewedCampaignState}`,
+    initialReviewedCampaignState === "6|0|3",
+    `reviewed campaign queue did not contain the six exact release artifacts: ${initialReviewedCampaignState}`,
   );
 
   const emptyReviewedCampaignClaim = psqlScalar(`
@@ -2941,7 +2949,7 @@ try {
     from public.marketing_reviewed_campaigns;
   `);
   assert(
-    reviewedCampaignChannelState === "3|2",
+    reviewedCampaignChannelState === "4|3",
     `reviewed queue fixture changed the expected channel distribution: ${reviewedCampaignChannelState}`,
   );
 
@@ -3415,11 +3423,155 @@ Pre-audit software. Verify before use.$campaign$)::text
     );
   `);
 
+  const shareDesignDiscordClaim = psqlScalar(`
+    select
+      result_code || '|' ||
+      campaign_id || '|' ||
+      channel || '|' ||
+      queue_order::text || '|' ||
+      content_hash || '|' ||
+      (not_before = '2026-08-07T14:00:00Z'::timestamptz)::text || '|' ||
+      (body = $campaign$**Share a Zap design—not wallet authority.**
+
+OpenZaps can encode a designed chain into a \`?d=\` link. When someone opens it, the builder validates the design against the current typed-block catalog and recompiles the result. Design mode does not prompt for wallet access, approval, a signature, or a transaction.
+
+A link may carry a live-route design or a design-only blueprint. The receiver still has to review which bounds the selected lineage enforces; any live action requires their own wallet review and signature.
+
+Build and review:
+https://www.0xzaps.com/zap?view=design
+
+Pre-audit software. Verify before use.$campaign$)::text
+    from private.claim_next_marketing_campaign_at(
+      array['x', 'discord']::text[],
+      '2026-08-07T15:00:00Z'::timestamptz
+    );
+  `);
+  assert(
+    shareDesignDiscordClaim ===
+      `claimed|${shareDesignCampaignId}|discord|40|${shareDesignCommunityContentHash}|true|true`,
+    `shareable-design Discord campaign claim drifted: ${shareDesignDiscordClaim}`,
+  );
+
+  const shareDesignDiscordVerification = psqlScalar(`
+    select verified
+    from private.verify_marketing_campaign_schedule_claim_at(
+      '${shareDesignCampaignId}',
+      'discord',
+      '2026-08-07'::date,
+      '${shareDesignCommunityContentHash}',
+      '2026-08-07T15:05:00Z'::timestamptz
+    );
+  `);
+  assert(
+    shareDesignDiscordVerification === "t",
+    `shareable-design Discord campaign claim did not verify: ${shareDesignDiscordVerification}`,
+  );
+
+  psql(`
+    insert into public.marketing_delivery_ledger (
+      idempotency_key,
+      run_id,
+      candidate_id,
+      content_hash,
+      channel,
+      action,
+      counter_key,
+      interaction_id,
+      approved_by,
+      claim_day,
+      status
+    )
+    values (
+      'scheduled:${shareDesignCampaignId}:discord',
+      'marketing-share-design-discord-harness',
+      'marketing-share-design-discord-harness-candidate',
+      '${shareDesignCommunityContentHash}',
+      'discord',
+      'broadcast',
+      'discordPosts',
+      null,
+      'integration-test',
+      '2000-01-08'::date,
+      'claimed'
+    );
+  `);
+
+  const shareDesignXClaim = psqlScalar(`
+    select
+      result_code || '|' ||
+      campaign_id || '|' ||
+      channel || '|' ||
+      queue_order::text || '|' ||
+      content_hash || '|' ||
+      (not_before = '2026-08-10T14:00:00Z'::timestamptz)::text || '|' ||
+      (body = $campaign$Share a Zap design—not wallet authority.
+
+A link carries a design into the builder. It is validated and recompiled without a wallet prompt, signature, or transaction.
+
+Build and review:
+https://www.0xzaps.com/zap?view=design
+
+Pre-audit software. Verify before use.$campaign$)::text
+    from private.claim_next_marketing_campaign_at(
+      array['x', 'discord']::text[],
+      '2026-08-10T15:00:00Z'::timestamptz
+    );
+  `);
+  assert(
+    shareDesignXClaim ===
+      `claimed|${shareDesignCampaignId}|x|41|${shareDesignXContentHash}|true|true`,
+    `shareable-design X campaign claim drifted: ${shareDesignXClaim}`,
+  );
+
+  const shareDesignXVerification = psqlScalar(`
+    select verified
+    from private.verify_marketing_campaign_schedule_claim_at(
+      '${shareDesignCampaignId}',
+      'x',
+      '2026-08-10'::date,
+      '${shareDesignXContentHash}',
+      '2026-08-10T15:05:00Z'::timestamptz
+    );
+  `);
+  assert(
+    shareDesignXVerification === "t",
+    `shareable-design X campaign claim did not verify: ${shareDesignXVerification}`,
+  );
+
+  psql(`
+    insert into public.marketing_delivery_ledger (
+      idempotency_key,
+      run_id,
+      candidate_id,
+      content_hash,
+      channel,
+      action,
+      counter_key,
+      interaction_id,
+      approved_by,
+      claim_day,
+      status
+    )
+    values (
+      'scheduled:${shareDesignCampaignId}:x',
+      'marketing-share-design-x-harness',
+      'marketing-share-design-x-harness-candidate',
+      '${shareDesignXContentHash}',
+      'x',
+      'broadcast',
+      'xPosts',
+      null,
+      'integration-test',
+      '2000-01-09'::date,
+      'claimed'
+    );
+  `);
+
   const completedReviewedCampaignQueue = psqlScalar(`
     select result_code
     from private.claim_next_marketing_campaign_at(
       array['x', 'discord']::text[],
-      '2026-08-07T15:00:00Z'::timestamptz
+      '2026-08-11T15:00:00Z'::timestamptz
     );
   `);
   const completedReviewedCampaignState = psqlScalar(`
@@ -3432,13 +3584,15 @@ Pre-audit software. Verify before use.$campaign$)::text
           'scheduled:${agentKitCampaignId}:discord',
           'scheduled:${agentKitCampaignId}:x',
           'scheduled:${learnHubCampaignId}:x',
-          'scheduled:${learnHubCampaignId}:discord'
+          'scheduled:${learnHubCampaignId}:discord',
+          'scheduled:${shareDesignCampaignId}:discord',
+          'scheduled:${shareDesignCampaignId}:x'
         )
       );
   `);
   assert(
     completedReviewedCampaignQueue === "no_pending_campaign"
-      && completedReviewedCampaignState === "6|4",
+      && completedReviewedCampaignState === "8|6",
     `completed reviewed campaign queue was reclaimed: ${completedReviewedCampaignQueue}|${completedReviewedCampaignState}`,
   );
 
@@ -3466,7 +3620,7 @@ Pre-audit software. Verify before use.$campaign$)::text
       (select count(*) from public.marketing_campaign_schedule_claims);
   `);
   assert(
-    immutableReviewedCampaignState === "5|6",
+    immutableReviewedCampaignState === "7|8",
     `reviewed campaign artifacts changed after rejected mutations: ${immutableReviewedCampaignState}`,
   );
 

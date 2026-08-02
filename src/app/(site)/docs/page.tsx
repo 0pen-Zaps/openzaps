@@ -267,6 +267,15 @@ export default function DocsPage(): React.JSX.Element {
             anything else saves as a design and cannot deploy today. Simulation never broadcasts a transaction or
             asks for wallet authority.
           </p>
+          <p className={styles.prose}>
+            A copied <code>?d=</code>{" "}share link carries only the designed chain into Compose. The builder treats that
+            payload as untrusted: it bounds its size and node count, keeps only recognized blocks and valid parameter
+            values, then recompiles what survives against the current catalog. The link grants no wallet authority.
+            Design mode never prompts for wallet access, approval, funding, a signature, or a transaction. A supported
+            live route still requires the receiver to review the selected lineage&apos;s enforced bounds and confirm the
+            required wallet signature or transaction; anything outside the supported routes remains a design-only
+            blueprint.
+          </p>
           <div className={styles.code}>
             <pre>{`curl -X POST ${SITE_URL}/api/policies/simulate \\
   -H "content-type: application/json" \\

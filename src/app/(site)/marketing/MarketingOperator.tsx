@@ -77,6 +77,55 @@ export type XIdentityVerification = {
   observedAt: string;
 };
 
+export type DiscordCommandReadbackCounts = {
+  desired: number;
+  remote: number;
+  create: number;
+  update: number;
+  delete: number;
+};
+
+export const DISCORD_PREFLIGHT_BUTTON_LABEL =
+  "Verify Discord destination and command manifest";
+
+export type DiscordActivationVerification = {
+  destination: {
+    schemaVersion: 1;
+    channel: "discord";
+    transport: "webhook" | "bot";
+    scope: "configured_guild_channel";
+    verified: true;
+    mutationsPerformed: false;
+  };
+  commandReadback:
+    | {
+        schemaVersion: 1;
+        status: "in_sync" | "drift";
+        scope: "configured_application_guild";
+        verified: true;
+        providerReadbackVerified: true;
+        managedCommandsInSync: boolean;
+        guildPermissionVisibility: "unchecked";
+        liveInvocationVerified: false;
+        manifestSha256: string;
+        managedReadbackSha256: string;
+        counts: DiscordCommandReadbackCounts;
+        writesPerformed: false;
+      }
+    | {
+        schemaVersion: 1;
+        status: "not_configured" | "unavailable";
+        scope: "configured_application_guild";
+        verified: false;
+        providerReadbackVerified: false;
+        managedCommandsInSync: false;
+        guildPermissionVisibility: "unchecked";
+        liveInvocationVerified: false;
+        writesPerformed: false;
+      };
+  writesPerformed: false;
+};
+
 export type ReadinessRow = {
   key: string;
   label: string;
@@ -266,7 +315,181 @@ export function parseXIdentityVerification(
   };
 }
 
+function discordCommandCount(value: unknown, maximum: number): number | null {
+  return typeof value === "number"
+    && Number.isSafeInteger(value)
+    && value >= 0
+    && value <= maximum
+    ? value
+    : null;
+}
+
+function parseDiscordCommandCounts(
+  value: unknown,
+): DiscordCommandReadbackCounts | null {
+  if (!isRecord(value)) return null;
+  const desired = discordCommandCount(value.desired, 100);
+  const remote = discordCommandCount(value.remote, 130);
+  const create = discordCommandCount(value.create, 100);
+  const update = discordCommandCount(value.update, 100);
+  const deleteCount = discordCommandCount(value.delete, 130);
+  if (
+    desired === null
+    || remote === null
+    || create === null
+    || update === null
+    || deleteCount === null
+  ) return null;
+  return { desired, remote, create, update, delete: deleteCount };
+}
+
+function discordCommandCountsAreCoherent(
+  counts: DiscordCommandReadbackCounts,
+): boolean {
+  return counts.create <= counts.desired
+    && counts.update <= counts.desired - counts.create
+    && counts.delete <= counts.remote
+    && counts.remote === counts.desired - counts.create + counts.delete;
+}
+
+export function parseDiscordActivationVerification(
+  value: unknown,
+): DiscordActivationVerification | null {
+  if (
+    !isRecord(value)
+    || value.service !== "OpenZaps Discord destination and command-manifest preflight"
+    || value.writesPerformed !== false
+    || !isRecord(value.destination)
+    || value.destination.schemaVersion !== 1
+    || value.destination.channel !== "discord"
+    || (value.destination.transport !== "webhook"
+      && value.destination.transport !== "bot")
+    || value.destination.scope !== "configured_guild_channel"
+    || value.destination.verified !== true
+    || value.destination.mutationsPerformed !== false
+    || !isRecord(value.commandReadback)
+    || value.commandReadback.schemaVersion !== 1
+    || value.commandReadback.scope !== "configured_application_guild"
+    || value.commandReadback.guildPermissionVisibility !== "unchecked"
+    || value.commandReadback.liveInvocationVerified !== false
+    || value.commandReadback.writesPerformed !== false
+  ) return null;
+
+  const destination = {
+    schemaVersion: 1 as const,
+    channel: "discord" as const,
+    transport: value.destination.transport as "webhook" | "bot",
+    scope: "configured_guild_channel" as const,
+    verified: true as const,
+    mutationsPerformed: false as const,
+  };
+  const commandReadback = value.commandReadback;
+  if (
+    commandReadback.status === "not_configured"
+    || commandReadback.status === "unavailable"
+  ) {
+    if (
+      commandReadback.verified !== false
+      || commandReadback.providerReadbackVerified !== false
+      || commandReadback.managedCommandsInSync !== false
+    ) return null;
+    return {
+      destination,
+      commandReadback: {
+        schemaVersion: 1,
+        status: commandReadback.status,
+        scope: "configured_application_guild",
+        verified: false,
+        providerReadbackVerified: false,
+        managedCommandsInSync: false,
+        guildPermissionVisibility: "unchecked",
+        liveInvocationVerified: false,
+        writesPerformed: false,
+      },
+      writesPerformed: false,
+    };
+  }
+  if (
+    commandReadback.status !== "in_sync"
+    && commandReadback.status !== "drift"
+  ) return null;
+  const counts = parseDiscordCommandCounts(commandReadback.counts);
+  const manifestSha256 = text(commandReadback.manifestSha256);
+  const managedReadbackSha256 = text(commandReadback.managedReadbackSha256);
+  if (
+    commandReadback.verified !== true
+    || commandReadback.providerReadbackVerified !== true
+    || typeof commandReadback.managedCommandsInSync !== "boolean"
+    || !counts
+    || !discordCommandCountsAreCoherent(counts)
+    || !manifestSha256
+    || !/^[0-9a-f]{64}$/u.test(manifestSha256)
+    || !managedReadbackSha256
+    || !/^[0-9a-f]{64}$/u.test(managedReadbackSha256)
+  ) return null;
+  const hashesMatch = manifestSha256 === managedReadbackSha256;
+  const expectedInSync = commandReadback.status === "in_sync";
+  if (
+    commandReadback.managedCommandsInSync !== expectedInSync
+    || hashesMatch !== expectedInSync
+    || (expectedInSync
+      ? counts.create !== 0 || counts.update !== 0
+      : counts.create === 0 && counts.update === 0)
+  ) return null;
+  return {
+    destination,
+    commandReadback: {
+      schemaVersion: 1,
+      status: commandReadback.status,
+      scope: "configured_application_guild",
+      verified: true,
+      providerReadbackVerified: true,
+      managedCommandsInSync: commandReadback.managedCommandsInSync,
+      guildPermissionVisibility: "unchecked",
+      liveInvocationVerified: false,
+      manifestSha256,
+      managedReadbackSha256,
+      counts,
+      writesPerformed: false,
+    },
+    writesPerformed: false,
+  };
+}
+
+export function discordActivationSummary(
+  value: DiscordActivationVerification,
+): string {
+  const destination = `Discord ${value.destination.transport} destination verified.`;
+  const readback = value.commandReadback;
+  const boundary =
+    "Guild command permissions were not checked, and the manifest readback does not prove a live signed invocation. Read-only check; no command was registered or changed.";
+  if (readback.status === "not_configured") {
+    return `${destination} Official guild-command readback is not configured because the server credential is missing or invalid. ${boundary}`;
+  }
+  if (readback.status === "unavailable") {
+    return `${destination} Official guild-command readback is currently unavailable. ${boundary}`;
+  }
+  if (!("counts" in readback)) return `${destination} ${boundary}`;
+  if (readback.status === "drift") {
+    return `${destination} Official guild command-manifest projection found ${readback.counts.create} missing and ${readback.counts.update} drifted managed commands. ${boundary}`;
+  }
+  const unrelated = readback.counts.delete > 0
+    ? ` ${readback.counts.delete} unrelated guild commands were left untouched.`
+    : "";
+  return `${destination} Official guild command-manifest projection matches all ${readback.counts.desired} source-controlled managed commands.${unrelated} ${boundary}`;
+}
+
 export function xIdentityRequestIsCurrent(input: {
+  requestGeneration: number;
+  currentRequestGeneration: number;
+  sessionGeneration: number;
+  currentSessionGeneration: number;
+}): boolean {
+  return input.requestGeneration === input.currentRequestGeneration
+    && input.sessionGeneration === input.currentSessionGeneration;
+}
+
+export function discordPreflightRequestIsCurrent(input: {
   requestGeneration: number;
   currentRequestGeneration: number;
   sessionGeneration: number;
@@ -1074,6 +1297,12 @@ export function MarketingOperator(): React.JSX.Element {
     "idle" | "loading" | "verified" | "error"
   >("idle");
   const [xIdentityError, setXIdentityError] = useState("");
+  const [discordActivation, setDiscordActivation] =
+    useState<DiscordActivationVerification | null>(null);
+  const [discordActivationState, setDiscordActivationState] = useState<
+    "idle" | "loading" | "verified" | "error"
+  >("idle");
+  const [discordActivationError, setDiscordActivationError] = useState("");
   const [kind, setKind] = useState<DraftKind>("product_update");
   const [brief, setBrief] = useState("");
   const [interactionUrl, setInteractionUrl] = useState("");
@@ -1117,6 +1346,7 @@ export function MarketingOperator(): React.JSX.Element {
   const leadActionGeneration = useRef(0);
   const syndicationRequestGeneration = useRef(0);
   const xIdentityRequestGeneration = useRef(0);
+  const discordPreflightRequestGeneration = useRef(0);
 
   const readiness = useMemo(() => readinessRows(status), [status]);
   const tutorialSelections = useMemo(
@@ -1168,6 +1398,7 @@ export function MarketingOperator(): React.JSX.Element {
     leadActionGeneration.current += 1;
     syndicationRequestGeneration.current += 1;
     xIdentityRequestGeneration.current += 1;
+    discordPreflightRequestGeneration.current += 1;
     setToken("");
     setTokenInput("");
     setLeadToken("");
@@ -1176,6 +1407,9 @@ export function MarketingOperator(): React.JSX.Element {
     setXIdentity(null);
     setXIdentityState("idle");
     setXIdentityError("");
+    setDiscordActivation(null);
+    setDiscordActivationState("idle");
+    setDiscordActivationError("");
     setRunId("");
     setRun(null);
     setLeads([]);
@@ -1683,9 +1917,13 @@ export function MarketingOperator(): React.JSX.Element {
     leadActionGeneration.current += 1;
     syndicationRequestGeneration.current += 1;
     xIdentityRequestGeneration.current += 1;
+    discordPreflightRequestGeneration.current += 1;
     setXIdentity(null);
     setXIdentityState("idle");
     setXIdentityError("");
+    setDiscordActivation(null);
+    setDiscordActivationState("idle");
+    setDiscordActivationError("");
     try {
       const body = await operatorRequest("/api/marketing/status", candidate);
       if (leadSessionGeneration.current !== sessionGeneration) return;
@@ -1765,6 +2003,57 @@ export function MarketingOperator(): React.JSX.Element {
         error instanceof Error
           ? error.message
           : "X identity could not be verified.",
+      );
+    }
+  };
+
+  const verifyDiscordActivation = async (): Promise<void> => {
+    if (!token || discordActivationState === "loading") return;
+    const expectedSessionGeneration = leadSessionGeneration.current;
+    const requestGeneration = discordPreflightRequestGeneration.current + 1;
+    discordPreflightRequestGeneration.current = requestGeneration;
+    setDiscordActivation(null);
+    setDiscordActivationState("loading");
+    setDiscordActivationError("");
+    try {
+      const body = await operatorRequest(
+        "/api/marketing/discord/preflight",
+        token,
+      );
+      if (
+        !discordPreflightRequestIsCurrent({
+          requestGeneration,
+          currentRequestGeneration: discordPreflightRequestGeneration.current,
+          sessionGeneration: expectedSessionGeneration,
+          currentSessionGeneration: leadSessionGeneration.current,
+        })
+      ) return;
+      const verified = parseDiscordActivationVerification(body);
+      if (!verified) {
+        throw new Error("The Discord preflight response was invalid.");
+      }
+      setDiscordActivation(verified);
+      setDiscordActivationState("verified");
+    } catch (error) {
+      if (
+        !discordPreflightRequestIsCurrent({
+          requestGeneration,
+          currentRequestGeneration: discordPreflightRequestGeneration.current,
+          sessionGeneration: expectedSessionGeneration,
+          currentSessionGeneration: leadSessionGeneration.current,
+        })
+      ) return;
+      const requestError = error as OperatorError;
+      if (requestError?.status === 401) {
+        handleError(error, "Discord preflight could not be completed.");
+        return;
+      }
+      setDiscordActivation(null);
+      setDiscordActivationState("error");
+      setDiscordActivationError(
+        error instanceof Error
+          ? error.message
+          : "Discord preflight could not be completed.",
       );
     }
   };
@@ -2017,6 +2306,34 @@ export function MarketingOperator(): React.JSX.Element {
                   : xIdentityState === "error"
                     ? xIdentityError
                     : "No live X API identity check has been run in this tab."}
+              </p>
+            </div>
+            <div className={styles.readinessEvidence}>
+              <button
+                className={styles.secondaryButton}
+                type="button"
+                onClick={() => void verifyDiscordActivation()}
+                disabled={discordActivationState === "loading" || Boolean(busy)}
+              >
+                {discordActivationState === "loading"
+                  ? "Verifying Discord…"
+                  : DISCORD_PREFLIGHT_BUTTON_LABEL}
+              </button>
+              <p
+                className={
+                  discordActivationState === "error"
+                  || (discordActivation
+                    && discordActivation.commandReadback.status !== "in_sync")
+                    ? styles.readinessEvidenceError
+                    : styles.readinessEvidenceText
+                }
+                aria-live="polite"
+              >
+                {discordActivation
+                  ? discordActivationSummary(discordActivation)
+                  : discordActivationState === "error"
+                    ? discordActivationError
+                    : "No live Discord destination and command-manifest check has been run in this tab."}
               </p>
             </div>
             {readiness.length ? (

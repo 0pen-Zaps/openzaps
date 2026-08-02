@@ -29,12 +29,16 @@ export interface DiscordCommandReconciliationResult extends DiscordCommandDiff {
   readonly applied: boolean;
   readonly verified: boolean;
   readonly providerReadbackVerified: true;
+  readonly guildPermissionVisibility: "unchecked";
+  readonly liveInvocationVerified: false;
   readonly manifestSha256: string;
   readonly managedReadbackSha256: string;
 }
 
 export interface DiscordGuildCommandReadback extends DiscordCommandDiff {
   readonly providerReadbackVerified: true;
+  readonly guildPermissionVisibility: "unchecked";
+  readonly liveInvocationVerified: false;
   readonly manifestSha256: string;
   readonly managedReadbackSha256: string;
 }
@@ -60,6 +64,12 @@ export function parseCliArguments(args: string[]): { apply: boolean };
 export function reconcileDiscordCommands(options?: {
   environment?: Record<string, string | undefined>;
   apply?: boolean;
+  desiredCommands?: unknown;
+  fetchImpl?: typeof fetch;
+  timeoutMs?: number;
+}): Promise<DiscordCommandReconciliationResult>;
+export function readDiscordGuildCommands(options?: {
+  environment?: Record<string, string | undefined>;
   desiredCommands?: unknown;
   fetchImpl?: typeof fetch;
   timeoutMs?: number;
