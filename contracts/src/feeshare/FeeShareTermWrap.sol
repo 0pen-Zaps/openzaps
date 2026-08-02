@@ -205,9 +205,7 @@ contract FeeShareTermWrap {
             // Claims are closed now, so the whole REAL balance — not just the
             // in-term rewardReserve — belongs to the depositors; snapshotting
             // rewardReserve alone would strand that post-finalize accrual.
-            if (IFeeShareVault(FEE_SHARES).claimable(address(this), REWARD) != 0) {
-                try IFeeShareVault(FEE_SHARES).claimFor(address(this)) {} catch {}
-            }
+            _pullReward();
             rewardReserve = IERC20(REWARD).balanceOf(address(this));
             require(rewardReserve != 0, NothingToSweep());
             sweepSnapshot = rewardReserve;
@@ -223,6 +221,20 @@ contract FeeShareTermWrap {
 
     // ------------------------------------------------------------- internals
 
+    /// @dev Pull the vault's owed reward WITHOUT letting the untrusted vault
+    ///      revert the caller: BOTH the claimable() view and claimFor() are
+    ///      guarded, so a paused/misconfigured/self-destructed vault degrades
+    ///      to "no reward pulled" and can never brick finalize, redemption, or
+    ///      the sweep. Balance-delta accounting downstream is the source of
+    ///      truth, not the vault's own view.
+    function _pullReward() private {
+        try IFeeShareVault(FEE_SHARES).claimable(address(this), REWARD) returns (uint256 c) {
+            if (c != 0) {
+                try IFeeShareVault(FEE_SHARES).claimFor(address(this)) {} catch {}
+            }
+        } catch {}
+    }
+
     function _harvestAndSync() private returns (uint256 received) {
         // The vault pays claimFor to this wrapper; sync accounts anything the
         // wrapper received, including reward sent to it directly. The claim is
@@ -230,9 +242,7 @@ contract FeeShareTermWrap {
         // that also advances a redemption/settlement gate (finalize), so its
         // failure degrades to "no new reward this call" rather than bricking
         // principal. Balance-delta accounting below can't revert.
-        if (IFeeShareVault(FEE_SHARES).claimable(address(this), REWARD) != 0) {
-            try IFeeShareVault(FEE_SHARES).claimFor(address(this)) {} catch {}
-        }
+        _pullReward();
         uint256 balance = IERC20(REWARD).balanceOf(address(this));
         received = balance - rewardReserve;
         if (received != 0 && totalSupply != 0) {

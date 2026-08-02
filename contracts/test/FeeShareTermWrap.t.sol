@@ -18,6 +18,7 @@ contract MockFeeShareVault {
     MockWeth public immutable weth;
     mapping(address => uint256) public pendingClaim;
     bool public reverts;
+    bool public viewReverts;
 
     constructor(MockWeth weth_) {
         weth = weth_;
@@ -25,6 +26,10 @@ contract MockFeeShareVault {
 
     function setReverts(bool r) external {
         reverts = r;
+    }
+
+    function setViewReverts(bool r) external {
+        viewReverts = r;
     }
 
     function mint(address to, uint256 amount) external {
@@ -55,6 +60,7 @@ contract MockFeeShareVault {
     }
 
     function claimable(address account, address) external view returns (uint256) {
+        require(!viewReverts, "view paused");
         return pendingClaim[account];
     }
 
@@ -341,6 +347,20 @@ contract FeeShareTermWrapTest is Test {
         // 1.5 claimed in-term + 3.75 swept (30/40 of 5) = 5.25 WETH.
         assertEq(weth.balanceOf(alice), 15e17 + 375e16);
         assertEq(weth.balanceOf(bob), 5e17 + 125e16);
+    }
+
+    /// A vault whose claimable() VIEW reverts (not just claimFor) must NOT
+    /// brick finalize/redeem/sweep — the probe is fully guarded.
+    function test_finalizeSurvivesRevertingClaimableView() public {
+        _depositBoth();
+        vault.setClaimable(address(wrap), 2e18);
+        vault.setViewReverts(true);
+        vm.warp(uint256(maturity) + 1);
+        wrap.finalize(); // must not revert
+        assertTrue(wrap.finalized());
+        vm.prank(alice);
+        wrap.redeemShares();
+        assertEq(vault.balanceOf(alice), 30e18);
     }
 
     /// A late depositor must not dilute reward already owed to earlier

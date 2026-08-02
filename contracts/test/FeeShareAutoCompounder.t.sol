@@ -245,14 +245,36 @@ contract FeeShareAutoCompounderTest is Test {
         assertEq(weth.balanceOf(alice), 3e18);
     }
 
-    function test_keeperRoutesForDepositor() public {
+    function test_keeperRoutingRequiresOptIn() public {
         _depositBoth();
         vault.setClaimable(address(comp), 1e18);
+        // Without opt-in a keeper cannot force-convert alice's WETH.
+        vm.prank(keeper);
+        vm.expectRevert(FeeShareAutoCompounder.NotAuthorized.selector);
+        comp.routeFor(alice);
+
+        // After opt-in the keeper may route, and the ZAPS is alice's.
+        vm.prank(alice);
+        comp.setAutoRoute(true);
         vm.prank(keeper);
         comp.routeFor(alice);
-        // ZAPS goes to alice, not the keeper.
         assertEq(zaps.balanceOf(alice), 750e18);
         assertEq(zaps.balanceOf(keeper), 0);
+    }
+
+    // AUDIT REGRESSION: a vault whose claimable() VIEW reverts must not brick
+    // withdraw or the claimWeth escape hatch.
+    function test_revertingClaimableViewDoesNotBrick() public {
+        _depositBoth();
+        vault.setClaimable(address(comp), 1e18);
+        // Break the vault entirely (claimFor reverts). The guarded probe must
+        // degrade to no-new-reward, keeping withdraw and claimWeth alive.
+        vault.setReverts(true);
+        vm.prank(alice);
+        comp.withdraw(30e18); // must not revert
+        assertEq(vault.balanceOf(alice), 30e18);
+        vm.prank(bob);
+        comp.claimWeth(); // must not revert
     }
 
     function test_floorRevertsOnBadExecution() public {

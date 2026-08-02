@@ -18,18 +18,22 @@ import {SafeApprove} from "../libraries/SafeApprove.sol";
 ///         hatch so value can never be trapped) or routes it into 0xZAPS
 ///         through the constructor-pinned adapter (`route`), floored against
 ///         the pinned oriented price source. A keeper may route on a
-///         depositor's behalf (`routeFor`) — the routed WETH and the 0xZAPS
-///         both belong to that depositor.
+///         depositor's behalf (`routeFor`) ONLY if that depositor opted in via
+///         `setAutoRoute` — the routed WETH and the 0xZAPS both belong to that
+///         depositor, never the caller.
 /// @dev Routing is PER DEPOSITOR, not a pooled swap. That is deliberate: a
 ///      pooled permissionless swap floored on same-block spot is sandwichable
 ///      against unconsenting depositors (move the pool, clear the depressed
 ///      floor, reverse). Per-depositor routing bounds any sandwich to one
-///      consenting depositor's WETH and to `MAX_ROUTE_WEI` per call, and that
-///      depositor chose to route. The floor is still same-block spot and is
-///      NOT proof against a sandwich of the routed leg; a depositor wanting
-///      stronger protection routes small amounts or claims WETH and swaps
-///      elsewhere. No rate is promised: routed 0xZAPS is whatever the vault's
-///      fee flow and the pool's spot produce, which may be zero.
+///      depositor's WETH and `MAX_ROUTE_WEI` per call, and a route only ever
+///      fires for the depositor themselves or a keeper they explicitly
+///      authorized — never against a depositor who has not opted in, whose
+///      WETH stays recoverable through the non-front-runnable `claimWeth`.
+///      The floor is still same-block spot and is NOT proof against a sandwich
+///      of a route the depositor DID authorize; a stronger (TWAP) floor is a
+///      follow-up before any external audit. No rate is promised: routed
+///      0xZAPS is whatever the vault's fee flow and the pool's spot produce,
+///      which may be zero.
 contract FeeShareAutoCompounder {
     using SafeApprove for address;
 
@@ -42,11 +46,13 @@ contract FeeShareAutoCompounder {
     error FloorNotMet();
     error WrongOrientation();
     error TransferFailed();
+    error NotAuthorized();
 
     // ---------------------------------------------------------------- events
     event Deposited(address indexed account, uint256 shares);
     event Withdrawn(address indexed account, uint256 shares);
     event WethClaimed(address indexed account, uint256 amount);
+    event AutoRouteSet(address indexed account, bool allowed);
     event Routed(address indexed caller, address indexed account, uint256 wethIn, uint256 zapsOut, uint256 floor);
 
     // ------------------------------------------------------------ immutables
@@ -81,6 +87,8 @@ contract FeeShareAutoCompounder {
     mapping(address => uint256) private wethDebt;
     /// @notice Realized WETH each depositor may claim or route.
     mapping(address => uint256) public wethOwed;
+    /// @notice Depositors who authorize keepers to route their balance.
+    mapping(address => bool) public autoRouteAllowed;
 
     constructor(
         address feeShares,
@@ -162,10 +170,22 @@ contract FeeShareAutoCompounder {
         _route(msg.sender);
     }
 
+    /// @notice Opt in (or out of) keeper routing of the caller's own balance.
+    ///         Off by default: without this, only the depositor can move their
+    ///         WETH, and it is always recoverable as WETH via claimWeth.
+    function setAutoRoute(bool allowed) external {
+        autoRouteAllowed[msg.sender] = allowed;
+        emit AutoRouteSet(msg.sender, allowed);
+    }
+
     /// @notice Route `account`'s realized WETH into 0xZAPS for them. Keeper
     ///         convenience; the WETH spent and the 0xZAPS produced both belong
-    ///         to `account`, never the caller.
+    ///         to `account`. Requires `account` to have opted in — otherwise a
+    ///         keeper could force-convert a depositor's WETH (and front-run
+    ///         their claimWeth) at a sandwichable same-block-spot floor, which
+    ///         the depositor never consented to.
     function routeFor(address account) external {
+        require(autoRouteAllowed[account], NotAuthorized());
         _route(account);
     }
 
@@ -178,7 +198,8 @@ contract FeeShareAutoCompounder {
         require(amount >= MIN_ROUTE_WEI, BelowMinRoute());
 
         // Same-block spot floor. Not sandwich-proof for the routed leg; the
-        // per-call cap bounds exposure and `account` consents by routing.
+        // per-call cap bounds a single sandwich, and only the account itself
+        // (route) or a keeper it opted in (routeFor) can trigger a route.
         uint256 priceX96 = PRICE_SOURCE.priceX96();
         uint256 floor = (amount * priceX96 / Q96) * MIN_OUT_BPS / BPS;
 
@@ -210,9 +231,14 @@ contract FeeShareAutoCompounder {
     ///      every share-set change and every claim/route, so realized reward
     ///      is always attributed to the shares present when it was earned.
     function _sync() private {
-        if (IFeeShareVault(FEE_SHARES).claimable(address(this), WETH) != 0) {
-            try IFeeShareVault(FEE_SHARES).claimFor(address(this)) {} catch {}
-        }
+        // Guard BOTH the view and the claim: an untrusted vault whose
+        // claimable() reverts must never brick withdraw or the claimWeth
+        // escape hatch. A reverting vault degrades to no-new-reward.
+        try IFeeShareVault(FEE_SHARES).claimable(address(this), WETH) returns (uint256 c) {
+            if (c != 0) {
+                try IFeeShareVault(FEE_SHARES).claimFor(address(this)) {} catch {}
+            }
+        } catch {}
         uint256 balance = IERC20(WETH).balanceOf(address(this));
         uint256 received = balance - wethReserve;
         if (received != 0 && totalDeposits != 0) {
