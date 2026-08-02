@@ -76,7 +76,7 @@ describe("analytics privacy boundary", () => {
     ).toEqual({
       source: "x",
       medium: "social",
-      campaign: "product_update",
+      campaign: "openzaps-virtual-trading-2026-07-30",
       content: "feed_update",
       persona: "agent_builder",
       blocks: 3,
@@ -120,7 +120,7 @@ describe("analytics privacy boundary", () => {
     ).toEqual({ published: true });
   });
 
-  it("forwards at most two properties with a coarse first-touch label", () => {
+  it("forwards at most two properties with an exact controlled first-touch label", () => {
     const { dispatchEvent } = stubBrowser(
       "?utm_source=discord&utm_medium=community&utm_campaign=openzaps-virtual-trading-2026-07-30&utm_content=feed_update",
     );
@@ -134,7 +134,8 @@ describe("analytics privacy boundary", () => {
     });
 
     expect(track).toHaveBeenCalledWith("lead_request_submit", {
-      acquisition: "discord|community|product_update|feed_update",
+      acquisition:
+        "discord|community|openzaps-virtual-trading-2026-07-30|feed_update",
       persona: "protocol_team",
     });
     expect(Object.keys(track.mock.calls[0]?.[1] ?? {})).toHaveLength(2);
@@ -146,11 +147,12 @@ describe("analytics privacy boundary", () => {
           event: "lead_request_submit",
           path: "/request-a-zap",
           payload: {
-            acquisition: "discord|community|product_update|feed_update",
+            acquisition:
+              "discord|community|openzaps-virtual-trading-2026-07-30|feed_update",
             persona: "protocol_team",
             source: "discord",
             medium: "community",
-            campaign: "product_update",
+            campaign: "openzaps-virtual-trading-2026-07-30",
             content: "feed_update",
           },
         },
@@ -163,31 +165,36 @@ describe("analytics privacy boundary", () => {
 
     expect(
       captureAnalyticsAttribution(
-        "?utm_source=x&utm_medium=social&utm_campaign=openzaps-release&utm_content=feed_update",
+        "?utm_source=x&utm_medium=social&utm_campaign=agent-kit-published-v2&utm_content=feed_update",
       ),
-    ).toBe("x|social|product_update|feed_update");
+    ).toBe("x|social|agent-kit-published-v2|feed_update");
     expect(
       captureAnalyticsAttribution(
         "?utm_source=discord&utm_medium=community&utm_campaign=request_a_zap&utm_content=hero",
       ),
-    ).toBe("x|social|product_update|feed_update");
+    ).toBe("x|social|agent-kit-published-v2|feed_update");
     expect(storage.length).toBe(1);
-    expect(Array.from({ length: storage.length }, (_, index) => storage.key(index))).not.toContain(
-      "openzaps-release",
-    );
-    expect(claimAnalyticsCampaignArrival("x|social|product_update|feed_update")).toBe(true);
-    expect(claimAnalyticsCampaignArrival("x|social|product_update|feed_update")).toBe(false);
+    expect(
+      claimAnalyticsCampaignArrival(
+        "x|social|agent-kit-published-v2|feed_update",
+      ),
+    ).toBe(true);
+    expect(
+      claimAnalyticsCampaignArrival(
+        "x|social|agent-kit-published-v2|feed_update",
+      ),
+    ).toBe(false);
     expect(storage.length).toBe(2);
   });
 
-  it("keeps coarse Agent Kit conversion attribution", () => {
+  it("keeps controlled Agent Kit conversion attribution", () => {
     stubBrowser();
 
     expect(
       captureAnalyticsAttribution(
-        "?utm_source=openzaps&utm_medium=website&utm_campaign=openzaps-agent-kit&utm_content=agent_kit",
+        "?utm_source=openzaps&utm_medium=website&utm_campaign=agent_kit&utm_content=agent_kit",
       ),
-    ).toBe("openzaps|website|product_update|agent_kit");
+    ).toBe("openzaps|website|agent_kit|agent_kit");
   });
 
   it("accepts the bounded owned learning-hub attribution", () => {
@@ -213,18 +220,18 @@ describe("analytics privacy boundary", () => {
 
     expect(
       capturedAnalyticsAttribution(
-        "?utm_source=x&utm_medium=social&utm_campaign=openzaps-launch&utm_content=feed_update",
+        "?utm_source=x&utm_medium=social&utm_campaign=agent-kit-published-v2&utm_content=feed_update",
       ),
     ).toEqual({
       source: "x",
       medium: "social",
-      campaign: "product_update",
+      campaign: "agent-kit-published-v2",
       content: "feed_update",
     });
     expect(capturedAnalyticsAttribution()).toEqual({
       source: "x",
       medium: "social",
-      campaign: "product_update",
+      campaign: "agent-kit-published-v2",
       content: "feed_update",
     });
   });
@@ -234,9 +241,11 @@ describe("analytics privacy boundary", () => {
 
     expect(
       captureAnalyticsAttribution(
-        "?utm_source=substack&utm_medium=email&utm_campaign=defitutorials-paper-trade-first-authority-map&utm_content=virtual_trading",
+        "?utm_source=substack&utm_medium=email&utm_campaign=defitutorials-give-an-agent-the-trigger-never-the&utm_content=virtual_trading",
       ),
-    ).toBe("substack|email|tutorial_update|virtual_trading");
+    ).toBe(
+      "substack|email|defitutorials-give-an-agent-the-trigger-never-the|virtual_trading",
+    );
   });
 
   it("records a virtual fill with only its enumerated route and direction", () => {

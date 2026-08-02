@@ -14,17 +14,26 @@ export const MARKETING_POLICY_VERSION = 2 as const;
 export const SCHEDULED_MARKETING_TEMPLATE_ID =
   "virtual-trading-request-zap-v2" as const;
 
-export const AGENT_KIT_MARKETING_CAMPAIGN_ID =
+export const LEGACY_AGENT_KIT_MARKETING_CAMPAIGN_ID =
   "agent-kit-published-v1" as const;
 
 export const FEE_REWARDS_MARKETING_CAMPAIGN_ID =
   "fee-rewards-campaign-v1" as const;
 
-export const LEARN_HUB_MARKETING_CAMPAIGN_ID =
+export const AGENT_KIT_MARKETING_CAMPAIGN_ID =
+  "agent-kit-published-v2" as const;
+
+export const LEGACY_LEARN_HUB_MARKETING_CAMPAIGN_ID =
   "learn-hub-launched-v1" as const;
 
-export const SHARE_ZAP_DESIGN_MARKETING_CAMPAIGN_ID =
+export const LEARN_HUB_MARKETING_CAMPAIGN_ID =
+  "learn-hub-launched-v2" as const;
+
+export const LEGACY_SHARE_ZAP_DESIGN_MARKETING_CAMPAIGN_ID =
   "share-zap-design-v1" as const;
+
+export const SHARE_ZAP_DESIGN_MARKETING_CAMPAIGN_ID =
+  "share-zap-design-v2" as const;
 
 export const MARKETING_RUN_STATES = [
   "queued",

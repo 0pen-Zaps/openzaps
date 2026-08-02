@@ -171,7 +171,6 @@ export default async function RequestAZapPage({
             utmMedium: first(params, "utm_medium", 200),
             utmCampaign: first(params, "utm_campaign", 200),
             utmContent: first(params, "utm_content", 200),
-            utmTerm: first(params, "utm_term", 200),
             entryPoint:
               first(params, "entry_point", 64) === "builder_review"
                 ? "builder_review"

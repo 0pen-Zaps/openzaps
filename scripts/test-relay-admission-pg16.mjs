@@ -398,6 +398,8 @@ const learnHubCampaignMigration =
   "20260801100000_queue_learn_hub_campaign.sql";
 const shareDesignCampaignMigration =
   "20260802020559_queue_share_zap_design_campaign.sql";
+const campaignAttributionSupersessionMigration =
+  "20260802040522_supersede_untagged_marketing_campaigns.sql";
 const syndicationInboxMigration =
   "20260801041508_marketing_syndication_inbox.sql";
 const xMentionInboxMigration =
@@ -413,21 +415,21 @@ const retentionSequenceHardeningMigration =
   "20260801224202_harden_marketing_retention_sequence_grants.sql";
 const reviewedCampaignFixture = "pg16-reviewed-campaign";
 const reviewedCampaignContentHash = "de".repeat(32);
-const agentKitCampaignId = "agent-kit-published-v1";
+const agentKitCampaignId = "agent-kit-published-v2";
 const agentKitCampaignContentHash =
-  "516443309a2b558c1335bb4f672a649a1f728ddc643bb0a762564835c6ff59ca";
+  "9fcbfdbf84d79274c27dac26479aaf0560e7434cbb6614b0e90d976fb0af39dc";
 const agentKitXCampaignContentHash =
-  "c0dc5ff730cdd8efaf58cf1af1940941e5c6dd60c75f542ad036226862448a0e";
-const learnHubCampaignId = "learn-hub-launched-v1";
+  "7abff834112caf333811d11ff2291915179029d704c41b1b6f386a4ea64438e7";
+const learnHubCampaignId = "learn-hub-launched-v2";
 const learnHubXContentHash =
-  "d1582813d0f9c4a53385e75082bd6d3fba90a5ea0edd2ce86bed873ca7289717";
+  "f25701fecbcd1be418a5e97c64a87e3db8ad5c69fc9e4e7677b4b84bb9f3837c";
 const learnHubCommunityContentHash =
-  "4f091100fe08207167569a2233d0c6ebe4910c64efd4161347277986478042c9";
-const shareDesignCampaignId = "share-zap-design-v1";
+  "3e919b5a929225399ff4dc444f89079a6a65a1abb6dc3a9fe89fc09bfa73d646";
+const shareDesignCampaignId = "share-zap-design-v2";
 const shareDesignCommunityContentHash =
-  "d36350d80f73d71b56c269cb29fe58088db8e74b258d3c75302dc9858e75ab88";
+  "e4a832a26c0cd79787c77829bbf2a54529fb696588df1899570492df0ae461d5";
 const shareDesignXContentHash =
-  "7f28715d95af94e6b99a72c1581172e1c1d030570b39c67a11909d1eeaeefc38";
+  "4be6f92cd4047cb149d5a03257773d472c035fe613a91746215a25224c2ad392";
 const reviewedCampaignMonday = "2026-07-27T15:00:00Z";
 const reviewedCampaignTuesday = "2026-07-28T15:00:00Z";
 const reviewedCampaignWednesday = "2026-07-29T15:00:00Z";
@@ -633,6 +635,7 @@ try {
         pass === 1 &&
         [
           reviewedCampaignQueueMigration,
+          campaignAttributionSupersessionMigration,
           syndicationInboxMigration,
           xMentionInboxMigration,
           tutorialPublicationReceiptMigration,
@@ -643,11 +646,13 @@ try {
         const replayProbe = psqlFileProbe(join(migrations, filename), "select 1;");
         const expectedRelation = filename === reviewedCampaignQueueMigration
           ? "marketing_reviewed_campaigns"
-          : filename === syndicationInboxMigration
-            ? "marketing_syndication_sources"
-            : filename === xMentionInboxMigration
-              ? "marketing_x_mention_accounts"
-              : "marketing_tutorial_publication_receipts";
+          : filename === campaignAttributionSupersessionMigration
+            ? "marketing_reviewed_campaign_supersessions"
+            : filename === syndicationInboxMigration
+              ? "marketing_syndication_sources"
+              : filename === xMentionInboxMigration
+                ? "marketing_x_mention_accounts"
+                : "marketing_tutorial_publication_receipts";
         assert(
           replayProbe.status !== 0 &&
             new RegExp(`relation "${expectedRelation}" already exists`).test(
@@ -3541,6 +3546,7 @@ try {
     select
       (select count(*) from public.marketing_reviewed_campaigns),
       (select count(*) from public.marketing_campaign_schedule_claims),
+      (select count(*) from public.marketing_reviewed_campaign_supersessions),
       (
         select count(*)
         from public.marketing_reviewed_campaigns
@@ -3548,8 +3554,8 @@ try {
       );
   `);
   assert(
-    initialReviewedCampaignState === "6|0|3",
-    `reviewed campaign queue did not contain the six exact release artifacts: ${initialReviewedCampaignState}`,
+    initialReviewedCampaignState === "12|0|6|6",
+    `reviewed campaign queue did not contain six historical and six attributed artifacts: ${initialReviewedCampaignState}`,
   );
 
   const emptyReviewedCampaignClaim = psqlScalar(`
@@ -3581,6 +3587,11 @@ try {
         from pg_catalog.pg_class
         where oid = 'public.marketing_campaign_schedule_claims'::regclass
       ),
+      (
+        select relrowsecurity
+        from pg_catalog.pg_class
+        where oid = 'public.marketing_reviewed_campaign_supersessions'::regclass
+      ),
       has_table_privilege(
         'service_role',
         'public.marketing_reviewed_campaigns',
@@ -3589,6 +3600,11 @@ try {
       has_table_privilege(
         'service_role',
         'public.marketing_campaign_schedule_claims',
+        'select'
+      ),
+      has_table_privilege(
+        'service_role',
+        'public.marketing_reviewed_campaign_supersessions',
         'select'
       ),
       has_function_privilege(
@@ -3633,7 +3649,7 @@ try {
       );
   `);
   assert(
-    reviewedCampaignPrivileges === "t|t|f|f|t|t|f|f|f|f|f|f",
+    reviewedCampaignPrivileges === "t|t|t|f|f|f|t|t|f|f|f|f|f|f",
     `unexpected reviewed campaign queue privileges: ${reviewedCampaignPrivileges}`,
   );
 
@@ -3704,6 +3720,18 @@ try {
         `${directReviewedCampaignRead.stdout}${directReviewedCampaignRead.stderr}`,
       ),
     "service role unexpectedly read the reviewed campaign queue directly",
+  );
+
+  const directReviewedSupersessionRead = await psqlScalarSession(`
+    set role service_role;
+    select * from public.marketing_reviewed_campaign_supersessions;
+  `);
+  assert(
+    directReviewedSupersessionRead.status !== 0 &&
+      /permission denied/.test(
+        `${directReviewedSupersessionRead.stdout}${directReviewedSupersessionRead.stderr}`,
+      ),
+    "service role unexpectedly read reviewed campaign supersessions directly",
   );
 
   const fixedTimeHelperCall = await psqlScalarSession(`
@@ -3795,7 +3823,7 @@ try {
     from public.marketing_reviewed_campaigns;
   `);
   assert(
-    reviewedCampaignChannelState === "4|3",
+    reviewedCampaignChannelState === "7|6",
     `reviewed queue fixture changed the expected channel distribution: ${reviewedCampaignChannelState}`,
   );
 
@@ -3985,7 +4013,7 @@ try {
 
 Neither package holds a key, signs, or broadcasts. Your wallet or Safe creates authority; the signed intent and immutable Zap policy set the bounds.
 
-Connect an agent: https://www.0xzaps.com/docs#agents
+Connect an agent: https://www.0xzaps.com/agent-kit?utm_source=discord&utm_medium=community&utm_campaign=agent-kit-published-v2&utm_content=feed_update
 
 Pre-audit software. Verify before use.$campaign$)::text
     from private.claim_next_marketing_campaign_at(
@@ -3995,7 +4023,7 @@ Pre-audit software. Verify before use.$campaign$)::text
   `);
   assert(
     agentKitCampaignClaim ===
-      `claimed|${agentKitCampaignId}|discord|20|${agentKitCampaignContentHash}|true|true`,
+      `claimed|${agentKitCampaignId}|discord|120|${agentKitCampaignContentHash}|true|true`,
     `actual Agent Kit campaign claim drifted: ${agentKitCampaignClaim}`,
   );
 
@@ -4065,10 +4093,9 @@ Pre-audit software. Verify before use.$campaign$)::text
       (not_before = '2026-08-04T14:00:00Z'::timestamptz)::text || '|' ||
       (body = $campaign$OpenZaps Learn is live.
 
-Source-reviewed product updates and RSS-confirmed DeFi Tutorials in one hub. Drafts stay off this catalog until RSS confirmation.
+Source-reviewed updates + RSS-confirmed DeFi Tutorials. Drafts stay out until confirmed.
 
-Read—or request a bounded authority map:
-https://www.0xzaps.com/learn
+https://www.0xzaps.com/learn?utm_source=x&utm_medium=social&utm_campaign=learn-hub-launched-v2&utm_content=feed_update
 
 Pre-audit software. Verify before use.$campaign$)::text
     from private.claim_next_marketing_campaign_at(
@@ -4078,7 +4105,7 @@ Pre-audit software. Verify before use.$campaign$)::text
   `);
   assert(
     learnHubXClaim ===
-      `claimed|${learnHubCampaignId}|x|30|${learnHubXContentHash}|true|true`,
+      `claimed|${learnHubCampaignId}|x|130|${learnHubXContentHash}|true|true`,
     `OpenZaps Learn X campaign claim drifted: ${learnHubXClaim}`,
   );
 
@@ -4134,13 +4161,11 @@ Pre-audit software. Verify before use.$campaign$)::text
       queue_order::text || '|' ||
       content_hash || '|' ||
       (not_before = '2026-08-05T14:00:00Z'::timestamptz)::text || '|' ||
-      (body = $campaign$OpenZaps Agent Kit is published.
+      (body = $campaign$OpenZaps Agent Kit is live.
 
-→ SDK: compiles the exact policy tuple and prepares unsigned EIP-712 data.
-→ MCP: read-only capsule discovery.
+SDK: bounded policies. MCP: read-only discovery. No keys, signing, or broadcasting.
 
-Neither package holds a key, signs, or broadcasts.
-https://www.0xzaps.com/agent-kit
+https://www.0xzaps.com/agent-kit?utm_source=x&utm_medium=social&utm_campaign=agent-kit-published-v2&utm_content=feed_update
 
 Pre-audit software. Verify before use.$campaign$)::text
     from private.claim_next_marketing_campaign_at(
@@ -4150,7 +4175,7 @@ Pre-audit software. Verify before use.$campaign$)::text
   `);
   assert(
     agentKitXCampaignClaim ===
-      `claimed|${agentKitCampaignId}|x|21|${agentKitXCampaignContentHash}|true|true`,
+      `claimed|${agentKitCampaignId}|x|121|${agentKitXCampaignContentHash}|true|true`,
     `actual Agent Kit X campaign claim drifted: ${agentKitXCampaignClaim}`,
   );
 
@@ -4211,7 +4236,7 @@ Pre-audit software. Verify before use.$campaign$)::text
 The new hub collects source-reviewed OpenZaps product updates and DeFi Tutorials whose title and canonical URL are RSS-confirmed. Drafts and editor handoffs are withheld from the Learn catalog until RSS confirmation.
 
 Use it to follow what shipped, read why the bounds matter, or request a human-reviewed authority map for one workflow:
-https://www.0xzaps.com/learn
+https://www.0xzaps.com/learn?utm_source=discord&utm_medium=community&utm_campaign=learn-hub-launched-v2&utm_content=feed_update
 
 Pre-audit software. Verify before use.$campaign$)::text
     from private.claim_next_marketing_campaign_at(
@@ -4221,7 +4246,7 @@ Pre-audit software. Verify before use.$campaign$)::text
   `);
   assert(
     learnHubDiscordClaim ===
-      `claimed|${learnHubCampaignId}|discord|31|${learnHubCommunityContentHash}|true|true`,
+      `claimed|${learnHubCampaignId}|discord|131|${learnHubCommunityContentHash}|true|true`,
     `OpenZaps Learn Discord campaign claim drifted: ${learnHubDiscordClaim}`,
   );
 
@@ -4284,7 +4309,7 @@ OpenZaps can encode a designed chain into a \`?d=\` link. When someone opens it,
 A link may carry a live-route design or a design-only blueprint. The receiver still has to review which bounds the selected lineage enforces; any live action requires their own wallet review and signature.
 
 Build and review:
-https://www.0xzaps.com/zap?view=design
+https://www.0xzaps.com/zap?view=design&utm_source=discord&utm_medium=community&utm_campaign=share-zap-design-v2&utm_content=feed_update
 
 Pre-audit software. Verify before use.$campaign$)::text
     from private.claim_next_marketing_campaign_at(
@@ -4294,7 +4319,7 @@ Pre-audit software. Verify before use.$campaign$)::text
   `);
   assert(
     shareDesignDiscordClaim ===
-      `claimed|${shareDesignCampaignId}|discord|40|${shareDesignCommunityContentHash}|true|true`,
+      `claimed|${shareDesignCampaignId}|discord|140|${shareDesignCommunityContentHash}|true|true`,
     `shareable-design Discord campaign claim drifted: ${shareDesignDiscordClaim}`,
   );
 
@@ -4352,10 +4377,9 @@ Pre-audit software. Verify before use.$campaign$)::text
       (not_before = '2026-08-10T14:00:00Z'::timestamptz)::text || '|' ||
       (body = $campaign$Share a Zap design—not wallet authority.
 
-A link carries a design into the builder. It is validated and recompiled without a wallet prompt, signature, or transaction.
+Validated in builder. No wallet prompt, signature, or transaction.
 
-Build and review:
-https://www.0xzaps.com/zap?view=design
+https://www.0xzaps.com/zap?view=design&utm_source=x&utm_medium=social&utm_campaign=share-zap-design-v2&utm_content=feed_update
 
 Pre-audit software. Verify before use.$campaign$)::text
     from private.claim_next_marketing_campaign_at(
@@ -4365,7 +4389,7 @@ Pre-audit software. Verify before use.$campaign$)::text
   `);
   assert(
     shareDesignXClaim ===
-      `claimed|${shareDesignCampaignId}|x|41|${shareDesignXContentHash}|true|true`,
+      `claimed|${shareDesignCampaignId}|x|141|${shareDesignXContentHash}|true|true`,
     `shareable-design X campaign claim drifted: ${shareDesignXClaim}`,
   );
 
@@ -4449,6 +4473,9 @@ Pre-audit software. Verify before use.$campaign$)::text
     "update public.marketing_campaign_schedule_claims set claim_day = claim_day",
     "delete from public.marketing_campaign_schedule_claims",
     "truncate public.marketing_campaign_schedule_claims",
+    "update public.marketing_reviewed_campaign_supersessions set created_at = created_at",
+    "delete from public.marketing_reviewed_campaign_supersessions",
+    "truncate public.marketing_reviewed_campaign_supersessions",
   ]) {
     const mutationAttempt = await psqlScalarSession(mutation);
     assert(
@@ -4463,10 +4490,11 @@ Pre-audit software. Verify before use.$campaign$)::text
   const immutableReviewedCampaignState = psqlScalar(`
     select
       (select count(*) from public.marketing_reviewed_campaigns),
-      (select count(*) from public.marketing_campaign_schedule_claims);
+      (select count(*) from public.marketing_campaign_schedule_claims),
+      (select count(*) from public.marketing_reviewed_campaign_supersessions);
   `);
   assert(
-    immutableReviewedCampaignState === "7|8",
+    immutableReviewedCampaignState === "13|8|6",
     `reviewed campaign artifacts changed after rejected mutations: ${immutableReviewedCampaignState}`,
   );
 

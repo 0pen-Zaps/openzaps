@@ -1,5 +1,12 @@
 import { track } from "@vercel/analytics";
 
+import {
+  normalizeAttributionCampaign,
+  normalizeAttributionContent,
+  normalizeAttributionMedium,
+  normalizeAttributionSource,
+} from "@/lib/marketing/campaign-attribution";
+
 export type AnalyticsPayload = Record<string, string | number | boolean | null | undefined>;
 
 export type CapturedAnalyticsAttribution = Readonly<{
@@ -41,51 +48,6 @@ const URL_PATTERN = /(?:https?:\/\/|www\.)/i;
 const MAX_PROPERTY_LENGTH = 100;
 
 const ATTRIBUTION_KEYS = new Set(["source", "medium", "campaign", "content"]);
-const ATTRIBUTION_SOURCES = new Set([
-  "discord",
-  "farcaster",
-  "github",
-  "homepage",
-  "newsletter",
-  "openzaps",
-  "rss",
-  "substack",
-  "x",
-]);
-const ATTRIBUTION_MEDIA = new Set([
-  "community",
-  "email",
-  "product",
-  "referral",
-  "rss",
-  "social",
-  "website",
-]);
-const ATTRIBUTION_CONTENT = new Set([
-  "app_nav",
-  "builder_review",
-  "developer_section",
-  "docs_release",
-  "execution_demo",
-  "agent_kit",
-  "feed_update",
-  "final_cta",
-  "hero",
-  "homepage_recent",
-  "landing_footer",
-  "learn_hub",
-  "nav",
-  "request_form",
-  "request_success",
-  "site_footer",
-  "tutorial",
-  "virtual_trading",
-]);
-const ATTRIBUTION_CAMPAIGNS = new Set([
-  "product_update",
-  "request_a_zap",
-  "tutorial_update",
-]);
 
 const PROVIDER_PROPERTY_PRIORITY = [
   "status",
@@ -107,23 +69,14 @@ const PROVIDER_PROPERTY_PRIORITY = [
   "medium",
 ] as const;
 
-function coarseCampaign(value: string): string | null {
-  if (ATTRIBUTION_CAMPAIGNS.has(value)) return value;
-  if (value === "virtual-trading" || value.startsWith("openzaps-")) {
-    return "product_update";
-  }
-  if (value.startsWith("defitutorials-")) return "tutorial_update";
-  return null;
-}
-
-function coarseAttributionValue(key: string, value: string): string | null {
+function controlledAttributionValue(key: string, value: string): string | null {
   const normalized = value.trim().toLowerCase();
   if (normalized.length === 0 || normalized.length > MAX_PROPERTY_LENGTH) return null;
 
-  if (key === "source") return ATTRIBUTION_SOURCES.has(normalized) ? normalized : null;
-  if (key === "medium") return ATTRIBUTION_MEDIA.has(normalized) ? normalized : null;
-  if (key === "content") return ATTRIBUTION_CONTENT.has(normalized) ? normalized : null;
-  if (key === "campaign") return coarseCampaign(normalized);
+  if (key === "source") return normalizeAttributionSource(normalized);
+  if (key === "medium") return normalizeAttributionMedium(normalized);
+  if (key === "content") return normalizeAttributionContent(normalized);
+  if (key === "campaign") return normalizeAttributionCampaign(normalized);
   return null;
 }
 
@@ -146,8 +99,8 @@ export function sanitizeAnalyticsPayload(payload: AnalyticsPayload): AnalyticsPa
         continue;
       }
       if (ATTRIBUTION_KEYS.has(key)) {
-        const coarseValue = coarseAttributionValue(key, normalized);
-        if (coarseValue) sanitized[key] = coarseValue;
+        const controlledValue = controlledAttributionValue(key, normalized);
+        if (controlledValue) sanitized[key] = controlledValue;
       } else {
         sanitized[key] = normalized;
       }
@@ -187,10 +140,10 @@ function validStoredAttribution(value: string): boolean {
   const [source, medium, campaign, content, extra] = value.split("|");
   return (
     extra === undefined
-    && ATTRIBUTION_SOURCES.has(source)
-    && (medium === "_" || ATTRIBUTION_MEDIA.has(medium))
-    && (campaign === "_" || ATTRIBUTION_CAMPAIGNS.has(campaign))
-    && (content === "_" || ATTRIBUTION_CONTENT.has(content))
+    && normalizeAttributionSource(source) === source
+    && (medium === "_" || normalizeAttributionMedium(medium) === medium)
+    && (campaign === "_" || normalizeAttributionCampaign(campaign) === campaign)
+    && (content === "_" || normalizeAttributionContent(content) === content)
   );
 }
 
@@ -207,7 +160,7 @@ export function parseCapturedAnalyticsAttribution(
   };
 }
 
-/** Capture, then decode, the privacy-reduced first touch for an internal handoff. */
+/** Capture, then decode, the controlled first touch for an internal handoff. */
 export function capturedAnalyticsAttribution(
   search?: string,
 ): CapturedAnalyticsAttribution | null {
@@ -215,8 +168,8 @@ export function capturedAnalyticsAttribution(
 }
 
 /**
- * Preserve one coarse, anonymous first-touch label for the current tab. Raw
- * query values, referrers, URLs, and identifiers are never written to storage.
+ * Preserve one controlled, anonymous first-touch label for the current tab.
+ * Raw query values, referrers, URLs, and identifiers are never stored.
  */
 export function captureAnalyticsAttribution(search?: string): string | null {
   if (typeof window === "undefined") return null;
@@ -236,7 +189,7 @@ export function captureAnalyticsAttribution(search?: string): string | null {
   }
 }
 
-/** Claim one campaign-arrival event per coarse first touch and browser tab. */
+/** Claim one campaign-arrival event per controlled first touch and browser tab. */
 export function claimAnalyticsCampaignArrival(attribution: string): boolean {
   if (typeof window === "undefined" || !validStoredAttribution(attribution)) return false;
 

@@ -1,5 +1,12 @@
 import { z } from "zod";
 
+import {
+  normalizeAttributionCampaign,
+  normalizeAttributionContent,
+  normalizeAttributionMedium,
+  normalizeAttributionSource,
+} from "@/lib/marketing/campaign-attribution";
+
 export const LEAD_PERSONAS = [
   "agent_builder",
   "protocol_team",
@@ -62,25 +69,13 @@ const optionalTrimmedString = (maximum: number) =>
     z.string().trim().min(1).max(maximum).optional(),
   );
 
-const ATTRIBUTION_VALUE_PATTERN =
-  /^[A-Za-z0-9][A-Za-z0-9 ._~+-]*$/u;
-const SENSITIVE_ATTRIBUTION_PATTERN =
-  /(?:@|https?:\/\/|www\.|\b0x[a-fA-F0-9]{40,64}\b|\b(?:sk-(?:proj-)?|xox[baprs]-|gh[pousr]_)[A-Za-z0-9_-]{8,})/iu;
-
-const optionalAttributionValue = (maximum: number) =>
-  z.preprocess((value) => {
-    if (typeof value !== "string") return value;
-    const normalized = value.trim();
-    if (
-      normalized.length === 0
-      || normalized.length > maximum
-      || !ATTRIBUTION_VALUE_PATTERN.test(normalized)
-      || SENSITIVE_ATTRIBUTION_PATTERN.test(normalized)
-    ) {
-      return undefined;
-    }
-    return normalized;
-  }, z.string().max(maximum).optional());
+const controlledAttributionValue = (
+  normalizer: (value: unknown) => string | null,
+  maximum: number,
+) => z.preprocess(
+  (value) => normalizer(value) ?? undefined,
+  z.string().max(maximum).optional(),
+);
 
 const optionalHttpsUrl = (maximum: number) =>
   z.preprocess(
@@ -115,11 +110,13 @@ const optionalHttpsReferrer = optionalHttpsUrl(500).transform((value) => {
 
 export const LeadAttributionSchema = z
   .object({
-    utmSource: optionalAttributionValue(80),
-    utmMedium: optionalAttributionValue(80),
-    utmCampaign: optionalAttributionValue(120),
-    utmContent: optionalAttributionValue(120),
-    utmTerm: optionalAttributionValue(120),
+    utmSource: controlledAttributionValue(normalizeAttributionSource, 80),
+    utmMedium: controlledAttributionValue(normalizeAttributionMedium, 80),
+    utmCampaign: controlledAttributionValue(normalizeAttributionCampaign, 120),
+    utmContent: controlledAttributionValue(normalizeAttributionContent, 120),
+    // Search terms are unbounded user text and can contain personal data. The
+    // key remains accepted for compatibility, but its value is never retained.
+    utmTerm: z.preprocess(() => undefined, z.string().max(120).optional()),
     entryPoint: z.enum(["builder_review"]).optional(),
     // Paths, query strings, and fragments can carry incidental identifiers.
     // The referring origin is sufficient for attribution, so discard the rest

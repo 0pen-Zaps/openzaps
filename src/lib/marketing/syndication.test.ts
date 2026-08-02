@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { SubstackFeedPost } from "@/lib/marketing/channels/substack";
+import { normalizeAttributionCampaign } from "@/lib/marketing/campaign-attribution";
 import {
   discoverReviewOnlySyndicationItems,
   normalizeApprovedOpenZapsFeedItems,
@@ -145,6 +146,19 @@ describe("review-only feed syndication", () => {
     expect(item.attributedUrls.x).not.toMatch(
       /audience|email|user|wallet|recipient/iu,
     );
+  });
+
+  it("registers every source-controlled reviewable slug for conversion attribution", () => {
+    const items = discoverReviewOnlySyndicationItems([post()]).filter(
+      (item) => item.classification === "reviewable",
+    );
+
+    expect(items).toHaveLength(7);
+    for (const item of items) {
+      expect(normalizeAttributionCampaign(item.campaignSlug)).toBe(
+        item.campaignSlug,
+      );
+    }
   });
 
   it("deduplicates identical canonical Substack items", () => {

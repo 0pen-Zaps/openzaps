@@ -9,8 +9,12 @@ import {
   type FormEvent,
 } from "react";
 
-import { trackEvent } from "@/lib/analytics";
 import {
+  capturedAnalyticsAttribution,
+  trackEvent,
+} from "@/lib/analytics";
+import {
+  leadSubmissionAttribution,
   leadRequestPayload,
   type LeadClientAttribution,
 } from "@/lib/leads/client";
@@ -220,13 +224,27 @@ export function RequestZapForm({
     }
 
     const data = new FormData(form);
-    const payload = leadRequestPayload(data, attribution, document.referrer);
+    const effectiveAttribution = leadSubmissionAttribution(
+      attribution,
+      capturedAnalyticsAttribution(),
+    );
+    const submissionAnalyticsAttribution = {
+      source: effectiveAttribution.utmSource,
+      medium: effectiveAttribution.utmMedium,
+      campaign: effectiveAttribution.utmCampaign,
+      content: effectiveAttribution.utmContent,
+    };
+    const payload = leadRequestPayload(
+      data,
+      effectiveAttribution,
+      document.referrer,
+    );
     const selectedPersona = payload.persona as LeadPersona;
 
     setSubmission("pending");
     setErrorMessage("");
     trackEvent("lead_request_submit", {
-      ...analyticsAttribution,
+      ...submissionAnalyticsAttribution,
       persona: selectedPersona,
     });
 
@@ -251,7 +269,7 @@ export function RequestZapForm({
         );
         setSubmission("error");
         trackEvent("lead_request_error", {
-          ...analyticsAttribution,
+          ...submissionAnalyticsAttribution,
           persona: selectedPersona,
           status: response.status,
         });
@@ -270,7 +288,7 @@ export function RequestZapForm({
       setErrorMessage("We could not reach the request desk. Check your connection and try again.");
       setSubmission("error");
       trackEvent("lead_request_error", {
-        ...analyticsAttribution,
+        ...submissionAnalyticsAttribution,
         persona: selectedPersona,
         status: 0,
       });

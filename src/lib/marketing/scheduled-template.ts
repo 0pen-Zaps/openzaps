@@ -9,9 +9,13 @@ import {
   AGENT_KIT_MARKETING_CAMPAIGN_ID,
   FEE_REWARDS_MARKETING_CAMPAIGN_ID,
   LEARN_HUB_MARKETING_CAMPAIGN_ID,
+  LEGACY_AGENT_KIT_MARKETING_CAMPAIGN_ID,
+  LEGACY_LEARN_HUB_MARKETING_CAMPAIGN_ID,
+  LEGACY_SHARE_ZAP_DESIGN_MARKETING_CAMPAIGN_ID,
   SCHEDULED_MARKETING_TEMPLATE_ID,
   SHARE_ZAP_DESIGN_MARKETING_CAMPAIGN_ID,
 } from "@/lib/marketing/types";
+import { attributedReviewedCampaignUrl } from "@/lib/marketing/campaign-attribution";
 
 export const SCHEDULED_MARKETING_CHANNELS = ["x", "discord"] as const;
 
@@ -237,6 +241,45 @@ const SHARE_ZAP_DESIGN_CLAIMS: MarketingClaim[] = [
   },
 ];
 
+const AGENT_KIT_ATTRIBUTED_URLS = {
+  discord: attributedReviewedCampaignUrl(
+    "https://www.0xzaps.com/agent-kit",
+    AGENT_KIT_MARKETING_CAMPAIGN_ID,
+    "discord",
+  ),
+  x: attributedReviewedCampaignUrl(
+    "https://www.0xzaps.com/agent-kit",
+    AGENT_KIT_MARKETING_CAMPAIGN_ID,
+    "x",
+  ),
+} as const;
+
+const LEARN_HUB_ATTRIBUTED_URLS = {
+  discord: attributedReviewedCampaignUrl(
+    "https://www.0xzaps.com/learn",
+    LEARN_HUB_MARKETING_CAMPAIGN_ID,
+    "discord",
+  ),
+  x: attributedReviewedCampaignUrl(
+    "https://www.0xzaps.com/learn",
+    LEARN_HUB_MARKETING_CAMPAIGN_ID,
+    "x",
+  ),
+} as const;
+
+const SHARE_ZAP_DESIGN_ATTRIBUTED_URLS = {
+  discord: attributedReviewedCampaignUrl(
+    "https://www.0xzaps.com/zap?view=design",
+    SHARE_ZAP_DESIGN_MARKETING_CAMPAIGN_ID,
+    "discord",
+  ),
+  x: attributedReviewedCampaignUrl(
+    "https://www.0xzaps.com/zap?view=design",
+    SHARE_ZAP_DESIGN_MARKETING_CAMPAIGN_ID,
+    "x",
+  ),
+} as const;
+
 const CAMPAIGNS: readonly ReviewedMarketingCampaign[] = [
   {
     id: SCHEDULED_MARKETING_TEMPLATE_ID,
@@ -276,7 +319,7 @@ const CAMPAIGNS: readonly ReviewedMarketingCampaign[] = [
       "d87798d6ff0ba39a29c5b9da58397162cb43cd4908c5b604493e8fe98a0604f5",
   },
   {
-    id: AGENT_KIT_MARKETING_CAMPAIGN_ID,
+    id: LEGACY_AGENT_KIT_MARKETING_CAMPAIGN_ID,
     channel: "discord",
     queueOrder: 20,
     notBefore: "2026-08-03T14:00:00.000Z",
@@ -293,7 +336,7 @@ const CAMPAIGNS: readonly ReviewedMarketingCampaign[] = [
       "516443309a2b558c1335bb4f672a649a1f728ddc643bb0a762564835c6ff59ca",
   },
   {
-    id: AGENT_KIT_MARKETING_CAMPAIGN_ID,
+    id: LEGACY_AGENT_KIT_MARKETING_CAMPAIGN_ID,
     channel: "x",
     queueOrder: 21,
     notBefore: "2026-08-05T14:00:00.000Z",
@@ -346,7 +389,7 @@ const CAMPAIGNS: readonly ReviewedMarketingCampaign[] = [
       "1c8588ed3256b2802a2dc2510f77df1d7a48ee59ccaf382ff22508008a22abf3",
   },
   {
-    id: LEARN_HUB_MARKETING_CAMPAIGN_ID,
+    id: LEGACY_LEARN_HUB_MARKETING_CAMPAIGN_ID,
     channel: "x",
     queueOrder: 30,
     notBefore: "2026-08-04T14:00:00.000Z",
@@ -363,7 +406,7 @@ const CAMPAIGNS: readonly ReviewedMarketingCampaign[] = [
       "d1582813d0f9c4a53385e75082bd6d3fba90a5ea0edd2ce86bed873ca7289717",
   },
   {
-    id: LEARN_HUB_MARKETING_CAMPAIGN_ID,
+    id: LEGACY_LEARN_HUB_MARKETING_CAMPAIGN_ID,
     channel: "discord",
     queueOrder: 31,
     notBefore: "2026-08-04T14:00:00.000Z",
@@ -380,7 +423,7 @@ const CAMPAIGNS: readonly ReviewedMarketingCampaign[] = [
       "4f091100fe08207167569a2233d0c6ebe4910c64efd4161347277986478042c9",
   },
   {
-    id: SHARE_ZAP_DESIGN_MARKETING_CAMPAIGN_ID,
+    id: LEGACY_SHARE_ZAP_DESIGN_MARKETING_CAMPAIGN_ID,
     channel: "discord",
     queueOrder: 40,
     notBefore: "2026-08-07T14:00:00.000Z",
@@ -397,7 +440,7 @@ const CAMPAIGNS: readonly ReviewedMarketingCampaign[] = [
       "d36350d80f73d71b56c269cb29fe58088db8e74b258d3c75302dc9858e75ab88",
   },
   {
-    id: SHARE_ZAP_DESIGN_MARKETING_CAMPAIGN_ID,
+    id: LEGACY_SHARE_ZAP_DESIGN_MARKETING_CAMPAIGN_ID,
     channel: "x",
     queueOrder: 41,
     notBefore: "2026-08-10T14:00:00.000Z",
@@ -413,6 +456,108 @@ const CAMPAIGNS: readonly ReviewedMarketingCampaign[] = [
     contentHash:
       "7f28715d95af94e6b99a72c1581172e1c1d030570b39c67a11909d1eeaeefc38",
   },
+  {
+    id: AGENT_KIT_MARKETING_CAMPAIGN_ID,
+    channel: "discord",
+    queueOrder: 120,
+    notBefore: "2026-08-03T14:00:00.000Z",
+    body:
+      `**The OpenZaps Agent Kit is published.**\n\n\`@openzaps/sdk@0.1.0\` compiles the exact policy tuple and prepares unsigned EIP-712 data. \`@openzaps/mcp@0.1.0\` gives agent clients read-only capsule discovery. Both releases carry npm provenance attestations.\n\nNeither package holds a key, signs, or broadcasts. Your wallet or Safe creates authority; the signed intent and immutable Zap policy set the bounds.\n\nConnect an agent: ${AGENT_KIT_ATTRIBUTED_URLS.discord}\n\nPre-audit software. Verify before use.`,
+    links: [AGENT_KIT_ATTRIBUTED_URLS.discord],
+    topics: ["protocol"],
+    disclosures: ["pre_audit"],
+    claims: AGENT_KIT_CLAIMS,
+    flags: SAFE_FLAGS,
+    requiredFacts: AGENT_KIT_FACTS,
+    canonicalSourceUrls: AGENT_KIT_FACTS.map((fact) => fact.sourceUrl),
+    contentHash:
+      "9fcbfdbf84d79274c27dac26479aaf0560e7434cbb6614b0e90d976fb0af39dc",
+  },
+  {
+    id: AGENT_KIT_MARKETING_CAMPAIGN_ID,
+    channel: "x",
+    queueOrder: 121,
+    notBefore: "2026-08-05T14:00:00.000Z",
+    body:
+      `OpenZaps Agent Kit is live.\n\nSDK: bounded policies. MCP: read-only discovery. No keys, signing, or broadcasting.\n\n${AGENT_KIT_ATTRIBUTED_URLS.x}\n\nPre-audit software. Verify before use.`,
+    links: [AGENT_KIT_ATTRIBUTED_URLS.x],
+    topics: ["protocol"],
+    disclosures: ["pre_audit"],
+    claims: AGENT_KIT_X_CLAIMS,
+    flags: SAFE_FLAGS,
+    requiredFacts: AGENT_KIT_X_FACTS,
+    canonicalSourceUrls: AGENT_KIT_X_FACTS.map((fact) => fact.sourceUrl),
+    contentHash:
+      "7abff834112caf333811d11ff2291915179029d704c41b1b6f386a4ea64438e7",
+  },
+  {
+    id: LEARN_HUB_MARKETING_CAMPAIGN_ID,
+    channel: "x",
+    queueOrder: 130,
+    notBefore: "2026-08-04T14:00:00.000Z",
+    body:
+      `OpenZaps Learn is live.\n\nSource-reviewed updates + RSS-confirmed DeFi Tutorials. Drafts stay out until confirmed.\n\n${LEARN_HUB_ATTRIBUTED_URLS.x}\n\nPre-audit software. Verify before use.`,
+    links: [LEARN_HUB_ATTRIBUTED_URLS.x],
+    topics: ["protocol"],
+    disclosures: ["pre_audit"],
+    claims: LEARN_HUB_CLAIMS,
+    flags: SAFE_FLAGS,
+    requiredFacts: LEARN_HUB_FACTS,
+    canonicalSourceUrls: LEARN_HUB_FACTS.map((fact) => fact.sourceUrl),
+    contentHash:
+      "f25701fecbcd1be418a5e97c64a87e3db8ad5c69fc9e4e7677b4b84bb9f3837c",
+  },
+  {
+    id: LEARN_HUB_MARKETING_CAMPAIGN_ID,
+    channel: "discord",
+    queueOrder: 131,
+    notBefore: "2026-08-04T14:00:00.000Z",
+    body:
+      `**OpenZaps Learn is live.**\n\nThe new hub collects source-reviewed OpenZaps product updates and DeFi Tutorials whose title and canonical URL are RSS-confirmed. Drafts and editor handoffs are withheld from the Learn catalog until RSS confirmation.\n\nUse it to follow what shipped, read why the bounds matter, or request a human-reviewed authority map for one workflow:\n${LEARN_HUB_ATTRIBUTED_URLS.discord}\n\nPre-audit software. Verify before use.`,
+    links: [LEARN_HUB_ATTRIBUTED_URLS.discord],
+    topics: ["protocol"],
+    disclosures: ["pre_audit"],
+    claims: LEARN_HUB_CLAIMS,
+    flags: SAFE_FLAGS,
+    requiredFacts: LEARN_HUB_FACTS,
+    canonicalSourceUrls: LEARN_HUB_FACTS.map((fact) => fact.sourceUrl),
+    contentHash:
+      "3e919b5a929225399ff4dc444f89079a6a65a1abb6dc3a9fe89fc09bfa73d646",
+  },
+  {
+    id: SHARE_ZAP_DESIGN_MARKETING_CAMPAIGN_ID,
+    channel: "discord",
+    queueOrder: 140,
+    notBefore: "2026-08-07T14:00:00.000Z",
+    body:
+      `**Share a Zap design—not wallet authority.**\n\nOpenZaps can encode a designed chain into a \`?d=\` link. When someone opens it, the builder validates the design against the current typed-block catalog and recompiles the result. Design mode does not prompt for wallet access, approval, a signature, or a transaction.\n\nA link may carry a live-route design or a design-only blueprint. The receiver still has to review which bounds the selected lineage enforces; any live action requires their own wallet review and signature.\n\nBuild and review:\n${SHARE_ZAP_DESIGN_ATTRIBUTED_URLS.discord}\n\nPre-audit software. Verify before use.`,
+    links: [SHARE_ZAP_DESIGN_ATTRIBUTED_URLS.discord],
+    topics: ["protocol"],
+    disclosures: ["pre_audit"],
+    claims: SHARE_ZAP_DESIGN_CLAIMS,
+    flags: SAFE_FLAGS,
+    requiredFacts: SHARE_ZAP_DESIGN_FACTS,
+    canonicalSourceUrls: SHARE_ZAP_DESIGN_FACTS.map((fact) => fact.sourceUrl),
+    contentHash:
+      "e4a832a26c0cd79787c77829bbf2a54529fb696588df1899570492df0ae461d5",
+  },
+  {
+    id: SHARE_ZAP_DESIGN_MARKETING_CAMPAIGN_ID,
+    channel: "x",
+    queueOrder: 141,
+    notBefore: "2026-08-10T14:00:00.000Z",
+    body:
+      `Share a Zap design—not wallet authority.\n\nValidated in builder. No wallet prompt, signature, or transaction.\n\n${SHARE_ZAP_DESIGN_ATTRIBUTED_URLS.x}\n\nPre-audit software. Verify before use.`,
+    links: [SHARE_ZAP_DESIGN_ATTRIBUTED_URLS.x],
+    topics: ["protocol"],
+    disclosures: ["pre_audit"],
+    claims: SHARE_ZAP_DESIGN_CLAIMS,
+    flags: SAFE_FLAGS,
+    requiredFacts: SHARE_ZAP_DESIGN_FACTS,
+    canonicalSourceUrls: SHARE_ZAP_DESIGN_FACTS.map((fact) => fact.sourceUrl),
+    contentHash:
+      "4be6f92cd4047cb149d5a03257773d472c035fe613a91746215a25224c2ad392",
+  },
 ];
 
 // The v2 X copy has a separately verified public receipt and is intentionally
@@ -424,6 +569,12 @@ const CAMPAIGNS: readonly ReviewedMarketingCampaign[] = [
 // the durable queue together.
 const AUTO_DELIVERY_CAMPAIGNS = new Set([
   `${SCHEDULED_MARKETING_TEMPLATE_ID}:discord`,
+  `${LEGACY_AGENT_KIT_MARKETING_CAMPAIGN_ID}:discord`,
+  `${LEGACY_AGENT_KIT_MARKETING_CAMPAIGN_ID}:x`,
+  `${LEGACY_LEARN_HUB_MARKETING_CAMPAIGN_ID}:x`,
+  `${LEGACY_LEARN_HUB_MARKETING_CAMPAIGN_ID}:discord`,
+  `${LEGACY_SHARE_ZAP_DESIGN_MARKETING_CAMPAIGN_ID}:discord`,
+  `${LEGACY_SHARE_ZAP_DESIGN_MARKETING_CAMPAIGN_ID}:x`,
   `${AGENT_KIT_MARKETING_CAMPAIGN_ID}:discord`,
   `${AGENT_KIT_MARKETING_CAMPAIGN_ID}:x`,
   `${LEARN_HUB_MARKETING_CAMPAIGN_ID}:x`,
