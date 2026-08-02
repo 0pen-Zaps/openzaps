@@ -28,6 +28,7 @@ import {
   FEE_REWARDS_MANIFEST,
   feeRewardsCampaignAbi,
   feeRewardsVaultAbi,
+  campaignPhaseNote,
   formatCampaignPhase,
   formatCountdown,
   permitTokenAbi,
@@ -899,17 +900,14 @@ function CampaignCountdown({
 
   if (!countdown) return null;
   return (
-    <>
-      <p className={styles.countdown} role="timer" data-reached={reached || undefined}>
-        <span>{reached ? countdown.reachedLabel : countdown.label}</span>
-        <strong>
-          {reached
-            ? "awaiting the next verified block"
-            : <RollingDigits animate={!reduced} value={formatCountdown(remaining, reduced ? "minute" : "second")} />}
-        </strong>
-      </p>
-      <CampaignTimeline estimatedNow={countdown.target - remaining} />
-    </>
+    <p className={styles.countdown} role="timer" data-reached={reached || undefined}>
+      <span>{reached ? countdown.reachedLabel : countdown.label}</span>
+      <strong>
+        {reached
+          ? "awaiting the next verified block"
+          : <RollingDigits animate={!reduced} value={formatCountdown(remaining, reduced ? "minute" : "second")} />}
+      </strong>
+    </p>
   );
 }
 
@@ -1012,10 +1010,35 @@ function FeeMechanic({
     },
     {
       title: "Stakers split it, time-weighted",
-      body: "Your share of campaign-accounted WETH follows your stake and how long you hold it through the fixed end. Claim to your own wallet any time before the deadline.",
-      fact: <>Claim by <b>{formatDate(FEE_REWARDS_MANIFEST.campaign.claimDeadline)}</b></>,
+      body: "Your share of campaign-accounted WETH follows your stake and how long you hold it through the fixed end. Claims pay out to your own wallet.",
+      // Past the deadline this must not read as an open invitation.
+      fact: data?.phase === "expired"
+        ? <>Claims closed <b>{formatDate(FEE_REWARDS_MANIFEST.campaign.claimDeadline)}</b></>
+        : <>Claim by <b>{formatDate(FEE_REWARDS_MANIFEST.campaign.claimDeadline)}</b></>,
     },
   ];
+
+  // The closing cell must never advertise an action the campaign has already
+  // closed: staking ends with the window, claiming ends at the deadline.
+  const staking = data === null || data.phase === "upcoming" || data.phase === "active";
+  const claiming = data !== null && data.phase !== "expired";
+  const cta = staking
+    ? {
+      title: "Rewards follow time held",
+      body: "Reward weight accrues for as long as a stake sits in the campaign, so the same principal earns more the earlier it is staked within the window.",
+      label: "Stake & claim",
+    }
+    : claiming
+      ? {
+        title: "Claims are still open",
+        body: "New stakes have closed, but earned WETH stays claimable and principal stays withdrawable until the deadline.",
+        label: "Claim & withdraw",
+      }
+      : {
+        title: "This campaign has settled",
+        body: "The claim deadline has passed. Your position and the campaign's final state remain readable onchain.",
+        label: "View your position",
+      };
 
   return (
     <section className={styles.mechanic} aria-labelledby="rewards-mechanic-title">
@@ -1052,13 +1075,10 @@ function FeeMechanic({
           {/* Occupies the numeral slot so this cell's heading sits on the
               same baseline as the steps beside it. */}
           <span className={styles.mechanicIndex}>NEXT</span>
-          <h3>Rewards follow time held</h3>
-          <p>
-            Reward weight accrues for as long as a stake sits in the campaign, so the same principal
-            earns more the earlier it is staked within the window.
-          </p>
+          <h3>{cta.title}</h3>
+          <p>{cta.body}</p>
           <button className={styles.primaryCompact} onClick={onStart} type="button">
-            <Glyph name="boltFill" />Stake &amp; claim
+            <Glyph name="boltFill" />{cta.label}
           </button>
         </li>
       </ol>
@@ -1093,7 +1113,12 @@ function CampaignTerms({
         <i data-live={data?.phase === "active" || undefined} />
       </div>
       <strong className={styles.phase}>{data ? formatCampaignPhase(data.phase) : "Reading chain…"}</strong>
+      {data ? <p className={styles.phaseNote}>{campaignPhaseNote(data.phase)}</p> : null}
       {data ? <CampaignCountdown data={data} onResync={onResync} /> : null}
+      {/* The timeline is the campaign's map, not a countdown accessory: the
+          phases with no clock target (settlement, expired) are exactly when a
+          reader most needs to see where the window sat. */}
+      {data ? <CampaignTimeline estimatedNow={BigInt(data.blockTimestamp)} /> : null}
       <div className={styles.allocation} aria-label="Launch allocation: 50 fee shares in the campaign and 50 retained by the sponsor">
         <span className={styles.campaignHalf} />
         <span className={styles.sponsorHalf} />

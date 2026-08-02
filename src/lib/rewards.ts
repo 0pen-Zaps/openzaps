@@ -164,6 +164,31 @@ export function campaignPhase(
   return "expired";
 }
 
+/**
+ * One sentence per phase saying what is true now and who may act.
+ *
+ * The phase word alone ("Settlement pending") tells a reader nothing about
+ * whether their funds are stuck, whether anyone is required to act, or what
+ * they can still do. Every sentence here names an action that is genuinely
+ * permissionless or a boundary that is genuinely enforced.
+ */
+export function campaignPhaseNote(phase: FeeRewardsPhase): string {
+  switch (phase) {
+    case "unfunded":
+      return "No fee shares have been placed in the campaign yet, so nothing can accrue.";
+    case "upcoming":
+      return "Pre-staking is open. Reward weight starts accruing at the fixed start, not on deposit.";
+    case "active":
+      return "Staking is open and reward weight is accruing. Harvest is permissionless.";
+    case "settlement-pending":
+      return "The window has closed. Anyone can call finalize to settle and return the fee shares.";
+    case "claim-only":
+      return "Staking has closed. Claims and withdrawals stay open until the deadline.";
+    case "expired":
+      return "The claim deadline has passed. Unclaimed WETH can now be swept by the sponsor.";
+  }
+}
+
 export function formatCampaignPhase(phase: FeeRewardsPhase): string {
   switch (phase) {
     case "unfunded":
