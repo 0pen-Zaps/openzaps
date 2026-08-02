@@ -181,6 +181,26 @@ export function formatCampaignPhase(phase: FeeRewardsPhase): string {
   }
 }
 
+/**
+ * Share of staked principal a prospective stake would hold at the verified
+ * block, in percent to two decimals.
+ *
+ * This is deliberately a statement about principal, not about rewards: the
+ * campaign pays by time-weighted stake, so a staker's final reward share also
+ * depends on when they stake and how long they hold. Returns null when there
+ * is nothing to project, so the UI can stay silent rather than render a
+ * zero that reads like an answer.
+ */
+export function projectedPrincipalShare(
+  stake: bigint,
+  totalStaked: bigint,
+): number | null {
+  if (stake <= 0n || totalStaked < 0n) return null;
+  const total = totalStaked + stake;
+  if (total <= 0n) return null;
+  return Number((stake * 10_000n) / total) / 100;
+}
+
 export type CampaignCountdown = {
   label: string;
   reachedLabel: string;

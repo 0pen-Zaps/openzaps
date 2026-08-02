@@ -435,6 +435,235 @@
   font-size: 9.5px;
 }
 
+/* ── How the fees reach a staker ─────────────────────────────────────────
+   The explainer between the hero and the workspaces. Every figure it shows
+   is either a manifest constant or a live verified read; nothing here is a
+   projection. */
+
+.mechanic {
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: var(--r-card);
+  background: var(--panel);
+  box-shadow: var(--sh-2);
+}
+
+.mechanicHead {
+  padding: 22px 24px 20px;
+  border-bottom: 1px solid var(--line-soft);
+}
+
+.mechanicHead h2 {
+  max-width: 28ch;
+  margin: 8px 0 0;
+  font-family: var(--font-serif), Newsreader, serif;
+  font-size: clamp(26px, 3vw, 34px);
+  font-weight: 480;
+  letter-spacing: -0.03em;
+  line-height: 1.06;
+}
+
+.mechanicHead p {
+  max-width: 68ch;
+  margin: 12px 0 0;
+  color: var(--ink-2);
+  font-size: 14px;
+  line-height: 1.68;
+}
+
+/* Explicit column counts rather than auto-fit: five steps against an
+   auto-fitting track can land 4+1, and a single orphaned cell reads as a
+   rendering fault. 1 / 2 / 3 columns keeps the last row deliberate. */
+.mechanicSteps {
+  display: grid;
+  grid-template-columns: 1fr;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+@media (min-width: 680px) {
+  .mechanicSteps {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (min-width: 1080px) {
+  .mechanicSteps {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+.mechanicSteps li {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 8px;
+  padding: 20px 24px 22px;
+  border-right: 1px solid var(--line-soft);
+  border-bottom: 1px solid var(--line-soft);
+}
+
+/* --zap is the brand FILL, never a text colour: on the light themes it is
+   1.10:1 against --panel. --link is the accent-text token and clears 4.5:1
+   on all five themes. */
+.mechanicIndex {
+  color: var(--link);
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-size: 10.5px;
+  font-weight: 650;
+  letter-spacing: 0.12em;
+}
+
+.mechanicSteps h3 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 620;
+  letter-spacing: -0.012em;
+}
+
+.mechanicSteps p {
+  margin: 0;
+  color: var(--ink-2);
+  font-size: 13.5px;
+  line-height: 1.62;
+}
+
+/* A live or manifest-pinned figure per step, so the explainer is anchored to
+   evidence rather than describing an abstraction. */
+.mechanicFact {
+  margin-top: auto;
+  padding-top: 10px;
+  color: var(--ink-3);
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.mechanicFact b {
+  color: var(--ink);
+  font-weight: 650;
+}
+
+.mechanicBoundary {
+  display: flex;
+  gap: 12px;
+  padding: 18px 24px;
+  background: var(--sunk);
+}
+
+.mechanicBoundary svg {
+  flex: none;
+  width: 15px;
+  height: 15px;
+  margin-top: 2px;
+  color: var(--ink-3);
+}
+
+.mechanicBoundary div {
+  min-width: 0;
+}
+
+.mechanicBoundary h3 {
+  margin: 0;
+  color: var(--ink-2);
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-size: 10.5px;
+  font-weight: 650;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.mechanicBoundary ul {
+  margin: 10px 0 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 7px;
+}
+
+.mechanicBoundary li {
+  padding-left: 16px;
+  position: relative;
+  color: var(--ink-2);
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.mechanicBoundary li::before {
+  content: "—";
+  position: absolute;
+  left: 0;
+  color: var(--ink-3);
+}
+
+.mechanicBoundary strong {
+  color: var(--ink);
+  font-weight: 620;
+}
+
+/* Live share-of-principal readout under the stake amount. The figure is
+   prominent; the qualifier under it is not optional decoration. */
+.shareProjection {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 2px 12px;
+  margin: 0;
+  padding: 11px 12px;
+  border: 1px solid var(--line-soft);
+  /* The brand appears as a fill, which is theme-safe; the figure itself
+     stays on --ink because --link is only 3.99:1 on --sunk in Ivory. */
+  border-left: 2px solid var(--zap);
+  border-radius: var(--r-card-sm);
+  background: var(--sunk);
+}
+
+.shareProjection > span {
+  color: var(--ink-3);
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-size: 10px;
+  font-weight: 650;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.shareProjection > strong {
+  color: var(--ink);
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-size: 15px;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.shareProjection > em {
+  grid-column: 1 / -1;
+  margin-top: 4px;
+  color: var(--ink-3);
+  font-size: 11.5px;
+  font-style: normal;
+  line-height: 1.5;
+}
+
+@media (max-width: 679px) {
+  .mechanicSteps li {
+    border-right: none;
+  }
+}
+
+@media (min-width: 680px) and (max-width: 1079px) {
+  .mechanicSteps li:nth-child(2n) {
+    border-right: none;
+  }
+}
+
+@media (min-width: 1080px) {
+  .mechanicSteps li:nth-child(3n) {
+    border-right: none;
+  }
+}
+
 .tabs {
   display: grid;
   grid-template-columns: repeat(3, 1fr);

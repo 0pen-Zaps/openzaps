@@ -180,6 +180,20 @@ describe("marketing status route", () => {
             "OpenZaps Virtual Trading banner reading \"Trade the route. Risk nothing.\" beside a wallet-free paper-trading safety checklist.",
         },
       }),
+      expect.objectContaining({
+        tutorialId: "earn-pool-fees-not-emissions",
+        hero: {
+          sourcePath: "docs/media/13-fee-rewards-campaign.jpg",
+          sha256:
+            "4d0e4710ceec2acd26f1d52f12941fe0d125428f1156d592a86720916ff841b0",
+          mimeType: "image/jpeg",
+          width: 1128,
+          height: 440,
+          byteLength: 109_242,
+          alt:
+            "The OpenZaps fee rewards page reading \"Stake 0xZAPS. Claim WETH from the pool's trading fees.\" beside a campaign terms panel showing the seven-day window and claim deadline.",
+        },
+      }),
     ]);
     expect(Object.keys(body.sourceControlledTutorials[0]?.hero ?? {})).not
       .toContain("bytes");

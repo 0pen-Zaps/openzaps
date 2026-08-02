@@ -20,7 +20,12 @@
       "id": "paper-trade-first-authority-map",
       "title": "Paper Trade First, Then Draw the Authority Map",
       "subtitle": "Test an agentic DeFi workflow without a wallet, then turn it into a human-reviewed OpenZaps authority map",
-      "tags": ["DeFi", "AI agents", "OpenZaps", "Risk management"],
+      "tags": [
+        "DeFi",
+        "AI agents",
+        "OpenZaps",
+        "Risk management"
+      ],
       "sourcePath": "docs/tutorials/paper-trade-first-authority-map.md",
       "sourceSha256": "62b30badadb4b94c2952c13cec0b6674a6b2e528e928fa23d15c5e20dcdb5a46",
       "bodySha256": "362f181d2a18ce6d08fd239e76aa2c860133870f3784078accce22c92976b004",
@@ -33,32 +38,140 @@
         "byteLength": 49900,
         "alt": "OpenZaps Virtual Trading banner reading \"Trade the route. Risk nothing.\" beside a wallet-free paper-trading safety checklist."
       },
-      "topics": ["protocol", "simulation", "trading", "security"],
-      "disclosures": ["pre_audit"],
+      "topics": [
+        "protocol",
+        "simulation",
+        "trading",
+        "security"
+      ],
+      "disclosures": [
+        "pre_audit"
+      ],
       "claims": [
         {
           "text": "Virtual Trading is a browser-local paper-trading surface with virtual funds and no wallet, approval, signature, or transaction.",
-          "factKeys": ["product.virtual_trading"],
+          "factKeys": [
+            "product.virtual_trading"
+          ],
           "treatment": "asserted"
         },
         {
           "text": "Request a Zap provides a human-reviewed authority map and is not an automatic deployment promise.",
-          "factKeys": ["product.request_a_zap"],
+          "factKeys": [
+            "product.request_a_zap"
+          ],
           "treatment": "asserted"
         },
         {
           "text": "An agent may submit a due run but cannot widen the signed recipient, amount, cadence, floor, adapter, asset, or calldata.",
-          "factKeys": ["authority.submission"],
+          "factKeys": [
+            "authority.submission"
+          ],
           "treatment": "asserted"
         },
         {
           "text": "OpenZaps has not completed an external audit.",
-          "factKeys": ["protocol.pre_audit"],
+          "factKeys": [
+            "protocol.pre_audit"
+          ],
           "treatment": "asserted"
         }
       ],
       "status": "draft",
       "preparedAt": "2026-07-31",
+      "canonicalUrl": null,
+      "publishedAt": null
+    },
+    {
+      "id": "earn-pool-fees-not-emissions",
+      "title": "Earn the Pool's Fees, Not an Emission",
+      "subtitle": "How a Clanker v4 fee position becomes 100 tokenized shares, why 50 of them fund a seven-day 0xZAPS staking campaign, and the exact reads to run before you stake",
+      "tags": [
+        "DeFi",
+        "0xZAPS",
+        "Staking",
+        "Trading fees"
+      ],
+      "sourcePath": "docs/tutorials/earn-pool-fees-not-emissions.md",
+      "sourceSha256": "8d111cffcbefcdea9273d0255f1aed719dd56de1e757b04a09816bfdfafb9ed8",
+      "bodySha256": "a4a5ccdda3f7e2daa1ab9b5b9a57872c772cf47c97079574cad26b7509021727",
+      "hero": {
+        "sourcePath": "docs/media/13-fee-rewards-campaign.jpg",
+        "sha256": "4d0e4710ceec2acd26f1d52f12941fe0d125428f1156d592a86720916ff841b0",
+        "mimeType": "image/jpeg",
+        "width": 1128,
+        "height": 440,
+        "byteLength": 109242,
+        "alt": "The OpenZaps fee rewards page reading \"Stake 0xZAPS. Claim WETH from the pool's trading fees.\" beside a campaign terms panel showing the seven-day window and claim deadline."
+      },
+      "topics": [
+        "token",
+        "trading",
+        "protocol"
+      ],
+      "disclosures": [
+        "pre_audit"
+      ],
+      "claims": [
+        {
+          "text": "The campaign stakes 0xZAPS and pays rewards only in WETH, which is bridged ether and is not minted by the campaign, the vault, or OpenZaps.",
+          "factKeys": [
+            "campaign.reward_asset"
+          ],
+          "treatment": "asserted"
+        },
+        {
+          "text": "The reward source is the Clanker v4 hook fee paid by swaps in the 0xZAPS/aeWETH pool; the pool is dynamic-fee and the hook owner can change the rate.",
+          "factKeys": [
+            "campaign.fee_source"
+          ],
+          "treatment": "asserted"
+        },
+        {
+          "text": "A vault minted a fixed supply of 100 fee shares and 50 of them were transferred into the campaign contract before launch.",
+          "factKeys": [
+            "campaign.fee_share_allocation"
+          ],
+          "treatment": "asserted"
+        },
+        {
+          "text": "Holding 0xZAPS grants no fee rights; a claim accrues only while tokens are staked in the campaign contract.",
+          "factKeys": [
+            "campaign.staking_boundary"
+          ],
+          "treatment": "asserted"
+        },
+        {
+          "text": "Rewards are split by time-weighted stake across a fixed seven-day window and expire at the claim deadline.",
+          "factKeys": [
+            "campaign.reward_accounting"
+          ],
+          "treatment": "asserted"
+        },
+        {
+          "text": "Harvest and reward synchronization are permissionless, so no operator can withhold rewards and none is obligated to advance them.",
+          "factKeys": [
+            "campaign.permissionless_upkeep"
+          ],
+          "treatment": "asserted"
+        },
+        {
+          "text": "No yield, rate, or APR is promised; rewards depend entirely on trading volume that no participant controls.",
+          "factKeys": [
+            "campaign.no_yield_promise"
+          ],
+          "treatment": "asserted"
+        },
+        {
+          "text": "OpenZaps has not completed an external audit, and the campaign and vault contracts are not source-verified on the public explorer.",
+          "factKeys": [
+            "protocol.pre_audit"
+          ],
+          "treatment": "asserted"
+        }
+      ],
+      "status": "draft",
+      "preparedAt": "2026-08-02",
       "canonicalUrl": null,
       "publishedAt": null
     }
