@@ -126,12 +126,8 @@ contract FeeShareTermWrap {
         totalDeposited += shares;
         totalSupply += shares;
         balanceOf[msg.sender] += shares;
-        rewardDebt[msg.sender] =
-            (balanceOf[msg.sender] * cumulativeRewardPerUnit) / ACC_SCALE;
-        require(
-            IERC20(FEE_SHARES).transferFrom(msg.sender, address(this), shares),
-            TransferFailed()
-        );
+        rewardDebt[msg.sender] = (balanceOf[msg.sender] * cumulativeRewardPerUnit) / ACC_SCALE;
+        require(IERC20(FEE_SHARES).transferFrom(msg.sender, address(this), shares), TransferFailed());
         emit Transfer(address(0), msg.sender, shares);
         emit Deposited(msg.sender, shares);
     }
@@ -170,8 +166,7 @@ contract FeeShareTermWrap {
 
     /// @notice Reward currently claimable by `account`.
     function claimableReward(address account) external view returns (uint256) {
-        uint256 pending =
-            (balanceOf[account] * cumulativeRewardPerUnit) / ACC_SCALE - rewardDebt[account];
+        uint256 pending = (balanceOf[account] * cumulativeRewardPerUnit) / ACC_SCALE - rewardDebt[account];
         return accrued[account] + pending;
     }
 
@@ -229,8 +224,7 @@ contract FeeShareTermWrap {
     }
 
     function _checkpoint(address account) private {
-        uint256 pending =
-            (balanceOf[account] * cumulativeRewardPerUnit) / ACC_SCALE - rewardDebt[account];
+        uint256 pending = (balanceOf[account] * cumulativeRewardPerUnit) / ACC_SCALE - rewardDebt[account];
         if (pending != 0) accrued[account] += pending;
         rewardDebt[account] = (balanceOf[account] * cumulativeRewardPerUnit) / ACC_SCALE;
     }

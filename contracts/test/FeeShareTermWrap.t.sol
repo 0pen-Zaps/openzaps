@@ -97,13 +97,7 @@ contract FeeShareTermWrapTest is Test {
         maturity = uint64(block.timestamp + 8 days);
         claimDeadline = uint64(block.timestamp + 38 days);
         wrap = new FeeShareTermWrap(
-            address(vault),
-            address(weth),
-            depositUntil,
-            maturity,
-            claimDeadline,
-            "Wrapped fee term",
-            "wFEE-T1"
+            address(vault), address(weth), depositUntil, maturity, claimDeadline, "Wrapped fee term", "wFEE-T1"
         );
         vault.mint(alice, 30e18);
         vault.mint(bob, 10e18);
@@ -266,11 +260,7 @@ contract FeeShareTermWrapTest is Test {
     /// @dev Reward conservation: whatever two depositors are owed never
     ///      exceeds what was harvested, and the shortfall is only dust from
     ///      integer division.
-    function testFuzz_accountingConservesReward(
-        uint96 depositA,
-        uint96 depositB,
-        uint96 rewardAmount
-    ) public {
+    function testFuzz_accountingConservesReward(uint96 depositA, uint96 depositB, uint96 rewardAmount) public {
         uint256 a = bound(uint256(depositA), 1, 1e24);
         uint256 b = bound(uint256(depositB), 1, 1e24);
         uint256 r = bound(uint256(rewardAmount), 0, 1e24);
