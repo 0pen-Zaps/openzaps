@@ -175,7 +175,48 @@ export type DiscordCommandReadbackCounts = {
 };
 
 export const DISCORD_PREFLIGHT_BUTTON_LABEL =
-  "Verify Discord destination and command manifest";
+  "Verify Discord destination, manifest, and invocation receipts";
+
+const DISCORD_INVOCATION_COMMAND_NAMES = [
+  "ask",
+  "openzaps",
+  "status",
+] as const;
+
+export type DiscordInvocationCommandName =
+  (typeof DISCORD_INVOCATION_COMMAND_NAMES)[number];
+
+export type DiscordInvocationCommandReadback = {
+  command: DiscordInvocationCommandName;
+  observed: boolean;
+  firstVerifiedAt: string | null;
+};
+
+export type DiscordInvocationReadback =
+  | {
+      schemaVersion: 1;
+      status: "current_manifest_seen" | "not_observed";
+      scope: "privacy_safe_configured_target_receipts";
+      manifestSha256: string;
+      commands: DiscordInvocationCommandReadback[];
+      anyVerifiedInvocationObserved: boolean;
+      allCommandsObserved: boolean;
+      responseDeliveryVerified: false;
+      uniqueInvocationsCounted: false;
+      writesPerformed: false;
+    }
+  | {
+      schemaVersion: 1;
+      status: "unavailable";
+      scope: "privacy_safe_configured_target_receipts";
+      manifestSha256: null;
+      commands: [];
+      anyVerifiedInvocationObserved: false;
+      allCommandsObserved: false;
+      responseDeliveryVerified: false;
+      uniqueInvocationsCounted: false;
+      writesPerformed: false;
+    };
 
 export type DiscordActivationVerification = {
   destination: {
@@ -212,6 +253,7 @@ export type DiscordActivationVerification = {
         liveInvocationVerified: false;
         writesPerformed: false;
       };
+  invocationReadback: DiscordInvocationReadback;
   writesPerformed: false;
 };
 
@@ -1046,6 +1088,149 @@ function discordCommandCountsAreCoherent(
     && counts.remote === counts.desired - counts.create + counts.delete;
 }
 
+const DISCORD_INVOCATION_READBACK_KEYS = [
+  "schemaVersion",
+  "status",
+  "scope",
+  "manifestSha256",
+  "commands",
+  "anyVerifiedInvocationObserved",
+  "allCommandsObserved",
+  "responseDeliveryVerified",
+  "uniqueInvocationsCounted",
+  "writesPerformed",
+] as const;
+
+const DISCORD_INVOCATION_COMMAND_KEYS = [
+  "command",
+  "observed",
+  "firstVerifiedAt",
+] as const;
+
+function hasOnlyKeys(
+  value: JsonRecord,
+  expected: readonly string[],
+): boolean {
+  const keys = Object.keys(value);
+  return keys.length === expected.length
+    && keys.every((key) => expected.includes(key));
+}
+
+function isCanonicalDiscordTimestamp(value: unknown): value is string {
+  if (typeof value !== "string" || value.length > 40) return false;
+  const milliseconds = Date.parse(value);
+  return Number.isFinite(milliseconds)
+    && milliseconds % 60_000 === 0
+    && new Date(milliseconds).toISOString() === value;
+}
+
+function parseDiscordInvocationReadback(
+  value: unknown,
+  expectedManifestSha256: string | null,
+): DiscordInvocationReadback | null {
+  if (
+    !isRecord(value)
+    || !hasOnlyKeys(value, DISCORD_INVOCATION_READBACK_KEYS)
+    || value.schemaVersion !== 1
+    || value.scope !== "privacy_safe_configured_target_receipts"
+    || value.responseDeliveryVerified !== false
+    || value.uniqueInvocationsCounted !== false
+    || value.writesPerformed !== false
+    || !Array.isArray(value.commands)
+  ) return null;
+
+  if (value.status === "unavailable") {
+    if (
+      value.manifestSha256 !== null
+      || value.commands.length !== 0
+      || value.anyVerifiedInvocationObserved !== false
+      || value.allCommandsObserved !== false
+    ) return null;
+    return {
+      schemaVersion: 1,
+      status: "unavailable",
+      scope: "privacy_safe_configured_target_receipts",
+      manifestSha256: null,
+      commands: [],
+      anyVerifiedInvocationObserved: false,
+      allCommandsObserved: false,
+      responseDeliveryVerified: false,
+      uniqueInvocationsCounted: false,
+      writesPerformed: false,
+    };
+  }
+
+  if (
+    value.status !== "current_manifest_seen"
+    && value.status !== "not_observed"
+  ) return null;
+  const manifestSha256 = typeof value.manifestSha256 === "string"
+    ? value.manifestSha256
+    : null;
+  if (
+    !manifestSha256
+    || !/^[0-9a-f]{64}$/u.test(manifestSha256)
+    || (expectedManifestSha256 !== null
+      && manifestSha256 !== expectedManifestSha256)
+    || value.commands.length !== DISCORD_INVOCATION_COMMAND_NAMES.length
+  ) return null;
+
+  const commandsByName = new Map<
+    DiscordInvocationCommandName,
+    DiscordInvocationCommandReadback
+  >();
+  for (const rawCommand of value.commands) {
+    if (
+      !isRecord(rawCommand)
+      || !hasOnlyKeys(rawCommand, DISCORD_INVOCATION_COMMAND_KEYS)
+      || typeof rawCommand.command !== "string"
+      || !DISCORD_INVOCATION_COMMAND_NAMES.includes(
+        rawCommand.command as DiscordInvocationCommandName,
+      )
+      || commandsByName.has(rawCommand.command as DiscordInvocationCommandName)
+      || typeof rawCommand.observed !== "boolean"
+    ) return null;
+    const command = rawCommand.command as DiscordInvocationCommandName;
+    if (
+      (rawCommand.observed
+        && !isCanonicalDiscordTimestamp(rawCommand.firstVerifiedAt))
+      || (!rawCommand.observed && rawCommand.firstVerifiedAt !== null)
+    ) return null;
+    commandsByName.set(command, {
+      command,
+      observed: rawCommand.observed,
+      firstVerifiedAt: rawCommand.observed
+        ? rawCommand.firstVerifiedAt as string
+        : null,
+    });
+  }
+  const commands = DISCORD_INVOCATION_COMMAND_NAMES.map(
+    (command) => commandsByName.get(command),
+  );
+  if (commands.some((command) => !command)) return null;
+  const parsedCommands = commands as DiscordInvocationCommandReadback[];
+  const anyObserved = parsedCommands.some((command) => command.observed);
+  const allObserved = parsedCommands.every((command) => command.observed);
+  if (
+    value.anyVerifiedInvocationObserved !== anyObserved
+    || value.allCommandsObserved !== allObserved
+    || (value.status === "current_manifest_seen") !== anyObserved
+  ) return null;
+
+  return {
+    schemaVersion: 1,
+    status: value.status,
+    scope: "privacy_safe_configured_target_receipts",
+    manifestSha256,
+    commands: parsedCommands,
+    anyVerifiedInvocationObserved: anyObserved,
+    allCommandsObserved: allObserved,
+    responseDeliveryVerified: false,
+    uniqueInvocationsCounted: false,
+    writesPerformed: false,
+  };
+}
+
 export function parseDiscordActivationVerification(
   value: unknown,
 ): DiscordActivationVerification | null {
@@ -1078,6 +1263,7 @@ export function parseDiscordActivationVerification(
     mutationsPerformed: false as const,
   };
   const commandReadback = value.commandReadback;
+  let parsedCommandReadback: DiscordActivationVerification["commandReadback"];
   if (
     commandReadback.status === "not_configured"
     || commandReadback.status === "unavailable"
@@ -1087,52 +1273,47 @@ export function parseDiscordActivationVerification(
       || commandReadback.providerReadbackVerified !== false
       || commandReadback.managedCommandsInSync !== false
     ) return null;
-    return {
-      destination,
-      commandReadback: {
-        schemaVersion: 1,
-        status: commandReadback.status,
-        scope: "configured_application_guild",
-        verified: false,
-        providerReadbackVerified: false,
-        managedCommandsInSync: false,
-        guildPermissionVisibility: "unchecked",
-        liveInvocationVerified: false,
-        writesPerformed: false,
-      },
+    parsedCommandReadback = {
+      schemaVersion: 1,
+      status: commandReadback.status,
+      scope: "configured_application_guild",
+      verified: false,
+      providerReadbackVerified: false,
+      managedCommandsInSync: false,
+      guildPermissionVisibility: "unchecked",
+      liveInvocationVerified: false,
       writesPerformed: false,
     };
-  }
-  if (
+  } else if (
     commandReadback.status !== "in_sync"
     && commandReadback.status !== "drift"
-  ) return null;
-  const counts = parseDiscordCommandCounts(commandReadback.counts);
-  const manifestSha256 = text(commandReadback.manifestSha256);
-  const managedReadbackSha256 = text(commandReadback.managedReadbackSha256);
-  if (
-    commandReadback.verified !== true
-    || commandReadback.providerReadbackVerified !== true
-    || typeof commandReadback.managedCommandsInSync !== "boolean"
-    || !counts
-    || !discordCommandCountsAreCoherent(counts)
-    || !manifestSha256
-    || !/^[0-9a-f]{64}$/u.test(manifestSha256)
-    || !managedReadbackSha256
-    || !/^[0-9a-f]{64}$/u.test(managedReadbackSha256)
-  ) return null;
-  const hashesMatch = manifestSha256 === managedReadbackSha256;
-  const expectedInSync = commandReadback.status === "in_sync";
-  if (
-    commandReadback.managedCommandsInSync !== expectedInSync
-    || hashesMatch !== expectedInSync
-    || (expectedInSync
-      ? counts.create !== 0 || counts.update !== 0
-      : counts.create === 0 && counts.update === 0)
-  ) return null;
-  return {
-    destination,
-    commandReadback: {
+  ) {
+    return null;
+  } else {
+    const counts = parseDiscordCommandCounts(commandReadback.counts);
+    const manifestSha256 = text(commandReadback.manifestSha256);
+    const managedReadbackSha256 = text(commandReadback.managedReadbackSha256);
+    if (
+      commandReadback.verified !== true
+      || commandReadback.providerReadbackVerified !== true
+      || typeof commandReadback.managedCommandsInSync !== "boolean"
+      || !counts
+      || !discordCommandCountsAreCoherent(counts)
+      || !manifestSha256
+      || !/^[0-9a-f]{64}$/u.test(manifestSha256)
+      || !managedReadbackSha256
+      || !/^[0-9a-f]{64}$/u.test(managedReadbackSha256)
+    ) return null;
+    const hashesMatch = manifestSha256 === managedReadbackSha256;
+    const expectedInSync = commandReadback.status === "in_sync";
+    if (
+      commandReadback.managedCommandsInSync !== expectedInSync
+      || hashesMatch !== expectedInSync
+      || (expectedInSync
+        ? counts.create !== 0 || counts.update !== 0
+        : counts.create === 0 && counts.update === 0)
+    ) return null;
+    parsedCommandReadback = {
       schemaVersion: 1,
       status: commandReadback.status,
       scope: "configured_application_guild",
@@ -1145,7 +1326,20 @@ export function parseDiscordActivationVerification(
       managedReadbackSha256,
       counts,
       writesPerformed: false,
-    },
+    };
+  }
+
+  const invocationReadback = parseDiscordInvocationReadback(
+    value.invocationReadback,
+    "manifestSha256" in parsedCommandReadback
+      ? parsedCommandReadback.manifestSha256
+      : null,
+  );
+  if (!invocationReadback) return null;
+  return {
+    destination,
+    commandReadback: parsedCommandReadback,
+    invocationReadback,
     writesPerformed: false,
   };
 }
@@ -1155,22 +1349,70 @@ export function discordActivationSummary(
 ): string {
   const destination = `Discord ${value.destination.transport} destination verified.`;
   const readback = value.commandReadback;
-  const boundary =
-    "Guild command permissions were not checked, and the manifest readback does not prove a live signed invocation. Read-only check; no command was registered or changed.";
-  if (readback.status === "not_configured") {
-    return `${destination} Official guild-command readback is not configured because the server credential is missing or invalid. ${boundary}`;
+  let manifest: string;
+  if (!("counts" in readback)) {
+    manifest = readback.status === "not_configured"
+      ? "Official manifest: guild-command readback is not configured because the server credential is missing or invalid."
+      : "Official manifest: guild-command readback is currently unavailable.";
+  } else if (readback.status === "drift") {
+    manifest =
+      `Official manifest: the provider projection found ${readback.counts.create} missing and ${readback.counts.update} drifted managed commands.`;
+  } else {
+    const unrelated = readback.counts.delete > 0
+      ? ` ${readback.counts.delete} unrelated guild commands were left untouched.`
+      : "";
+    manifest =
+      `Official manifest: the provider projection matches all ${readback.counts.desired} source-controlled managed commands.${unrelated}`;
   }
-  if (readback.status === "unavailable") {
-    return `${destination} Official guild-command readback is currently unavailable. ${boundary}`;
+
+  const permissions =
+    "Permission visibility: unchecked; this readback does not inspect guild command permissions.";
+  const invocation = value.invocationReadback;
+  let signedHandler: string;
+  if (invocation.status === "unavailable") {
+    signedHandler =
+      "Signed-handler observation: privacy-safe current-manifest receipt readback is unavailable.";
+  } else if (invocation.status === "not_observed") {
+    signedHandler =
+      "Signed-handler observation: no current-manifest receipt was observed for /ask, /openzaps, or /status.";
+  } else {
+    const observedCommands = invocation.commands
+      .filter((command) => command.observed)
+    const observed = observedCommands
+      .map(
+        (command) =>
+          `/${command.command} (first verified ${command.firstVerifiedAt})`,
+      )
+      .join(", ");
+    const notObserved = invocation.commands
+      .filter((command) => !command.observed)
+      .map((command) => `/${command.command}`)
+      .join(", ");
+    signedHandler =
+      `Signed-handler observation: current-manifest receipt${
+        observedCommands.length === 1
+          ? ""
+          : "s"
+      } observed for ${observed}.${
+        notObserved ? ` Not observed: ${notObserved}.` : ""
+      } The receipt lane proves only that the named signed request${
+        observedCommands.length === 1 ? "" : "s"
+      } reached the configured handler; it does not establish current provider registration, guild permission visibility, ongoing command availability, or response delivery.`;
   }
-  if (!("counts" in readback)) return `${destination} ${boundary}`;
-  if (readback.status === "drift") {
-    return `${destination} Official guild command-manifest projection found ${readback.counts.create} missing and ${readback.counts.update} drifted managed commands. ${boundary}`;
-  }
-  const unrelated = readback.counts.delete > 0
-    ? ` ${readback.counts.delete} unrelated guild commands were left untouched.`
-    : "";
-  return `${destination} Official guild command-manifest projection matches all ${readback.counts.desired} source-controlled managed commands.${unrelated} ${boundary}`;
+  const delivery =
+    "Response delivery: not verified; handler observation does not prove that Discord displayed a response.";
+  const uniqueness =
+    "Unique invocations: not counted by this privacy-safe receipt lane.";
+  const boundary = "Read-only check; no command was registered or changed.";
+  return [
+    destination,
+    manifest,
+    permissions,
+    signedHandler,
+    delivery,
+    uniqueness,
+    boundary,
+  ].join(" ");
 }
 
 export function xIdentityRequestIsCurrent(input: {
@@ -3602,7 +3844,12 @@ export function MarketingOperator(): React.JSX.Element {
                 className={
                   discordActivationState === "error"
                   || (discordActivation
-                    && discordActivation.commandReadback.status !== "in_sync")
+                    && (
+                      discordActivation.commandReadback.status !== "in_sync"
+                      || discordActivation.invocationReadback.status
+                        !== "current_manifest_seen"
+                      || !discordActivation.invocationReadback.allCommandsObserved
+                    ))
                     ? styles.readinessEvidenceError
                     : styles.readinessEvidenceText
                 }
@@ -3612,7 +3859,7 @@ export function MarketingOperator(): React.JSX.Element {
                   ? discordActivationSummary(discordActivation)
                   : discordActivationState === "error"
                     ? discordActivationError
-                    : "No live Discord destination and command-manifest check has been run in this tab."}
+                    : "No live Discord destination, command-manifest, or invocation-receipt check has been run in this tab."}
               </p>
             </div>
             {readiness.length ? (

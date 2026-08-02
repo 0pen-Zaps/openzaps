@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import {
   verifyDiscordInteractionSignature,
 } from "@/lib/marketing/channels";
+import { scheduleDiscordCommandInvocationReceipt } from "@/lib/marketing/discord-command-invocation-receipt-server";
 import { isSupportedDiscordCommandName } from "@/lib/marketing/discord-commands";
 import { answerOpenZapsFaq } from "@/lib/marketing/discord-faq";
 import { BoundedTextBodyError, readBoundedTextBody } from "@/lib/request-body";
@@ -128,5 +129,7 @@ export async function POST(request: Request): Promise<Response> {
     command === "status"
       ? "Is OpenZaps audited and production ready?"
       : findStringOption(interaction.data?.options) || "What is OpenZaps?";
-  return interactionMessage(answerOpenZapsFaq(question).content);
+  const response = interactionMessage(answerOpenZapsFaq(question).content);
+  scheduleDiscordCommandInvocationReceipt(command);
+  return response;
 }

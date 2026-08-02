@@ -404,6 +404,9 @@ const xMentionInboxMigration =
   "20260801143000_marketing_x_mentions.sql";
 const tutorialPublicationReceiptMigration =
   "20260802063540_marketing_tutorial_publication_receipts.sql";
+const discordInvocationTargetHmac = "c1".repeat(32);
+const concurrentDiscordInvocationTargetHmac = "c2".repeat(32);
+const discordInvocationManifestSha256 = "d1".repeat(32);
 const subscriptionGrantHardeningMigration =
   "20260801224100_harden_subscription_authorization_grants.sql";
 const retentionSequenceHardeningMigration =
@@ -844,6 +847,339 @@ try {
   assert(
     replayState.join("|") === "0|0|0|5",
     `full-chain replay left unexpected relay state: ${replayState.join(", ")}`,
+  );
+
+  const discordInvocationRecordSignature =
+    "public.record_marketing_discord_command_invocation_receipt(text,text,text)";
+  const discordInvocationReadbackSignature =
+    "public.get_marketing_discord_command_invocation_readback(text,text)";
+  const privateDiscordInvocationRecordSignature =
+    "private.record_marketing_discord_command_invocation_receipt(text,text,text)";
+  const privateDiscordInvocationReadbackSignature =
+    "private.get_marketing_discord_command_invocation_readback(text,text)";
+  const discordInvocationPrivileges = psqlScalar(`
+    select
+      (
+        select relrowsecurity
+        from pg_catalog.pg_class
+        where oid = 'private.marketing_discord_command_invocation_receipts'::regclass
+      ),
+      has_schema_privilege('service_role', 'private', 'usage'),
+      has_schema_privilege('anon', 'private', 'usage'),
+      has_schema_privilege('authenticated', 'private', 'usage'),
+      has_function_privilege(
+        'service_role',
+        '${discordInvocationRecordSignature}',
+        'execute'
+      ),
+      has_function_privilege(
+        'service_role',
+        '${discordInvocationReadbackSignature}',
+        'execute'
+      ),
+      has_function_privilege(
+        'service_role',
+        '${privateDiscordInvocationRecordSignature}',
+        'execute'
+      ),
+      has_function_privilege(
+        'service_role',
+        '${privateDiscordInvocationReadbackSignature}',
+        'execute'
+      ),
+      has_function_privilege(
+        'anon',
+        '${discordInvocationRecordSignature}',
+        'execute'
+      ),
+      has_function_privilege(
+        'anon',
+        '${discordInvocationReadbackSignature}',
+        'execute'
+      ),
+      has_function_privilege(
+        'authenticated',
+        '${discordInvocationRecordSignature}',
+        'execute'
+      ),
+      has_function_privilege(
+        'authenticated',
+        '${discordInvocationReadbackSignature}',
+        'execute'
+      ),
+      has_table_privilege(
+        'service_role',
+        'private.marketing_discord_command_invocation_receipts',
+        'select'
+      ),
+      has_table_privilege(
+        'service_role',
+        'private.marketing_discord_command_invocation_receipts',
+        'insert'
+      ),
+      has_table_privilege(
+        'service_role',
+        'private.marketing_discord_command_invocation_receipts',
+        'update'
+      ),
+      has_table_privilege(
+        'service_role',
+        'private.marketing_discord_command_invocation_receipts',
+        'delete'
+      ),
+      has_table_privilege(
+        'service_role',
+        'private.marketing_discord_command_invocation_receipts',
+        'truncate'
+      );
+  `);
+  assert(
+    discordInvocationPrivileges
+      === "t|t|f|f|t|t|t|t|f|f|f|f|f|f|f|f|f",
+    `unexpected Discord invocation receipt privileges: ${discordInvocationPrivileges}`,
+  );
+
+  for (const role of ["anon", "authenticated"]) {
+    const unauthorizedDiscordInvocationRecord = await psqlScalarSession(`
+      set role ${role};
+      select *
+      from public.record_marketing_discord_command_invocation_receipt(
+        '${discordInvocationTargetHmac}',
+        'ask',
+        '${discordInvocationManifestSha256}'
+      );
+    `);
+    assert(
+      unauthorizedDiscordInvocationRecord.status !== 0
+        && /permission denied/.test(
+          `${unauthorizedDiscordInvocationRecord.stdout}${unauthorizedDiscordInvocationRecord.stderr}`,
+        ),
+      `${role} unexpectedly recorded a Discord invocation receipt`,
+    );
+
+    const unauthorizedDiscordInvocationReadback = await psqlScalarSession(`
+      set role ${role};
+      select *
+      from public.get_marketing_discord_command_invocation_readback(
+        '${discordInvocationTargetHmac}',
+        '${discordInvocationManifestSha256}'
+      );
+    `);
+    assert(
+      unauthorizedDiscordInvocationReadback.status !== 0
+        && /permission denied/.test(
+          `${unauthorizedDiscordInvocationReadback.stdout}${unauthorizedDiscordInvocationReadback.stderr}`,
+        ),
+      `${role} unexpectedly read Discord invocation receipts`,
+    );
+  }
+
+  for (const statement of [
+    "select * from private.marketing_discord_command_invocation_receipts",
+    `insert into private.marketing_discord_command_invocation_receipts (
+       target_binding_hmac,
+       command_name,
+       manifest_sha256
+     ) values (
+       '${discordInvocationTargetHmac}',
+       'ask',
+       '${discordInvocationManifestSha256}'
+     )`,
+  ]) {
+    const directDiscordInvocationAccess = await psqlScalarSession(`
+      set role service_role;
+      ${statement};
+    `);
+    assert(
+      directDiscordInvocationAccess.status !== 0
+        && /permission denied/.test(
+          `${directDiscordInvocationAccess.stdout}${directDiscordInvocationAccess.stderr}`,
+        ),
+      `service role unexpectedly accessed Discord invocation receipts directly: ${statement}`,
+    );
+  }
+
+  const firstDiscordInvocationReceipt = await psqlScalarSession(`
+    set role service_role;
+    select
+      result_code,
+      target_binding_hmac,
+      command_name,
+      manifest_sha256,
+      first_verified_at = pg_catalog.date_trunc('minute', first_verified_at)
+    from public.record_marketing_discord_command_invocation_receipt(
+      '${discordInvocationTargetHmac}',
+      'ask',
+      '${discordInvocationManifestSha256}'
+    );
+  `);
+  const expectedFirstDiscordInvocationReceipt =
+    `recorded|${discordInvocationTargetHmac}|ask|${discordInvocationManifestSha256}|t`;
+  assert(
+    firstDiscordInvocationReceipt.status === 0
+      && firstDiscordInvocationReceipt.stdout
+        .trim()
+        .split(/\r?\n/)
+        .includes(expectedFirstDiscordInvocationReceipt),
+    `first Discord invocation receipt was not recorded: ${firstDiscordInvocationReceipt.stdout}${firstDiscordInvocationReceipt.stderr}`,
+  );
+
+  const replayedDiscordInvocationReceipt = await psqlScalarSession(`
+    set role service_role;
+    select
+      result_code,
+      target_binding_hmac,
+      command_name,
+      manifest_sha256,
+      first_verified_at = pg_catalog.date_trunc('minute', first_verified_at)
+    from public.record_marketing_discord_command_invocation_receipt(
+      '${discordInvocationTargetHmac}',
+      'ask',
+      '${discordInvocationManifestSha256}'
+    );
+  `);
+  assert(
+    replayedDiscordInvocationReceipt.status === 0
+      && replayedDiscordInvocationReceipt.stdout
+        .trim()
+        .split(/\r?\n/)
+        .includes(
+          `already_recorded|${discordInvocationTargetHmac}|ask|${discordInvocationManifestSha256}|t`,
+        ),
+    `Discord invocation receipt replay was not idempotent: ${replayedDiscordInvocationReceipt.stdout}${replayedDiscordInvocationReceipt.stderr}`,
+  );
+
+  const discordInvocationReadback = await psqlScalarSession(`
+    set role service_role;
+    select pg_catalog.string_agg(
+      command_name || ':' || observed::text || ':'
+        || (first_verified_at is not null)::text,
+      ','
+      order by case command_name
+        when 'ask' then 1
+        when 'openzaps' then 2
+        when 'status' then 3
+      end
+    )
+    from public.get_marketing_discord_command_invocation_readback(
+      '${discordInvocationTargetHmac}',
+      '${discordInvocationManifestSha256}'
+    );
+  `);
+  assert(
+    discordInvocationReadback.status === 0
+      && discordInvocationReadback.stdout
+        .trim()
+        .split(/\r?\n/)
+        .includes("ask:true:true,openzaps:false:false,status:false:false"),
+    `Discord invocation readback was not exact: ${discordInvocationReadback.stdout}${discordInvocationReadback.stderr}`,
+  );
+
+  const concurrentDiscordInvocationReceipts = await Promise.all([
+    psqlScalarSession(`
+      set role service_role;
+      select
+        result_code,
+        target_binding_hmac,
+        command_name,
+        manifest_sha256,
+        first_verified_at
+      from public.record_marketing_discord_command_invocation_receipt(
+        '${concurrentDiscordInvocationTargetHmac}',
+        'openzaps',
+        '${discordInvocationManifestSha256}'
+      );
+    `),
+    psqlScalarSession(`
+      set role service_role;
+      select
+        result_code,
+        target_binding_hmac,
+        command_name,
+        manifest_sha256,
+        first_verified_at
+      from public.record_marketing_discord_command_invocation_receipt(
+        '${concurrentDiscordInvocationTargetHmac}',
+        'openzaps',
+        '${discordInvocationManifestSha256}'
+      );
+    `),
+  ]);
+  assert(
+    concurrentDiscordInvocationReceipts.every((result) => result.status === 0),
+    `concurrent Discord invocation receipt calls failed: ${concurrentDiscordInvocationReceipts
+      .map((result) => `${result.stdout}${result.stderr}`)
+      .join("\n")}`,
+  );
+  const concurrentDiscordInvocationLines = concurrentDiscordInvocationReceipts
+    .map((result) => result.stdout
+      .trim()
+      .split(/\r?\n/)
+      .find((line) => /^(?:recorded|already_recorded)\|/.test(line)));
+  assert(
+    concurrentDiscordInvocationLines.every(Boolean),
+    `could not parse concurrent Discord invocation receipts: ${concurrentDiscordInvocationLines.join(",")}`,
+  );
+  const concurrentReceiptCodes = concurrentDiscordInvocationLines
+    .map((line) => line.split("|", 1)[0])
+    .sort();
+  assert(
+    concurrentReceiptCodes.join("|") === "already_recorded|recorded",
+    `concurrent Discord invocation receipts were not append-once: ${concurrentReceiptCodes.join("|")}`,
+  );
+  const concurrentReceiptTuples = concurrentDiscordInvocationLines
+    .map((line) => line.replace(/^[^|]+\|/, ""));
+  assert(
+    concurrentReceiptTuples[0] === concurrentReceiptTuples[1],
+    `concurrent Discord invocation calls returned different receipts: ${concurrentReceiptTuples.join(",")}`,
+  );
+  const storedConcurrentDiscordInvocationReceipt = psqlScalar(`
+    select count(*)
+    from private.marketing_discord_command_invocation_receipts
+    where target_binding_hmac = '${concurrentDiscordInvocationTargetHmac}'
+      and command_name = 'openzaps'
+      and manifest_sha256 = '${discordInvocationManifestSha256}';
+  `);
+  assert(
+    storedConcurrentDiscordInvocationReceipt === "1",
+    `concurrent Discord invocation receipt did not converge on one row: ${storedConcurrentDiscordInvocationReceipt}`,
+  );
+
+  for (const mutation of [
+    `update private.marketing_discord_command_invocation_receipts
+     set command_name = 'status'
+     where target_binding_hmac = '${discordInvocationTargetHmac}'`,
+    `delete from private.marketing_discord_command_invocation_receipts
+     where target_binding_hmac = '${discordInvocationTargetHmac}'`,
+    "truncate private.marketing_discord_command_invocation_receipts",
+  ]) {
+    const discordInvocationMutation = await psqlScalarSession(mutation);
+    assert(
+      discordInvocationMutation.status !== 0
+        && /marketing Discord command invocation receipts are immutable/.test(
+          `${discordInvocationMutation.stdout}${discordInvocationMutation.stderr}`,
+        ),
+      `Discord invocation receipt mutation was not rejected: ${mutation}\n${discordInvocationMutation.stdout}${discordInvocationMutation.stderr}`,
+    );
+  }
+  const finalDiscordInvocationReceiptState = psqlScalar(`
+    select
+      count(*),
+      count(*) filter (
+        where target_binding_hmac = '${discordInvocationTargetHmac}'
+          and command_name = 'ask'
+          and manifest_sha256 = '${discordInvocationManifestSha256}'
+      ),
+      count(*) filter (
+        where target_binding_hmac = '${concurrentDiscordInvocationTargetHmac}'
+          and command_name = 'openzaps'
+          and manifest_sha256 = '${discordInvocationManifestSha256}'
+      )
+    from private.marketing_discord_command_invocation_receipts;
+  `);
+  assert(
+    finalDiscordInvocationReceiptState === "2|1|1",
+    `rejected Discord invocation receipt mutations changed durable state: ${finalDiscordInvocationReceiptState}`,
   );
 
   const tutorialReceiptSignature =
@@ -5836,7 +6172,7 @@ Pre-audit software. Verify before use.$campaign$)::text
   );
 
   console.log(
-    "PostgreSQL 16 relay, marketing, syndication, tutorial-receipt, and lead-notification integration: passed",
+    "PostgreSQL 16 relay, marketing, Discord-invocation, syndication, tutorial-receipt, and lead-notification integration: passed",
   );
 } finally {
   spawnSync("pg_ctl", ["-D", dataDirectory, "-m", "immediate", "stop"], {
