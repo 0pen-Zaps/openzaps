@@ -137,6 +137,20 @@ describe("the contrast traps the token layer exists to prevent", () => {
     }
   });
 
+  it("keeps warning text readable on the wash it sits on", () => {
+    // --warn is a FILL. Painted as text on --warn-wash it measures 4.43:1 on
+    // Ivory, which is how the un-audited-contracts disclosure on /rewards and
+    // 23 other warning surfaces shipped below AA. --warn-wash-ink is the
+    // readable ink for that wash and keeps the amber identity.
+    for (const theme of THEMES) {
+      const block = themeBlock(theme);
+      expect(
+        contrast(hex(block, "--warn-wash"), hex(block, "--warn-wash-ink")),
+        `${theme}: --warn-wash-ink on --warn-wash`,
+      ).toBeGreaterThanOrEqual(4.5);
+    }
+  });
+
   it("keeps body ink well clear of AAA on the app ground", () => {
     for (const theme of THEMES) {
       const block = themeBlock(theme);

@@ -398,7 +398,7 @@
   padding: 3px 8px;
   border-radius: var(--r-pill);
   background: var(--warn-wash);
-  color: var(--warn);
+  color: var(--warn-wash-ink);
   font-size: 10.5px;
   font-weight: 700;
   white-space: nowrap;
@@ -763,7 +763,7 @@
 
 .eventGlyph[data-type="recovered"] {
   background: var(--warn-wash);
-  color: var(--warn);
+  color: var(--warn-wash-ink);
 }
 
 .eventGlyph svg {
@@ -898,7 +898,7 @@
   border: 1px solid var(--line);
   border-radius: var(--r-ctl);
   background: var(--warn-wash);
-  color: var(--warn);
+  color: var(--warn-wash-ink);
   font-size: 12.5px;
   line-height: 1.5;
 }

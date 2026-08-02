@@ -80,7 +80,7 @@
 }
 
 .statusPreview {
-  color: var(--warn);
+  color: var(--warn-wash-ink);
   background: var(--warn-wash);
 }
 
@@ -773,7 +773,7 @@
 
 .logChipWarn {
   background: var(--warn-wash);
-  color: var(--warn);
+  color: var(--warn-wash-ink);
 }
 
 .logChipDanger {

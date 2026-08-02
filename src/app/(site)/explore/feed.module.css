@@ -173,7 +173,7 @@
 
 .feedGlyph[data-type="recovered"] {
   background: var(--warn-wash);
-  color: var(--warn);
+  color: var(--warn-wash-ink);
 }
 
 .feedGlyph[data-type="halted"] {
@@ -265,7 +265,7 @@
   border: 1px solid var(--line);
   border-radius: var(--r-ctl);
   background: var(--warn-wash);
-  color: var(--warn);
+  color: var(--warn-wash-ink);
   font-size: 12.5px;
   line-height: 1.5;
 }

@@ -224,7 +224,7 @@
   flex-wrap: wrap;
   align-items: center;
   gap: 10px;
-  color: var(--warn);
+  color: var(--warn-wash-ink);
   border-color: var(--warn);
   background: var(--warn-wash);
 }
@@ -273,7 +273,7 @@
 }
 
 .sourceChip[data-status="degraded"] {
-  color: var(--warn);
+  color: var(--warn-wash-ink);
   background: var(--warn-wash);
 }
 
@@ -366,7 +366,7 @@
 }
 
 .relayBadge[data-status="unavailable"] {
-  color: var(--warn);
+  color: var(--warn-wash-ink);
   background: var(--warn-wash);
 }
 
@@ -446,7 +446,7 @@
 .automationCard[data-state="due"] .stateBadge,
 .automationCard[data-state="armed"] .autoGlyph,
 .automationCard[data-state="armed"] .stateBadge {
-  color: var(--warn);
+  color: var(--warn-wash-ink);
   background: var(--warn-wash);
 }
 
@@ -869,7 +869,7 @@
 }
 
 .timelineGlyph[data-kind="revoked"] {
-  color: var(--warn);
+  color: var(--warn-wash-ink);
   background: var(--warn-wash);
 }
 

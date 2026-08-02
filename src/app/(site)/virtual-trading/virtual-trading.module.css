@@ -961,7 +961,7 @@
 
 .sideTag[data-side="sell"] {
   background: var(--warn-wash);
-  color: var(--warn);
+  color: var(--warn-wash-ink);
 }
 
 .ledgerFoot {

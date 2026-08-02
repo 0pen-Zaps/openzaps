@@ -1155,7 +1155,7 @@
   border: 1px solid var(--warn);
   border-radius: var(--r-ctl-sm);
   background: var(--warn-wash);
-  color: var(--ink-2);
+  color: var(--warn-wash-ink);
 }
 
 /* An open, positive state ("pre-staking is open") must not wear the same
@@ -1209,14 +1209,13 @@
 
 /* --warn text on --warn-wash measures 4.43:1 on Ivory and 4.70:1 on Paper —
    the un-audited-contracts disclosure is the last text on this page that may
-   be hard to read. The border and icon keep the warning hue (a 3:1 non-text
-   floor); the sentence itself moves to --ink-2, which clears 4.5:1 on all
-   five themes. */
+   be hard to read. --warn-wash-ink is the readable ink for this wash: it
+   keeps the amber identity and clears 5.6:1 on every theme. */
 .riskDisclosure {
   padding: 12px 14px;
   border: 1px solid var(--warn);
   background: var(--warn-wash);
-  color: var(--ink-2);
+  color: var(--warn-wash-ink);
 }
 
 .riskDisclosure strong {
@@ -1491,7 +1490,7 @@
 .stale {
   border-color: var(--warn);
   background: var(--warn-wash);
-  color: var(--ink-2);
+  color: var(--warn-wash-ink);
 }
 
 .stale svg,

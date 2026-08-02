@@ -230,10 +230,12 @@ describe("0xZAPS fee rewards public surface", () => {
   });
 
   it("keeps risk copy readable and reserves the alarm styling for blocked actions", () => {
-    // --warn text on --warn-wash is 4.43:1 on Ivory. The border and icon keep
-    // the hue (3:1 non-text floor); the sentence moves to --ink-2.
+    // --warn text on --warn-wash is 4.43:1 on Ivory. Warning copy uses the
+    // shared --warn-wash-ink, which keeps the amber identity and clears AA on
+    // every theme (enforced app-wide in theme-tokens.test.ts).
     const rewardsCss = read("src/app/(site)/rewards/rewards.module.css");
-    expect(rewardsCss).toContain("background: var(--warn-wash);\n  color: var(--ink-2);");
+    expect(rewardsCss).toContain("background: var(--warn-wash);\n  color: var(--warn-wash-ink);");
+    expect(rewardsCss).not.toMatch(/background: var\(--warn-wash\);\n\s*color: var\(--warn\);/u);
     expect(rewardsCss).toContain(".openNote {");
     // A positive, open state must not wear the same amber as a closed one.
     expect(workspace).toContain("styles.openNote}>Pre-staking is open");
