@@ -77,6 +77,26 @@ const VALID_DISCORD_PREFLIGHT = {
     counts: { desired: 3, remote: 3, create: 0, update: 0, delete: 0 },
     writesPerformed: false,
   },
+  invocationReadback: {
+    schemaVersion: 1,
+    status: "current_manifest_seen",
+    scope: "privacy_safe_configured_target_receipts",
+    manifestSha256: "a".repeat(64),
+    commands: [
+      {
+        command: "ask",
+        observed: true,
+        firstVerifiedAt: "2026-08-02T07:58:00.000Z",
+      },
+      { command: "openzaps", observed: false, firstVerifiedAt: null },
+      { command: "status", observed: false, firstVerifiedAt: null },
+    ],
+    anyVerifiedInvocationObserved: true,
+    allCommandsObserved: false,
+    responseDeliveryVerified: false,
+    uniqueInvocationsCounted: false,
+    writesPerformed: false,
+  },
   writesPerformed: false,
 };
 
@@ -634,25 +654,160 @@ describe("Discord activation evidence", () => {
         counts: { desired: 3, create: 0, update: 0 },
         writesPerformed: false,
       },
+      invocationReadback: {
+        status: "current_manifest_seen",
+        commands: [
+          { command: "ask", observed: true },
+          { command: "openzaps", observed: false },
+          { command: "status", observed: false },
+        ],
+        anyVerifiedInvocationObserved: true,
+        allCommandsObserved: false,
+        responseDeliveryVerified: false,
+        uniqueInvocationsCounted: false,
+        writesPerformed: false,
+      },
       writesPerformed: false,
     });
     expect(parsed && discordActivationSummary(parsed)).toContain(
-      "Official guild command-manifest projection matches all 3 source-controlled managed commands.",
+      "Official manifest: the provider projection matches all 3 source-controlled managed commands.",
+    );
+    expect(parsed && discordActivationSummary(parsed)).toContain(
+      "Permission visibility: unchecked",
+    );
+    expect(parsed && discordActivationSummary(parsed)).toContain(
+      "Signed-handler observation: current-manifest receipt observed for /ask",
+    );
+    expect(parsed && discordActivationSummary(parsed)).toContain(
+      "Not observed: /openzaps, /status",
+    );
+    expect(parsed && discordActivationSummary(parsed)).toContain(
+      "does not establish current provider registration, guild permission visibility, ongoing command availability, or response delivery",
+    );
+    expect(parsed && discordActivationSummary(parsed)).toContain(
+      "Response delivery: not verified",
+    );
+    expect(parsed && discordActivationSummary(parsed)).toContain(
+      "Unique invocations: not counted",
     );
     expect(parsed && discordActivationSummary(parsed)).toContain(
       "no command was registered or changed",
     );
-    expect(parsed && discordActivationSummary(parsed)).toContain(
-      "Guild command permissions were not checked",
-    );
-    expect(parsed && discordActivationSummary(parsed)).toContain(
-      "does not prove a live signed invocation",
-    );
     expect(DISCORD_PREFLIGHT_BUTTON_LABEL).toBe(
-      "Verify Discord destination and command manifest",
+      "Verify Discord destination, manifest, and invocation receipts",
     );
     expect(DISCORD_PREFLIGHT_BUTTON_LABEL).not.toMatch(
       /activation|permissions? verified|invocation verified/iu,
+    );
+  });
+
+  it("keeps current-manifest signed-handler receipts separate from permissions and response delivery", () => {
+    const parsed = parseDiscordActivationVerification({
+      ...VALID_DISCORD_PREFLIGHT,
+      invocationReadback: {
+        ...VALID_DISCORD_PREFLIGHT.invocationReadback,
+        commands: [
+          {
+            command: "status",
+            observed: true,
+            firstVerifiedAt: "2026-08-02T08:02:00.000Z",
+          },
+          {
+            command: "ask",
+            observed: true,
+            firstVerifiedAt: "2026-08-02T07:58:00.000Z",
+          },
+          {
+            command: "openzaps",
+            observed: true,
+            firstVerifiedAt: "2026-08-02T08:00:00.000Z",
+          },
+        ],
+        allCommandsObserved: true,
+      },
+    });
+
+    expect(parsed?.invocationReadback).toMatchObject({
+      status: "current_manifest_seen",
+      commands: [
+        { command: "ask", observed: true },
+        { command: "openzaps", observed: true },
+        { command: "status", observed: true },
+      ],
+      anyVerifiedInvocationObserved: true,
+      allCommandsObserved: true,
+      responseDeliveryVerified: false,
+      uniqueInvocationsCounted: false,
+    });
+    const summary = parsed ? discordActivationSummary(parsed) : "";
+    expect(summary).toContain("Official manifest:");
+    expect(summary).toContain("Permission visibility: unchecked");
+    expect(summary).toContain(
+      "Signed-handler observation: current-manifest receipts observed for /ask",
+    );
+    expect(summary).toContain("/openzaps");
+    expect(summary).toContain("/status");
+    expect(summary).toContain("Response delivery: not verified");
+    expect(summary).not.toMatch(/response delivery: verified/iu);
+    expect(summary).not.toMatch(/permission visibility: verified/iu);
+  });
+
+  it("accepts honest not-observed and unavailable receipt lanes without erasing other proof", () => {
+    const notObserved = parseDiscordActivationVerification({
+      ...VALID_DISCORD_PREFLIGHT,
+      invocationReadback: {
+        ...VALID_DISCORD_PREFLIGHT.invocationReadback,
+        status: "not_observed",
+        commands: VALID_DISCORD_PREFLIGHT.invocationReadback.commands.map(
+          (command) => ({
+            ...command,
+            observed: false,
+            firstVerifiedAt: null,
+          }),
+        ),
+        anyVerifiedInvocationObserved: false,
+        allCommandsObserved: false,
+      },
+    });
+    const unavailable = parseDiscordActivationVerification({
+      ...VALID_DISCORD_PREFLIGHT,
+      invocationReadback: {
+        schemaVersion: 1,
+        status: "unavailable",
+        scope: "privacy_safe_configured_target_receipts",
+        manifestSha256: null,
+        commands: [],
+        anyVerifiedInvocationObserved: false,
+        allCommandsObserved: false,
+        responseDeliveryVerified: false,
+        uniqueInvocationsCounted: false,
+        writesPerformed: false,
+      },
+    });
+
+    expect(notObserved).toMatchObject({
+      destination: { verified: true },
+      commandReadback: { status: "in_sync" },
+      invocationReadback: {
+        status: "not_observed",
+        anyVerifiedInvocationObserved: false,
+        allCommandsObserved: false,
+      },
+    });
+    expect(notObserved && discordActivationSummary(notObserved)).toContain(
+      "no current-manifest receipt was observed for /ask, /openzaps, or /status",
+    );
+    expect(unavailable).toMatchObject({
+      destination: { verified: true },
+      commandReadback: { status: "in_sync" },
+      invocationReadback: {
+        status: "unavailable",
+        manifestSha256: null,
+        commands: [],
+      },
+    });
+    expect(unavailable && discordActivationSummary(unavailable)).toContain(
+      "privacy-safe current-manifest receipt readback is unavailable",
     );
   });
 
@@ -769,6 +924,171 @@ describe("Discord activation evidence", () => {
       commandReadback: {
         ...VALID_DISCORD_PREFLIGHT.commandReadback,
         manifestSha256: "provider-secret",
+      },
+    })).toBeNull();
+  });
+
+  it("rejects malformed, stale-manifest, or internally inconsistent invocation evidence", () => {
+    const invocation = VALID_DISCORD_PREFLIGHT.invocationReadback;
+    expect(parseDiscordActivationVerification({
+      ...VALID_DISCORD_PREFLIGHT,
+      invocationReadback: undefined,
+    })).toBeNull();
+    expect(parseDiscordActivationVerification({
+      ...VALID_DISCORD_PREFLIGHT,
+      invocationReadback: {
+        ...invocation,
+        manifestSha256: "b".repeat(64),
+      },
+    })).toBeNull();
+    expect(parseDiscordActivationVerification({
+      ...VALID_DISCORD_PREFLIGHT,
+      invocationReadback: {
+        ...invocation,
+        manifestSha256: ` ${"a".repeat(64)} `,
+      },
+    })).toBeNull();
+    expect(parseDiscordActivationVerification({
+      ...VALID_DISCORD_PREFLIGHT,
+      invocationReadback: {
+        ...invocation,
+        commands: [
+          invocation.commands[0],
+          invocation.commands[0],
+          invocation.commands[2],
+        ],
+      },
+    })).toBeNull();
+    expect(parseDiscordActivationVerification({
+      ...VALID_DISCORD_PREFLIGHT,
+      invocationReadback: {
+        ...invocation,
+        commands: invocation.commands.map((command) =>
+          command.command === "ask"
+            ? {
+                ...command,
+                firstVerifiedAt: "2026-08-02T07:58:00Z",
+              }
+            : command
+        ),
+      },
+    })).toBeNull();
+    expect(parseDiscordActivationVerification({
+      ...VALID_DISCORD_PREFLIGHT,
+      invocationReadback: {
+        ...invocation,
+        commands: invocation.commands.map((command) =>
+          command.command === "ask"
+            ? { ...command, firstVerifiedAt: null }
+            : command
+        ),
+      },
+    })).toBeNull();
+    expect(parseDiscordActivationVerification({
+      ...VALID_DISCORD_PREFLIGHT,
+      invocationReadback: {
+        ...invocation,
+        commands: invocation.commands.map((command) =>
+          command.command === "openzaps"
+            ? {
+                ...command,
+                firstVerifiedAt: "2026-08-02T08:00:00.000Z",
+              }
+            : command
+        ),
+      },
+    })).toBeNull();
+    expect(parseDiscordActivationVerification({
+      ...VALID_DISCORD_PREFLIGHT,
+      invocationReadback: {
+        ...invocation,
+        status: "not_observed",
+      },
+    })).toBeNull();
+    expect(parseDiscordActivationVerification({
+      ...VALID_DISCORD_PREFLIGHT,
+      invocationReadback: {
+        ...invocation,
+        anyVerifiedInvocationObserved: false,
+      },
+    })).toBeNull();
+    expect(parseDiscordActivationVerification({
+      ...VALID_DISCORD_PREFLIGHT,
+      invocationReadback: {
+        ...invocation,
+        allCommandsObserved: true,
+      },
+    })).toBeNull();
+    expect(parseDiscordActivationVerification({
+      ...VALID_DISCORD_PREFLIGHT,
+      invocationReadback: {
+        ...invocation,
+        responseDeliveryVerified: true,
+      },
+    })).toBeNull();
+    expect(parseDiscordActivationVerification({
+      ...VALID_DISCORD_PREFLIGHT,
+      invocationReadback: {
+        ...invocation,
+        uniqueInvocationsCounted: true,
+      },
+    })).toBeNull();
+    expect(parseDiscordActivationVerification({
+      ...VALID_DISCORD_PREFLIGHT,
+      invocationReadback: {
+        ...invocation,
+        writesPerformed: true,
+      },
+    })).toBeNull();
+    expect(parseDiscordActivationVerification({
+      ...VALID_DISCORD_PREFLIGHT,
+      invocationReadback: {
+        ...invocation,
+        providerBody: "must-not-be-accepted",
+      },
+    })).toBeNull();
+    expect(parseDiscordActivationVerification({
+      ...VALID_DISCORD_PREFLIGHT,
+      invocationReadback: {
+        ...invocation,
+        commands: invocation.commands.map((command) =>
+          command.command === "ask"
+            ? { ...command, userId: "private-user-id" }
+            : command
+        ),
+      },
+    })).toBeNull();
+    expect(parseDiscordActivationVerification({
+      ...VALID_DISCORD_PREFLIGHT,
+      invocationReadback: {
+        schemaVersion: 1,
+        status: "unavailable",
+        scope: "privacy_safe_configured_target_receipts",
+        manifestSha256: "a".repeat(64),
+        commands: [],
+        anyVerifiedInvocationObserved: false,
+        allCommandsObserved: false,
+        responseDeliveryVerified: false,
+        uniqueInvocationsCounted: false,
+        writesPerformed: false,
+      },
+    })).toBeNull();
+  });
+
+  it("rejects canonical Discord invocation timestamps with sub-minute precision", () => {
+    const invocation = VALID_DISCORD_PREFLIGHT.invocationReadback;
+    expect(parseDiscordActivationVerification({
+      ...VALID_DISCORD_PREFLIGHT,
+      invocationReadback: {
+        ...invocation,
+        commands: invocation.commands.map((command) =>
+          command.command === "ask"
+            ? {
+                ...command,
+                firstVerifiedAt: "2026-08-02T07:58:00.001Z",
+              }
+            : command
+        ),
       },
     })).toBeNull();
   });

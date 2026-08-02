@@ -133,7 +133,7 @@ slot, start a workflow, or call X or Discord.
 | `/learn` | Public, indexable catalog of reviewed product updates and RSS-confirmed DeFi Tutorials, with RSS/community follow paths and a bounded Request-a-Zap CTA | Public; source-controlled catalog only, with no provider write or draft access. |
 | `GET /api/marketing/status` | Secret-free readiness and policy posture | `Authorization: Bearer <OPENZAPS_MARKETING_ADMIN_TOKEN>` |
 | `GET /api/marketing/x/identity` | Operator-triggered, read-only verification that the active X credentials resolve to the configured account id and username | Operator bearer token |
-| `GET /api/marketing/discord/preflight` | Operator-triggered, read-only verification of the exact OpenZaps guild/channel destination plus an official managed guild-command comparison when the server-side bot credential is configured; never writes | Operator bearer token |
+| `GET /api/marketing/discord/preflight` | Operator-triggered, read-only verification of the exact OpenZaps guild/channel destination, official managed guild-command comparison when the server-side bot credential is configured, and privacy-safe current-manifest invocation receipts; never writes | Operator bearer token |
 | `GET /api/marketing/x/mentions` | List the metadata-only mention inbox and review-required count; never returns raw post text, usernames, or profiles | Operator bearer token |
 | `GET /api/marketing/x/mentions/cron` | Poll the official mentions endpoint and, when every independent gate is ready, deliver at most one exact deterministic reply | `Authorization: Bearer <CRON_SECRET>` |
 | `GET /api/marketing/x/compliance/cron` | Reconcile the complete durable X subject inventory through official read endpoints and record a short-lived checkpoint or compliance hold; never posts | `Authorization: Bearer <CRON_SECRET>` |
@@ -411,7 +411,7 @@ returns any X credential value.
 | `DISCORD_MARKETING_WEBHOOK_URL` | One reviewed broadcast option | Incoming webhook for the public announcements/update channel. It takes precedence when configured. |
 | `DISCORD_MARKETING_REVIEW_WEBHOOK_URL` | Optional | Separate webhook for a private staff review channel. An invalid URL or the same webhook identity as the public webhook makes configuration invalid. Pair it with the review channel id below. |
 | `DISCORD_MARKETING_REVIEW_CHANNEL_ID` | With review webhook | Numeric private staff review channel id used to verify webhook metadata before sending a draft. |
-| `DISCORD_APPLICATION_PUBLIC_KEY` | For slash commands | Hex public key from the Discord application General Information page. |
+| `DISCORD_APPLICATION_PUBLIC_KEY` | For slash commands and invocation-receipt target binding | Hex public key from the Discord application General Information page. Rotating it invalidates prior invocation receipts. |
 | `OPENZAPS_DISCORD_APPLICATION_ID` | For slash commands | Numeric application id. Every signed interaction, including PING, must match it. |
 | `OPENZAPS_DISCORD_GUILD_ID` | For all Discord features | Numeric OpenZaps server id. Outbound metadata and every application command must match it. A signed endpoint-validation PING may omit `guild_id`, but a present value must match. |
 | `DISCORD_BOT_TOKEN` | Alternate reviewed broadcast option, official guild-command readback, and command registration | Pair with the numeric channel id for REST delivery when no webhook is configured. Production command observability requires it as an encrypted server-side variable; keep it only in an operator shell for explicit registration commands. |
@@ -464,6 +464,38 @@ without degrading an otherwise healthy webhook destination. A well-shaped but
 revoked or rejected credential is a provider read failure and reports
 `unavailable` on the command lane while preserving the verified destination
 evidence.
+
+Live invocation evidence is a separate lane. Only after Discord's signature
+and freshness check succeeds, the configured application and guild match, and
+one of the three source-controlled commands is selected does the interaction
+handler schedule an append-once receipt. The response is returned first; a
+receipt-store failure never delays or changes a valid Discord answer. Each
+receipt contains only the allowlisted command, the exact current manifest
+SHA-256, a server-derived opaque HMAC binding that covers the configured target
+and a SHA-256 fingerprint of the validated Discord application signing key, and
+a database minute-rounded first-seen timestamp. It stores neither the signing
+key nor its fingerprint, and stores no Discord, guild, application, channel,
+interaction, or user id; no question, response, raw body, signature, header, IP
+address, user agent, or invocation count. Replays converge on the first receipt
+for that command, manifest, target, and signing-key binding. Rotating the
+service-role secret or Discord signing key, or changing the configured target,
+invalidates the binding and therefore fails closed until another verified
+invocation is observed.
+
+The private preflight returns that evidence under `invocationReadback`, one
+bounded row for each current command. A current-manifest row proves only that at
+least one valid signed request reached the configured handler and selected that
+command. It does not prove Discord delivered the response, count unique users
+or invocations, inspect guild permission visibility, or prove that the other
+commands are registered. Historical manifest receipts never satisfy the
+current readback. Store unavailability is reported independently and does not
+degrade an otherwise verified broadcast destination or official command-list
+comparison. When official command readback and invocation readback are both
+available, the preflight also requires their manifest hashes to match. A
+mismatch is reported as `commandInvocationManifestConsistency: "mismatch"`
+and the invocation lane is reduced to bounded `unavailable` evidence rather
+than returning contradictory hashes; the independently verified destination
+and command-provider lanes remain intact.
 
 The production preflight has no apply input and calls a wrapper that always
 forces dry-run mode, so no Discord command write method is reachable from the
@@ -557,7 +589,11 @@ guild permission visibility or command availability. Only the explicit
 `--apply` script can POST or PATCH a managed command, after which the same GET
 readback runs again. Retain the final in-sync output as manifest-projection
 release evidence, then separately inspect guild permissions and perform a live
-signed command invocation before claiming the commands are available.
+signed command invocation. Re-open the private preflight and require the exact
+current command to appear in `invocationReadback`; keep
+`responseDeliveryVerified: false` honest unless separate Discord-side evidence
+proves the response appeared. Do not claim all commands are available from one
+receipt.
 
 Test all three commands in the server. Promote them to global commands only if
 the application is intentionally meant for other servers; use the same payload

@@ -4,6 +4,7 @@ import {
   DiscordCommandReconciliationError,
   readDiscordGuildCommands,
 } from "../../../scripts/reconcile-discord-commands.mjs";
+import { DISCORD_COMMAND_MANIFEST_SHA256 } from "./discord-command-manifest";
 import { DISCORD_COMMAND_MANIFEST } from "./discord-commands";
 
 const SHA256 = /^[0-9a-f]{64}$/u;
@@ -136,6 +137,7 @@ export async function verifyDiscordGuildCommands(
       || !countsAreCoherent(counts)
       || typeof manifestSha256 !== "string"
       || !SHA256.test(manifestSha256)
+      || manifestSha256 !== DISCORD_COMMAND_MANIFEST_SHA256
       || typeof managedReadbackSha256 !== "string"
       || !SHA256.test(managedReadbackSha256)
     ) invalidReadback();

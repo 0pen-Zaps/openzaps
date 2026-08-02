@@ -1,7 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const { answerMock, verifyMock } = vi.hoisted(() => ({
+const { answerMock, scheduleReceiptMock, verifyMock } = vi.hoisted(() => ({
   answerMock: vi.fn(() => ({ content: "Bounded answer.", topic: "general" })),
+  scheduleReceiptMock: vi.fn(),
   verifyMock: vi.fn(),
 }));
 
@@ -11,6 +12,10 @@ vi.mock("@/lib/marketing/channels", () => ({
 
 vi.mock("@/lib/marketing/discord-faq", () => ({
   answerOpenZapsFaq: answerMock,
+}));
+
+vi.mock("@/lib/marketing/discord-command-invocation-receipt-server", () => ({
+  scheduleDiscordCommandInvocationReceipt: scheduleReceiptMock,
 }));
 
 import { POST } from "./route";
@@ -44,6 +49,7 @@ describe("Discord marketing interactions route", () => {
     expect(response.status).toBe(413);
     expect(await response.json()).toEqual({ error: "Interaction request too large." });
     expect(verifyMock).not.toHaveBeenCalled();
+    expect(scheduleReceiptMock).not.toHaveBeenCalled();
   });
 
   it("rejects invalid signatures without parsing or answering", async () => {
@@ -56,6 +62,7 @@ describe("Discord marketing interactions route", () => {
 
     expect(response.status).toBe(401);
     expect(answerMock).not.toHaveBeenCalled();
+    expect(scheduleReceiptMock).not.toHaveBeenCalled();
   });
 
   it("handles a signed ping and rejects malformed signed JSON", async () => {
@@ -72,6 +79,7 @@ describe("Discord marketing interactions route", () => {
     expect(await ping.json()).toEqual({ type: 1 });
     expect(malformed.status).toBe(400);
     expect(await malformed.json()).toEqual({ error: "Invalid interaction body." });
+    expect(scheduleReceiptMock).not.toHaveBeenCalled();
   });
 
   it("accepts Discord's endpoint-validation PING when guild_id is omitted", async () => {
@@ -84,6 +92,7 @@ describe("Discord marketing interactions route", () => {
 
     expect(response.status).toBe(200);
     expect(await response.json()).toEqual({ type: 1 });
+    expect(scheduleReceiptMock).not.toHaveBeenCalled();
   });
 
   it("answers only supported signed commands with mentions disabled", async () => {
@@ -102,6 +111,11 @@ describe("Discord marketing interactions route", () => {
 
     expect(response.status).toBe(200);
     expect(answerMock).toHaveBeenCalledWith("What is a Zap?");
+    expect(scheduleReceiptMock).toHaveBeenCalledOnce();
+    expect(scheduleReceiptMock).toHaveBeenCalledWith("ask");
+    expect(JSON.stringify(scheduleReceiptMock.mock.calls)).not.toContain(
+      "What is a Zap?",
+    );
     expect(await response.json()).toEqual({
       type: 4,
       data: {
@@ -140,6 +154,10 @@ describe("Discord marketing interactions route", () => {
       2,
       "Is OpenZaps audited and production ready?",
     );
+    expect(scheduleReceiptMock.mock.calls).toEqual([
+      ["openzaps"],
+      ["status"],
+    ]);
   });
 
   it("rejects commands that are absent from the canonical manifest", async () => {
@@ -161,6 +179,7 @@ describe("Discord marketing interactions route", () => {
       },
     });
     expect(answerMock).not.toHaveBeenCalled();
+    expect(scheduleReceiptMock).not.toHaveBeenCalled();
   });
 
   it("returns an empty 403 for signed PINGs or commands outside the configured app and guild", async () => {
@@ -184,6 +203,7 @@ describe("Discord marketing interactions route", () => {
     expect(wrongGuild.status).toBe(403);
     expect(await wrongGuild.text()).toBe("");
     expect(answerMock).not.toHaveBeenCalled();
+    expect(scheduleReceiptMock).not.toHaveBeenCalled();
   });
 
   it("returns an empty 403 when the interaction target is not configured", async () => {
@@ -198,5 +218,6 @@ describe("Discord marketing interactions route", () => {
 
     expect(response.status).toBe(403);
     expect(await response.text()).toBe("");
+    expect(scheduleReceiptMock).not.toHaveBeenCalled();
   });
 });
