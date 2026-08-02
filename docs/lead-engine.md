@@ -21,8 +21,9 @@ The browser sends the form to `POST /api/leads/request`. The route:
 
 - accepts same-origin JSON only;
 - stops reading after 16 KiB;
-- validates a strict schema and an inert, non-semantic honeypot that avoids
-  common password-manager website autofill false positives;
+- validates a strict schema and normalizes the retired `website` trap field so
+  stale tabs and password managers cannot turn a valid request into a false
+  success;
 - derives an HMAC abuse-control key from a platform forwarding header without
   storing the raw network address;
 - keeps that pseudonymous key only in a separate short-lived quota ledger;
@@ -221,9 +222,11 @@ UTM values.
 
 `lead_request_accepted` is emitted server-side only after the private store
 returns durable acceptance. It contains a coarse source and score band. The
-honeypot's decoy `202`, validation failures, quota responses, and store failures
-emit no accepted conversion event, and analytics failure cannot change an
-accepted request's response.
+legacy trap field is fixed to empty by the current browser and normalized by
+the route for stale clients, so every `202` now follows durable acceptance.
+Validation failures, quota responses, and store failures emit no accepted
+conversion event, and analytics failure cannot change an accepted request's
+response.
 
 Review these metrics weekly:
 

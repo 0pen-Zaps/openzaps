@@ -11,7 +11,6 @@ import {
 
 import { trackEvent } from "@/lib/analytics";
 import {
-  LEAD_HONEYPOT_FIELD_NAME,
   leadRequestPayload,
   type LeadClientAttribution,
 } from "@/lib/leads/client";
@@ -486,22 +485,6 @@ export function RequestZapForm({
           </p>
         </div>
       </aside>
-
-      <div className={styles.honeypot} aria-hidden="true" inert>
-        <label>
-          Leave this field empty
-          <input
-            type="text"
-            name={LEAD_HONEYPOT_FIELD_NAME}
-            tabIndex={-1}
-            autoComplete="off"
-            data-1p-ignore="true"
-            data-lpignore="true"
-            data-bwignore="true"
-            maxLength={200}
-          />
-        </label>
-      </div>
 
       <label className={styles.consent}>
         <input type="checkbox" name="consent" required />

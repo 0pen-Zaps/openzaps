@@ -1,10 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import {
-  LEAD_HONEYPOT_FIELD_NAME,
-  leadRequestPayload,
-  privacySafeReferrer,
-} from "@/lib/leads/client";
+import { leadRequestPayload, privacySafeReferrer } from "@/lib/leads/client";
 
 describe("lead request client payload", () => {
   it("trims fields, preserves explicit consent, and minimizes the referrer", () => {
@@ -18,7 +14,6 @@ describe("lead request client payload", () => {
     data.set("guardrails", " fixed recipient ");
     data.set("timeline", "within_30_days");
     data.set("consent", "on");
-    data.set(LEAD_HONEYPOT_FIELD_NAME, "");
 
     expect(
       leadRequestPayload(
@@ -48,7 +43,7 @@ describe("lead request client payload", () => {
     });
   });
 
-  it("does not let semantic website autofill trip the browser honeypot", () => {
+  it("does not let legacy or non-semantic autofill affect the API field", () => {
     const data = new FormData();
     data.set("persona", "agent_builder");
     data.set("name", "Partner Builder");
@@ -59,7 +54,7 @@ describe("lead request client payload", () => {
     data.set("timeline", "within_30_days");
     data.set("consent", "on");
     data.set("website", "https://autofilled.example");
-    data.set(LEAD_HONEYPOT_FIELD_NAME, "");
+    data.set("requestNotes", "automated form filler");
 
     expect(
       leadRequestPayload(
@@ -68,19 +63,6 @@ describe("lead request client payload", () => {
         "https://www.0xzaps.com/request-a-zap",
       ),
     ).toMatchObject({ website: "" });
-  });
-
-  it("still maps the non-semantic browser trap to the API honeypot field", () => {
-    const data = new FormData();
-    data.set(LEAD_HONEYPOT_FIELD_NAME, "automated form filler");
-
-    expect(
-      leadRequestPayload(
-        data,
-        { landingPath: "/request-a-zap" },
-        "",
-      ),
-    ).toMatchObject({ website: "automated form filler" });
   });
 
   it("drops non-HTTPS and malformed referrers", () => {
