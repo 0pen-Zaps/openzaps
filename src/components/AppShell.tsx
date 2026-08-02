@@ -57,6 +57,12 @@ const GROUPS: readonly NavGroup[] = [
     label: "Build with us",
     items: [
       {
+        href: "/agent-kit",
+        label: "Agent Kit",
+        icon: "plug",
+        chip: "npm",
+      },
+      {
         href: "/request-a-zap",
         label: "Request a Zap",
         icon: "sparkle",
@@ -300,15 +306,26 @@ function SidebarNav({ view }: { view: ZapView | null }): React.JSX.Element {
             const active = item.view
               ? isZapSurface(pathname) && item.view === view
               : pathname === item.href || pathname.startsWith(`${item.href}/`);
+            const analytics = item.href === "/request-a-zap"
+              ? {
+                  event: "request_zap_clicked",
+                  cta: "request_zap",
+                }
+              : item.href === "/agent-kit"
+                ? {
+                    event: "builder_cta_clicked",
+                    cta: "agent_kit",
+                  }
+                : null;
             return (
               <Link
                 key={item.href}
                 href={item.href}
                 className={styles.navItem}
                 data-active={active || undefined}
-                data-analytics-event={item.href === "/request-a-zap" ? "request_zap_clicked" : undefined}
-                data-analytics-cta={item.href === "/request-a-zap" ? "request_zap" : undefined}
-                data-analytics-content={item.href === "/request-a-zap" ? "app_nav" : undefined}
+                data-analytics-event={analytics?.event}
+                data-analytics-cta={analytics?.cta}
+                data-analytics-content={analytics ? "app_nav" : undefined}
                 aria-current={active ? "page" : undefined}
               >
                 <Glyph name={item.icon} className={styles.navIcon} />

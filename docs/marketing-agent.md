@@ -28,7 +28,7 @@ measurable, privacy-minimized handoff to `/request-a-zap`.
 
 | Invariant | Enforcement |
 | --- | --- |
-| Evidence before copy | Each run reads the production health, protocol activity, pot, Virtual Trading markets, a fresh read-only quote, and lead-intake readiness, then verifies bounded markers on the promoted feature pages. The Learn launch additionally requires the exact source-derived catalog digest and rendered item identities, and rejects every tutorial title still withheld by the release manifest. Optional source URLs are restricted to OpenZaps, DeFi Tutorials, and the canonical GitHub repository. |
+| Evidence before copy | Each run reads the production health, protocol activity, pot, Virtual Trading markets, a fresh read-only quote, and lead-intake readiness, then verifies bounded markers on the promoted feature pages. Agent Kit promotion requires both npm provenance records plus the dedicated `/agent-kit` page's read-only, unsigned, separate-executor, and pre-audit markers. The Learn launch additionally requires the exact source-derived catalog digest and rendered item identities, and rejects every tutorial title still withheld by the release manifest. Optional source URLs are restricted to OpenZaps, DeFi Tutorials, and the canonical GitHub repository. |
 | External text is data | Fetched text is marked `instructionsTrusted: false` and cannot widen the operator brief or policy. |
 | Claims cite facts | Every asserted or qualified generated claim must cite a source-packet fact key. Unavailable data is `null`, never zero. |
 | Pre-audit disclosure | Public copy includes `Pre-audit software. Verify before use.` while the protocol remains pre-audit. |
@@ -240,12 +240,14 @@ Request-a-Zap update was already published to both X and Discord. The public X
 post is independently visible at
 `https://x.com/0xzaps/status/2083287458976870428`, but it has no durable X API
 receipt and is not represented as one. A later append-only migration queues the
-distinct Discord-only Agent Kit announcement for the first eligible weekday;
-no duplicate row or fabricated historical delivery receipt is created. The
-OpenZaps Learn release adds a second append-only migration with one X row and
-one Discord row. Both rows may exist in the durable queue, but automatic
-delivery remains blocked until the deployed `/learn` page proves the reviewed
-catalog boundary. Each row has its own immutable content hash and delivery key.
+distinct Discord Agent Kit announcement for the first eligible weekday; no
+duplicate row or fabricated historical delivery receipt is created. A separate
+append-only migration adds the X counterpart only after the dedicated
+`/agent-kit` page exists, preserving the already-queued Discord row byte-for-byte.
+The OpenZaps Learn release has one X row and one Discord row. All rows may exist
+in the durable queue, but automatic delivery remains blocked until each deployed
+page proves its exact reviewed boundary. Each row has its own immutable content
+hash and delivery key.
 
 The separate feed-discovery route runs at `30 13 * * *`: 13:30 UTC every
 day. It becomes operational only after the syndication migration is applied
@@ -683,6 +685,7 @@ supabase/migrations/20260801180000_marketing_discord_delivery_receipts.sql
 supabase/migrations/20260801221910_marketing_x_compliance_bootstrap.sql
 supabase/migrations/20260801224100_harden_subscription_authorization_grants.sql
 supabase/migrations/20260801224202_harden_marketing_retention_sequence_grants.sql
+supabase/migrations/20260802010000_queue_agent_kit_x_campaign.sql
 ```
 
 If any file is already recorded remotely, apply only the missing exact files
@@ -718,9 +721,10 @@ Apply them transactionally while the marketing agent is disabled. Then verify:
   reply failure, opt-out recording, compliance erasure, compliance-hold clear,
   and interaction-reference lookup;
 - the initial queue migration remains empty for the already-public
-  `virtual-trading-request-zap-v2` update, while the later append-only migration
-  contains exactly one Discord-only `agent-kit-published-v1` artifact and the
-  Learn migration contains exactly one X and one Discord
+  `virtual-trading-request-zap-v2` update, the original Agent Kit migration
+  contains exactly one Discord `agent-kit-published-v1` artifact, the separate
+  Agent Kit X migration contains exactly one X counterpart without rewriting
+  Discord, and the Learn migration contains exactly one X and one Discord
   `learn-hub-launched-v1` artifact;
 - before that artifact's `not_before`, an empty eligible queue returns
   `no_pending_campaign` without inserting a schedule claim or starting a
@@ -824,11 +828,18 @@ eligible `agent-kit-published-v1` invocation is expected to return `202` with a
 run id and record `auto_authorized`, not `no_pending_campaign`. Confirm the
 canonical Discord receipt, then replay the same campaign and prove the stable
 delivery key returns the stored receipt without a second provider call. Before
-enabling the later `learn-hub-launched-v1` rows, verify `/learn` in production
-and change `OPENZAPS_MARKETING_SCHEDULE_CHANNELS` to `x,discord`. The next
-eligible weekday should deliver the X row, and the following eligible weekday
-should deliver the Discord row because cron claims at most one row per run.
-Verify each canonical provider receipt independently.
+enabling X, verify `/agent-kit` and `/learn` in production, apply the exact
+Agent Kit X migration, and change `OPENZAPS_MARKETING_SCHEDULE_CHANNELS` to
+`x,discord` only after X credentials, identity, automated-label attestation,
+and provider credits all pass. Queue order and `not_before` determine which
+eligible X row is claimed. A schedule-start failure before any delivery-ledger
+claim may become eligible on a later weekday. Once a provider attempt creates a
+terminal `failed` delivery row, that campaign is not automatically retried and
+later rows may advance; reconcile ambiguous outcomes manually and ship a new
+versioned artifact only when a fresh post is actually intended. Keep X out of
+the scheduled channel set while the provider returns a credit or account-spend
+error. Once ready, verify each canonical X and Discord receipt independently;
+cron claims at most one row per run.
 Written X approval remains an additional requirement for AI replies, which are
 never part of this automatic lane. Leave every model-generated run and every
 freeform reply on the approval hook.
@@ -1159,6 +1170,7 @@ deployment must be made unable to publish.
 | Discord interaction returns `401` | Exact application public key, raw-body proxy behavior, endpoint URL, and server clock. |
 | Discord command is missing | Application installation scope and whether the command was registered to the correct guild/application. |
 | X returns `401` or `403` | User-context token, `tweet.write` scope, token expiry/revocation, account access, and app permissions. |
+| X returns `402` | The X project has no usable API credits or spend allowance. Keep X out of `OPENZAPS_MARKETING_SCHEDULE_CHANNELS`, restore provider billing or credits in the official dashboard, and re-run identity preflight before allowing a queued write. |
 | X identity verification is blocked | Use **Verify X identity** in `/marketing`; confirm `X_EXPECTED_ACCOUNT_ID` is the intended account's numeric id and `X_EXPECTED_USERNAME=0xzaps`, then confirm the active user-context credentials resolve to both values. |
 | X returns `429` | Stop, inspect the response window/provider dashboard, and wait. Never bypass rate limits. |
 | X publishing is policy-blocked | Confirm user-context credentials and keep `OPENZAPS_X_AUTOMATED_LABEL_CONFIRMED=false` until the automated label/operator disclosure is visibly configured. Replies also require the separate X approval attestation and API-verified engagement. |

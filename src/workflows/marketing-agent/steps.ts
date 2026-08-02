@@ -381,6 +381,7 @@ export async function collectMarketingSourcesStep(
   const requestZapUrl = `${siteUrl}/request-a-zap`;
   const leadReadinessUrl = `${siteUrl}/api/leads/request`;
   const docsUrl = `${siteUrl}/docs`;
+  const agentKitUrl = `${siteUrl}/agent-kit`;
   const learnUrl = `${siteUrl}/learn`;
   const sdkRegistryUrl =
     "https://registry.npmjs.org/@openzaps%2fsdk/0.1.0";
@@ -396,6 +397,7 @@ export async function collectMarketingSourcesStep(
     virtualTradingPageReady,
     requestZapPageReady,
     agentKitDocsReady,
+    agentKitPageReady,
     learnPageReady,
     sdkRegistryValue,
     mcpRegistryValue,
@@ -428,6 +430,14 @@ export async function collectMarketingSourcesStep(
       "no signing or broadcast method",
       "Stays with your wallet or Safe.",
       "Lives inside the immutable policy",
+    ]),
+    fetchFeaturePage(agentKitUrl, [
+      'data-agent-kit-boundary="read-only-and-unsigned"',
+      "@openzaps/sdk@0.1.0",
+      "@openzaps/mcp@0.1.0",
+      "Neither package signs or broadcasts",
+      "separate executor",
+      "Pre-audit software.",
     ]),
     fetchLearnPageEvidence(learnUrl),
     fetchJson(sdkRegistryUrl),
@@ -639,6 +649,15 @@ export async function collectMarketingSourcesStep(
         ? "The SDK prepares unsigned EIP-712 policy data without a signing or broadcast method; the read-only MCP surface discovers capsules and holds no wallet key. Creation stays with the owner wallet or Safe, while execution authority lives in the immutable policy or typed intent."
         : null,
       docsUrl,
+      observedAt,
+    ),
+    knownOrUnavailable(
+      "product.agent_kit_page",
+      "OpenZaps Agent Kit page",
+      agentKitPageReady
+        ? "The live Agent Kit page confirms the published SDK and MCP package versions, their read-only and unsigned boundary, and the separate executor model."
+        : null,
+      agentKitUrl,
       observedAt,
     ),
     knownOrUnavailable(

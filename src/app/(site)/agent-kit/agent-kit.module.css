@@ -1,0 +1,553 @@
+.page {
+  width: 100%;
+  max-width: 1080px;
+  margin: 0 auto;
+}
+
+.hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1.45fr) minmax(280px, 0.75fr);
+  gap: 28px;
+  padding: clamp(28px, 4.5vw, 54px);
+  border: 1px solid var(--line);
+  border-radius: var(--r-card);
+  background:
+    linear-gradient(135deg, var(--zap-tint), transparent 58%),
+    var(--panel-2);
+  box-shadow: var(--sh-2);
+}
+
+.heroCopy,
+.packageCard,
+.boundGrid article,
+.conversion > div {
+  min-width: 0;
+}
+
+.eyebrow {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin: 0;
+  color: var(--ink-2);
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-size: 10.5px;
+  font-weight: 650;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+}
+
+.eyebrow > span {
+  width: 8px;
+  height: 8px;
+  border-radius: var(--r-pill);
+  background: var(--zap-deep);
+  box-shadow: 0 0 0 4px var(--zap-wash);
+}
+
+.hero h1 {
+  max-width: 760px;
+  margin: 20px 0 0;
+  color: var(--ink);
+  font-family: var(--font-serif), Georgia, serif;
+  font-size: clamp(40px, 5.1vw, 66px);
+  font-weight: 500;
+  letter-spacing: -0.045em;
+  line-height: 0.99;
+  text-wrap: balance;
+}
+
+.lead {
+  max-width: 65ch;
+  margin: 22px 0 0;
+  color: var(--ink-prose);
+  font-size: clamp(16px, 1.6vw, 18px);
+  line-height: 1.7;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 26px;
+}
+
+.primaryAction,
+.secondaryAction {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  min-height: 44px;
+  padding: 0 16px;
+  border-radius: var(--r-ctl);
+  font-size: 13.5px;
+  font-weight: 650;
+  transition:
+    background var(--dur-2) var(--ease-standard),
+    border-color var(--dur-2) var(--ease-standard),
+    transform var(--dur-2) var(--ease-standard);
+}
+
+.primaryAction {
+  border: 1px solid var(--btn);
+  background: var(--btn);
+  box-shadow: var(--sh-btn);
+  color: var(--btn-ink);
+}
+
+.secondaryAction {
+  border: 1px solid var(--line-btn);
+  background: var(--panel);
+  color: var(--ink);
+}
+
+.primaryAction:hover,
+.secondaryAction:hover {
+  transform: translateY(-1px);
+}
+
+.primaryAction:hover {
+  border-color: var(--btn-hover);
+  background: var(--btn-hover);
+}
+
+.secondaryAction:hover {
+  border-color: var(--line-hover);
+  background: var(--chip);
+}
+
+.releaseCard {
+  min-width: 0;
+  padding: 22px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-card-sm);
+  background: var(--sunk);
+}
+
+.releaseCard > span,
+.sectionHeading > p,
+.conversion > div > p {
+  display: block;
+  margin: 0;
+  color: var(--ink-3);
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-size: 10px;
+  font-weight: 650;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.releaseCard > strong {
+  display: block;
+  margin-top: 11px;
+  color: var(--ink);
+  font-family: var(--font-serif), Georgia, serif;
+  font-size: 25px;
+  font-weight: 500;
+  letter-spacing: -0.025em;
+  line-height: 1.15;
+}
+
+.releaseCard dl {
+  margin: 18px 0 0;
+  border-top: 1px solid var(--line-soft);
+}
+
+.releaseCard dl > div {
+  display: grid;
+  grid-template-columns: 68px minmax(0, 1fr);
+  gap: 10px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--line-soft);
+}
+
+.releaseCard dt,
+.releaseCard dd {
+  margin: 0;
+  font-size: 11.5px;
+  line-height: 1.45;
+}
+
+.releaseCard dt {
+  color: var(--ink-3);
+  font-family: var(--font-mono), ui-monospace, monospace;
+  text-transform: uppercase;
+}
+
+.releaseCard dd {
+  overflow-wrap: anywhere;
+  color: var(--ink-2);
+}
+
+.releaseCard > p {
+  margin: 14px 0 0;
+  color: var(--ink-prose);
+  font-size: 12.5px;
+  line-height: 1.6;
+}
+
+.packages,
+.authority {
+  margin-top: clamp(58px, 8vw, 88px);
+}
+
+.sectionHeading {
+  max-width: 780px;
+}
+
+.sectionHeading > h2,
+.conversion h2 {
+  margin: 10px 0 0;
+  color: var(--ink);
+  font-family: var(--font-serif), Georgia, serif;
+  font-size: clamp(31px, 4vw, 44px);
+  font-weight: 500;
+  letter-spacing: -0.035em;
+  line-height: 1.05;
+  text-wrap: balance;
+}
+
+.sectionHeading > span,
+.conversion > div > span {
+  display: block;
+  margin-top: 14px;
+  color: var(--ink-prose);
+  font-size: 15px;
+  line-height: 1.7;
+}
+
+.packageGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 26px;
+}
+
+.packageCard {
+  display: flex;
+  flex-direction: column;
+  padding: clamp(20px, 3vw, 28px);
+  border: 1px solid var(--line);
+  border-radius: var(--r-card-sm);
+  background: var(--panel-2);
+}
+
+.packageTop {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.packageTop > span {
+  padding: 4px 8px;
+  border-radius: var(--r-pill);
+  background: var(--zap-wash);
+  color: var(--zap-wash-ink);
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-size: 9.5px;
+  font-weight: 650;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.packageTop a,
+.sourceLink,
+.boundaryNote a {
+  color: var(--link);
+  font-size: 12.5px;
+  font-weight: 650;
+}
+
+.packageTop i {
+  font-style: normal;
+}
+
+.packageCard h3 {
+  margin: 22px 0 0;
+  overflow-wrap: anywhere;
+  color: var(--ink);
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-size: clamp(20px, 2.5vw, 26px);
+  font-weight: 650;
+  letter-spacing: -0.03em;
+}
+
+.packageCard > p {
+  margin: 14px 0 0;
+  color: var(--ink-prose);
+  font-size: 14px;
+  line-height: 1.65;
+}
+
+.commandRow,
+.codeShell {
+  margin-top: 22px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-ctl);
+  background: var(--sunk);
+}
+
+.commandRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-height: 50px;
+  padding: 6px 7px 6px 13px;
+}
+
+.commandRow code {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: var(--ink-2);
+  font-size: 11.5px;
+}
+
+.copyButton {
+  flex: 0 0 auto;
+  min-height: 44px;
+}
+
+.codeShell {
+  overflow: hidden;
+}
+
+.codeShell > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 45px;
+  padding: 4px 7px 4px 13px;
+  border-bottom: 1px solid var(--line-soft);
+}
+
+.codeShell > div > span {
+  color: var(--ink-3);
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-size: 9.5px;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+
+.codeShell pre {
+  max-width: 100%;
+  margin: 0;
+  padding: 16px;
+  overflow-x: auto;
+  color: var(--ink-2);
+  font-size: 11.5px;
+  line-height: 1.65;
+}
+
+.sourceLink {
+  display: inline-flex;
+  gap: 8px;
+  align-items: center;
+  align-self: flex-start;
+  margin-top: auto;
+  padding-top: 24px;
+}
+
+.gateNotice {
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-ctl);
+  background: var(--sunk);
+}
+
+.boundGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 26px;
+}
+
+.boundGrid article {
+  padding: 22px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-card-sm);
+  background: var(--panel-2);
+}
+
+.boundGrid article > span {
+  color: var(--ink-3);
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-size: 10px;
+  letter-spacing: 0.08em;
+}
+
+.boundGrid h3 {
+  margin: 18px 0 0;
+  color: var(--ink);
+  font-size: 16px;
+  font-weight: 650;
+  line-height: 1.3;
+}
+
+.boundGrid p {
+  margin: 11px 0 0;
+  color: var(--ink-prose);
+  font-size: 13.5px;
+  line-height: 1.65;
+}
+
+.boundaryNote {
+  display: grid;
+  grid-template-columns: 180px minmax(0, 1fr) auto;
+  gap: 24px;
+  align-items: center;
+  margin-top: 12px;
+  padding: 22px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-card-sm);
+  background: var(--sunk);
+}
+
+.boundaryNote strong {
+  color: var(--ink);
+  font-family: var(--font-serif), Georgia, serif;
+  font-size: 22px;
+  font-weight: 500;
+}
+
+.boundaryNote p {
+  margin: 0;
+  color: var(--ink-prose);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.boundaryNote a {
+  white-space: nowrap;
+}
+
+.conversion {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 28px;
+  align-items: center;
+  margin-top: clamp(58px, 8vw, 88px);
+  padding: clamp(26px, 4vw, 42px);
+  border: 1px solid var(--line);
+  border-radius: var(--r-card);
+  background: var(--sunk);
+}
+
+.conversionActions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.conversionActions a {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  min-height: 44px;
+  padding: 0 18px;
+  border: 1px solid var(--line-btn);
+  border-radius: var(--r-ctl);
+  background: var(--panel);
+  color: var(--ink);
+  font-size: 13.5px;
+  font-weight: 650;
+  white-space: nowrap;
+}
+
+.conversionActions a:first-child {
+  border-color: var(--btn);
+  background: var(--btn);
+  box-shadow: var(--sh-btn);
+  color: var(--btn-ink);
+}
+
+.disclosure {
+  margin: 24px 0 0;
+  color: var(--ink-3);
+  font-size: 12.5px;
+  line-height: 1.65;
+}
+
+.disclosure strong {
+  color: var(--ink-2);
+}
+
+@media (max-width: 900px) {
+  .hero,
+  .conversion {
+    grid-template-columns: 1fr;
+  }
+
+  .boundGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .boundaryNote {
+    grid-template-columns: 1fr;
+  }
+
+  .boundaryNote a {
+    justify-self: start;
+  }
+
+  .conversionActions {
+    align-items: flex-start;
+  }
+}
+
+@media (max-width: 620px) {
+  .hero {
+    gap: 20px;
+    padding: 24px 20px;
+  }
+
+  .hero h1 {
+    font-size: clamp(38px, 12vw, 52px);
+  }
+
+  .actions,
+  .primaryAction,
+  .secondaryAction,
+  .conversionActions,
+  .conversionActions a {
+    width: 100%;
+  }
+
+  .packageGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .packageCard,
+  .boundGrid article,
+  .boundaryNote,
+  .conversion {
+    padding: 22px 20px;
+  }
+
+  .commandRow {
+    align-items: stretch;
+    flex-direction: column;
+    padding: 12px;
+  }
+
+  .copyButton {
+    width: 100%;
+    min-height: 44px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .primaryAction,
+  .secondaryAction {
+    transition: none;
+  }
+
+  .primaryAction:hover,
+  .secondaryAction:hover {
+    transform: none;
+  }
+}

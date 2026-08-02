@@ -13,6 +13,7 @@ describe("Learn page", () => {
     const html = renderToStaticMarkup(createElement(LearnPage));
 
     expect(html).toContain("Practice deployed routes in Virtual Trading");
+    expect(html).toContain("Connect an agent with the OpenZaps Agent Kit");
     expect(html).toContain("Give an Agent the Trigger, Never the Authority");
     expect(html).not.toContain("Paper Trade First, Then Draw the Authority Map");
     expect(html).toContain(

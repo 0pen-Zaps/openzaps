@@ -355,6 +355,8 @@ const reviewedCampaignQueueMigration =
   "20260801024005_durable_reviewed_marketing_campaign_queue.sql";
 const agentKitCampaignMigration =
   "20260801062000_queue_agent_kit_discord_campaign.sql";
+const agentKitXCampaignMigration =
+  "20260802010000_queue_agent_kit_x_campaign.sql";
 const learnHubCampaignMigration =
   "20260801100000_queue_learn_hub_campaign.sql";
 const syndicationInboxMigration =
@@ -370,6 +372,8 @@ const reviewedCampaignContentHash = "de".repeat(32);
 const agentKitCampaignId = "agent-kit-published-v1";
 const agentKitCampaignContentHash =
   "516443309a2b558c1335bb4f672a649a1f728ddc643bb0a762564835c6ff59ca";
+const agentKitXCampaignContentHash =
+  "c0dc5ff730cdd8efaf58cf1af1940941e5c6dd60c75f542ad036226862448a0e";
 const learnHubCampaignId = "learn-hub-launched-v1";
 const learnHubXContentHash =
   "d1582813d0f9c4a53385e75082bd6d3fba90a5ea0edd2ce86bed873ca7289717";
@@ -524,9 +528,11 @@ try {
     for (const filename of migrationFiles) {
       if (
         pass === 1
-        && [agentKitCampaignMigration, learnHubCampaignMigration].includes(
-          filename,
-        )
+        && [
+          agentKitCampaignMigration,
+          agentKitXCampaignMigration,
+          learnHubCampaignMigration,
+        ].includes(filename)
       ) {
         const replayProbe = psqlFileProbe(join(migrations, filename), "select 1;");
         assert(
@@ -2688,8 +2694,8 @@ try {
       );
   `);
   assert(
-    initialReviewedCampaignState === "3|0|1",
-    `reviewed campaign queue did not contain the three exact release artifacts: ${initialReviewedCampaignState}`,
+    initialReviewedCampaignState === "4|0|2",
+    `reviewed campaign queue did not contain the four exact release artifacts: ${initialReviewedCampaignState}`,
   );
 
   const emptyReviewedCampaignClaim = psqlScalar(`
@@ -2935,7 +2941,7 @@ try {
     from public.marketing_reviewed_campaigns;
   `);
   assert(
-    reviewedCampaignChannelState === "3|1",
+    reviewedCampaignChannelState === "3|2",
     `reviewed queue fixture changed the expected channel distribution: ${reviewedCampaignChannelState}`,
   );
 
@@ -3266,6 +3272,78 @@ Pre-audit software. Verify before use.$campaign$)::text
     );
   `);
 
+  const agentKitXCampaignClaim = psqlScalar(`
+    select
+      result_code || '|' ||
+      campaign_id || '|' ||
+      channel || '|' ||
+      queue_order::text || '|' ||
+      content_hash || '|' ||
+      (not_before = '2026-08-05T14:00:00Z'::timestamptz)::text || '|' ||
+      (body = $campaign$OpenZaps Agent Kit is published.
+
+→ SDK: compiles the exact policy tuple and prepares unsigned EIP-712 data.
+→ MCP: read-only capsule discovery.
+
+Neither package holds a key, signs, or broadcasts.
+https://www.0xzaps.com/agent-kit
+
+Pre-audit software. Verify before use.$campaign$)::text
+    from private.claim_next_marketing_campaign_at(
+      array['x', 'discord']::text[],
+      '2026-08-05T15:00:00Z'::timestamptz
+    );
+  `);
+  assert(
+    agentKitXCampaignClaim ===
+      `claimed|${agentKitCampaignId}|x|21|${agentKitXCampaignContentHash}|true|true`,
+    `actual Agent Kit X campaign claim drifted: ${agentKitXCampaignClaim}`,
+  );
+
+  const agentKitXCampaignVerification = psqlScalar(`
+    select verified
+    from private.verify_marketing_campaign_schedule_claim_at(
+      '${agentKitCampaignId}',
+      'x',
+      '2026-08-05'::date,
+      '${agentKitXCampaignContentHash}',
+      '2026-08-05T15:05:00Z'::timestamptz
+    );
+  `);
+  assert(
+    agentKitXCampaignVerification === "t",
+    `Agent Kit X campaign claim did not verify: ${agentKitXCampaignVerification}`,
+  );
+
+  psql(`
+    insert into public.marketing_delivery_ledger (
+      idempotency_key,
+      run_id,
+      candidate_id,
+      content_hash,
+      channel,
+      action,
+      counter_key,
+      interaction_id,
+      approved_by,
+      claim_day,
+      status
+    )
+    values (
+      'scheduled:${agentKitCampaignId}:x',
+      'marketing-agent-kit-x-campaign-harness',
+      'marketing-agent-kit-x-campaign-harness-candidate',
+      '${agentKitXCampaignContentHash}',
+      'x',
+      'broadcast',
+      'xPosts',
+      null,
+      'integration-test',
+      '2000-01-06'::date,
+      'claimed'
+    );
+  `);
+
   const learnHubDiscordClaim = psqlScalar(`
     select
       result_code || '|' ||
@@ -3284,7 +3362,7 @@ https://www.0xzaps.com/learn
 Pre-audit software. Verify before use.$campaign$)::text
     from private.claim_next_marketing_campaign_at(
       array['x', 'discord']::text[],
-      '2026-08-05T15:00:00Z'::timestamptz
+      '2026-08-06T15:00:00Z'::timestamptz
     );
   `);
   assert(
@@ -3298,9 +3376,9 @@ Pre-audit software. Verify before use.$campaign$)::text
     from private.verify_marketing_campaign_schedule_claim_at(
       '${learnHubCampaignId}',
       'discord',
-      '2026-08-05'::date,
+      '2026-08-06'::date,
       '${learnHubCommunityContentHash}',
-      '2026-08-05T15:05:00Z'::timestamptz
+      '2026-08-06T15:05:00Z'::timestamptz
     );
   `);
   assert(
@@ -3332,7 +3410,7 @@ Pre-audit software. Verify before use.$campaign$)::text
       'discordPosts',
       null,
       'integration-test',
-      '2000-01-06'::date,
+      '2000-01-07'::date,
       'claimed'
     );
   `);
@@ -3341,7 +3419,7 @@ Pre-audit software. Verify before use.$campaign$)::text
     select result_code
     from private.claim_next_marketing_campaign_at(
       array['x', 'discord']::text[],
-      '2026-08-06T15:00:00Z'::timestamptz
+      '2026-08-07T15:00:00Z'::timestamptz
     );
   `);
   const completedReviewedCampaignState = psqlScalar(`
@@ -3352,6 +3430,7 @@ Pre-audit software. Verify before use.$campaign$)::text
         from public.marketing_delivery_ledger
         where idempotency_key in (
           'scheduled:${agentKitCampaignId}:discord',
+          'scheduled:${agentKitCampaignId}:x',
           'scheduled:${learnHubCampaignId}:x',
           'scheduled:${learnHubCampaignId}:discord'
         )
@@ -3359,7 +3438,7 @@ Pre-audit software. Verify before use.$campaign$)::text
   `);
   assert(
     completedReviewedCampaignQueue === "no_pending_campaign"
-      && completedReviewedCampaignState === "5|3",
+      && completedReviewedCampaignState === "6|4",
     `completed reviewed campaign queue was reclaimed: ${completedReviewedCampaignQueue}|${completedReviewedCampaignState}`,
   );
 
@@ -3387,7 +3466,7 @@ Pre-audit software. Verify before use.$campaign$)::text
       (select count(*) from public.marketing_campaign_schedule_claims);
   `);
   assert(
-    immutableReviewedCampaignState === "4|5",
+    immutableReviewedCampaignState === "5|6",
     `reviewed campaign artifacts changed after rejected mutations: ${immutableReviewedCampaignState}`,
   );
 

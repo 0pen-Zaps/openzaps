@@ -63,6 +63,15 @@ export const STATIC_PAGE_SEO = {
     changeFrequency: "weekly",
     priority: 0.85,
   },
+  agentKit: {
+    title: "Agent Kit for Bounded DeFi Automation",
+    description:
+      "Connect AI agents to OpenZaps with a read-only MCP server and SDK that prepares exact policy and unsigned EIP-712 artifacts without signing or broadcasting.",
+    path: "/agent-kit",
+    ogImage: "/og/docs.png",
+    changeFrequency: "weekly",
+    priority: 0.85,
+  },
   learn: {
     title: "OpenZaps Tutorials & Product Updates",
     description:

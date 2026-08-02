@@ -28,7 +28,7 @@ describe("review-only feed syndication", () => {
   it("normalizes only the source-controlled OpenZaps feed as reviewable metadata", () => {
     const items = normalizeApprovedOpenZapsFeedItems();
 
-    expect(items).toHaveLength(4);
+    expect(items).toHaveLength(5);
     expect(items.every((item) => item.source === "openzaps")).toBe(true);
     expect(items.every((item) => item.classification === "reviewable")).toBe(true);
     expect(items.every((item) => item.draftable)).toBe(true);
@@ -165,7 +165,7 @@ describe("review-only feed syndication", () => {
   it("combines both sources without creating a delivery or queue contract", () => {
     const items = discoverReviewOnlySyndicationItems([post()]);
 
-    expect(items).toHaveLength(5);
+    expect(items).toHaveLength(6);
     expect(items.filter((item) => item.source === "defitutorials")).toHaveLength(1);
     expect(items.every((item) => !Object.hasOwn(item, "delivery"))).toBe(true);
     expect(items.every((item) => !Object.hasOwn(item, "queue"))).toBe(true);

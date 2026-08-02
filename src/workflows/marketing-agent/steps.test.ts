@@ -174,6 +174,8 @@ const VIRTUAL_TRADING_PAGE_HTML =
   "Virtual Trading starts with 10,000 virtual USDG. Nothing here can move money. No wallet required. No deposit or approval. No signature or transaction.";
 const REQUEST_ZAP_PAGE_HTML =
   "Request a Zap is human-reviewed. Get its authority map.";
+const AGENT_KIT_PAGE_HTML =
+  '<main data-agent-kit-boundary="read-only-and-unsigned">@openzaps/sdk@0.1.0 @openzaps/mcp@0.1.0 Neither package signs or broadcasts. A separate executor submits due standing runs. Pre-audit software.</main>';
 
 function bundle(): MarketingDraftBundle {
   const sourcePacket = {
@@ -1537,6 +1539,13 @@ describe("bounded source collection", () => {
           ),
         );
       }
+      if (input.endsWith("/agent-kit")) {
+        return Promise.resolve(
+          new Response(AGENT_KIT_PAGE_HTML, {
+            headers: { "content-type": "text/html; charset=utf-8" },
+          }),
+        );
+      }
       if (input.endsWith("/learn")) {
         return Promise.resolve(
           new Response(LEARN_PAGE_HTML, {
@@ -1581,7 +1590,7 @@ describe("bounded source collection", () => {
       sourceUrls: [],
     });
 
-    expect(fetchMock).toHaveBeenCalledTimes(12);
+    expect(fetchMock).toHaveBeenCalledTimes(13);
     expect(result.facts).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -1626,6 +1635,11 @@ describe("bounded source collection", () => {
           key: "product.agent_kit_boundaries",
           status: "confirmed",
           sourceUrl: "https://www.0xzaps.com/docs",
+        }),
+        expect.objectContaining({
+          key: "product.agent_kit_page",
+          status: "confirmed",
+          sourceUrl: "https://www.0xzaps.com/agent-kit",
         }),
         expect.objectContaining({
           key: "product.learn_hub",
@@ -1679,7 +1693,37 @@ describe("bounded source collection", () => {
     );
 
     expect(learnFact).toMatchObject({ status: "unavailable", value: null });
-    expect(fetchMock).toHaveBeenCalledTimes(12);
+    expect(fetchMock).toHaveBeenCalledTimes(13);
+  });
+
+  it("rejects Agent Kit evidence when a required authority marker drifts", async () => {
+    const fetchMock = vi.fn().mockImplementation((input: string) =>
+      Promise.resolve(
+        input.endsWith("/agent-kit")
+          ? new Response(
+              AGENT_KIT_PAGE_HTML.replace(
+                "separate executor",
+                "generic worker",
+              ),
+              { headers: { "content-type": "text/html; charset=utf-8" } },
+            )
+          : Response.json({}),
+      ),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await collectMarketingSourcesStep({
+      kind: "product_update",
+      brief: "Collect a verified Agent Kit update.",
+      channels: ["x"],
+      sourceUrls: [],
+    });
+    const agentKitFact = result.facts.find(
+      (fact) => fact.key === "product.agent_kit_page",
+    );
+
+    expect(agentKitFact).toMatchObject({ status: "unavailable", value: null });
+    expect(fetchMock).toHaveBeenCalledTimes(13);
   });
 
   it.each([
@@ -1840,7 +1884,7 @@ describe("bounded source collection", () => {
       sourceUrls: [],
     });
 
-    expect(fetchMock).toHaveBeenCalledTimes(12);
+    expect(fetchMock).toHaveBeenCalledTimes(13);
     for (const [, init] of fetchMock.mock.calls as Array<[string, RequestInit]>) {
       expect(init.redirect).toBe("error");
     }
@@ -1882,6 +1926,13 @@ describe("bounded source collection", () => {
           }),
         );
       }
+      if (input.endsWith("/agent-kit")) {
+        return Promise.resolve(
+          new Response(AGENT_KIT_PAGE_HTML, {
+            headers: { "content-type": "text/html" },
+          }),
+        );
+      }
       if (input.startsWith("https://registry.npmjs.org/")) {
         return Promise.resolve(Response.json({}));
       }
@@ -1911,7 +1962,7 @@ describe("bounded source collection", () => {
       sourceUrls: ["https://defitutorials.substack.com/p/openzaps"],
     });
 
-    expect(fetchMock).toHaveBeenCalledTimes(13);
+    expect(fetchMock).toHaveBeenCalledTimes(14);
     for (const [, init] of fetchMock.mock.calls as Array<[string, RequestInit]>) {
       expect(init.redirect).toBe("error");
     }
@@ -1943,6 +1994,13 @@ describe("bounded source collection", () => {
           }),
         );
       }
+      if (input.endsWith("/agent-kit")) {
+        return Promise.resolve(
+          new Response(AGENT_KIT_PAGE_HTML, {
+            headers: { "content-type": "text/html" },
+          }),
+        );
+      }
       if (input.startsWith("https://registry.npmjs.org/")) {
         return Promise.resolve(Response.json({}));
       }
@@ -1961,7 +2019,7 @@ describe("bounded source collection", () => {
       sourceUrls: ["https://defitutorials.substack.com/p/openzaps"],
     });
 
-    expect(fetchMock).toHaveBeenCalledTimes(13);
+    expect(fetchMock).toHaveBeenCalledTimes(14);
     expect(result.externalData).toEqual([]);
     expect(JSON.stringify(result)).not.toContain("example-secret-token");
   });

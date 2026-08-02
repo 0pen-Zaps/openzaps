@@ -17,6 +17,7 @@ describe("public content catalog", () => {
     );
 
     expect(titles).toContain("Practice deployed routes in Virtual Trading");
+    expect(titles).toContain("Connect an agent with the OpenZaps Agent Kit");
     expect(titles).toContain("Give an Agent the Trigger, Never the Authority");
     expect(titles).not.toContain("Paper Trade First, Then Draw the Authority Map");
     expect(NON_PUBLIC_TUTORIAL_TITLES).toContain(
