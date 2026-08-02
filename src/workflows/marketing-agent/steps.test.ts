@@ -7,7 +7,10 @@ import {
   PUBLIC_CONTENT_CATALOG_DIGEST,
   PUBLIC_CONTENT_ITEMS,
 } from "@/lib/marketing/public-content";
-import type { MarketingDraftBundle } from "@/workflows/marketing-agent/contracts";
+import {
+  MarketingDraftBundleSchema,
+  type MarketingDraftBundle,
+} from "@/workflows/marketing-agent/contracts";
 
 const mocks = vi.hoisted(() => ({
   claim: vi.fn(),
@@ -523,7 +526,7 @@ function substackBundle(): MarketingDraftBundle {
       tutorialId: "paper-trade-first-authority-map",
     },
     tutorialHandoff: {
-      version: 1,
+      version: 2,
       channel: "substack",
       status: "requires_owner_approval",
       tutorialId: "paper-trade-first-authority-map",
@@ -531,6 +534,15 @@ function substackBundle(): MarketingDraftBundle {
       sourcePath: "docs/tutorials/paper-trade-first-authority-map.md",
       sourceSha256,
       bodySha256,
+      hero: {
+        sourcePath: "docs/media/paper-trade-first.jpg",
+        sha256: "c".repeat(64),
+        mimeType: "image/jpeg",
+        width: 1128,
+        height: 440,
+        byteLength: 49_900,
+        alt: "OpenZaps Virtual Trading paper-trading safety preview.",
+      },
       title,
       subtitle,
       tags,
@@ -582,6 +594,9 @@ beforeEach(() => {
     observedAt: CREATED_AT,
   });
   const sourceBundle = substackBundle().tutorialHandoff!;
+  if (sourceBundle.version !== 2) {
+    throw new Error("Expected a current tutorial handoff fixture.");
+  }
   mocks.loadTutorial.mockReturnValue(sourceBundle);
   mocks.createTutorialHandoff.mockReturnValue({
     status: "requires-human-publish",
@@ -595,11 +610,12 @@ beforeEach(() => {
       tags: sourceBundle.tags,
     },
     source: {
-      version: 1,
+      version: 2,
       tutorialId: sourceBundle.tutorialId,
       sourcePath: sourceBundle.sourcePath,
       sourceSha256: sourceBundle.sourceSha256,
       bodySha256: sourceBundle.bodySha256,
+      hero: sourceBundle.hero,
       modelRewriteAllowed: false,
     },
   });
@@ -1048,6 +1064,41 @@ describe("durable marketing delivery admission", () => {
       publishMarketingBundleStep(substackBundle(), {
         decision: "approve",
         approvedBy: "Nodar",
+      }),
+    ).resolves.toMatchObject([{
+      channel: "substack",
+      status: "blocked",
+      error: expect.stringContaining("hash-bound owner approval"),
+    }]);
+    expect(mocks.claim).not.toHaveBeenCalled();
+    expect(mocks.createTutorialHandoff).not.toHaveBeenCalled();
+  });
+
+  it("reads legacy v1 Substack history but blocks a new delivery before durable admission", async () => {
+    setLiveEnvironment();
+    mocks.getSnapshot.mockResolvedValue(zeroSnapshot());
+    const current = substackBundle();
+    if (!current.tutorialHandoff || current.tutorialHandoff.version !== 2) {
+      throw new Error("Expected a current tutorial handoff fixture.");
+    }
+    const { hero: _hero, ...legacyHandoff } = current.tutorialHandoff;
+    void _hero;
+    const legacy = MarketingDraftBundleSchema.parse({
+      ...current,
+      tutorialHandoff: { ...legacyHandoff, version: 1 },
+    });
+
+    await expect(
+      publishMarketingBundleStep(legacy, {
+        decision: "approve",
+        approvedBy: "Nodar",
+        tutorialApproval: {
+          decision: "approve",
+          approvedBy: "Nodar",
+          tutorialId: legacyHandoff.tutorialId,
+          sourceSha256: legacyHandoff.sourceSha256,
+          bodySha256: legacyHandoff.bodySha256,
+        },
       }),
     ).resolves.toMatchObject([{
       channel: "substack",
@@ -2201,7 +2252,7 @@ describe("bounded source collection", () => {
     expect(mocks.loadTutorial).toHaveBeenCalledWith(
       "paper-trade-first-authority-map",
     );
-    expect(result.model).toBe("deterministic/source-controlled-tutorial/v1");
+    expect(result.model).toBe("deterministic/source-controlled-tutorial/v2");
     expect(result.tutorialHandoff).toEqual(input.tutorialHandoff);
     expect(result.candidates).toHaveLength(1);
     expect(result.candidates[0]).toMatchObject({

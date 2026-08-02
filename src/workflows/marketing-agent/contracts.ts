@@ -13,7 +13,7 @@ import {
   normalizeMarketingSourceUrl,
 } from "@/lib/marketing/source-url";
 import {
-  SourceControlledTutorialApprovalBundleSchema,
+  PersistedSourceControlledTutorialApprovalBundleSchema,
   SourceControlledTutorialApprovalReceiptSchema,
 } from "@/lib/marketing/tutorial-handoff-contract";
 import { parseCanonicalXStatusUrl } from "@/lib/marketing/x-interaction";
@@ -426,7 +426,8 @@ export const MarketingDraftBundleSchema = z
     request: MarketingDraftRequestSchema,
     scheduledClaim: MarketingScheduledRequestSchema.optional(),
     sourcePacket: MarketingSourcePacketSchema,
-    tutorialHandoff: SourceControlledTutorialApprovalBundleSchema.optional(),
+    tutorialHandoff:
+      PersistedSourceControlledTutorialApprovalBundleSchema.optional(),
     candidates: z.array(DeployedMarketingCandidateSchema).min(1).max(3),
     presentations: z
       .array(

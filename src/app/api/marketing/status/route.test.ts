@@ -98,6 +98,18 @@ describe("marketing status route", () => {
         nonPresentCount: number;
         hold: boolean;
       } | null;
+      sourceControlledTutorials: Array<{
+        tutorialId: string;
+        hero: {
+          sourcePath: string;
+          sha256: string;
+          mimeType: string;
+          width: number;
+          height: number;
+          byteLength: number;
+          alt: string;
+        };
+      }>;
       policy: { xReplyScope: string; xAutomaticReplyScope: string };
     };
 
@@ -153,6 +165,24 @@ describe("marketing status route", () => {
       nonPresentCount: 0,
       hold: false,
     });
+    expect(body.sourceControlledTutorials).toEqual([
+      expect.objectContaining({
+        tutorialId: "paper-trade-first-authority-map",
+        hero: {
+          sourcePath: "docs/media/12-virtual-trading.jpg",
+          sha256:
+            "4dbb4a595012baaef3541e284770e7ffad3bc671b4ba3fc95672cc33f2abc120",
+          mimeType: "image/jpeg",
+          width: 1128,
+          height: 440,
+          byteLength: 49_900,
+          alt:
+            "OpenZaps Virtual Trading banner reading \"Trade the route. Risk nothing.\" beside a wallet-free paper-trading safety checklist.",
+        },
+      }),
+    ]);
+    expect(Object.keys(body.sourceControlledTutorials[0]?.hero ?? {})).not
+      .toContain("bytes");
     expect(compliance.health).toHaveBeenCalledWith("100");
     expect(raw).not.toContain("00000000-0000-4000-8000-000000000099");
     expect(raw).not.toContain("operator-secret");

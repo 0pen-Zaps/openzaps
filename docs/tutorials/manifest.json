@@ -3,8 +3,8 @@
   "publication": "https://defitutorials.substack.com",
   "feed": "https://defitutorials.substack.com/feed",
   "statusDefinitions": {
-    "draft": "Source-controlled Markdown whose complete source and exact editor-body hashes are pinned. It remains excluded from Learn and requires an owner approval matching both hashes before an editor handoff.",
-    "approved_handoff": "The owner approved the exact pinned source and editor-body hashes and an official-editor handoff was prepared. It remains excluded from Learn until RSS confirmation.",
+    "draft": "Source-controlled Markdown whose complete source, exact editor body, and source-bound verified hero asset are pinned. It remains excluded from Learn and requires an owner approval matching both source and body hashes before an editor handoff.",
+    "approved_handoff": "The owner approved the exact pinned source and editor-body hashes, including the source-bound verified hero declaration, and an official-editor handoff was prepared. It remains excluded from Learn until RSS confirmation.",
     "rss_confirmed": "The exact canonical DeFi Tutorials URL and approved title were found together in the public RSS feed."
   },
   "tutorials": [
@@ -22,8 +22,17 @@
       "subtitle": "Test an agentic DeFi workflow without a wallet, then turn it into a human-reviewed OpenZaps authority map",
       "tags": ["DeFi", "AI agents", "OpenZaps", "Risk management"],
       "sourcePath": "docs/tutorials/paper-trade-first-authority-map.md",
-      "sourceSha256": "e2e7e9539ec084d3fbd1f87de24ac97894a7337c15d705a17716d48989808aef",
+      "sourceSha256": "62b30badadb4b94c2952c13cec0b6674a6b2e528e928fa23d15c5e20dcdb5a46",
       "bodySha256": "362f181d2a18ce6d08fd239e76aa2c860133870f3784078accce22c92976b004",
+      "hero": {
+        "sourcePath": "docs/media/12-virtual-trading.jpg",
+        "sha256": "4dbb4a595012baaef3541e284770e7ffad3bc671b4ba3fc95672cc33f2abc120",
+        "mimeType": "image/jpeg",
+        "width": 1128,
+        "height": 440,
+        "byteLength": 49900,
+        "alt": "OpenZaps Virtual Trading banner reading \"Trade the route. Risk nothing.\" beside a wallet-free paper-trading safety checklist."
+      },
       "topics": ["protocol", "simulation", "trading", "security"],
       "disclosures": ["pre_audit"],
       "claims": [

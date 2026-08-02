@@ -41,9 +41,10 @@ import {
   createSourceControlledTutorialEditorHandoff,
   loadSourceControlledTutorialApprovalBundle,
 } from "@/lib/marketing/tutorial-handoff-source";
-import type {
-  SourceControlledTutorialApprovalBundle,
-  SourceControlledTutorialApprovalReceipt,
+import {
+  SOURCE_CONTROLLED_TUTORIAL_BUNDLE_VERSION,
+  type SourceControlledTutorialApprovalBundle,
+  type SourceControlledTutorialApprovalReceipt,
 } from "@/lib/marketing/tutorial-handoff-contract";
 import {
   getMarketingXReplySubject,
@@ -937,7 +938,7 @@ export async function generateMarketingDraftStep(
   const modelChannels = request.channels.filter(
     (channel): channel is "x" | "discord" => channel !== "substack",
   );
-  let model = "deterministic/source-controlled-tutorial/v1";
+  let model = "deterministic/source-controlled-tutorial/v2";
   let usage: {
     inputTokens?: number;
     outputTokens?: number;
@@ -1372,6 +1373,12 @@ async function deliverMarketingBundle(
     const presentation = bundle.presentations.find(
       (item) => item.candidateId === candidate.id,
     );
+    const currentTutorialHandoff =
+      candidate.channel === "substack"
+      && bundle.tutorialHandoff?.version
+        === SOURCE_CONTROLLED_TUTORIAL_BUNDLE_VERSION
+        ? bundle.tutorialHandoff
+        : null;
     if (dryRun) {
       deliveries.push({
         channel: candidate.channel,
@@ -1387,14 +1394,14 @@ async function deliverMarketingBundle(
       (!presentation?.title ||
         !presentation.tags ||
         presentation.tags.length < 2 ||
-        !bundle.tutorialHandoff ||
+        !currentTutorialHandoff ||
         !authorization.tutorialApproval ||
         authorization.tutorialApproval.tutorialId
-          !== bundle.tutorialHandoff.tutorialId ||
+          !== currentTutorialHandoff.tutorialId ||
         authorization.tutorialApproval.sourceSha256
-          !== bundle.tutorialHandoff.sourceSha256 ||
+          !== currentTutorialHandoff.sourceSha256 ||
         authorization.tutorialApproval.bodySha256
-          !== bundle.tutorialHandoff.bodySha256)
+          !== currentTutorialHandoff.bodySha256)
     ) {
       deliveries.push({
         channel: candidate.channel,
@@ -1649,7 +1656,7 @@ async function deliverMarketingBundle(
         });
       } else {
         const handoff = createSourceControlledTutorialEditorHandoff(
-          bundle.tutorialHandoff!,
+          currentTutorialHandoff!,
           authorization.tutorialApproval!,
           idempotencyKey,
         );

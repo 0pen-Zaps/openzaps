@@ -631,16 +631,24 @@ then reads that entry's exact `sourcePath`, requires the first heading to match
 the manifest title, extracts only the Markdown after
 `<!-- OPENZAPS_SUBSTACK_BODY -->`, and verifies both the complete-file
 `sourceSha256` and extracted `bodySha256`. Title, subtitle, tags, topics,
-disclosures, and claim-to-fact bindings also come from the manifest. The model
+disclosures, claim-to-fact bindings, and required `hero` metadata also come from
+the manifest. The hero must be a direct `docs/media/*.jpg` child. Its exact
+path, SHA-256, `image/jpeg` MIME, dimensions, byte length, and alt text appear in
+one canonical declaration before the body marker, so the approved complete-file
+hash transitively binds all six fields. The server independently checks path
+containment and re-reads the asset, verifies its byte length and SHA-256, and
+parses a complete 8-bit JPEG frame and terminal EOI before exposing a handoff. The model
 may still draft separate X or Discord promotion, but it may not write, rewrite,
 summarize, or repair the selected Substack tutorial.
 
 The review bundle displays the tutorial id, source path, both SHA-256 hashes,
-and exact editor body. Owner approval must repeat the tutorial id and both
-hashes. Immediately before producing a copy-ready handoff, the server re-reads
-the manifest and source and rejects any byte, metadata, marker, link, or hash
-drift. A change therefore requires a fresh review; approval of an older source
-cannot authorize a newer draft.
+verified hero metadata, and exact editor body. Owner approval repeats the
+tutorial id and both source/body hashes; the source hash binds the canonical
+hero declaration without widening the approval or publication-receipt database
+schemas. Immediately before producing a copy-ready handoff, the server re-reads
+the manifest, source, and hero and rejects any byte, metadata, marker, link,
+image-structure, dimension, or hash drift. A change therefore requires a fresh
+review; approval of an older source cannot authorize a newer draft or asset.
 
 After approval, a Substack delivery returns:
 
@@ -657,14 +665,20 @@ are not separate persisted review artifacts.
 The operator must:
 
 1. Open the returned `https://defitutorials.substack.com/publish/post` URL.
-2. Confirm the displayed tutorial id, source path, source hash, and editor-body
-   hash still match the approval. Use **Copy rich text** for the body and copy the approved title, subtitle,
-   and tags separately. Keep the Markdown view as the immutable audit source;
+2. Confirm the displayed tutorial id, source path, source hash, editor-body
+   hash, and verified hero path/hash/MIME/dimensions/byte length/alt text still
+   match the approval. Download the hero through the authenticated operator
+   control, inspect the image, upload those exact bytes to the official editor,
+   and use the approved alt text. Use **Copy rich text** for the body and copy
+   the approved title, subtitle, and tags separately. Keep the Markdown view as
+   the immutable audit source;
    Substack's editor does not accept Markdown syntax as an import format. If
    rich clipboard MIME is unavailable, use the copied or selectable plain-text
    fallback.
-3. Recheck every fact, link, image right, disclosure, and call to action in the
-   Substack preview.
+3. Recheck every fact, link, image right, disclosure, call to action, and the
+   rendered hero plus its alt text in the Substack preview. Public RSS later
+   proves only the exact URL and approved title; it does not prove that Substack
+   displayed the hero.
 4. **Before clicking Publish**, prove the `defitutorials` discovery cursor is
    already initialized from a complete feed snapshot while the approved title
    is still absent from the public feed. Invoke the syndication cron and require
@@ -694,8 +708,8 @@ The operator must:
    the verifier. Review it against the immutable receipt before copying it. Keep
    only its stable `id`, approved `title`, and reviewed `sourcePath`; remove the
    draft-only `preparedAt`, `approvedAt`, `subtitle`, `tags`, `topics`,
-   `disclosures`, `claims`, `sourceSha256`, and `bodySha256` fields. Then set
-   `status: "rss_confirmed"`, the canonical public URL, and the RSS publication
+   `disclosures`, `claims`, `sourceSha256`, `bodySha256`, and `hero` fields. Then
+   set `status: "rss_confirmed"`, the canonical public URL, and the RSS publication
    timestamp. The exact source/body hashes remain fail-closed evidence in the
    recorded approval and official-editor handoff; the `rss_confirmed` manifest
    branch intentionally excludes draft-only handoff fields. Review, commit, and

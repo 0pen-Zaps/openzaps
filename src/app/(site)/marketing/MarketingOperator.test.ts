@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
@@ -9,6 +11,7 @@ import {
 
 import {
   DISCORD_PREFLIGHT_BUTTON_LABEL,
+  downloadVerifiedTutorialHero,
   discordActivationSummary,
   discordPreflightRequestIsCurrent,
   hasSubstackEditorHandoff,
@@ -30,6 +33,7 @@ import {
   readinessRows,
   shouldRetryPoll,
   sourceControlledTutorialSelections,
+  sourceControlledTutorialHero,
   syndicationDeferredCount,
   syndicationItemCanDraft,
   syndicationRepairMatchesItem,
@@ -1693,6 +1697,17 @@ describe("syndication skip controls", () => {
 });
 
 describe("Substack handoff helpers", () => {
+  const heroBytes = new TextEncoder().encode("source-controlled-hero-bytes");
+  const heroSha256 = createHash("sha256").update(heroBytes).digest("hex");
+  const tutorialHero = {
+    sourcePath: "docs/media/12-virtual-trading.jpg",
+    sha256: heroSha256,
+    mimeType: "image/jpeg" as const,
+    width: 1128,
+    height: 440,
+    byteLength: heroBytes.byteLength,
+    alt: "OpenZaps Virtual Trading route with no-wallet safety boundaries.",
+  };
   const expectedReceipt = {
     runId: "wrun_substack_1",
     candidateId: "draft:paper-trade:substack",
@@ -1711,6 +1726,37 @@ describe("Substack handoff helpers", () => {
   };
   const expectedManifestPatch = JSON.stringify(expectedManifestEntry, null, 2);
 
+  function v2HandoffValue() {
+    const sourceSha256 = "a".repeat(64);
+    const bodySha256 = "b".repeat(64);
+    return {
+      version: 2,
+      channel: "substack",
+      status: "requires_owner_approval",
+      modelRewriteAllowed: false,
+      apiWriteAttempted: false,
+      privateEndpointUsed: false,
+      tutorialId: "paper-trade-first-authority-map",
+      sourcePath: "docs/tutorials/paper-trade-first-authority-map.md",
+      sourceSha256,
+      bodySha256,
+      hero: tutorialHero,
+      approval: {
+        required: true,
+        decision: "pending",
+        scope: "exact_source_and_body_sha256",
+        tutorialId: "paper-trade-first-authority-map",
+        sourceSha256,
+        bodySha256,
+        statement:
+          "Approve only these exact source and editor-body hashes for a human-only DeFi Tutorials handoff.",
+      },
+      title: "Paper Trade First",
+      bodyMarkdown: "## Start with zero authority\n\nReview the bounded policy.",
+      tags: ["OpenZaps", "DeFi"],
+    };
+  }
+
   it("accepts only bounded byte-verified tutorial selectors and approval echoes", () => {
     const sourceSha256 = "a".repeat(64);
     const bodySha256 = "b".repeat(64);
@@ -1721,6 +1767,7 @@ describe("Substack handoff helpers", () => {
       sourcePath: "docs/tutorials/paper-trade-first-authority-map.md",
       sourceSha256,
       bodySha256,
+      hero: tutorialHero,
     }, {
       tutorialId: "paper-trade-first-authority-map",
       title: "Duplicate",
@@ -1728,21 +1775,31 @@ describe("Substack handoff helpers", () => {
       sourcePath: "docs/tutorials/paper-trade-first-authority-map.md",
       sourceSha256,
       bodySha256,
+      hero: tutorialHero,
     }])).toHaveLength(1);
 
     const handoff = {
       tutorialHandoff: {
+        version: 2,
         channel: "substack",
         status: "requires_owner_approval",
         modelRewriteAllowed: false,
+        apiWriteAttempted: false,
+        privateEndpointUsed: false,
         tutorialId: "paper-trade-first-authority-map",
+        sourcePath: "docs/tutorials/paper-trade-first-authority-map.md",
         sourceSha256,
         bodySha256,
+        hero: tutorialHero,
         approval: {
+          required: true,
           decision: "pending",
+          scope: "exact_source_and_body_sha256",
           tutorialId: "paper-trade-first-authority-map",
           sourceSha256,
           bodySha256,
+          statement:
+            "Approve only these exact source and editor-body hashes for a human-only DeFi Tutorials handoff.",
         },
       },
     };
@@ -1757,6 +1814,198 @@ describe("Substack handoff helpers", () => {
         bodySha256: "c".repeat(64),
       },
     })).toBeNull();
+    expect(tutorialApprovalEchoFromDraft({
+      tutorialHandoff: {
+        ...handoff.tutorialHandoff,
+        version: 1,
+      },
+    })).toBeNull();
+    expect(tutorialApprovalEchoFromDraft({
+      tutorialHandoff: {
+        ...handoff.tutorialHandoff,
+        apiWriteAttempted: true,
+      },
+    })).toBeNull();
+    expect(tutorialApprovalEchoFromDraft({
+      tutorialHandoff: {
+        ...handoff.tutorialHandoff,
+        hero: { ...tutorialHero, sha256: "C".repeat(64) },
+      },
+    })).toBeNull();
+  });
+
+  it("strictly narrows the required source-controlled hero metadata", () => {
+    expect(sourceControlledTutorialHero(tutorialHero)).toEqual(tutorialHero);
+    expect(sourceControlledTutorialHero({
+      ...tutorialHero,
+      unexpected: true,
+    })).toBeNull();
+    expect(sourceControlledTutorialHero({
+      ...tutorialHero,
+      sourcePath: "public/hero.jpg",
+    })).toBeNull();
+    expect(sourceControlledTutorialHero({
+      ...tutorialHero,
+      mimeType: "image/png",
+    })).toBeNull();
+    expect(sourceControlledTutorialHero({
+      ...tutorialHero,
+      sha256: heroSha256.toUpperCase(),
+    })).toBeNull();
+    expect(sourceControlledTutorialHero({
+      ...tutorialHero,
+      width: 1128.5,
+    })).toBeNull();
+    expect(sourceControlledTutorialHero({
+      ...tutorialHero,
+      byteLength: 2 * 1_024 * 1_024 + 1,
+    })).toBeNull();
+    expect(sourceControlledTutorialHero({
+      ...tutorialHero,
+      byteLength: 3,
+    })).toBeNull();
+    expect(sourceControlledTutorialHero({
+      ...tutorialHero,
+      alt: "   ",
+    })).toBeNull();
+    expect(sourceControlledTutorialHero({
+      ...tutorialHero,
+      alt: "Unsafe\nmultiline alt",
+    })).toBeNull();
+  });
+
+  it("downloads only after bearer response metadata and browser SHA-256 match", async () => {
+    const responseBytes = Uint8Array.from(heroBytes).buffer;
+    const fetchImpl = vi.fn(async (input: string, init: RequestInit) => {
+      void input;
+      void init;
+      return new Response(responseBytes, {
+        headers: {
+          "content-type": tutorialHero.mimeType,
+          "content-length": String(tutorialHero.byteLength),
+          "x-openzaps-content-sha256": tutorialHero.sha256,
+        },
+      });
+    });
+    const downloadedBlobs: Blob[] = [];
+    const createObjectURL = vi.fn((blob: Blob) => {
+      downloadedBlobs.push(blob);
+      return "blob:openzaps-tutorial-hero";
+    });
+    const triggerDownload = vi.fn();
+    const revokeObjectURL = vi.fn();
+    const scheduleRevoke = vi.fn((callback: () => void) => callback());
+
+    const result = await downloadVerifiedTutorialHero({
+      tutorialId: "paper-trade-first-authority-map",
+      hero: tutorialHero,
+      operatorToken: "operator-token",
+    }, {
+      fetchImpl,
+      subtle: globalThis.crypto.subtle,
+      createObjectURL,
+      triggerDownload,
+      revokeObjectURL,
+      scheduleRevoke,
+    });
+
+    expect(result).toEqual({
+      filename: "openzaps-paper-trade-first-authority-map-hero.jpg",
+      sha256: tutorialHero.sha256,
+      byteLength: tutorialHero.byteLength,
+    });
+    expect(fetchImpl).toHaveBeenCalledWith(
+      "/api/marketing/tutorials/paper-trade-first-authority-map/hero",
+      expect.objectContaining({
+        method: "GET",
+        cache: "no-store",
+        credentials: "same-origin",
+        redirect: "error",
+      }),
+    );
+    const requestHeaders = new Headers(fetchImpl.mock.calls[0]![1].headers);
+    expect(requestHeaders.get("authorization")).toBe("Bearer operator-token");
+    expect(requestHeaders.get("accept")).toBe("image/jpeg");
+    expect(downloadedBlobs).toHaveLength(1);
+    expect(downloadedBlobs[0]!.type).toBe("image/jpeg");
+    expect(new Uint8Array(await downloadedBlobs[0]!.arrayBuffer())).toEqual(heroBytes);
+    expect(triggerDownload).toHaveBeenCalledWith(
+      "blob:openzaps-tutorial-hero",
+      result.filename,
+    );
+    expect(revokeObjectURL).toHaveBeenCalledWith("blob:openzaps-tutorial-hero");
+  });
+
+  it.each([
+    ["content type", {
+      "content-type": "image/png",
+      "content-length": String(tutorialHero.byteLength),
+      "x-openzaps-content-sha256": tutorialHero.sha256,
+    }],
+    ["response hash", {
+      "content-type": tutorialHero.mimeType,
+      "content-length": String(tutorialHero.byteLength),
+      "x-openzaps-content-sha256": "f".repeat(64),
+    }],
+    ["content length", {
+      "content-type": tutorialHero.mimeType,
+      "content-length": String(tutorialHero.byteLength + 1),
+      "x-openzaps-content-sha256": tutorialHero.sha256,
+    }],
+  ])("fails closed before creating a Blob when the %s differs", async (_label, headers) => {
+    const createObjectURL = vi.fn();
+    await expect(downloadVerifiedTutorialHero({
+      tutorialId: "paper-trade-first-authority-map",
+      hero: tutorialHero,
+      operatorToken: "operator-token",
+    }, {
+      fetchImpl: async () => new Response(Uint8Array.from(heroBytes).buffer, { headers }),
+      subtle: globalThis.crypto.subtle,
+      createObjectURL,
+      revokeObjectURL: vi.fn(),
+      triggerDownload: vi.fn(),
+      scheduleRevoke: vi.fn(),
+    })).rejects.toThrow(/did not match/u);
+    expect(createObjectURL).not.toHaveBeenCalled();
+  });
+
+  it("fails closed on byte drift or unavailable Web Crypto", async () => {
+    const driftedBytes = Uint8Array.from(heroBytes);
+    driftedBytes[0] ^= 0xff;
+    const response = () => new Response(driftedBytes.buffer, {
+      headers: {
+        "content-type": tutorialHero.mimeType,
+        "content-length": String(tutorialHero.byteLength),
+        "x-openzaps-content-sha256": tutorialHero.sha256,
+      },
+    });
+    const createObjectURL = vi.fn();
+    const shared = {
+      createObjectURL,
+      revokeObjectURL: vi.fn(),
+      triggerDownload: vi.fn(),
+      scheduleRevoke: vi.fn(),
+    };
+
+    await expect(downloadVerifiedTutorialHero({
+      tutorialId: "paper-trade-first-authority-map",
+      hero: tutorialHero,
+      operatorToken: "operator-token",
+    }, {
+      ...shared,
+      fetchImpl: async () => response(),
+      subtle: globalThis.crypto.subtle,
+    })).rejects.toThrow("failed SHA-256 verification");
+    await expect(downloadVerifiedTutorialHero({
+      tutorialId: "paper-trade-first-authority-map",
+      hero: tutorialHero,
+      operatorToken: "operator-token",
+    }, {
+      ...shared,
+      fetchImpl: async () => response(),
+      subtle: null,
+    })).rejects.toThrow("verification and download controls are unavailable");
+    expect(createObjectURL).not.toHaveBeenCalled();
   });
 
   it("unlocks RSS verification only for the recorded official editor handoff", () => {
@@ -2017,11 +2266,7 @@ describe("Substack handoff helpers", () => {
   it("exposes editor handoff controls only after the exact candidate is approved", () => {
     const props = {
       candidateId: expectedReceipt.candidateId,
-      value: {
-        title: "Paper Trade First",
-        bodyMarkdown: "## Start with zero authority\n\nReview the bounded policy.",
-        tags: ["OpenZaps", "DeFi"],
-      },
+      value: v2HandoffValue(),
       operatorToken: "operator-test-token",
       runId: expectedReceipt.runId,
     };
@@ -2034,6 +2279,12 @@ describe("Substack handoff helpers", () => {
     expect(awaitingApproval).not.toContain("Copy rich text");
     expect(awaitingApproval).not.toContain("Open official editor");
     expect(awaitingApproval).not.toContain("Verify public RSS");
+    expect(awaitingApproval).not.toContain("Selectable plain-text editor fallback");
+    expect(awaitingApproval).toContain("Hash-verified tutorial hero");
+    expect(awaitingApproval).toContain("Download and verify hero");
+    expect(awaitingApproval).toContain(tutorialHero.sha256);
+    expect(awaitingApproval).toContain("Manual official-editor check required");
+    expect(awaitingApproval).toContain("cannot prove");
     expect(awaitingApproval).toContain(
       "Approve this exact draft before using the official editor handoff.",
     );
@@ -2047,7 +2298,36 @@ describe("Substack handoff helpers", () => {
     expect(approvedHandoff).toContain("Copy rich text");
     expect(approvedHandoff).toContain("Open official editor");
     expect(approvedHandoff).toContain("Verify public RSS");
+    expect(approvedHandoff).toContain("Selectable plain-text editor fallback");
+    expect(approvedHandoff).toContain("Download and verify hero");
     expect(approvedHandoff).toContain("stores an immutable evidence receipt");
     expect(approvedHandoff).not.toContain("persist an RSS-confirmed receipt");
+  });
+
+  it("keeps legacy v1 history visible but requires a fresh v2 hero review", () => {
+    const legacy = {
+      ...v2HandoffValue(),
+      version: 1,
+      hero: undefined,
+    };
+    const markup = renderToStaticMarkup(
+      createElement(SubstackHandoff, {
+        candidateId: expectedReceipt.candidateId,
+        value: legacy,
+        operatorToken: "operator-test-token",
+        runId: expectedReceipt.runId,
+        verificationEnabled: true,
+      }),
+    );
+
+    expect(markup).toContain("Paper Trade First");
+    expect(markup).toContain("Reviewed Markdown audit source");
+    expect(markup).toContain("historical or malformed handoff");
+    expect(markup).toContain("fresh source-controlled review");
+    expect(markup).not.toContain("Download and verify hero");
+    expect(markup).not.toContain("Copy rich text");
+    expect(markup).not.toContain("Open official editor");
+    expect(markup).not.toContain("Verify public RSS");
+    expect(markup).not.toContain("Selectable plain-text editor fallback");
   });
 });
