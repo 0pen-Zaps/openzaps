@@ -55,6 +55,8 @@ describe("RequestZapForm deployment boundary", () => {
     expect(markup).toContain('data-1p-ignore="true"');
     expect(markup).toContain('data-lpignore="true"');
     expect(markup).toContain('data-bwignore="true"');
+    expect(markup).toContain('name="requestNotes"');
+    expect(markup).not.toContain('name="website"');
     expect(personaInputRule).toMatch(/inset:\s*0/u);
     expect(personaInputRule).toMatch(/width:\s*100%/u);
     expect(personaInputRule).toMatch(/height:\s*100%/u);
