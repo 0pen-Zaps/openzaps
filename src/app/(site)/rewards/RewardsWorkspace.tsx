@@ -20,6 +20,7 @@ import {
 
 import { CopyButton } from "@/components/CopyButton";
 import { Glyph } from "@/components/Glyph";
+import { RollingDigits } from "@/components/RollingDigits";
 import { useCampaignCountdown } from "@/components/useCampaignCountdown";
 import { useWalletSession } from "@/components/WalletProvider";
 import {
@@ -836,7 +837,7 @@ function SettlementRail({ data }: { data: FeeRewardsPayload | null }): React.JSX
         <span>THE SETTLEMENT RAIL</span>
         <strong data-verified={verified || undefined}>{data ? (verified ? "verified" : "unavailable") : "reading"}</strong>
       </div>
-      <ol className={styles.settlementSteps}>
+      <ol className={styles.settlementSteps} data-flow={verified || undefined}>
         {steps.map((step, index) => (
           <li key={step.label}>
             <span className={styles.stepMark}><Glyph name={step.icon} /></span>
@@ -877,14 +878,62 @@ function CampaignCountdown({
 
   if (!countdown) return null;
   return (
-    <p className={styles.countdown} role="timer" data-reached={reached || undefined}>
-      <span>{reached ? countdown.reachedLabel : countdown.label}</span>
-      <strong>
-        {reached
-          ? "awaiting the next verified block"
-          : formatCountdown(remaining, reduced ? "minute" : "second")}
-      </strong>
-    </p>
+    <>
+      <p className={styles.countdown} role="timer" data-reached={reached || undefined}>
+        <span>{reached ? countdown.reachedLabel : countdown.label}</span>
+        <strong>
+          {reached
+            ? "awaiting the next verified block"
+            : <RollingDigits animate={!reduced} value={formatCountdown(remaining, reduced ? "minute" : "second")} />}
+        </strong>
+      </p>
+      <CampaignTimeline estimatedNow={countdown.target - remaining} />
+    </>
+  );
+}
+
+function timelineFraction(now: bigint, from: bigint, to: bigint): number {
+  if (now <= from) return 0;
+  if (now >= to) return 1;
+  return Number(now - from) / Number(to - from);
+}
+
+function timelineDay(timestamp: bigint): string {
+  return new Date(Number(timestamp) * 1000).toLocaleString("en-US", {
+    month: "short",
+    day: "numeric",
+    timeZone: "UTC",
+  });
+}
+
+/**
+ * Verified position along the campaign's fixed timeline. Both segments are
+ * time-linear within themselves (the seven-day window and the 30-day claim
+ * tail get fixed visual shares so the window stays readable), and the fill
+ * derives from the same verified-block estimate as the countdown — never the
+ * wall clock alone. Decorative duplicate of the dated terms above, so it is
+ * hidden from assistive tech.
+ */
+function CampaignTimeline({ estimatedNow }: { estimatedNow: bigint }): React.JSX.Element {
+  const { startAt, endAt, claimDeadline } = FEE_REWARDS_MANIFEST.campaign;
+  const windowFill = timelineFraction(estimatedNow, startAt, endAt);
+  const tailFill = timelineFraction(estimatedNow, endAt, claimDeadline);
+  return (
+    <div className={styles.timeline} aria-hidden="true">
+      <div className={styles.timelineTrack}>
+        <span className={styles.timelineWindow}>
+          <i style={{ transform: `scaleX(${windowFill.toFixed(4)})` }} />
+        </span>
+        <span className={styles.timelineTail}>
+          <i style={{ transform: `scaleX(${tailFill.toFixed(4)})` }} />
+        </span>
+      </div>
+      <div className={styles.timelineLabels}>
+        <span>{timelineDay(startAt)}</span>
+        <span>{timelineDay(endAt)}</span>
+        <span>{timelineDay(claimDeadline)}</span>
+      </div>
+    </div>
   );
 }
 

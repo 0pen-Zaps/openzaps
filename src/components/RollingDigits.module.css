@@ -1,0 +1,80 @@
+/* Turbopack scopes animation-name per CSS module: these keyframes MUST live
+   in this file next to the rules that reference them, or they silently never
+   apply. Motion is transform/opacity only, and the global calm rule zeroes
+   the durations as the accessibility floor. */
+
+.digits {
+  position: relative;
+  display: inline-flex;
+  font-variant-numeric: tabular-nums;
+}
+
+/* The one real text run: screen readers, selection, copy, and find-in-page
+   all resolve against this, never against the animated cells. */
+.srOnly {
+  position: absolute;
+  overflow: hidden;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  border: 0;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.cells {
+  display: inline-flex;
+  user-select: none;
+}
+
+/* Both glyphs are pseudo-element content — outside the document text layer
+   by construction, so a lingering outgoing glyph is invisible to copy,
+   search, and innerText. Re-keying a changed cell restarts both rolls. */
+.cell {
+  display: inline-grid;
+  overflow: hidden;
+  white-space: pre;
+}
+
+.cell::before,
+.cell::after {
+  grid-area: 1 / 1;
+}
+
+.cell::after {
+  content: attr(data-char);
+}
+
+.cell[data-prev]::after {
+  animation: rollIn 300ms cubic-bezier(0.2, 0.7, 0.15, 1);
+}
+
+.cell[data-prev]::before {
+  content: attr(data-prev);
+  animation: rollOut 300ms cubic-bezier(0.2, 0.7, 0.15, 1) forwards;
+}
+
+@keyframes rollIn {
+  from {
+    transform: translateY(0.72em);
+    opacity: 0;
+  }
+
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+@keyframes rollOut {
+  from {
+    transform: translateY(0);
+    opacity: 1;
+  }
+
+  to {
+    transform: translateY(-0.72em);
+    opacity: 0;
+  }
+}

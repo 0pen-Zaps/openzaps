@@ -119,6 +119,44 @@ describe("0xZAPS fee rewards public surface", () => {
     expect(landingPage).toContain("<CampaignStrip />");
   });
 
+  it("keeps countdown motion module-scoped, gated, and derived from verified time", () => {
+    const rollingCss = read("src/components/RollingDigits.module.css");
+    const rewardsCss = read("src/app/(site)/rewards/rewards.module.css");
+    // Turbopack scopes animation-name per CSS module: keyframes must live in
+    // the same file as the rules that reference them or they silently never
+    // apply.
+    expect(rollingCss).toContain("@keyframes rollIn");
+    expect(rollingCss).toContain("@keyframes rollOut");
+    expect(rewardsCss).toContain("@keyframes railFlow");
+    // Calm motion never builds the animated stacks at all.
+    expect(workspace).toContain("animate={!reduced}");
+    expect(campaignStrip).toContain("animate={!reduced}");
+    // The rail pulse asserts a live settlement path, so it only runs verified;
+    // its keyframes must restate the arrow's centering, which a CSS animation
+    // otherwise replaces wholesale.
+    expect(workspace).toContain("data-flow={verified || undefined}");
+    expect(rewardsCss).toContain("transform: translateY(-50%) translateX(");
+    // The timeline fill derives from the same verified-block estimate as the
+    // countdown, never the wall clock alone — and animates transform only.
+    expect(workspace).toContain("estimatedNow={countdown.target - remaining}");
+    expect(workspace).toContain("scaleX(");
+    expect(rewardsCss).not.toContain("transition: width");
+  });
+
+  it("keeps the odometer's animation out of the document text layer", () => {
+    const rolling = read("src/components/RollingDigits.tsx");
+    const rollingCss = read("src/components/RollingDigits.module.css");
+    // One visually hidden plain-text run is the sole source for screen
+    // readers, selection, copy, and find-in-page; the visual cells are
+    // aria-hidden, unselectable, and render every glyph as pseudo-element
+    // content so stale outgoing digits can never leak into copied text.
+    expect(rolling).toContain("styles.srOnly");
+    expect(rolling).toContain('aria-hidden="true"');
+    expect(rollingCss).toContain("user-select: none");
+    expect(rollingCss).toContain("content: attr(data-char)");
+    expect(rollingCss).toContain("content: attr(data-prev)");
+  });
+
   it("coalesces concurrent shared-snapshot fills per instance", () => {
     // unstable_cache has no MISS coalescing and the cache key rotates every
     // deploy; without this funnel, landing traffic during a deploy becomes an
