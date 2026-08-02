@@ -125,11 +125,11 @@ const RECENT_PATHS = [
   },
   {
     glyph: "repeat",
-    status: "Candidate · canaries pending",
-    tone: "candidate",
+    status: "Live · pre-audit",
+    tone: "live",
     title: "Recurring 0xZAPS stack",
     detail:
-      "The v3.2 stack is deployed and pre-audit. It remains a release candidate until its creation, execution, permanent-halt, and evidence canaries pass.",
+      "The v3.2 stack is live on Robinhood Chain: creation, execution, and permanent-halt canaries passed with onchain receipts. The contracts remain unaudited.",
     href: "/roadmap#foundation",
     action: "See the release map",
     analyticsEvent: "growth_link_clicked",
@@ -436,8 +436,8 @@ export default function LandingPage(): React.JSX.Element {
 
             <p className={styles.executionPolicyCaveat}>
               Gas limit and gas price cap bind Zap now and Automate intents. Owner-only
-              executor access is live in v3/v3.1 automation; v3.2 remains a deployed
-              candidate. The v1.1 one-shot handoff discloses that it cannot restrict
+              executor access is live in v3/v3.1/v3.2 automation; all lineages remain
+              pre-audit. The v1.1 one-shot handoff discloses that it cannot restrict
               the submitter.
             </p>
           </div>

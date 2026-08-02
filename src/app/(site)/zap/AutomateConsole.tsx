@@ -1992,7 +1992,7 @@ export default function AutomateConsole(): React.JSX.Element {
               <span className={styles.stepChip} aria-live="polite">{stepLabel}</span>
               <span className={styles.versionChip}>
                 {activeIntentKind === "recurring-stack"
-                  ? "v3.2 candidate · per-run floor from spot + signed 0xZAPS slice"
+                  ? "v3.2 · per-run floor from spot + signed 0xZAPS slice"
                   : activeIntentKind === "recurring-relative"
                     ? "v3.1 · per-Zap floor from live spot"
                     : "v3 · floor from a fresh quote at signing"}

@@ -76,11 +76,11 @@ const releaseStates = [
       "The current one-shot, recurring, and price-triggered lineages are live on Robinhood Chain. v3.1 derives a recurring run floor from an allowlisted spot source at execution.",
   },
   {
-    status: "Deployed candidate",
-    tone: "candidate",
+    status: "Live · pre-audit",
+    tone: "live",
     title: "v3.2 recurring stack",
     body:
-      "The isolated stack contracts are deployed and configured, but creation, execution, permanent-halt, and evidence canaries remain. Do not treat this lineage as production-cleared.",
+      "The isolated stack contracts are live on Robinhood Chain: creation, execution, and permanent-halt canaries passed with onchain receipts, and the app, relay, and executor lanes are open. The contracts remain unaudited.",
   },
   {
     status: "Source-ready · not deployed",
@@ -135,8 +135,9 @@ function chipFor(production: (typeof POLICY_TEMPLATES)[number]["production"]): s
 }
 
 function releaseChip(tone: (typeof releaseStates)[number]["tone"]): string {
+  // "candidate" left this union when v3.2 was promoted to live (2026-08-02);
+  // "source" (source-ready, not deployed) stays muted.
   if (tone === "live") return styles.chipOk;
-  if (tone === "candidate") return styles.chipWarn;
   return styles.chipMuted;
 }
 
