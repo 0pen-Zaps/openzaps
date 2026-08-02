@@ -21,7 +21,8 @@ The browser sends the form to `POST /api/leads/request`. The route:
 
 - accepts same-origin JSON only;
 - stops reading after 16 KiB;
-- validates a strict schema and an inert honeypot;
+- validates a strict schema and an inert, non-semantic honeypot that avoids
+  common password-manager website autofill false positives;
 - derives an HMAC abuse-control key from a platform forwarding header without
   storing the raw network address;
 - keeps that pseudonymous key only in a separate short-lived quota ledger;

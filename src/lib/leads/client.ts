@@ -8,6 +8,12 @@ export type LeadClientAttribution = Readonly<{
   landingPath: "/request-a-zap";
 }>;
 
+// Keep the browser-facing trap name deliberately non-semantic. Password
+// managers commonly ignore autocomplete="off" and fill inputs named
+// "website", which would make a legitimate request take the decoy 202 path.
+// The API wire field remains `website` for backwards compatibility.
+export const LEAD_HONEYPOT_FIELD_NAME = "requestNotes" as const;
+
 function readString(data: FormData, key: string): string {
   const value = data.get(key);
   return typeof value === "string" ? value.trim() : "";
@@ -43,7 +49,7 @@ export function leadRequestPayload(
     guardrails: readString(data, "guardrails"),
     timeline: readString(data, "timeline"),
     consent: data.get("consent") === "on",
-    website: readString(data, "website"),
+    website: readString(data, LEAD_HONEYPOT_FIELD_NAME),
     attribution: {
       ...attribution,
       referrer: privacySafeReferrer(referrer),
