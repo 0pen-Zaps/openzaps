@@ -18,6 +18,12 @@ Substack publication always stops at a human editor handoff.
 The inbound request queue and separate review-only Lead Scout are documented
 in [lead-engine.md](lead-engine.md).
 
+The private operator surface also reads a lead-desk-authenticated, PII-free
+accepted-request scorecard. It aggregates rolling intake, qualification,
+lifecycle progression, the two-business-day review backlog, and coarse
+campaign attribution. This feedback loop cannot authorize an outbound action,
+and a full 100-row result is explicitly labelled as a truncated lower bound.
+
 The public `/learn` hub is the owned distribution surface for this loop. It
 renders only source-reviewed OpenZaps feed items and tutorials whose exact title
 and canonical URL are already `rss_confirmed` in the release manifest. Drafts
@@ -120,6 +126,7 @@ not invoke the model or the approval workflow.
 | `POST /api/marketing/substack/verify` | Read-only canonical-URL check against public DeFi Tutorials RSS, bound to one completed, approved editor handoff whose recorded title is used server-side | Operator bearer token |
 | `POST /api/marketing/discord/interactions` | Receive Discord application commands | Discord Ed25519 request signature and a five-minute freshness window |
 | `GET /api/leads/request` | Return non-secret, non-mutating lead-intake RPC readiness for fail-closed campaign evidence | Public; private/no-store response, with `503` while unavailable |
+| `GET /api/leads/scorecard` | Return PII-free accepted-request, qualification, lifecycle, SLA-backlog, and coarse-attribution aggregates; never returns lead rows | `Authorization: Bearer <OPENZAPS_LEAD_ADMIN_TOKEN>`; private/no-store |
 
 The operator token is held in browser `sessionStorage`, scoped to the current
 tab. Use a dedicated browser profile, never paste the token into a brief or
@@ -1238,23 +1245,13 @@ until the analytics destination records it, and do not use engagement
 automation, bulk DMs, follow churn, trend hijacking, or substantially duplicate
 posts to manufacture reach.
 
-## Time-bounded dependency exception
+## Dependency release gate
 
-As of 2026-07-29, `npm audit --omit=dev` traces one high-severity advisory,
-[GHSA-mh99-v99m-4gvg](https://github.com/advisories/GHSA-mh99-v99m-4gvg),
-through command-line/build dependencies bundled by `workflow@4.7.0`. The
-affected Workflow CLI/Nest, oclif, SWC CLI, EJS, Jake, Filelist, Minimatch, and
-Brace Expansion paths do not appear in the production Next.js runtime traces.
-
-`npm run audit:production` is the narrow exception boundary. It fails on any
-other high/critical advisory, fails if the reviewed dependency graph changes,
-and fails if any affected build/CLI package enters a `.next` runtime trace. Do
-not replace it with a blanket audit suppression or npm's unrelated suggested
-`workflow@2.0.6` downgrade.
-
-Recheck the stable Workflow dependency tree on every release and no later than
-2026-08-12. Remove this exception immediately when Workflow ships a compatible
-patched tree, or stop the release if the affected packages enter runtime output.
+The former time-bounded Workflow build/CLI dependency exception is closed.
+Every release must pass both `npm audit --omit=dev --audit-level=high` and
+`npm run audit:production`. The runtime-trace audit remains in place so a future
+dependency change cannot silently move reviewed build tooling into a production
+Next.js trace. Do not replace either check with a blanket audit suppression.
 
 ## Official references
 
