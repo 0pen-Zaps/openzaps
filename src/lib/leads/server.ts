@@ -16,14 +16,19 @@ import {
 import { readBoundedJsonBody } from "@/lib/request-body";
 
 const SUBMIT_RPC = "submit_lead_request";
+const ROLLBACK_CANARY_RPC = "probe_lead_intake_write_path";
 const LIST_RPC = "list_lead_requests";
 const UPDATE_LIFECYCLE_RPC = "update_lead_request_lifecycle";
 const DELETE_RPC = "delete_lead_request";
 const PURGE_RPC = "purge_expired_lead_requests";
 const RPC_TIMEOUT_MS = 12_000;
 const MAX_SUBMIT_RESPONSE_BYTES = 4_096;
+const MAX_CANARY_RESPONSE_BYTES = 4_096;
 const MAX_LIST_RESPONSE_BYTES = 2 * 1_024 * 1_024;
 const MAX_READINESS_RESPONSE_BYTES = 5 * 1_024 * 1_024;
+const ROLLBACK_CANARY_SQLSTATE = "PZC01";
+const ROLLBACK_CANARY_MESSAGE =
+  "OPENZAPS_LEAD_INTAKE_CANARY_ROLLED_BACK";
 const SUPABASE_PROJECT_REF = /^[a-z0-9]{20}$/u;
 
 type Environment = Readonly<Record<string, string | undefined>>;
@@ -64,6 +69,19 @@ export class LeadStoreError extends Error {
 
 export type LeadSubmissionResult = "accepted" | "quota_reached";
 export type LeadStatus = "new" | "contacted" | "qualified" | "closed";
+
+export interface LeadIntakeRollbackCanaryResult {
+  result: "passed";
+  transaction: "rolled_back";
+  verified: Readonly<{
+    quota: true;
+    lead: true;
+    lifecycle: true;
+    notificationOutbox: true;
+  }>;
+  persistentRows: 0;
+  notificationDispatched: false;
+}
 
 export type LeadLifecycleUpdateResult =
   | Readonly<{
@@ -376,6 +394,100 @@ export async function submitLeadRequest(
     "invalid-response",
     "The private lead store returned an unknown result.",
   );
+}
+
+/**
+ * Verify that the production intake RPC is present in the authenticated
+ * PostgREST schema, then exercise its public wrapper and database triggers
+ * without retaining quota, lead, lifecycle, or notification-outbox rows. The
+ * database probe verifies those transient effects and then raises a dedicated
+ * uncaught exception, forcing PostgreSQL to roll back the Data API transaction.
+ * The lifecycle identity sequence still advances because PostgreSQL sequences
+ * are non-transactional. Only the exact SQLSTATE/message pair is interpreted as
+ * a healthy canary.
+ */
+export async function runLeadIntakeRollbackCanary(
+  dependencies: LeadDependencies = {},
+): Promise<LeadIntakeRollbackCanaryResult> {
+  const configuration = requireLeadConfiguration(
+    dependencies.env ?? process.env,
+  );
+  const fetchImpl = dependencies.fetchImpl ?? fetch;
+  if (
+    !(await probeLeadStoreReadiness({
+      env: dependencies.env ?? process.env,
+      fetchImpl,
+    }))
+  ) {
+    throw new LeadStoreError(
+      "rpc-error",
+      "The public lead-intake RPC is not ready.",
+    );
+  }
+  let response: Response;
+  try {
+    response = await fetchImpl(
+      new URL(`rpc/${ROLLBACK_CANARY_RPC}`, configuration.restUrl),
+      {
+        method: "POST",
+        headers: {
+          accept: "application/json",
+          apikey: configuration.serviceRoleKey,
+          authorization: `Bearer ${configuration.serviceRoleKey}`,
+          "content-type": "application/json",
+        },
+        body: "{}",
+        cache: "no-store",
+        redirect: "error",
+        signal: AbortSignal.timeout(RPC_TIMEOUT_MS),
+      },
+    );
+  } catch {
+    throw new LeadStoreError(
+      "network-error",
+      "The private lead store rollback canary could not be reached.",
+    );
+  }
+
+  let errorBody: unknown;
+  try {
+    errorBody = await readBoundedJsonBody(
+      response,
+      MAX_CANARY_RESPONSE_BYTES,
+    );
+  } catch {
+    throw new LeadStoreError(
+      "invalid-response",
+      "The private lead store returned an invalid rollback-canary response.",
+      response.status,
+    );
+  }
+
+  if (
+    response.status !== 400
+    || !isRecord(errorBody)
+    || errorBody.code !== ROLLBACK_CANARY_SQLSTATE
+    || errorBody.message !== ROLLBACK_CANARY_MESSAGE
+  ) {
+    throw new LeadStoreError(
+      "rpc-error",
+      "The private lead store did not confirm a rolled-back canary.",
+      response.status,
+    );
+  }
+
+  return {
+    result: "passed",
+    transaction: "rolled_back",
+    verified: {
+      quota: true,
+      lead: true,
+      lifecycle: true,
+      notificationOutbox: true,
+    },
+    persistentRows: 0,
+    notificationDispatched: false,
+  };
 }
 
 const OperatorLeadRowSchema = z

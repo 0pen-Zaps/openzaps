@@ -149,6 +149,21 @@ not all-time history. The two-business-day target uses weekdays in
 `America/New_York`, does not model holidays, and applies only while a request
 scores at least three and remains `new`.
 
+`POST /api/leads/canary` uses the lead-desk credential and accepts no query or
+request body. It first requires the authenticated PostgREST schema to expose
+the production submission RPC. A fixed service-role-only database probe then
+checks that RPC's execute grant, calls its public wrapper, verifies the
+transient quota, lead, lifecycle, and notification-outbox effects, and raises a
+dedicated uncaught database exception. PostgreSQL rolls back every row before
+an outbox worker can observe it. The lifecycle-event identity sequence still
+consumes one value because PostgreSQL sequences are non-transactional; gaps are
+expected and carry no lead data. The API reports success only for the exact
+rollback SQLSTATE and message. It never starts the notification workflow,
+contacts the email provider, emits conversion analytics, consumes retained
+quota, or adds a row to the operator queue. Use this endpoint for routine
+deployment verification. Reserve a persisted browser-to-mailbox canary for a
+rare, explicitly approved end-to-end release check.
+
 Both operator tokens remain in the current tab's `sessionStorage`. Use a
 dedicated browser profile and select **Forget** before handing the machine to
 another person.
