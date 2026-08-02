@@ -1,4 +1,11 @@
+/* The module's breakpoints must measure THIS column, not the viewport.
+   AppShell puts a 264px rail beside the content above 900px and caps it at
+   1128px, so a viewport query fires roughly 316px early: the step grid went
+   3-up while its container was still 764px, collapsing the text measure to
+   ~32ch. Container queries keep the authored numbers and apply them to the
+   box they were drawn for. */
 .screen {
+  container-type: inline-size;
   display: flex;
   min-width: 0;
   flex-direction: column;
@@ -514,7 +521,7 @@
 /* On the narrowest screens the rail's single column costs ~520px of scroll
    before step 01 — too much for a diagram the steps restate. A 2x2 grid
    keeps the picture and halves the height. */
-@media (max-width: 440px) {
+@container (max-width: 440px) {
   .mechanic .settlementSteps {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -596,13 +603,13 @@
   list-style: none;
 }
 
-@media (min-width: 680px) {
+@container (min-width: 680px) {
   .mechanicSteps {
     grid-template-columns: repeat(2, 1fr);
   }
 }
 
-@media (min-width: 1080px) {
+@container (min-width: 1080px) {
   .mechanicSteps {
     grid-template-columns: repeat(3, 1fr);
   }
@@ -760,19 +767,19 @@
   line-height: 1.5;
 }
 
-@media (max-width: 679px) {
+@container (max-width: 679px) {
   .mechanicSteps li {
     border-right: none;
   }
 }
 
-@media (min-width: 680px) and (max-width: 1079px) {
+@container (min-width: 680px) and (max-width: 1079px) {
   .mechanicSteps li:nth-child(2n) {
     border-right: none;
   }
 }
 
-@media (min-width: 1080px) {
+@container (min-width: 1080px) {
   .mechanicSteps li:nth-child(3n) {
     border-right: none;
   }
@@ -1128,12 +1135,24 @@
   line-height: 1.5;
 }
 
+/* Reserved for states that actually block an action. */
 .closedNote {
   padding: 9px 10px;
   border: 1px solid var(--warn);
   border-radius: var(--r-ctl-sm);
   background: var(--warn-wash);
-  color: var(--warn);
+  color: var(--ink-2);
+}
+
+/* An open, positive state ("pre-staking is open") must not wear the same
+   alarm treatment as "new stakes are closed" — readers parse amber as a
+   fault before they parse the words. */
+.openNote {
+  padding: 9px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-ctl-sm);
+  background: var(--sunk);
+  color: var(--ink-2);
 }
 
 .fallback {
@@ -1174,11 +1193,20 @@
   border-radius: var(--r-card-sm);
 }
 
+/* --warn text on --warn-wash measures 4.43:1 on Ivory and 4.70:1 on Paper —
+   the un-audited-contracts disclosure is the last text on this page that may
+   be hard to read. The border and icon keep the warning hue (a 3:1 non-text
+   floor); the sentence itself moves to --ink-2, which clears 4.5:1 on all
+   five themes. */
 .riskDisclosure {
   padding: 12px 14px;
   border: 1px solid var(--warn);
   background: var(--warn-wash);
-  color: var(--warn);
+  color: var(--ink-2);
+}
+
+.riskDisclosure strong {
+  color: var(--ink);
 }
 
 .riskDisclosure svg {
@@ -1449,6 +1477,12 @@
 .stale {
   border-color: var(--warn);
   background: var(--warn-wash);
+  color: var(--ink-2);
+}
+
+.stale svg,
+.riskDisclosure svg,
+.closedNote svg {
   color: var(--warn);
 }
 
@@ -1660,7 +1694,7 @@
   outline-offset: 2px;
 }
 
-@media (max-width: 1280px) {
+@container (max-width: 940px) {
   .heroGrid {
     grid-template-columns: minmax(0, 1fr) 310px;
     gap: 22px;
@@ -1683,7 +1717,7 @@
   }
 }
 
-@media (max-width: 880px) {
+@container (max-width: 880px) {
   .heroGrid {
     grid-template-columns: 1fr;
   }
@@ -1709,7 +1743,7 @@
   }
 }
 
-@media (max-width: 680px) {
+@container (max-width: 680px) {
   .screen {
     gap: 18px;
   }
@@ -1756,7 +1790,7 @@
   }
 }
 
-@media (max-width: 440px) {
+@container (max-width: 440px) {
   .settlementSteps,
   .positionGrid {
     grid-template-columns: 1fr;

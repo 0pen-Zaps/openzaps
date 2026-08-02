@@ -200,6 +200,39 @@ describe("0xZAPS fee rewards public surface", () => {
     expect(workspace).toContain("Claims closed");
   });
 
+  it("sizes its layout against the shell column, not the viewport", () => {
+    // AppShell puts a 264px rail beside this page and caps the column at
+    // 1128px, so a viewport query fires ~316px early — the step grid went
+    // 3-up inside a 764px box. Only the reduced-motion query may test the
+    // viewport; every layout tier measures the container.
+    const rewardsCss = read("src/app/(site)/rewards/rewards.module.css");
+    expect(rewardsCss).toContain("container-type: inline-size");
+    const viewportQueries = rewardsCss.match(/@media[^{]+/gu) ?? [];
+    expect(viewportQueries.map((q) => q.trim())).toEqual([
+      "@media (prefers-reduced-motion: reduce)",
+    ]);
+  });
+
+  it("keeps risk copy readable and reserves the alarm styling for blocked actions", () => {
+    // --warn text on --warn-wash is 4.43:1 on Ivory. The border and icon keep
+    // the hue (3:1 non-text floor); the sentence moves to --ink-2.
+    const rewardsCss = read("src/app/(site)/rewards/rewards.module.css");
+    expect(rewardsCss).toContain("background: var(--warn-wash);\n  color: var(--ink-2);");
+    expect(rewardsCss).toContain(".openNote {");
+    // A positive, open state must not wear the same amber as a closed one.
+    expect(workspace).toContain("styles.openNote}>Pre-staking is open");
+  });
+
+  it("reports campaign holdings from the live principal, not a latched flag", () => {
+    // feeSharesFunded latches true forever; settlement returns the shares.
+    expect(workspace).toContain("BigInt(data.campaign.feeSharePrincipal) > 0n");
+    expect(workspace).toContain("shares returned to sponsor");
+    expect(workspace).toContain('holdsShares ? "50 shares" : "settled"');
+    // Before the window opens, harvest reverts — so no zero is reported as a
+    // shortfall against an action the contract refuses.
+    expect(workspace).toContain("Harvest opens");
+  });
+
   it("never paints text with the brand fill token", () => {
     // --zap is the brand FILL. As a text colour it measures 1.10:1 against
     // --panel on the Ivory and Paper themes — invisible. Accent text uses

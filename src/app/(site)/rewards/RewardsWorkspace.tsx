@@ -855,10 +855,13 @@ export function RewardsWorkspace({
  */
 function SettlementRail({ data }: { data: FeeRewardsPayload | null }): React.JSX.Element {
   const verified = Boolean(data?.verification.sourcePositionConfigured && data.verification.vaultActivated);
+  // The campaign node reports what it still holds: settlement returns the fee
+  // shares to the sponsor, after which "50 shares" would be a stale claim.
+  const holdsShares = data === null || BigInt(data.campaign.feeSharePrincipal) > 0n;
   const steps = [
     { icon: "swap", label: "0xZAPS trades", detail: "Clanker v4" },
     { icon: "vault", label: "Fee vault", detail: "100 ERC-20 shares" },
-    { icon: "harvest", label: "Campaign", detail: "50 shares" },
+    { icon: "harvest", label: "Campaign", detail: holdsShares ? "50 shares" : "settled" },
     { icon: "coins", label: "WETH claims", detail: "Proportional" },
   ] as const;
   return (
@@ -991,9 +994,13 @@ function FeeMechanic({
     {
       title: "Half of it funds this campaign",
       body: "50 of those 100 shares were transferred into the campaign contract before launch. They stay there until settlement returns them to the sponsor.",
-      fact: data?.campaign.feeSharesFunded
-        ? <><b>50</b> shares funded — verified</>
-        : <><b>50</b> shares — funding unverified</>,
+      // feeSharesFunded latches true forever; the live principal is what the
+      // campaign actually still holds after settlement returns the shares.
+      fact: data === null
+        ? <><b>50</b> shares — funding unverified</>
+        : BigInt(data.campaign.feeSharePrincipal) > 0n
+          ? <><b>50</b> shares funded — verified</>
+          : <><b>50</b> shares returned to sponsor</>,
     },
     {
       title: "Anyone can harvest",
@@ -1006,7 +1013,14 @@ function FeeMechanic({
           This UI never asks for or spends the sponsor&apos;s WETH.
         </>
       ),
-      fact: harvested ? <><b>{harvested}</b> harvested so far</> : <>Permissionless upkeep</>,
+      fact: data === null
+        ? <>Permissionless upkeep</>
+        : data.phase === "upcoming"
+          // Harvest reverts with CampaignNotStarted until the window opens, so
+          // a "0 WETH harvested" figure here states a shortfall against an
+          // action the contract refuses.
+          ? <>Harvest opens <b>{formatDate(FEE_REWARDS_MANIFEST.campaign.startAt)}</b></>
+          : <><b>{harvested}</b> harvested so far</>,
     },
     {
       title: "Stakers split it, time-weighted",
@@ -1239,8 +1253,12 @@ function EarnWorkspace(props: EarnProps): React.JSX.Element {
       <dl className={styles.positionGrid}>
         <div><dt>Available</dt><dd>{viewer ? formatAmount(viewer.tokenBalance, "0xZAPS") : "—"}</dd></div>
         <div><dt>Staked principal</dt><dd>{viewer ? formatAmount(viewer.stakedBalance, "0xZAPS") : "—"}</dd></div>
-        <div className={styles.rewardStat}><dt>{rewardsBalanceLabel(props.claimLifecycle)}</dt><dd>{viewer ? formatAmount(viewer.earnedWeth, "WETH", 8) : "—"}</dd></div>
-        <div><dt>Campaign total</dt><dd>{formatAmount(props.data.campaign.totalStaked, "0xZAPS")}</dd></div>
+        {/* The reward tint marks a figure worth acting on. Without a wallet
+            there is no figure, so the emphasis would land on an em dash. */}
+        <div className={connected ? styles.rewardStat : undefined}><dt>{rewardsBalanceLabel(props.claimLifecycle)}</dt><dd>{viewer ? formatAmount(viewer.earnedWeth, "WETH", 8) : "—"}</dd></div>
+        {/* Whole tokens: four decimals on a seven-figure balance is precision
+            nobody can act on, and it overflowed the cell. */}
+        <div><dt>Campaign total</dt><dd>{formatAmount(props.data.campaign.totalStaked, "0xZAPS", 0)}</dd></div>
       </dl>
 
       <aside id="rewards-transaction-risk" className={styles.riskDisclosure} aria-label="Transaction risk">
@@ -1251,7 +1269,7 @@ function EarnWorkspace(props: EarnProps): React.JSX.Element {
       <div className={styles.actionGrid} aria-describedby="rewards-transaction-risk">
         <article className={styles.actionCard}>
           <header><span className={styles.cardIcon}><Glyph name="lock" /></span><div><h2>Stake 0xZAPS</h2><p>Deposited principal remains governed by the campaign contract and its withdrawal functions. Rewards use time-weighted stake through the fixed end.</p></div></header>
-          {props.data.phase === "upcoming" ? <p className={styles.closedNote}>Pre-staking is open. Reward accounting begins at the fixed campaign start, not when tokens are deposited.</p> : null}
+          {props.data.phase === "upcoming" ? <p className={styles.openNote}>Pre-staking is open. Reward accounting begins at the fixed campaign start, not when tokens are deposited.</p> : null}
           <label className={styles.amountField}>
             <span>Amount</span>
             <div><input inputMode="decimal" placeholder="0.0" value={props.stakeAmount} onChange={(event) => props.onSetStakeAmount(event.target.value)} /><button type="button" onClick={() => props.onSetStakeAmount(formatUnits(stakeBalance, STAKE_DECIMALS))}>MAX</button><em>0xZAPS</em></div>
