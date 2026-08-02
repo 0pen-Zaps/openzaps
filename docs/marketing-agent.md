@@ -148,6 +148,7 @@ slot, start a workflow, or call X or Discord.
 | `POST /api/marketing/substack/verify` | Read-only provider check against public DeFi Tutorials RSS, followed only on an exact title/URL match by an immutable, idempotent internal publication receipt bound to the completed approved editor handoff | Operator bearer token |
 | `POST /api/marketing/discord/interactions` | Receive Discord application commands | Discord Ed25519 request signature and a five-minute freshness window |
 | `GET /api/leads/request` | Return non-secret, non-mutating lead-intake RPC readiness for fail-closed campaign evidence | Public; private/no-store response, with `503` while unavailable |
+| `POST /api/leads/canary` | Require the production intake RPC in the authenticated PostgREST schema, then exercise its public wrapper plus the quota, lead, lifecycle, and notification-outbox path inside a database-forced row rollback; accepts no query/body and starts no workflow or provider call. The lifecycle identity sequence advances by one because PostgreSQL sequences are non-transactional. | `Authorization: Bearer <OPENZAPS_LEAD_ADMIN_TOKEN>`; private/no-store |
 | `GET /api/leads/scorecard` | Return PII-free accepted-request, qualification, lifecycle, SLA-backlog, and coarse-attribution aggregates; never returns lead rows | `Authorization: Bearer <OPENZAPS_LEAD_ADMIN_TOKEN>`; private/no-store |
 
 The operator token is held in browser `sessionStorage`, scoped to the current

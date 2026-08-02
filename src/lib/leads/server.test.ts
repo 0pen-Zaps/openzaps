@@ -11,6 +11,7 @@ import {
   listLeadRequests,
   probeLeadStoreReadiness,
   purgeExpiredLeadRequests,
+  runLeadIntakeRollbackCanary,
   submitLeadRequest,
   updateLeadRequestLifecycle,
 } from "@/lib/leads/server";
@@ -229,6 +230,155 @@ describe("submitLeadRequest", () => {
         fetchImpl: vi
           .fn()
           .mockResolvedValue(Response.json([{ result_code: "surprise" }])),
+      }),
+    ).rejects.toMatchObject({ code: "invalid-response" });
+  });
+});
+
+describe("runLeadIntakeRollbackCanary", () => {
+  it("accepts only the dedicated database rollback exception", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        Response.json({
+          paths: {
+            "/rpc/submit_lead_request": { post: { responses: {} } },
+          },
+        }),
+      )
+      .mockResolvedValueOnce(
+        Response.json(
+          {
+            code: "PZC01",
+            details: null,
+            hint: null,
+            message: "OPENZAPS_LEAD_INTAKE_CANARY_ROLLED_BACK",
+          },
+          { status: 400 },
+        ),
+      );
+
+    const result = await runLeadIntakeRollbackCanary({
+      env: ENV,
+      fetchImpl: fetchMock,
+    });
+
+    expect(result).toEqual({
+      result: "passed",
+      transaction: "rolled_back",
+      verified: {
+        quota: true,
+        lead: true,
+        lifecycle: true,
+        notificationOutbox: true,
+      },
+      persistentRows: 0,
+      notificationDispatched: false,
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(String(fetchMock.mock.calls[0]?.[0])).toBe(
+      "https://abcdefghijklmnopqrst.supabase.co/rest/v1/",
+    );
+    const [url, init] = fetchMock.mock.calls[1] as [URL, RequestInit];
+    expect(url.toString()).toBe(
+      "https://abcdefghijklmnopqrst.supabase.co/rest/v1/rpc/probe_lead_intake_write_path",
+    );
+    expect(init).toMatchObject({
+      method: "POST",
+      body: "{}",
+      cache: "no-store",
+      redirect: "error",
+    });
+    expect(init.headers).toMatchObject({
+      apikey: "service-secret",
+      authorization: "Bearer service-secret",
+      "content-type": "application/json",
+    });
+    expect(init.headers).not.toHaveProperty("prefer");
+    expect(JSON.stringify(result)).not.toMatch(/invalid|fingerprint|email/iu);
+  });
+
+  it("fails closed for missing configuration, transport errors, and any other response", async () => {
+    const unused = vi.fn();
+    await expect(
+      runLeadIntakeRollbackCanary({ env: {}, fetchImpl: unused }),
+    ).rejects.toMatchObject({ code: "not-configured" });
+    expect(unused).not.toHaveBeenCalled();
+
+    await expect(
+      runLeadIntakeRollbackCanary({
+        env: ENV,
+        fetchImpl: vi.fn().mockRejectedValue(new Error("network")),
+      }),
+    ).rejects.toMatchObject({ code: "rpc-error" });
+
+    await expect(
+      runLeadIntakeRollbackCanary({
+        env: ENV,
+        fetchImpl: vi
+          .fn()
+          .mockResolvedValueOnce(
+            Response.json({
+              paths: {
+                "/rpc/submit_lead_request": { post: { responses: {} } },
+              },
+            }),
+          )
+          .mockRejectedValueOnce(new Error("network")),
+      }),
+    ).rejects.toMatchObject({ code: "network-error" });
+
+    for (const response of [
+      Response.json({
+        code: "PZC01",
+        message: "OPENZAPS_LEAD_INTAKE_CANARY_ROLLED_BACK",
+      }),
+      Response.json(
+        {
+          code: "PZC02",
+          message: "OPENZAPS_LEAD_INTAKE_CANARY_ASSERTION_FAILED",
+        },
+        { status: 400 },
+      ),
+      Response.json(
+        { code: "PZC01", message: "wrong-message" },
+        { status: 400 },
+      ),
+    ]) {
+      await expect(
+        runLeadIntakeRollbackCanary({
+          env: ENV,
+          fetchImpl: vi
+            .fn()
+            .mockResolvedValueOnce(
+              Response.json({
+                paths: {
+                  "/rpc/submit_lead_request": {
+                    post: { responses: {} },
+                  },
+                },
+              }),
+            )
+            .mockResolvedValueOnce(response),
+        }),
+      ).rejects.toMatchObject({ code: "rpc-error" });
+    }
+
+    await expect(
+      runLeadIntakeRollbackCanary({
+        env: ENV,
+        fetchImpl: vi
+          .fn()
+          .mockResolvedValueOnce(
+            Response.json({
+              paths: {
+                "/rpc/submit_lead_request": { post: { responses: {} } },
+              },
+            }),
+          )
+          .mockResolvedValueOnce(
+            new Response("not-json", { status: 400 }),
+          ),
       }),
     ).rejects.toMatchObject({ code: "invalid-response" });
   });

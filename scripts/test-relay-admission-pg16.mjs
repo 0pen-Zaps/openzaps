@@ -849,6 +849,136 @@ try {
     `full-chain replay left unexpected relay state: ${replayState.join(", ")}`,
   );
 
+  const leadCanarySignature =
+    "public.probe_lead_intake_write_path()";
+  const privateLeadCanarySignature =
+    "private.probe_lead_intake_write_path()";
+  const leadCanaryPrivileges = psqlScalar(`
+    select
+      has_function_privilege(
+        'service_role',
+        '${leadCanarySignature}',
+        'execute'
+      ),
+      has_function_privilege(
+        'service_role',
+        '${privateLeadCanarySignature}',
+        'execute'
+      ),
+      has_function_privilege(
+        'anon',
+        '${leadCanarySignature}',
+        'execute'
+      ),
+      has_function_privilege(
+        'authenticated',
+        '${leadCanarySignature}',
+        'execute'
+      ),
+      has_function_privilege(
+        'anon',
+        '${privateLeadCanarySignature}',
+        'execute'
+      ),
+      has_function_privilege(
+        'authenticated',
+        '${privateLeadCanarySignature}',
+        'execute'
+      );
+  `);
+  assert(
+    leadCanaryPrivileges === "t|t|f|f|f|f",
+    `unexpected lead rollback-canary privileges: ${leadCanaryPrivileges}`,
+  );
+
+  const privateLeadSubmitSignature =
+    "private.submit_lead_request(text,text,text,text,text,text,text,text,text,text,text,boolean,jsonb,integer)";
+  psql(`
+    revoke execute on function ${privateLeadSubmitSignature}
+      from service_role;
+  `);
+  const canaryWithoutProductionTraversal = await psqlScalarSession(`
+    set role service_role;
+    select public.probe_lead_intake_write_path();
+  `);
+  assert(
+    canaryWithoutProductionTraversal.status !== 0
+      && /OPENZAPS_LEAD_INTAKE_CANARY_ASSERTION_FAILED/.test(
+        `${canaryWithoutProductionTraversal.stdout}${canaryWithoutProductionTraversal.stderr}`,
+      ),
+    "lead rollback canary ignored a missing production private-submit grant",
+  );
+  psql(`
+    grant execute on function ${privateLeadSubmitSignature}
+      to service_role;
+  `);
+
+  for (const role of ["anon", "authenticated"]) {
+    const unauthorizedCanary = await psqlScalarSession(`
+      set role ${role};
+      select public.probe_lead_intake_write_path();
+    `);
+    assert(
+      unauthorizedCanary.status !== 0
+        && /permission denied/.test(
+          `${unauthorizedCanary.stdout}${unauthorizedCanary.stderr}`,
+        ),
+      `${role} unexpectedly ran the lead rollback canary`,
+    );
+  }
+
+  const leadCanaryStateBefore = psqlScalar(`
+    select
+      (select count(*) from private.lead_request_quotas),
+      (select count(*) from private.lead_requests),
+      (select count(*) from private.lead_request_lifecycle_events),
+      (select count(*) from private.lead_notification_outbox);
+  `);
+  const leadCanarySequenceBefore = psqlScalar(`
+    select last_value, is_called
+    from private.lead_request_lifecycle_events_id_seq;
+  `);
+  const successfulLeadCanary = await psqlScalarSession(`
+    set role service_role;
+    select public.probe_lead_intake_write_path();
+  `);
+  assert(
+    successfulLeadCanary.status !== 0
+      && /OPENZAPS_LEAD_INTAKE_CANARY_ROLLED_BACK/.test(
+        `${successfulLeadCanary.stdout}${successfulLeadCanary.stderr}`,
+      ),
+    `lead canary did not reach its dedicated rollback signal: ${successfulLeadCanary.stdout}${successfulLeadCanary.stderr}`,
+  );
+  const leadCanaryStateAfter = psqlScalar(`
+    select
+      (select count(*) from private.lead_request_quotas),
+      (select count(*) from private.lead_requests),
+      (select count(*) from private.lead_request_lifecycle_events),
+      (select count(*) from private.lead_notification_outbox);
+  `);
+  assert(
+    leadCanaryStateAfter === leadCanaryStateBefore,
+    `lead rollback canary retained row state: ${leadCanaryStateBefore} -> ${leadCanaryStateAfter}`,
+  );
+  const leadCanarySequenceAfter = psqlScalar(`
+    select last_value, is_called
+    from private.lead_request_lifecycle_events_id_seq;
+  `);
+  assert(
+    leadCanarySequenceAfter !== leadCanarySequenceBefore,
+    "lead rollback canary did not expose the documented non-transactional lifecycle sequence advance",
+  );
+  const leakedLeadCanaryRows = psqlScalar(`
+    select count(*)
+    from private.lead_requests as leads
+    where leads.email like 'lead-intake-canary+%@openzaps.invalid'
+      or leads.attribution = '{"probe":"rollback_only"}'::jsonb;
+  `);
+  assert(
+    leakedLeadCanaryRows === "0",
+    `lead rollback canary leaked ${leakedLeadCanaryRows} request rows`,
+  );
+
   const discordInvocationRecordSignature =
     "public.record_marketing_discord_command_invocation_receipt(text,text,text)";
   const discordInvocationReadbackSignature =
