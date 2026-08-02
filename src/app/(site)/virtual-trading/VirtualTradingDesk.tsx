@@ -1,10 +1,12 @@
 "use client";
 
 import Image from "next/image";
+import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { Glyph } from "@/components/Glyph";
 import { ProtocolLogo } from "@/components/ProtocolLogo";
+import { trackEvent } from "@/lib/analytics";
 import {
   USDG_DECIMALS,
   VIRTUAL_MARKETS,
@@ -23,6 +25,8 @@ import {
   parseVirtualPortfolioValuation,
   readVirtualPortfolio,
   virtualFillPriceWad,
+  virtualTradeDirectionLabel,
+  virtualTradeRequestHref,
   writeVirtualPortfolio,
   type VirtualFill,
   type VirtualMarketId,
@@ -361,6 +365,10 @@ export function VirtualTradingDesk(): React.JSX.Element {
       setNotice(
         `${quote.side === "buy" ? "Bought" : "Sold"} ${VIRTUAL_MARKETS[quote.marketId].symbol} in the local practice ledger.`,
       );
+      trackEvent("virtual_trade_filled", {
+        route: quote.routeId,
+        mode: quote.side,
+      });
       setQuote(null);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "The virtual fill could not be applied.");
@@ -432,6 +440,13 @@ export function VirtualTradingDesk(): React.JSX.Element {
   );
   const routePath = virtualQuotePath(marketId, side);
   const routePoolCount = virtualQuotePoolCount(marketId);
+  const latestTrade = portfolio.trades[0] ?? null;
+  const latestDirection = latestTrade
+    ? virtualTradeDirectionLabel(latestTrade.marketId, latestTrade.side)
+    : null;
+  const requestHref = latestTrade
+    ? virtualTradeRequestHref(latestTrade.marketId, latestTrade.side)
+    : null;
 
   return (
     <section className={styles.desk} aria-label="Virtual trading practice desk">
@@ -753,6 +768,34 @@ export function VirtualTradingDesk(): React.JSX.Element {
           </p>
         </aside>
       </div>
+
+      {latestTrade && requestHref ? (
+        <section className={styles.authorityHandoff} aria-labelledby="authority-handoff-title">
+          <div>
+            <span className={styles.panelLabel}>PAPER ROUTE → AUTHORITY MAP</span>
+            <h2 id="authority-handoff-title">
+              Turn this paper route into a bounded authority map.
+            </h2>
+            <p>
+              Start a human-reviewed brief for the {latestDirection} route. The
+              handoff carries only its public route and direction—never your
+              amount, PnL, order ID, block evidence, or browser ledger.
+            </p>
+          </div>
+          <div className={styles.authorityAction}>
+            <Link
+              className="btn btnPrimary"
+              href={requestHref}
+              data-analytics-event="request_zap_clicked"
+              data-analytics-cta="request_zap"
+              data-analytics-content="virtual_trading"
+            >
+              Request the authority map
+            </Link>
+            <small>Human reviewed · pre-audit · no automatic deployment</small>
+          </div>
+        </section>
+      ) : null}
 
       <section className={styles.history} aria-labelledby="history-title">
         <header className={styles.panelHead}>
