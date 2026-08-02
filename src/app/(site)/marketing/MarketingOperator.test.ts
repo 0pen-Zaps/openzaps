@@ -506,6 +506,9 @@ describe("X activation approval evidence", () => {
     const packet = xActivationApprovalPacket(parsed as XActivationStatus);
 
     expect(packet).toContain("DOES NOT ENABLE OR AUTHORIZE AUTOMATION");
+    expect(packet).toContain(
+      "Snapshot evaluated at: 2026-08-03T16:00:00.000Z",
+    );
     expect(packet).toContain("@0xzaps (account 123456789)");
     expect(packet).toContain("1 deterministic automatic reply per UTC day");
     expect(packet).toContain("global 10 X-reply cap");
@@ -526,9 +529,26 @@ describe("X activation approval evidence", () => {
   });
 
   it("invalidates copied state after packet refresh and ignores stale in-flight writes", async () => {
+    const parsed = parseXActivationStatus(VALID_X_ACTIVATION_RESPONSE);
+    expect(parsed).not.toBeNull();
+    const originalPacket = xActivationApprovalPacket(
+      parsed as XActivationStatus,
+    );
+    const refreshedResponse = structuredClone(VALID_X_ACTIVATION_RESPONSE);
+    refreshedResponse.xActivationEvidence.evaluatedAt =
+      "2026-08-03T16:01:00.000Z";
+    const refreshed = parseXActivationStatus(refreshedResponse);
+    expect(refreshed).not.toBeNull();
+    const refreshedPacket = xActivationApprovalPacket(
+      refreshed as XActivationStatus,
+    );
+    expect(refreshedPacket).not.toBe(originalPacket);
+    expect(refreshedPacket).toContain(
+      "Snapshot evaluated at: 2026-08-03T16:01:00.000Z",
+    );
     expect(xApprovalPacketCopyRequestIsCurrent({
-      requestedPacket: "old packet",
-      currentPacket: "new packet",
+      requestedPacket: originalPacket,
+      currentPacket: refreshedPacket,
       requestGeneration: 1,
       currentRequestGeneration: 1,
       active: true,
