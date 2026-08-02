@@ -32,6 +32,10 @@ describe("DeFi Tutorials release manifest", () => {
         expect(bundle.sourcePath).toBe(tutorial.sourcePath);
         expect(bundle.title).toBe(tutorial.title);
         expect(bundle.modelRewriteAllowed).toBe(false);
+        expect(bundle.hero).toEqual(tutorial.hero);
+        expect(
+          readFileSync(join(root, tutorial.hero.sourcePath)).byteLength,
+        ).toBe(tutorial.hero.byteLength);
 
         const openZapsLinks = bundle.links
           .map((link) => new URL(link))

@@ -4,8 +4,9 @@ import { createHash } from "node:crypto";
 import {
   readFileSync,
   realpathSync,
+  statSync,
 } from "node:fs";
-import { dirname, join, relative, resolve, sep } from "node:path";
+import { basename, dirname, join, relative, resolve, sep } from "node:path";
 
 import { z } from "zod";
 
@@ -18,10 +19,14 @@ import {
   SOURCE_CONTROLLED_TUTORIAL_APPROVAL_STATEMENT,
   SOURCE_CONTROLLED_TUTORIAL_BODY_MARKER,
   SOURCE_CONTROLLED_TUTORIAL_BUNDLE_VERSION,
+  SOURCE_CONTROLLED_TUTORIAL_HERO_MAX_BYTES,
   SourceControlledTutorialApprovalBundleSchema,
   SourceControlledTutorialApprovalReceiptSchema,
+  SourceControlledTutorialHeroSchema,
+  sourceControlledTutorialHeroDeclaration,
   type SourceControlledTutorialApprovalBundle,
   type SourceControlledTutorialApprovalReceipt,
+  type SourceControlledTutorialHero,
 } from "@/lib/marketing/tutorial-handoff-contract";
 import {
   containsCredentialLikeData,
@@ -40,12 +45,28 @@ const SOURCE_MAX_BYTES = 275_000;
 const SOURCE_SHA256 = /^[0-9a-f]{64}$/u;
 const TUTORIAL_ID = /^[a-z0-9]+(?:-[a-z0-9]+)*$/u;
 const SOURCE_PATH = /^docs\/tutorials\/[a-z0-9]+(?:-[a-z0-9]+)*\.md$/u;
+const JPEG_SOF_MARKERS = new Set([
+  0xc0,
+  0xc1,
+  0xc2,
+  0xc3,
+  0xc5,
+  0xc6,
+  0xc7,
+  0xc9,
+  0xca,
+  0xcb,
+  0xcd,
+  0xce,
+  0xcf,
+]);
 
 const tutorialHandoffFields = {
   subtitle: z.string().trim().min(1).max(300).optional(),
   tags: z.array(z.string().trim().min(1).max(32)).min(2).max(5),
   sourceSha256: z.string().regex(SOURCE_SHA256),
   bodySha256: z.string().regex(SOURCE_SHA256),
+  hero: SourceControlledTutorialHeroSchema,
   topics: z.array(MarketingTopicSchema).min(1).max(8),
   disclosures: z.array(MarketingDisclosureSchema).max(2),
   claims: z.array(MarketingClaimSchema).max(24),
@@ -166,16 +187,19 @@ export interface TutorialSourceLoadOptions {
   manifest?: unknown;
   /** Test seam. Production callers use a real, containment-checked file read. */
   readSource?: (absolutePath: string) => Uint8Array;
+  /** Test seam. Production callers use a real, containment-checked hero read. */
+  readHero?: (absolutePath: string) => Uint8Array;
 }
 
 export interface SourceControlledTutorialEditorHandoff
   extends SubstackEditorHandoff {
   source: {
-    version: 1;
+    version: 2;
     tutorialId: string;
     sourcePath: string;
     sourceSha256: string;
     bodySha256: string;
+    hero: SourceControlledTutorialHero;
     modelRewriteAllowed: false;
   };
   approval: SourceControlledTutorialApprovalReceipt;
@@ -188,6 +212,14 @@ export interface SourceControlledTutorialSelection {
   sourcePath: string;
   sourceSha256: string;
   bodySha256: string;
+  hero: SourceControlledTutorialHero;
+}
+
+export interface SourceControlledTutorialHeroAsset
+  extends SourceControlledTutorialHero {
+  tutorialId: string;
+  fileName: string;
+  bytes: Uint8Array;
 }
 
 export class TutorialHandoffSourceError extends Error {
@@ -262,6 +294,160 @@ function readCheckedSource(rootDir: string, sourcePath: string): Uint8Array {
   }
 }
 
+function checkedHeroPath(rootDir: string, sourcePath: string): string {
+  const root = resolve(rootDir);
+  const mediaRoot = resolve(root, "docs", "media");
+  const absolutePath = resolve(root, sourcePath);
+  const relativePath = relative(mediaRoot, absolutePath);
+  if (
+    !relativePath
+    || relativePath.startsWith(`..${sep}`)
+    || relativePath === ".."
+    || resolve(dirname(absolutePath)) !== mediaRoot
+  ) {
+    throw new TutorialHandoffSourceError("Tutorial hero path escaped its root.");
+  }
+  return absolutePath;
+}
+
+function readCheckedHero(rootDir: string, sourcePath: string): Uint8Array {
+  const absolutePath = checkedHeroPath(rootDir, sourcePath);
+  try {
+    const mediaRoot = realpathSync(join(resolve(rootDir), "docs", "media"));
+    const realHeroPath = realpathSync(absolutePath);
+    const relativePath = relative(mediaRoot, realHeroPath);
+    if (
+      relativePath.startsWith(`..${sep}`)
+      || relativePath === ".."
+      || resolve(dirname(realHeroPath)) !== mediaRoot
+    ) {
+      throw new TutorialHandoffSourceError(
+        "Tutorial hero symlink escaped its root.",
+      );
+    }
+    const size = statSync(realHeroPath).size;
+    if (size < 4 || size > SOURCE_CONTROLLED_TUTORIAL_HERO_MAX_BYTES) {
+      throw new TutorialHandoffSourceError(
+        "Tutorial hero file size is invalid.",
+      );
+    }
+    return readFileSync(realHeroPath);
+  } catch (error) {
+    if (error instanceof TutorialHandoffSourceError) throw error;
+    throw new TutorialHandoffSourceError("Tutorial hero could not be read.");
+  }
+}
+
+function jpegDimensions(bytes: Uint8Array): { width: number; height: number } {
+  if (
+    bytes.byteLength < 12
+    || bytes[0] !== 0xff
+    || bytes[1] !== 0xd8
+    || bytes[bytes.byteLength - 2] !== 0xff
+    || bytes[bytes.byteLength - 1] !== 0xd9
+  ) {
+    throw new TutorialHandoffSourceError(
+      "Tutorial hero is not a complete JPEG image.",
+    );
+  }
+
+  let offset = 2;
+  let dimensions: { width: number; height: number } | null = null;
+  while (offset < bytes.byteLength - 2) {
+    if (bytes[offset] !== 0xff) {
+      throw new TutorialHandoffSourceError(
+        "Tutorial hero JPEG structure is invalid.",
+      );
+    }
+    while (offset < bytes.byteLength && bytes[offset] === 0xff) offset += 1;
+    if (offset >= bytes.byteLength) {
+      throw new TutorialHandoffSourceError(
+        "Tutorial hero JPEG structure is invalid.",
+      );
+    }
+
+    const marker = bytes[offset];
+    offset += 1;
+    if (marker === 0x00 || marker === 0xd8) {
+      throw new TutorialHandoffSourceError(
+        "Tutorial hero JPEG structure is invalid.",
+      );
+    }
+    if (marker === 0xd9) break;
+    if (marker === 0x01 || (marker >= 0xd0 && marker <= 0xd7)) continue;
+    if (offset + 2 > bytes.byteLength) {
+      throw new TutorialHandoffSourceError(
+        "Tutorial hero JPEG structure is invalid.",
+      );
+    }
+
+    const segmentLength = (bytes[offset] << 8) | bytes[offset + 1];
+    if (segmentLength < 2 || offset + segmentLength > bytes.byteLength) {
+      throw new TutorialHandoffSourceError(
+        "Tutorial hero JPEG structure is invalid.",
+      );
+    }
+    if (JPEG_SOF_MARKERS.has(marker)) {
+      if (segmentLength < 8 || bytes[offset + 2] !== 8 || dimensions) {
+        throw new TutorialHandoffSourceError(
+          "Tutorial hero JPEG frame is invalid.",
+        );
+      }
+      const height = (bytes[offset + 3] << 8) | bytes[offset + 4];
+      const width = (bytes[offset + 5] << 8) | bytes[offset + 6];
+      if (width < 1 || height < 1) {
+        throw new TutorialHandoffSourceError(
+          "Tutorial hero JPEG dimensions are invalid.",
+        );
+      }
+      dimensions = { width, height };
+    }
+    offset += segmentLength;
+    // Entropy-coded scan data is validated by the pinned hash and terminal EOI.
+    // Header parsing stops at SOS because byte-stuffing makes it non-segment data.
+    if (marker === 0xda) break;
+  }
+
+  if (!dimensions) {
+    throw new TutorialHandoffSourceError(
+      "Tutorial hero JPEG has no supported frame dimensions.",
+    );
+  }
+  return dimensions;
+}
+
+function verifiedHeroBytes(
+  rootDir: string,
+  hero: SourceControlledTutorialHero,
+  readHero?: (absolutePath: string) => Uint8Array,
+): Uint8Array {
+  const absolutePath = checkedHeroPath(rootDir, hero.sourcePath);
+  const bytes = readHero
+    ? readHero(absolutePath)
+    : readCheckedHero(rootDir, hero.sourcePath);
+  if (
+    bytes.byteLength < 4
+    || bytes.byteLength > SOURCE_CONTROLLED_TUTORIAL_HERO_MAX_BYTES
+    || bytes.byteLength !== hero.byteLength
+  ) {
+    throw new TutorialHandoffSourceError(
+      "Tutorial hero byte length does not match the reviewed manifest.",
+    );
+  }
+  if (sha256(bytes) !== hero.sha256) {
+    throw new TutorialHandoffSourceError(
+      "Tutorial hero hash does not match the reviewed manifest.",
+    );
+  }
+  const dimensions = jpegDimensions(bytes);
+  if (dimensions.width !== hero.width || dimensions.height !== hero.height) {
+    throw new TutorialHandoffSourceError(
+      "Tutorial hero dimensions do not match the reviewed manifest.",
+    );
+  }
+  return bytes;
+}
+
 function utf8Source(bytes: Uint8Array): string {
   if (bytes.byteLength < 1 || bytes.byteLength > SOURCE_MAX_BYTES) {
     throw new TutorialHandoffSourceError("Tutorial source size is invalid.");
@@ -293,6 +479,35 @@ function exactEditorBody(source: string): string {
     throw new TutorialHandoffSourceError("Tutorial editor body size is invalid.");
   }
   return body;
+}
+
+function requireExactHeroDeclaration(
+  source: string,
+  hero: SourceControlledTutorialHero,
+): void {
+  const bodyMarker = `${SOURCE_CONTROLLED_TUTORIAL_BODY_MARKER}\n\n`;
+  const bodyMarkerIndex = source.indexOf(bodyMarker);
+  if (bodyMarkerIndex < 0) {
+    throw new TutorialHandoffSourceError(
+      "Tutorial source has no canonical editor-body marker.",
+    );
+  }
+  const preamble = source.slice(0, bodyMarkerIndex);
+  const declaration = sourceControlledTutorialHeroDeclaration(hero);
+  const exactLine = `${declaration}\n`;
+  const first = preamble.indexOf(exactLine);
+  const heroLabels = preamble.match(
+    /^\*\*(?:Suggested|Verified) hero:\*\*/gmu,
+  ) ?? [];
+  if (
+    first < 0
+    || preamble.indexOf(exactLine, first + exactLine.length) >= 0
+    || heroLabels.length !== 1
+  ) {
+    throw new TutorialHandoffSourceError(
+      "Tutorial source hero declaration does not match the reviewed manifest.",
+    );
+  }
 }
 
 function exactCanonicalLinks(body: string): string[] {
@@ -332,10 +547,13 @@ function bundlesMatch(
  * the exact editor body slice. A changed byte requires a new manifest hash and
  * therefore a fresh owner review.
  */
-export function loadSourceControlledTutorialApprovalBundle(
+function loadVerifiedSourceControlledTutorial(
   tutorialId: string,
   options: TutorialSourceLoadOptions = {},
-): SourceControlledTutorialApprovalBundle {
+): {
+  bundle: SourceControlledTutorialApprovalBundle;
+  heroBytes: Uint8Array;
+} {
   const tutorial = manifestTutorial(
     options.manifest ?? tutorialManifestJson,
     tutorialId,
@@ -364,8 +582,13 @@ export function loadSourceControlledTutorialApprovalBundle(
       "Tutorial source contains credential-like data.",
     );
   }
-
   const bodyMarkdown = exactEditorBody(source);
+  requireExactHeroDeclaration(source, tutorial.hero);
+  const heroBytes = verifiedHeroBytes(
+    rootDir,
+    tutorial.hero,
+    options.readHero,
+  );
   const bodyHash = sha256(bodyMarkdown);
   if (bodyHash !== tutorial.bodySha256) {
     throw new TutorialHandoffSourceError(
@@ -374,7 +597,7 @@ export function loadSourceControlledTutorialApprovalBundle(
   }
   const links = exactCanonicalLinks(bodyMarkdown);
 
-  return SourceControlledTutorialApprovalBundleSchema.parse({
+  const bundle = SourceControlledTutorialApprovalBundleSchema.parse({
     version: SOURCE_CONTROLLED_TUTORIAL_BUNDLE_VERSION,
     channel: "substack",
     status: "requires_owner_approval",
@@ -383,6 +606,7 @@ export function loadSourceControlledTutorialApprovalBundle(
     sourcePath: tutorial.sourcePath,
     sourceSha256: sourceHash,
     bodySha256: bodyHash,
+    hero: tutorial.hero,
     title: tutorial.title,
     ...(tutorial.subtitle ? { subtitle: tutorial.subtitle } : {}),
     tags: tutorial.tags,
@@ -406,6 +630,35 @@ export function loadSourceControlledTutorialApprovalBundle(
       statement: SOURCE_CONTROLLED_TUTORIAL_APPROVAL_STATEMENT,
     },
   });
+  return { bundle, heroBytes };
+}
+
+export function loadSourceControlledTutorialApprovalBundle(
+  tutorialId: string,
+  options: TutorialSourceLoadOptions = {},
+): SourceControlledTutorialApprovalBundle {
+  return loadVerifiedSourceControlledTutorial(tutorialId, options).bundle;
+}
+
+/**
+ * Return the exact source-controlled bytes for an authenticated owner handoff.
+ * Loading the asset also revalidates the source declaration, editor body, file
+ * hash, byte length, JPEG structure, dimensions, and direct-child containment.
+ */
+export function loadSourceControlledTutorialHeroAsset(
+  tutorialId: string,
+  options: TutorialSourceLoadOptions = {},
+): SourceControlledTutorialHeroAsset {
+  const { bundle, heroBytes } = loadVerifiedSourceControlledTutorial(
+    tutorialId,
+    options,
+  );
+  return {
+    tutorialId: bundle.tutorialId,
+    fileName: basename(bundle.hero.sourcePath),
+    ...bundle.hero,
+    bytes: heroBytes,
+  };
 }
 
 /**
@@ -439,6 +692,7 @@ export function listSourceControlledTutorialSelections(
         sourcePath: bundle.sourcePath,
         sourceSha256: bundle.sourceSha256,
         bodySha256: bundle.bodySha256,
+        hero: bundle.hero,
       };
     });
 }
@@ -492,6 +746,7 @@ export function createSourceControlledTutorialEditorHandoff(
       sourcePath: current.sourcePath,
       sourceSha256: current.sourceSha256,
       bodySha256: current.bodySha256,
+      hero: current.hero,
       modelRewriteAllowed: false,
     },
     approval,

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 
 import {
   marketingRunIdFromSearch,
@@ -54,6 +54,15 @@ type JsonRecord = Record<string, unknown>;
 
 const REVIEW_ONLY_CAMPAIGN_LIMIT = 8;
 const REVIEW_ONLY_DRAFT_LABEL = "DRAFT ONLY — OWNER REVIEW REQUIRED";
+const SOURCE_CONTROLLED_TUTORIAL_VERSION = 2;
+const TUTORIAL_ID_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/u;
+const TUTORIAL_HERO_PATH_PATTERN =
+  /^docs\/media\/[a-z0-9]+(?:-[a-z0-9]+)*\.jpg$/u;
+const TUTORIAL_HERO_MAX_BYTES = 2 * 1_024 * 1_024;
+const TUTORIAL_HERO_MAX_DIMENSION = 8_192;
+const SHA256_PATTERN = /^[0-9a-f]{64}$/u;
+const TUTORIAL_APPROVAL_STATEMENT =
+  "Approve only these exact source and editor-body hashes for a human-only DeFi Tutorials handoff.";
 
 export type OperatorReviewOnlyCampaign = {
   id: string;
@@ -82,6 +91,37 @@ export type SourceControlledTutorialSelection = {
   sourcePath: string;
   sourceSha256: string;
   bodySha256: string;
+  hero: SourceControlledTutorialHero;
+};
+
+export type SourceControlledTutorialHero = {
+  sourcePath: string;
+  sha256: string;
+  mimeType: "image/jpeg";
+  width: number;
+  height: number;
+  byteLength: number;
+  alt: string;
+};
+
+export type TutorialHeroDownloadResult = {
+  filename: string;
+  sha256: string;
+  byteLength: number;
+};
+
+type TutorialHeroFetch = (
+  input: string,
+  init: RequestInit,
+) => Promise<Response>;
+
+export type TutorialHeroDownloadDependencies = {
+  fetchImpl?: TutorialHeroFetch;
+  subtle?: Pick<SubtleCrypto, "digest"> | null;
+  createObjectURL?: ((blob: Blob) => string) | null;
+  revokeObjectURL?: ((url: string) => void) | null;
+  triggerDownload?: ((url: string, filename: string) => void) | null;
+  scheduleRevoke?: ((callback: () => void) => void) | null;
 };
 
 export type TutorialApprovalEcho = Pick<
@@ -364,6 +404,65 @@ function text(value: unknown): string | null {
   return typeof value === "string" && value.trim() ? value.trim() : null;
 }
 
+export function sourceControlledTutorialHero(
+  value: unknown,
+): SourceControlledTutorialHero | null {
+  if (!isRecord(value)) return null;
+  const allowedKeys = new Set([
+    "sourcePath",
+    "sha256",
+    "mimeType",
+    "width",
+    "height",
+    "byteLength",
+    "alt",
+  ]);
+  const keys = Object.keys(value);
+  if (
+    keys.length !== allowedKeys.size
+    || keys.some((key) => !allowedKeys.has(key))
+  ) return null;
+
+  const sourcePath = text(value.sourcePath);
+  const sha256 = text(value.sha256);
+  const alt = text(value.alt);
+  const width = value.width;
+  const height = value.height;
+  const byteLength = value.byteLength;
+  if (
+    !sourcePath
+    || !TUTORIAL_HERO_PATH_PATTERN.test(sourcePath)
+    || !sha256
+    || !SHA256_PATTERN.test(sha256)
+    || value.mimeType !== "image/jpeg"
+    || typeof width !== "number"
+    || !Number.isSafeInteger(width)
+    || width < 1
+    || width > TUTORIAL_HERO_MAX_DIMENSION
+    || typeof height !== "number"
+    || !Number.isSafeInteger(height)
+    || height < 1
+    || height > TUTORIAL_HERO_MAX_DIMENSION
+    || typeof byteLength !== "number"
+    || !Number.isSafeInteger(byteLength)
+    || byteLength < 4
+    || byteLength > TUTORIAL_HERO_MAX_BYTES
+    || !alt
+    || alt.length > 300
+    || /[\u0000-\u001f\u007f`]/u.test(alt)
+  ) return null;
+
+  return {
+    sourcePath,
+    sha256,
+    mimeType: "image/jpeg",
+    width,
+    height,
+    byteLength,
+    alt,
+  };
+}
+
 export function sourceControlledTutorialSelections(
   value: unknown,
 ): SourceControlledTutorialSelection[] {
@@ -378,18 +477,20 @@ export function sourceControlledTutorialSelections(
     const sourcePath = text(item.sourcePath);
     const sourceSha256 = text(item.sourceSha256);
     const bodySha256 = text(item.bodySha256);
+    const hero = sourceControlledTutorialHero(item.hero);
     if (
       !tutorialId
-      || !/^[a-z0-9]+(?:-[a-z0-9]+)*$/u.test(tutorialId)
+      || !TUTORIAL_ID_PATTERN.test(tutorialId)
       || seen.has(tutorialId)
       || !title
       || title.length > 200
       || (manifestStatus !== "draft" && manifestStatus !== "approved_handoff")
       || sourcePath !== `docs/tutorials/${tutorialId}.md`
       || !sourceSha256
-      || !/^[0-9a-f]{64}$/u.test(sourceSha256)
+      || !SHA256_PATTERN.test(sourceSha256)
       || !bodySha256
-      || !/^[0-9a-f]{64}$/u.test(bodySha256)
+      || !SHA256_PATTERN.test(bodySha256)
+      || !hero
     ) continue;
     seen.add(tutorialId);
     selections.push({
@@ -399,6 +500,7 @@ export function sourceControlledTutorialSelections(
       sourcePath,
       sourceSha256,
       bodySha256,
+      hero,
     });
   }
   return selections;
@@ -410,20 +512,30 @@ export function tutorialApprovalEchoFromDraft(
   if (!isRecord(value) || !isRecord(value.tutorialHandoff)) return null;
   const handoff = value.tutorialHandoff;
   const tutorialId = text(handoff.tutorialId);
+  const sourcePath = text(handoff.sourcePath);
   const sourceSha256 = text(handoff.sourceSha256);
   const bodySha256 = text(handoff.bodySha256);
+  const hero = sourceControlledTutorialHero(handoff.hero);
   const approval = isRecord(handoff.approval) ? handoff.approval : null;
   if (
-    handoff.channel !== "substack"
+    handoff.version !== SOURCE_CONTROLLED_TUTORIAL_VERSION
+    || handoff.channel !== "substack"
     || handoff.status !== "requires_owner_approval"
     || handoff.modelRewriteAllowed !== false
+    || handoff.apiWriteAttempted !== false
+    || handoff.privateEndpointUsed !== false
     || !tutorialId
-    || !/^[a-z0-9]+(?:-[a-z0-9]+)*$/u.test(tutorialId)
+    || !TUTORIAL_ID_PATTERN.test(tutorialId)
+    || sourcePath !== `docs/tutorials/${tutorialId}.md`
     || !sourceSha256
-    || !/^[0-9a-f]{64}$/u.test(sourceSha256)
+    || !SHA256_PATTERN.test(sourceSha256)
     || !bodySha256
-    || !/^[0-9a-f]{64}$/u.test(bodySha256)
+    || !SHA256_PATTERN.test(bodySha256)
+    || !hero
+    || approval?.required !== true
     || approval?.decision !== "pending"
+    || approval?.scope !== "exact_source_and_body_sha256"
+    || approval?.statement !== TUTORIAL_APPROVAL_STATEMENT
     || approval?.tutorialId !== tutorialId
     || approval?.sourceSha256 !== sourceSha256
     || approval?.bodySha256 !== bodySha256
@@ -1500,6 +1612,153 @@ async function operatorRequest(
     throw error;
   }
   return body;
+}
+
+function tutorialHeroDigestHex(value: ArrayBuffer): string {
+  return Array.from(new Uint8Array(value), (byte) =>
+    byte.toString(16).padStart(2, "0")
+  ).join("");
+}
+
+function triggerBrowserDownload(url: string, filename: string): void {
+  if (typeof document === "undefined" || !document.body) {
+    throw new Error("Browser download controls are unavailable.");
+  }
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = filename;
+  anchor.hidden = true;
+  document.body.append(anchor);
+  try {
+    anchor.click();
+  } finally {
+    anchor.remove();
+  }
+}
+
+export async function downloadVerifiedTutorialHero(
+  input: {
+    tutorialId: string;
+    hero: SourceControlledTutorialHero;
+    operatorToken: string;
+    signal?: AbortSignal;
+  },
+  dependencies: TutorialHeroDownloadDependencies = {},
+): Promise<TutorialHeroDownloadResult> {
+  const hero = sourceControlledTutorialHero(input.hero);
+  const operatorToken = input.operatorToken.trim();
+  if (
+    !TUTORIAL_ID_PATTERN.test(input.tutorialId)
+    || !hero
+    || !operatorToken
+    || /[\s,]/u.test(operatorToken)
+  ) {
+    throw new Error("The tutorial hero download request is invalid.");
+  }
+
+  const fetchImpl = dependencies.fetchImpl
+    ?? ((path: string, init: RequestInit) => fetch(path, init));
+  const subtle = dependencies.subtle === null
+    ? null
+    : dependencies.subtle ?? globalThis.crypto?.subtle;
+  const createObjectURL = dependencies.createObjectURL === null
+    ? null
+    : dependencies.createObjectURL
+      ?? ((blob: Blob) => URL.createObjectURL(blob));
+  const revokeObjectURL = dependencies.revokeObjectURL === null
+    ? null
+    : dependencies.revokeObjectURL
+      ?? ((url: string) => URL.revokeObjectURL(url));
+  const triggerDownload = dependencies.triggerDownload === null
+    ? null
+    : dependencies.triggerDownload ?? triggerBrowserDownload;
+  const scheduleRevoke = dependencies.scheduleRevoke === null
+    ? null
+    : dependencies.scheduleRevoke
+      ?? ((callback: () => void) => {
+        globalThis.setTimeout(callback, 1_000);
+      });
+  if (
+    !subtle
+    || !createObjectURL
+    || !revokeObjectURL
+    || !triggerDownload
+    || !scheduleRevoke
+  ) {
+    throw new Error("Browser verification and download controls are unavailable.");
+  }
+
+  const response = await fetchImpl(
+    `/api/marketing/tutorials/${encodeURIComponent(input.tutorialId)}/hero`,
+    {
+      method: "GET",
+      headers: {
+        Accept: hero.mimeType,
+        Authorization: `Bearer ${operatorToken}`,
+      },
+      cache: "no-store",
+      credentials: "same-origin",
+      redirect: "error",
+      signal: input.signal,
+    },
+  );
+  if (!response.ok) {
+    const body = await readJson(response);
+    const error = new Error(
+      text(body.error)
+      ?? `The verified tutorial hero is unavailable (${response.status}).`,
+    ) as OperatorError;
+    error.status = response.status;
+    throw error;
+  }
+
+  const contentType = response.headers.get("content-type")?.trim().toLowerCase();
+  if (contentType !== hero.mimeType) {
+    throw new Error("The tutorial hero content type did not match the reviewed handoff.");
+  }
+  const responseSha256 = response.headers
+    .get("x-openzaps-content-sha256")
+    ?.trim();
+  if (responseSha256 !== hero.sha256) {
+    throw new Error("The tutorial hero response hash did not match the reviewed handoff.");
+  }
+  const contentLengthHeader = response.headers.get("content-length")?.trim();
+  if (!contentLengthHeader || !/^[1-9][0-9]{0,7}$/u.test(contentLengthHeader)) {
+    throw new Error("The tutorial hero response length was not verifiable.");
+  }
+  const contentLength = Number(contentLengthHeader);
+  if (
+    contentLength !== hero.byteLength
+    || contentLength > TUTORIAL_HERO_MAX_BYTES
+  ) {
+    throw new Error("The tutorial hero response length did not match the reviewed handoff.");
+  }
+
+  const bytes = await response.arrayBuffer();
+  if (
+    bytes.byteLength !== hero.byteLength
+    || bytes.byteLength > TUTORIAL_HERO_MAX_BYTES
+  ) {
+    throw new Error("The tutorial hero bytes did not match the reviewed handoff length.");
+  }
+  const digest = await subtle.digest("SHA-256", bytes);
+  if (tutorialHeroDigestHex(digest) !== hero.sha256) {
+    throw new Error("The downloaded tutorial hero failed SHA-256 verification.");
+  }
+
+  const filename = `openzaps-${input.tutorialId}-hero.jpg`;
+  const blob = new Blob([bytes], { type: hero.mimeType });
+  const objectUrl = createObjectURL(blob);
+  try {
+    triggerDownload(objectUrl, filename);
+  } finally {
+    scheduleRevoke(() => revokeObjectURL(objectUrl));
+  }
+  return {
+    filename,
+    sha256: hero.sha256,
+    byteLength: hero.byteLength,
+  };
 }
 
 type ClipboardAccess = Partial<Pick<Clipboard, "write" | "writeText">>;
@@ -5667,6 +5926,21 @@ export function SubstackHandoff({
   verificationEnabled: boolean;
 }): React.JSX.Element {
   const draft = substackDraftView(value);
+  const source = isRecord(value) ? value : null;
+  const tutorialId = text(source?.tutorialId);
+  const tutorialSourcePath = text(source?.sourcePath);
+  const tutorialSourceSha256 = text(source?.sourceSha256);
+  const tutorialBodySha256 = text(source?.bodySha256);
+  const tutorialHero = sourceControlledTutorialHero(source?.hero);
+  const currentHeroHandoff = Boolean(
+    source
+    && tutorialApprovalEchoFromDraft({ tutorialHandoff: source })
+    && tutorialHero,
+  );
+  const handoffControlsEnabled = verificationEnabled && currentHeroHandoff;
+  const heroKey = tutorialId && tutorialHero
+    ? `${tutorialId}:${tutorialHero.sha256}`
+    : "";
   const [copyState, setCopyState] = useState<
     "idle" | "rich" | "plain" | "error"
   >(
@@ -5679,13 +5953,88 @@ export function SubstackHandoff({
   const [verificationError, setVerificationError] = useState("");
   const verificationGeneration = useRef(0);
   const canonicalUrlRef = useRef("");
+  const heroHeadingId = useId();
+  const heroStatusId = useId();
+  const heroBoundaryId = useId();
+  const [heroDownload, setHeroDownload] = useState<{
+    key: string;
+    status: "idle" | "verifying" | "verified" | "error";
+    message: string;
+  }>({ key: "", status: "idle", message: "" });
+  const heroDownloadGeneration = useRef(0);
+  const heroDownloadAbort = useRef<AbortController | null>(null);
+  const heroDownloadInFlight = useRef(false);
+
+  useEffect(() => () => {
+    heroDownloadGeneration.current += 1;
+    heroDownloadAbort.current?.abort();
+    heroDownloadAbort.current = null;
+    heroDownloadInFlight.current = false;
+  }, [operatorToken, tutorialId, tutorialHero?.sha256]);
 
   if (!draft) return <DraftCopy value={value} />;
   const richText = prepareSubstackRichText(draft.bodyMarkdown);
-  const source = isRecord(value) ? value : null;
-  const tutorialSourcePath = text(source?.sourcePath);
-  const tutorialSourceSha256 = text(source?.sourceSha256);
-  const tutorialBodySha256 = text(source?.bodySha256);
+  const visibleHeroDownload = heroDownload.key === heroKey
+    ? heroDownload
+    : { key: heroKey, status: "idle" as const, message: "" };
+
+  const downloadTutorialHero = async (): Promise<void> => {
+    if (
+      !currentHeroHandoff
+      || !tutorialHero
+      || !tutorialId
+      || !operatorToken
+      || heroDownloadInFlight.current
+      || visibleHeroDownload.status === "verifying"
+    ) return;
+
+    heroDownloadInFlight.current = true;
+    const requestGeneration = heroDownloadGeneration.current + 1;
+    heroDownloadGeneration.current = requestGeneration;
+    heroDownloadAbort.current?.abort();
+    const controller = new AbortController();
+    heroDownloadAbort.current = controller;
+    setHeroDownload({
+      key: heroKey,
+      status: "verifying",
+      message: "Fetching and verifying the exact source-controlled JPEG…",
+    });
+    try {
+      const result = await downloadVerifiedTutorialHero({
+        tutorialId,
+        hero: tutorialHero,
+        operatorToken,
+        signal: controller.signal,
+      });
+      if (
+        requestGeneration !== heroDownloadGeneration.current
+        || controller.signal.aborted
+      ) return;
+      setHeroDownload({
+        key: heroKey,
+        status: "verified",
+        message:
+          `Verified ${result.byteLength.toLocaleString("en-US")} bytes and downloaded ${result.filename}.`,
+      });
+    } catch (error) {
+      if (
+        requestGeneration !== heroDownloadGeneration.current
+        || controller.signal.aborted
+      ) return;
+      setHeroDownload({
+        key: heroKey,
+        status: "error",
+        message: error instanceof Error
+          ? error.message
+          : "The tutorial hero could not be verified and was not downloaded.",
+      });
+    } finally {
+      if (requestGeneration === heroDownloadGeneration.current) {
+        heroDownloadAbort.current = null;
+        heroDownloadInFlight.current = false;
+      }
+    }
+  };
 
   const copyRichText = async (): Promise<void> => {
     setCopyState("idle");
@@ -5704,7 +6053,7 @@ export function SubstackHandoff({
   const verifyPublication = async (): Promise<void> => {
     const requestedCanonicalUrl = canonicalSubstackPostUrl(canonicalUrl);
     if (
-      !verificationEnabled
+      !handoffControlsEnabled
       || verificationBusy
       || !requestedCanonicalUrl
       || !runId
@@ -5785,7 +6134,91 @@ export function SubstackHandoff({
         ) : null}
       </div>
 
-      {verificationEnabled ? (
+      <section
+        className={styles.substackHero}
+        aria-labelledby={heroHeadingId}
+        data-status={currentHeroHandoff ? "current" : "fresh-review-required"}
+      >
+        <div className={styles.substackHeroHead}>
+          <div>
+            <span>Source-controlled image</span>
+            <h4 id={heroHeadingId}>Hash-verified tutorial hero</h4>
+          </div>
+          {currentHeroHandoff ? <small>Available during owner review</small> : null}
+        </div>
+        {tutorialHero ? (
+          <>
+            <dl className={styles.substackHeroFacts}>
+              <div>
+                <dt>Source</dt>
+                <dd><code>{tutorialHero.sourcePath}</code></dd>
+              </div>
+              <div>
+                <dt>Format</dt>
+                <dd>
+                  JPEG · {tutorialHero.width} × {tutorialHero.height} px ·{" "}
+                  {tutorialHero.byteLength.toLocaleString("en-US")} bytes
+                </dd>
+              </div>
+              <div className={styles.substackHeroHash}>
+                <dt>SHA-256</dt>
+                <dd><code>{tutorialHero.sha256}</code></dd>
+              </div>
+              <div className={styles.substackHeroAlt}>
+                <dt>Suggested alt text</dt>
+                <dd>{tutorialHero.alt}</dd>
+              </div>
+            </dl>
+            {currentHeroHandoff ? (
+              <div className={styles.substackActions}>
+                <button
+                  type="button"
+                  onClick={() => void downloadTutorialHero()}
+                  disabled={
+                    visibleHeroDownload.status === "verifying" || !operatorToken
+                  }
+                  aria-describedby={`${heroStatusId} ${heroBoundaryId}`}
+                >
+                  {visibleHeroDownload.status === "verifying"
+                    ? "Verifying hero…"
+                    : "Download and verify hero"}
+                </button>
+                <span
+                  id={heroStatusId}
+                  role="status"
+                  aria-live="polite"
+                  data-status={visibleHeroDownload.status}
+                >
+                  {visibleHeroDownload.message
+                    || "Read-only download: no Substack page is opened or changed."}
+                </span>
+              </div>
+            ) : (
+              <p className={styles.substackFreshReview} role="alert">
+                This saved handoff does not bind a current v2 hero. Start a fresh
+                source-controlled review before downloading, copying, opening the
+                editor, or verifying publication.
+              </p>
+            )}
+          </>
+        ) : (
+          <p className={styles.substackFreshReview} role="alert">
+            This historical or malformed handoff has no valid hash-bound hero.
+            Its reviewed text remains visible, but a fresh source-controlled review
+            is required before any current handoff control is available.
+          </p>
+        )}
+        {currentHeroHandoff ? (
+          <p className={styles.substackHeroBoundary} id={heroBoundaryId}>
+            <strong>Manual official-editor check required.</strong> Upload only this
+            verified file and inspect the Substack preview before publishing. Public
+            RSS verifies the canonical URL and approved title only; it cannot prove
+            the hero was uploaded or displayed.
+          </p>
+        ) : null}
+      </section>
+
+      {handoffControlsEnabled ? (
         <div className={styles.substackActions}>
           <button type="button" onClick={() => void copyRichText()}>
             {copyState === "rich"
@@ -5810,8 +6243,10 @@ export function SubstackHandoff({
           </span>
         </div>
       ) : (
-        <p className={styles.hint}>
-          Approve this exact draft before using the official editor handoff.
+        <p className={styles.hint} role={!currentHeroHandoff ? "alert" : undefined}>
+          {currentHeroHandoff
+            ? "Approve this exact draft before using the official editor handoff."
+            : "Fresh review required: legacy or invalid hero metadata cannot unlock the current editor handoff."}
         </p>
       )}
 
@@ -5821,17 +6256,19 @@ export function SubstackHandoff({
         <div dangerouslySetInnerHTML={{ __html: richText.html }} />
       </section>
 
-      <details className={styles.plainTextFallback}>
-        <summary>Selectable plain-text editor fallback</summary>
-        <pre>{richText.plainText}</pre>
-      </details>
+      {handoffControlsEnabled ? (
+        <details className={styles.plainTextFallback}>
+          <summary>Selectable plain-text editor fallback</summary>
+          <pre>{richText.plainText}</pre>
+        </details>
+      ) : null}
 
       <details className={styles.markdownAudit}>
         <summary>Reviewed Markdown audit source</summary>
         <pre>{draft.bodyMarkdown}</pre>
       </details>
 
-      {verificationEnabled ? (
+      {handoffControlsEnabled ? (
         <>
           <div className={styles.substackVerify}>
             <label className={styles.field}>

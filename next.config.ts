@@ -6,7 +6,11 @@ const nextConfig: NextConfig = {
   // source manifest. Include that narrow directory in every server trace so a
   // production handoff can re-read and re-hash the exact approved bytes.
   outputFileTracingIncludes: {
-    "/*": ["./docs/tutorials/*.md", "./docs/tutorials/manifest.json"],
+    "/*": [
+      "./docs/tutorials/*.md",
+      "./docs/tutorials/manifest.json",
+      "./docs/media/12-virtual-trading.jpg",
+    ],
   },
   // 308s keep every inbound link — a shared URL, a search result, a bookmark, an
   // onchain-minted capsule link — landing on the page that now holds what it

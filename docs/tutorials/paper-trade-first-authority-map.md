@@ -6,7 +6,7 @@
 
 **Suggested subtitle:** Test an agentic DeFi workflow without a wallet, then turn it into a human-reviewed OpenZaps authority map
 
-**Suggested hero:** `docs/media/12-virtual-trading.jpg` (fresh production capture; do not reuse the retired ZapDraw image)
+**Verified hero:** `docs/media/12-virtual-trading.jpg` · SHA-256 `4dbb4a595012baaef3541e284770e7ffad3bc671b4ba3fc95672cc33f2abc120` · MIME `image/jpeg` · dimensions `1128x440` · bytes `49900` · Alt: OpenZaps Virtual Trading banner reading "Trade the route. Risk nothing." beside a wallet-free paper-trading safety checklist.
 
 **Canonical CTA:** https://www.0xzaps.com/request-a-zap
 

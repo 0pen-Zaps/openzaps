@@ -1339,6 +1339,117 @@
   word-break: break-word;
 }
 
+.substackHero {
+  display: grid;
+  gap: 11px;
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid var(--line-2);
+  border-radius: var(--r-card-sm);
+  background: var(--panel);
+}
+
+.substackHero[data-status="fresh-review-required"] {
+  border-color: var(--warn);
+  background: var(--warn-wash);
+}
+
+.substackHeroHead {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  min-width: 0;
+}
+
+.substackHeroHead > div {
+  min-width: 0;
+}
+
+.substackHeroHead span,
+.substackHeroFacts dt {
+  display: block;
+  color: var(--ink-3);
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.substackHeroHead h4 {
+  margin: 4px 0 0;
+  color: var(--ink);
+  font-size: 12.5px;
+  font-weight: 650;
+}
+
+.substackHeroHead small {
+  flex: 0 0 auto;
+  color: var(--ok);
+  font-size: 10px;
+  font-weight: 650;
+}
+
+.substackHeroFacts {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 7px;
+  margin: 0;
+}
+
+.substackHeroFacts > div {
+  min-width: 0;
+  padding: 9px 10px;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--r-ctl-sm);
+  background: var(--sunk);
+}
+
+.substackHeroFacts .substackHeroHash,
+.substackHeroFacts .substackHeroAlt {
+  grid-column: 1 / -1;
+}
+
+.substackHeroFacts dd {
+  min-width: 0;
+  margin: 5px 0 0;
+  color: var(--ink-2);
+  font-size: 11px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.substackHeroFacts code {
+  color: inherit;
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-size: 9.5px;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.substackHero [data-status="error"],
+.substackFreshReview {
+  color: var(--danger);
+}
+
+.substackFreshReview,
+.substackHeroBoundary {
+  margin: 0;
+  font-size: 11px;
+  line-height: 1.55;
+}
+
+.substackHeroBoundary {
+  padding-top: 10px;
+  border-top: 1px solid var(--line-2);
+  color: var(--ink-3);
+}
+
+.substackHeroBoundary strong {
+  color: var(--ink-2);
+}
+
 .substackActions {
   display: flex;
   align-items: center;
@@ -1715,6 +1826,20 @@
 
   .substackVerify {
     grid-template-columns: 1fr;
+  }
+
+  .substackHeroHead {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .substackHeroFacts {
+    grid-template-columns: 1fr;
+  }
+
+  .substackHeroFacts .substackHeroHash,
+  .substackHeroFacts .substackHeroAlt {
+    grid-column: 1;
   }
 
   .substackVerify > p,

@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 
+import { SourceControlledTutorialApprovalBundleSchema } from "@/lib/marketing/tutorial-handoff-contract";
+
 import {
   DeployedMarketingCandidateSchema,
   GeneratedChannelDraftSchema,
@@ -328,7 +330,7 @@ describe("generated marketing output contracts", () => {
       },
       sourcePacket,
       tutorialHandoff: {
-        version: 1 as const,
+        version: 2 as const,
         channel: "substack" as const,
         status: "requires_owner_approval" as const,
         tutorialId: "paper-trade-first-authority-map",
@@ -336,6 +338,15 @@ describe("generated marketing output contracts", () => {
         sourcePath: "docs/tutorials/paper-trade-first-authority-map.md",
         sourceSha256,
         bodySha256,
+        hero: {
+          sourcePath: "docs/media/paper-trade-first.jpg",
+          sha256: "c".repeat(64),
+          mimeType: "image/jpeg" as const,
+          width: 1128,
+          height: 440,
+          byteLength: 49_900,
+          alt: "OpenZaps Virtual Trading paper-trading safety preview.",
+        },
         title,
         tags,
         topics: ["protocol" as const],
@@ -587,6 +598,26 @@ describe("generated marketing output contracts", () => {
   it("accepts a one-to-one candidate, presentation, and policy bundle", () => {
     expect(MarketingDraftBundleSchema.safeParse(validReviewBundle()).success)
       .toBe(true);
+  });
+
+  it("reads strict legacy v1 tutorial history without treating it as a current handoff", () => {
+    const current = validReviewBundle();
+    if (!current.tutorialHandoff || current.tutorialHandoff.version !== 2) {
+      throw new Error("Expected a current tutorial handoff fixture.");
+    }
+    const { hero: _hero, ...legacyHandoff } = current.tutorialHandoff!;
+    void _hero;
+    const legacy = {
+      ...current,
+      tutorialHandoff: { ...legacyHandoff, version: 1 as const },
+    };
+
+    expect(MarketingDraftBundleSchema.safeParse(legacy).success).toBe(true);
+    expect(
+      SourceControlledTutorialApprovalBundleSchema.safeParse(
+        legacy.tutorialHandoff,
+      ).success,
+    ).toBe(false);
   });
 
   it("re-enforces exact required channel links on the final reviewed bundle", () => {

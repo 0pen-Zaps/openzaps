@@ -70,7 +70,7 @@ function workflowResult() {
     "That rehearsal is not a promise of execution or returns. OpenZaps remains pre-audit software; verify the exact policy, contracts, assets, limits, and recovery path before any live use.",
   ].join("\n\n");
   const tutorialHandoff = {
-    version: 1,
+    version: 2,
     channel: "substack",
     status: "requires_owner_approval",
     tutorialId,
@@ -78,6 +78,15 @@ function workflowResult() {
     sourcePath: `docs/tutorials/${tutorialId}.md`,
     sourceSha256,
     bodySha256,
+    hero: {
+      sourcePath: "docs/media/paper-trade-first.jpg",
+      sha256: "c".repeat(64),
+      mimeType: "image/jpeg",
+      width: 1128,
+      height: 440,
+      byteLength: 49_900,
+      alt: "OpenZaps Virtual Trading paper-trading safety preview.",
+    },
     title: "Paper Trade First",
     tags: ["OpenZaps", "DeFi"],
     topics: ["protocol", "simulation"],

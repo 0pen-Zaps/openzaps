@@ -1,14 +1,28 @@
 import { createHash } from "node:crypto";
+import {
+  mkdirSync,
+  mkdtempSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 import { describe, expect, it, vi } from "vitest";
 
 vi.mock("server-only", () => ({}));
 
-import { SOURCE_CONTROLLED_TUTORIAL_BODY_MARKER } from "./tutorial-handoff-contract";
+import {
+  SOURCE_CONTROLLED_TUTORIAL_BODY_MARKER,
+  sourceControlledTutorialHeroDeclaration,
+  type SourceControlledTutorialHero,
+} from "./tutorial-handoff-contract";
 import {
   createSourceControlledTutorialEditorHandoff,
   listSourceControlledTutorialSelections,
   loadSourceControlledTutorialApprovalBundle,
+  loadSourceControlledTutorialHeroAsset,
 } from "./tutorial-handoff-source";
 
 const TITLE = "Paper Trade First";
@@ -19,21 +33,71 @@ Pre-audit software. Verify before use.
 Read https://www.0xzaps.com/docs before moving from simulation to a capped pilot.
 `;
 
-function sha256(value: string): string {
+function sha256(value: string | Uint8Array): string {
   return createHash("sha256").update(value).digest("hex");
 }
 
-function source(body = BODY, title = TITLE): string {
+function jpeg(width = 1128, height = 440): Uint8Array {
+  return Uint8Array.from([
+    0xff,
+    0xd8,
+    0xff,
+    0xc0,
+    0x00,
+    0x11,
+    0x08,
+    (height >> 8) & 0xff,
+    height & 0xff,
+    (width >> 8) & 0xff,
+    width & 0xff,
+    0x03,
+    0x01,
+    0x11,
+    0x00,
+    0x02,
+    0x11,
+    0x00,
+    0x03,
+    0x11,
+    0x00,
+    0xff,
+    0xd9,
+  ]);
+}
+
+function hero(bytes: Uint8Array = jpeg()): SourceControlledTutorialHero {
+  return {
+    sourcePath: "docs/media/paper-trade-first.jpg",
+    sha256: sha256(bytes),
+    mimeType: "image/jpeg",
+    width: 1128,
+    height: 440,
+    byteLength: bytes.byteLength,
+    alt: "OpenZaps Virtual Trading paper-trading safety preview.",
+  };
+}
+
+function source(
+  body = BODY,
+  title = TITLE,
+  sourceHero: SourceControlledTutorialHero = hero(),
+): string {
   return `# ${title}
 
 **Publication:** DeFi Tutorials
+
+${sourceControlledTutorialHeroDeclaration(sourceHero)}
 
 ${SOURCE_CONTROLLED_TUTORIAL_BODY_MARKER}
 
 ${body}`;
 }
 
-function manifest(sourceText = source(), body = BODY): unknown {
+function manifest(
+  sourceText = source(),
+  body = BODY,
+  sourceHero: SourceControlledTutorialHero = hero(),
+): unknown {
   return {
     version: 1,
     publication: "https://defitutorials.substack.com",
@@ -52,6 +116,7 @@ function manifest(sourceText = source(), body = BODY): unknown {
         sourcePath: "docs/tutorials/paper-trade-first.md",
         sourceSha256: sha256(sourceText),
         bodySha256: sha256(body),
+        hero: sourceHero,
         topics: ["protocol", "simulation"],
         disclosures: ["pre_audit"],
         claims: [
@@ -73,11 +138,13 @@ function manifest(sourceText = source(), body = BODY): unknown {
 function load(
   sourceText = source(),
   rawManifest: unknown = manifest(sourceText),
+  heroBytes: Uint8Array = jpeg(),
 ) {
   return loadSourceControlledTutorialApprovalBundle("paper-trade-first", {
     rootDir: "/worktree",
     manifest: rawManifest,
     readSource: () => Buffer.from(sourceText),
+    readHero: () => heroBytes,
   });
 }
 
@@ -86,6 +153,7 @@ describe("source-controlled Substack tutorial handoff", () => {
     const bundle = load();
 
     expect(bundle).toMatchObject({
+      version: 2,
       channel: "substack",
       status: "requires_owner_approval",
       tutorialId: "paper-trade-first",
@@ -93,6 +161,7 @@ describe("source-controlled Substack tutorial handoff", () => {
       title: TITLE,
       subtitle: "A bounded tutorial",
       tags: ["DeFi", "OpenZaps"],
+      hero: hero(),
       bodyMarkdown: BODY,
       links: ["https://www.0xzaps.com/docs"],
       modelRewriteAllowed: false,
@@ -117,6 +186,7 @@ describe("source-controlled Substack tutorial handoff", () => {
         rootDir: "/worktree",
         manifest: manifest(),
         readSource: () => Buffer.from(source()),
+        readHero: () => jpeg(),
       }),
     ).toEqual([
       {
@@ -126,6 +196,7 @@ describe("source-controlled Substack tutorial handoff", () => {
         sourcePath: "docs/tutorials/paper-trade-first.md",
         sourceSha256: sha256(source()),
         bodySha256: sha256(BODY),
+        hero: hero(),
       },
     ]);
   });
@@ -162,6 +233,104 @@ describe("source-controlled Substack tutorial handoff", () => {
     ).toThrow("non-canonical outbound link");
   });
 
+  it("verifies the exact hero bytes, JPEG structure, dimensions, and source declaration", () => {
+    const bytes = jpeg();
+    const sourceHero = hero(bytes);
+    const sourceText = source(BODY, TITLE, sourceHero);
+    const asset = loadSourceControlledTutorialHeroAsset("paper-trade-first", {
+      rootDir: "/worktree",
+      manifest: manifest(sourceText, BODY, sourceHero),
+      readSource: () => Buffer.from(sourceText),
+      readHero: () => bytes,
+    });
+
+    expect(asset).toMatchObject({
+      tutorialId: "paper-trade-first",
+      fileName: "paper-trade-first.jpg",
+      ...sourceHero,
+    });
+    expect(asset.bytes).toEqual(bytes);
+
+    const changedBytes = Uint8Array.from(bytes);
+    changedBytes[12] ^= 1;
+    expect(() =>
+      load(sourceText, manifest(sourceText, BODY, sourceHero), changedBytes)
+    ).toThrow("hero hash does not match");
+
+    const wrongLength = { ...sourceHero, byteLength: sourceHero.byteLength + 1 };
+    const wrongLengthSource = source(BODY, TITLE, wrongLength);
+    expect(() =>
+      load(
+        wrongLengthSource,
+        manifest(wrongLengthSource, BODY, wrongLength),
+        bytes,
+      )
+    ).toThrow("hero byte length does not match");
+
+    const wrongDimensions = { ...sourceHero, width: sourceHero.width - 1 };
+    const wrongDimensionsSource = source(BODY, TITLE, wrongDimensions);
+    expect(() =>
+      load(
+        wrongDimensionsSource,
+        manifest(wrongDimensionsSource, BODY, wrongDimensions),
+        bytes,
+      )
+    ).toThrow("hero dimensions do not match");
+
+    const incompleteJpeg = bytes.slice(0, -2);
+    const incompleteHero = hero(incompleteJpeg);
+    const incompleteSource = source(BODY, TITLE, incompleteHero);
+    expect(() =>
+      load(
+        incompleteSource,
+        manifest(incompleteSource, BODY, incompleteHero),
+        incompleteJpeg,
+      )
+    ).toThrow("not a complete JPEG");
+
+    const changedDeclarationHero = {
+      ...sourceHero,
+      alt: "A different owner-visible description.",
+    };
+    expect(() =>
+      load(
+        sourceText,
+        manifest(sourceText, BODY, changedDeclarationHero),
+        bytes,
+      )
+    ).toThrow("hero declaration does not match");
+  });
+
+  it("rejects a direct-child hero symlink that escapes docs/media", () => {
+    const rootDir = mkdtempSync(join(tmpdir(), "openzaps-tutorial-hero-"));
+    try {
+      const bytes = jpeg();
+      const sourceHero = hero(bytes);
+      const sourceText = source(BODY, TITLE, sourceHero);
+      mkdirSync(join(rootDir, "docs", "tutorials"), { recursive: true });
+      mkdirSync(join(rootDir, "docs", "media"), { recursive: true });
+      writeFileSync(
+        join(rootDir, "docs", "tutorials", "paper-trade-first.md"),
+        sourceText,
+      );
+      const outsidePath = join(rootDir, "outside.jpg");
+      writeFileSync(outsidePath, bytes);
+      symlinkSync(
+        outsidePath,
+        join(rootDir, "docs", "media", "paper-trade-first.jpg"),
+      );
+
+      expect(() =>
+        loadSourceControlledTutorialApprovalBundle("paper-trade-first", {
+          rootDir,
+          manifest: manifest(sourceText, BODY, sourceHero),
+        })
+      ).toThrow("hero symlink escaped its root");
+    } finally {
+      rmSync(rootDir, { recursive: true, force: true });
+    }
+  });
+
   it("requires approval of both exact hashes and revalidates before handoff", () => {
     const bundle = load();
     const approval = {
@@ -181,6 +350,7 @@ describe("source-controlled Substack tutorial handoff", () => {
           rootDir: "/worktree",
           manifest: manifest(),
           readSource: () => Buffer.from(source()),
+          readHero: () => jpeg(),
         },
       ),
     ).toThrow("approval does not match");
@@ -194,9 +364,26 @@ describe("source-controlled Substack tutorial handoff", () => {
           rootDir: "/worktree",
           manifest: manifest(),
           readSource: () => Buffer.from(`${source()}changed\n`),
+          readHero: () => jpeg(),
         },
       ),
     ).toThrow("source hash does not match");
+
+    const changedHero = Uint8Array.from(jpeg());
+    changedHero[12] ^= 1;
+    expect(() =>
+      createSourceControlledTutorialEditorHandoff(
+        bundle,
+        approval,
+        "tutorial:paper-trade-first",
+        {
+          rootDir: "/worktree",
+          manifest: manifest(),
+          readSource: () => Buffer.from(source()),
+          readHero: () => changedHero,
+        },
+      ),
+    ).toThrow("hero hash does not match");
   });
 
   it("creates only a copy-ready official-editor package after exact approval", () => {
@@ -215,6 +402,7 @@ describe("source-controlled Substack tutorial handoff", () => {
         rootDir: "/worktree",
         manifest: manifest(),
         readSource: () => Buffer.from(source()),
+        readHero: () => jpeg(),
       },
     );
 
@@ -228,9 +416,11 @@ describe("source-controlled Substack tutorial handoff", () => {
         bodyMarkdown: BODY,
       },
       source: {
+        version: 2,
         tutorialId: "paper-trade-first",
         sourceSha256: bundle.sourceSha256,
         bodySha256: bundle.bodySha256,
+        hero: hero(),
         modelRewriteAllowed: false,
       },
       approval: {
