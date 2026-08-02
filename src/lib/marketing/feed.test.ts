@@ -52,6 +52,21 @@ describe("renderOpenZapsRss", () => {
     ]);
     expect(new Set(identity.map((item) => item.id)).size).toBe(identity.length);
     expect(xml).toContain("https://www.0xzaps.com/virtual-trading");
-    expect(xml).toContain("https://www.0xzaps.com/request-a-zap");
+    expect(xml).toContain(
+      "<link>https://www.0xzaps.com/request-a-zap</link>",
+    );
+    expect(xml).toContain(
+      "https://www.0xzaps.com/request-a-zap?utm_source=openzaps&amp;utm_medium=rss&amp;utm_campaign=request_a_zap&amp;utm_content=feed_update",
+    );
+  });
+
+  it("includes only RSS-confirmed tutorials in the unified feed", () => {
+    const xml = renderOpenZapsRss();
+
+    expect(xml).toContain("Give an Agent the Trigger, Never the Authority");
+    expect(xml).toContain(
+      "https://defitutorials.substack.com/p/give-an-agent-the-trigger-never-the",
+    );
+    expect(xml).not.toContain("Paper Trade First, Then Draw the Authority Map");
   });
 });
