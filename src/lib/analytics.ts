@@ -2,6 +2,13 @@ import { track } from "@vercel/analytics";
 
 export type AnalyticsPayload = Record<string, string | number | boolean | null | undefined>;
 
+export type CapturedAnalyticsAttribution = Readonly<{
+  source: string;
+  medium?: string;
+  campaign?: string;
+  content?: string;
+}>;
+
 const FIRST_TOUCH_STORAGE_KEY = "openzaps:analytics:first-touch:v1";
 const CAMPAIGN_ARRIVAL_STORAGE_KEY = "openzaps:analytics:campaign-arrival:v1";
 const MAX_PROVIDER_PROPERTIES = 2;
@@ -56,6 +63,7 @@ const ATTRIBUTION_MEDIA = new Set([
 ]);
 const ATTRIBUTION_CONTENT = new Set([
   "app_nav",
+  "builder_review",
   "developer_section",
   "docs_release",
   "execution_demo",
@@ -100,7 +108,7 @@ const PROVIDER_PROPERTY_PRIORITY = [
 ] as const;
 
 function coarseCampaign(value: string): string | null {
-  if (value === "request_a_zap") return value;
+  if (ATTRIBUTION_CAMPAIGNS.has(value)) return value;
   if (value === "virtual-trading" || value.startsWith("openzaps-")) {
     return "product_update";
   }
@@ -184,6 +192,26 @@ function validStoredAttribution(value: string): boolean {
     && (campaign === "_" || ATTRIBUTION_CAMPAIGNS.has(campaign))
     && (content === "_" || ATTRIBUTION_CONTENT.has(content))
   );
+}
+
+export function parseCapturedAnalyticsAttribution(
+  value: string | null,
+): CapturedAnalyticsAttribution | null {
+  if (!value || !validStoredAttribution(value)) return null;
+  const [source, medium, campaign, content] = value.split("|");
+  return {
+    source,
+    ...(medium === "_" ? {} : { medium }),
+    ...(campaign === "_" ? {} : { campaign }),
+    ...(content === "_" ? {} : { content }),
+  };
+}
+
+/** Capture, then decode, the privacy-reduced first touch for an internal handoff. */
+export function capturedAnalyticsAttribution(
+  search?: string,
+): CapturedAnalyticsAttribution | null {
+  return parseCapturedAnalyticsAttribution(captureAnalyticsAttribution(search));
 }
 
 /**

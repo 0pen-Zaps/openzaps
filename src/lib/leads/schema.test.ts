@@ -85,6 +85,27 @@ describe("LeadRequestSchema", () => {
     expect(parsed.attribution.referrer).toBe("https://example.com");
   });
 
+  it("accepts only the explicit builder-review entry point", () => {
+    expect(
+      LeadRequestSchema.parse({
+        ...validLead,
+        attribution: {
+          ...validLead.attribution,
+          entryPoint: "builder_review",
+        },
+      }).attribution.entryPoint,
+    ).toBe("builder_review");
+    expect(
+      LeadRequestSchema.safeParse({
+        ...validLead,
+        attribution: {
+          ...validLead.attribution,
+          entryPoint: "private_route",
+        },
+      }).success,
+    ).toBe(false);
+  });
+
   it("drops sensitive or malformed campaign attribution", () => {
     const parsed = LeadRequestSchema.parse({
       ...validLead,

@@ -171,6 +171,38 @@ describe("POST /api/leads/request", () => {
     );
   });
 
+  it("preserves the builder entry point without replacing acquisition", async () => {
+    mockedSubmit.mockResolvedValue("accepted");
+
+    const response = await POST(
+      request({
+        ...body,
+        attribution: {
+          utmSource: "x",
+          utmMedium: "social",
+          utmCampaign: "product_update",
+          entryPoint: "builder_review",
+        },
+      }),
+    );
+
+    expect(response.status).toBe(202);
+    expect(mockedSubmit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        attribution: expect.objectContaining({
+          utmSource: "x",
+          entryPoint: "builder_review",
+        }),
+      }),
+      expect.any(Headers),
+    );
+    expect(mocks.track).toHaveBeenCalledWith(
+      "lead_request_accepted",
+      { source: "x", score_band: "3_5" },
+      { headers: expect.any(Headers) },
+    );
+  });
+
   it("keeps durable acceptance successful when advisory workflow start fails", async () => {
     mockedSubmit.mockResolvedValue("accepted");
     mocks.start.mockRejectedValue(new Error("workflow unavailable"));

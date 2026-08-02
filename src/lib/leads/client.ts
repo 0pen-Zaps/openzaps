@@ -4,6 +4,7 @@ export type LeadClientAttribution = Readonly<{
   utmCampaign?: string;
   utmContent?: string;
   utmTerm?: string;
+  entryPoint?: "builder_review";
   landingPath: "/request-a-zap";
 }>;
 

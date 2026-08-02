@@ -25,6 +25,7 @@ describe("lead request client payload", () => {
         {
           utmSource: "x",
           utmCampaign: "request_a_zap",
+          entryPoint: "builder_review",
           landingPath: "/request-a-zap",
         },
         "https://www.0xzaps.com/zap?d=sensitive-design#step",
@@ -39,6 +40,7 @@ describe("lead request client payload", () => {
       attribution: {
         utmSource: "x",
         utmCampaign: "request_a_zap",
+        entryPoint: "builder_review",
         landingPath: "/request-a-zap",
         referrer: "https://www.0xzaps.com",
       },

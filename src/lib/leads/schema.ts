@@ -80,6 +80,7 @@ export const LeadAttributionSchema = z
     utmCampaign: optionalAttributionValue(120),
     utmContent: optionalAttributionValue(120),
     utmTerm: optionalAttributionValue(120),
+    entryPoint: z.enum(["builder_review"]).optional(),
     // Paths, query strings, and fragments can carry incidental identifiers.
     // The referring origin is sufficient for attribution, so discard the rest
     // at the server boundary before persistence.

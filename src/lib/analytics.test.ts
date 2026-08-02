@@ -6,6 +6,7 @@ vi.mock("@vercel/analytics", () => ({ track }));
 
 import {
   captureAnalyticsAttribution,
+  capturedAnalyticsAttribution,
   claimAnalyticsCampaignArrival,
   providerAnalyticsPayload,
   sanitizeAnalyticsPayload,
@@ -197,6 +198,35 @@ describe("analytics privacy boundary", () => {
         "?utm_source=openzaps&utm_medium=website&utm_campaign=request_a_zap&utm_content=learn_hub",
       ),
     ).toBe("openzaps|website|request_a_zap|learn_hub");
+  });
+
+  it("keeps builder-review as bounded CTA content without making it acquisition", () => {
+    stubBrowser();
+
+    expect(
+      sanitizeAnalyticsPayload({ content: "builder_review" }),
+    ).toEqual({ content: "builder_review" });
+  });
+
+  it("decodes only the privacy-reduced first touch for internal handoffs", () => {
+    stubBrowser();
+
+    expect(
+      capturedAnalyticsAttribution(
+        "?utm_source=x&utm_medium=social&utm_campaign=openzaps-launch&utm_content=feed_update",
+      ),
+    ).toEqual({
+      source: "x",
+      medium: "social",
+      campaign: "product_update",
+      content: "feed_update",
+    });
+    expect(capturedAnalyticsAttribution()).toEqual({
+      source: "x",
+      medium: "social",
+      campaign: "product_update",
+      content: "feed_update",
+    });
   });
 
   it("reduces DeFi Tutorials links to anonymous tutorial attribution", () => {

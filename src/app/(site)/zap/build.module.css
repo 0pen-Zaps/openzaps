@@ -1812,6 +1812,20 @@
   cursor: not-allowed;
 }
 
+.actionBtn.requestAction {
+  min-height: 38px;
+  border-color: transparent;
+  background: var(--btn);
+  color: var(--btn-ink);
+  font-weight: 650;
+  box-shadow: var(--sh-btn);
+}
+
+.actionBtn.actionBtn.requestAction:hover {
+  border-color: transparent;
+  background: var(--btn-hover);
+}
+
 .import {
   display: grid;
   gap: 8px;
