@@ -349,6 +349,24 @@ contract FeeShareTermWrapTest is Test {
         assertEq(weth.balanceOf(bob), 5e17 + 125e16);
     }
 
+    /// Selling wrapped units must not forfeit reward that accrued to the
+    /// seller before the sale: transfer harvests first.
+    function test_transferDoesNotForfeitUnharvestedReward() public {
+        _depositBoth();
+        // Reward accrues to the wrapper but nobody harvests yet.
+        vault.setClaimable(address(wrap), 4e18);
+
+        // Alice sells to carol WITHOUT a prior harvest.
+        vm.prank(alice);
+        wrap.transfer(carol, 30e18);
+
+        // The 4e18 that accrued while alice held is credited to alice (3),
+        // bob (1) — not handed to the buyer carol.
+        assertEq(wrap.claimableReward(alice), 3e18);
+        assertEq(wrap.claimableReward(bob), 1e18);
+        assertEq(wrap.claimableReward(carol), 0);
+    }
+
     /// A vault whose claimable() VIEW reverts (not just claimFor) must NOT
     /// brick finalize/redeem/sweep — the probe is fully guarded.
     function test_finalizeSurvivesRevertingClaimableView() public {

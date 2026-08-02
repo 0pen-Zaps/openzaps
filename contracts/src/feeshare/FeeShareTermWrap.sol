@@ -288,6 +288,12 @@ contract FeeShareTermWrap {
     function _transfer(address from, address to, uint256 value) private {
         require(to != address(0), ZeroAmount());
         require(balanceOf[from] >= value, InsufficientBalance());
+        // Fold reward accrued to these units BEFORE they move, so the seller
+        // keeps everything earned while they held. Without this, reward that
+        // accrued but was not yet harvested is silently handed to the buyer at
+        // the next harvest — a forfeit on the coupon's primary trading path,
+        // and unavoidable for units held in an AMM that cannot harvest atomically.
+        _harvestAndSync();
         _checkpoint(from);
         _checkpoint(to);
         balanceOf[from] -= value;

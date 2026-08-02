@@ -262,6 +262,28 @@ contract FeeShareAutoCompounderTest is Test {
         assertEq(zaps.balanceOf(keeper), 0);
     }
 
+    // AUDIT REGRESSION: at most one route per account per block, so looping
+    // route() cannot drain past MAX_ROUTE_WEI in a single block.
+    function test_routeCappedPerBlock() public {
+        vm.prank(alice);
+        comp.deposit(30e18);
+        vault.setClaimable(address(comp), 300e18); // alice owed 300 WETH
+        vm.prank(alice);
+        comp.route(); // routes 100 (the cap)
+        assertEq(comp.claimableWeth(alice), 200e18);
+
+        // A second route in the SAME block reverts.
+        vm.prank(alice);
+        vm.expectRevert(FeeShareAutoCompounder.RouteRateLimited.selector);
+        comp.route();
+
+        // Next block it proceeds.
+        vm.roll(block.number + 1);
+        vm.prank(alice);
+        comp.route();
+        assertEq(comp.claimableWeth(alice), 100e18);
+    }
+
     // AUDIT REGRESSION: a vault whose claimable() VIEW reverts must not brick
     // withdraw or the claimWeth escape hatch.
     function test_revertingClaimableViewDoesNotBrick() public {

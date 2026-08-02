@@ -47,6 +47,7 @@ contract FeeShareAutoCompounder {
     error WrongOrientation();
     error TransferFailed();
     error NotAuthorized();
+    error RouteRateLimited();
 
     // ---------------------------------------------------------------- events
     event Deposited(address indexed account, uint256 shares);
@@ -63,8 +64,9 @@ contract FeeShareAutoCompounder {
     IOrientedPriceSource public immutable PRICE_SOURCE;
     /// @notice Routed WETH must yield at least spot * MIN_OUT_BPS / 10_000.
     uint16 public immutable MIN_OUT_BPS;
-    /// @notice A single route converts at most this much WETH, bounding the
-    ///         amount a same-block sandwich of the routed leg can extract.
+    /// @notice A single route converts at most this much WETH, and at most
+    ///         one route fires per account per block, so this is the ceiling a
+    ///         same-block sandwich of one account can extract.
     uint256 public immutable MAX_ROUTE_WEI;
     /// @notice Routes below this much WETH revert rather than waste the swap.
     uint256 public immutable MIN_ROUTE_WEI;
@@ -89,6 +91,9 @@ contract FeeShareAutoCompounder {
     mapping(address => uint256) public wethOwed;
     /// @notice Depositors who authorize keepers to route their balance.
     mapping(address => bool) public autoRouteAllowed;
+    /// @notice Last block a route fired for an account, so at most one route
+    ///         (<= MAX_ROUTE_WEI) can happen per account per block.
+    mapping(address => uint256) public lastRouteBlock;
 
     constructor(
         address feeShares,
@@ -190,6 +195,11 @@ contract FeeShareAutoCompounder {
     }
 
     function _route(address account) private {
+        // One route per account per block: without this, route() could be
+        // looped in a single block to drain the whole balance, defeating the
+        // MAX_ROUTE_WEI same-block bound. claimWeth stays available every block.
+        require(lastRouteBlock[account] != block.number, RouteRateLimited());
+        lastRouteBlock[account] = block.number;
         _sync();
         _checkpoint(account);
         uint256 owed = wethOwed[account];
