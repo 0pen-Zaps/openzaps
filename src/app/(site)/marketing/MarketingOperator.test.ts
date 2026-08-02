@@ -3,6 +3,11 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 
 import {
+  X_MENTION_APPROVAL_REGISTRY,
+  X_MENTION_TEMPLATE_REGISTRY_DIGEST,
+} from "@/lib/marketing/x-mention-registry";
+
+import {
   DISCORD_PREFLIGHT_BUTTON_LABEL,
   discordActivationSummary,
   discordPreflightRequestIsCurrent,
@@ -11,6 +16,7 @@ import {
   leadDeleteTriggerId,
   leadOperationIsCurrent,
   leadReplyHref,
+  mountXApprovalPacketCopyLifecycle,
   operatorLeads,
   operatorSyndicationItems,
   operatorResetClearsSyndicationRepair,
@@ -18,6 +24,7 @@ import {
   parseSubstackVerification,
   parseDiscordActivationVerification,
   parseLeadScorecard,
+  parseXActivationStatus,
   parseXIdentityVerification,
   pollRetryDelay,
   readinessRows,
@@ -34,8 +41,15 @@ import {
   substackVerificationResponseIsCurrent,
   tutorialApprovalEchoFromDraft,
   type OperatorSyndicationItem,
+  type XActivationStatus,
+  writeCurrentXActivationApprovalPacket,
   writeSubstackClipboard,
   writeSubstackManifestPatchClipboard,
+  writeXActivationApprovalPacket,
+  XActivationApprovalPanel,
+  xActivationApprovalPacket,
+  xActivationRows,
+  xApprovalPacketCopyRequestIsCurrent,
   xIdentityRequestIsCurrent,
 } from "./MarketingOperator";
 
@@ -64,6 +78,64 @@ const VALID_DISCORD_PREFLIGHT = {
     writesPerformed: false,
   },
   writesPerformed: false,
+};
+
+const VALID_X_ACTIVATION_RESPONSE = {
+  service: "OpenZaps marketing agent",
+  config: {
+    enabled: true,
+    dryRun: false,
+    xAutomatedLabelConfirmed: true,
+    dailyCaps: { xReplies: 10 },
+    readiness: {
+      configurationValid: true,
+      durableLedgerConfigured: true,
+      channels: { x: true },
+    },
+  },
+  policy: {
+    xAutomaticReplyScope:
+      "official mentions timeline only; exact reviewed deterministic commands; first-run baseline; one reply per interaction; opt-out; all other content remains review-only",
+  },
+  xActivationEvidence: {
+    schemaVersion: 2,
+    evaluatedAt: "2026-08-03T16:00:00.000Z",
+    expectedAccountIdentity: { accountId: "123456789", username: "0xzaps" },
+    privacyUrl: "https://www.0xzaps.com/legal#request-data",
+    templates: X_MENTION_APPROVAL_REGISTRY.map(
+      ({ templateId, prompts, body }) => ({
+        templateId,
+        prompts: [...prompts],
+        body,
+      }),
+    ),
+  },
+  xMentionAutomation: {
+    ingestRequested: true,
+    autoReplyRequested: true,
+    autoResponseApproved: true,
+    commercialUseApproved: true,
+    complianceAttested: true,
+    complianceReady: true,
+    complianceHealth: "healthy",
+    complianceValidUntil: "2026-08-03T16:25:00.000Z",
+    templateApprovalDigestValid: true,
+    templateRegistryDigest: X_MENTION_TEMPLATE_REGISTRY_DIGEST,
+    hashSecretConfigured: true,
+    canonicalUsernameBound: true,
+    ingestReady: true,
+    autoReplyReady: true,
+    dailyCap: 1,
+    blockers: [] as string[],
+  },
+  xComplianceHealth: {
+    result: "healthy",
+    checkedAt: "2026-08-03T15:55:00.000Z",
+    validUntil: "2026-08-03T16:25:00.000Z",
+    subjectCount: 3,
+    nonPresentCount: 0,
+    hold: false,
+  },
 };
 
 describe("X identity evidence parsing", () => {
@@ -113,6 +185,411 @@ describe("X identity evidence parsing", () => {
         authenticatedUsername: valid.authenticatedUsername,
       }),
     ).toBeNull();
+  });
+});
+
+describe("X activation approval evidence", () => {
+  it("accepts the complete bounded status contract and renders every gate", () => {
+    const parsed = parseXActivationStatus(VALID_X_ACTIVATION_RESPONSE);
+
+    expect(parsed).not.toBeNull();
+    expect(parsed).toMatchObject({
+      expectedAccountIdentity: {
+        accountId: "123456789",
+        username: "0xzaps",
+      },
+      automation: {
+        ingestReady: true,
+        autoReplyReady: true,
+        dailyCap: 1,
+        templateRegistryDigest: X_MENTION_TEMPLATE_REGISTRY_DIGEST,
+        canonicalUsernameBound: true,
+      },
+      complianceHealth: {
+        result: "healthy",
+        subjectCount: 3,
+        nonPresentCount: 0,
+        hold: false,
+      },
+      xReplyDailyCap: 10,
+      automatedLabelAttested: true,
+    });
+
+    const rows = xActivationRows(parsed as XActivationStatus);
+    const byKey = new Map(rows.map((row) => [row.key, row]));
+    expect(byKey).toHaveProperty("size", 23);
+    expect(byKey.get("xMentionIngestRequested")?.state).toBe("requested");
+    expect(byKey.get("xAutoReplyRequested")?.state).toBe("requested");
+    expect(byKey.get("xAutoResponseApproved")?.state).toBe("recorded");
+    expect(byKey.get("xCommercialUseApproved")?.state).toBe("recorded");
+    expect(byKey.get("xComplianceAttested")?.state).toBe("recorded");
+    expect(byKey.get("xComplianceReady")?.state).toBe("ready");
+    expect(byKey.get("xAutomationComplianceView")?.detail).toContain(
+      "2026-08-03T16:25:00.000Z",
+    );
+    expect(byKey.get("xHashSecretConfigured")?.detail).toContain(
+      "value is never returned",
+    );
+    expect(byKey.get("xTemplateDigestApproved")?.detail).toContain(
+      X_MENTION_TEMPLATE_REGISTRY_DIGEST,
+    );
+    expect(byKey.get("xCanonicalUsernameBound")?.state).toBe("@0xzaps bound");
+    expect(byKey.get("xMentionIngestReady")?.state).toBe("locally ready");
+    expect(byKey.get("xAutoReplyReady")?.state).toBe("locally ready");
+    expect(byKey.get("xAutomaticReplyDailyCap")?.detail).toContain(
+      "1 automatic reply",
+    );
+    expect(byKey.get("xComplianceCheckedAt")?.detail).toContain(
+      "2026-08-03T15:55:00.000Z",
+    );
+    expect(byKey.get("xComplianceCoverage")?.detail).toContain(
+      "3 subjects checked",
+    );
+    expect(byKey.get("xComplianceHold")?.state).toBe("clear");
+    expect(byKey.get("xAutomatedLabelExternal")).toMatchObject({
+      ready: false,
+      state: "external verification required",
+    });
+    expect(byKey.get("xApiCreditsExternal")).toMatchObject({
+      ready: false,
+      state: "external verification required",
+    });
+  });
+
+  it("fails the whole panel closed on missing, contradictory, or unsafe fields", () => {
+    const missingGate = structuredClone(VALID_X_ACTIVATION_RESPONSE);
+    delete (missingGate.xMentionAutomation as Partial<
+      typeof missingGate.xMentionAutomation
+    >).autoReplyRequested;
+
+    const mismatchedHealth = structuredClone(VALID_X_ACTIVATION_RESPONSE);
+    mismatchedHealth.xMentionAutomation.complianceHealth = "stale";
+
+    const unexpectedTemplate = structuredClone(VALID_X_ACTIVATION_RESPONSE);
+    unexpectedTemplate.xActivationEvidence.templates[0].templateId =
+      "other-v1" as unknown as typeof unexpectedTemplate.xActivationEvidence.templates[0]["templateId"];
+
+    const changedPrompt = structuredClone(VALID_X_ACTIVATION_RESPONSE);
+    changedPrompt.xActivationEvidence.templates[0].prompts[0] =
+      "/changed" as unknown as typeof changedPrompt.xActivationEvidence.templates[0]["prompts"][0];
+
+    const changedResponse = structuredClone(VALID_X_ACTIVATION_RESPONSE);
+    changedResponse.xActivationEvidence.templates[0].body += " changed";
+
+    const changedDigest = structuredClone(VALID_X_ACTIVATION_RESPONSE);
+    changedDigest.xMentionAutomation.templateRegistryDigest = "0".repeat(64);
+
+    const noncanonicalIdentity = structuredClone(VALID_X_ACTIVATION_RESPONSE);
+    noncanonicalIdentity.xActivationEvidence.expectedAccountIdentity.username =
+      "otheraccount";
+
+    const unsafeBlocker = structuredClone(VALID_X_ACTIVATION_RESPONSE);
+    unsafeBlocker.xMentionAutomation.blockers = [
+      "provider secret value was abc123",
+    ];
+
+    expect(parseXActivationStatus(missingGate)).toBeNull();
+    expect(parseXActivationStatus(mismatchedHealth)).toBeNull();
+    expect(parseXActivationStatus(unexpectedTemplate)).toBeNull();
+    expect(parseXActivationStatus(changedPrompt)).toBeNull();
+    expect(parseXActivationStatus(changedResponse)).toBeNull();
+    expect(parseXActivationStatus(changedDigest)).toBeNull();
+    expect(parseXActivationStatus(noncanonicalIdentity)).toBeNull();
+    expect(parseXActivationStatus(unsafeBlocker)).toBeNull();
+  });
+
+  it("rejects every invalid compliance result, timestamp, coverage, and hold combination", () => {
+    const accountNotFoundWithCounts = structuredClone(
+      VALID_X_ACTIVATION_RESPONSE,
+    );
+    accountNotFoundWithCounts.xComplianceHealth = {
+      result: "account_not_found",
+      checkedAt: null as unknown as string,
+      validUntil: null as unknown as string,
+      subjectCount: 1,
+      nonPresentCount: 0,
+      hold: false,
+    };
+    accountNotFoundWithCounts.xMentionAutomation = {
+      ...accountNotFoundWithCounts.xMentionAutomation,
+      complianceHealth: "account_not_found",
+      complianceValidUntil: null as unknown as string,
+      complianceReady: false,
+      ingestReady: false,
+      autoReplyReady: false,
+      blockers: [
+        "X mention ingestion requires a fresh healthy compliance checkpoint; current state is account_not_found.",
+      ],
+    };
+
+    const staleWithHold = structuredClone(VALID_X_ACTIVATION_RESPONSE);
+    staleWithHold.xComplianceHealth.result = "stale";
+    staleWithHold.xComplianceHealth.hold = true;
+    staleWithHold.xMentionAutomation = {
+      ...staleWithHold.xMentionAutomation,
+      complianceHealth: "stale",
+      complianceReady: false,
+      ingestReady: false,
+      autoReplyReady: false,
+      blockers: [
+        "X mention ingestion requires a fresh healthy compliance checkpoint; current state is stale.",
+      ],
+    };
+
+    const holdWithoutHold = structuredClone(VALID_X_ACTIVATION_RESPONSE);
+    holdWithoutHold.xComplianceHealth.result = "hold";
+    holdWithoutHold.xMentionAutomation = {
+      ...holdWithoutHold.xMentionAutomation,
+      complianceHealth: "hold",
+      complianceReady: false,
+      ingestReady: false,
+      autoReplyReady: false,
+      blockers: [
+        "X mention ingestion requires a fresh healthy compliance checkpoint; current state is hold.",
+      ],
+    };
+
+    const healthyWithoutCoverage = structuredClone(
+      VALID_X_ACTIVATION_RESPONSE,
+    );
+    healthyWithoutCoverage.xComplianceHealth.subjectCount = 0;
+
+    const mismatchedTimestamps = structuredClone(
+      VALID_X_ACTIVATION_RESPONSE,
+    );
+    mismatchedTimestamps.xComplianceHealth.validUntil =
+      null as unknown as string;
+    mismatchedTimestamps.xMentionAutomation.complianceValidUntil =
+      null as unknown as string;
+
+    const falseComplianceReady = structuredClone(
+      VALID_X_ACTIVATION_RESPONSE,
+    );
+    falseComplianceReady.xMentionAutomation.complianceReady = false;
+
+    for (const response of [
+      accountNotFoundWithCounts,
+      staleWithHold,
+      holdWithoutHold,
+      healthyWithoutCoverage,
+      mismatchedTimestamps,
+      falseComplianceReady,
+    ]) {
+      expect(parseXActivationStatus(response)).toBeNull();
+    }
+  });
+
+  it("rejects missing, spurious, misordered, or flag-incoherent blockers and readiness", () => {
+    const missingRequiredBlocker = structuredClone(
+      VALID_X_ACTIVATION_RESPONSE,
+    );
+    missingRequiredBlocker.xMentionAutomation.hashSecretConfigured = false;
+    missingRequiredBlocker.xMentionAutomation.ingestReady = false;
+    missingRequiredBlocker.xMentionAutomation.autoReplyReady = false;
+
+    const spuriousBlocker = structuredClone(VALID_X_ACTIVATION_RESPONSE);
+    spuriousBlocker.xMentionAutomation.blockers = [
+      "OPENZAPS_X_MENTION_HASH_SECRET must be a server-only secret of at least 32 characters.",
+    ];
+
+    const errorWithTrueFlag = structuredClone(VALID_X_ACTIVATION_RESPONSE);
+    errorWithTrueFlag.xMentionAutomation.blockers = [
+      'OPENZAPS_X_MENTION_INGEST_ENABLED must be exactly "true" or "false".',
+    ];
+
+    const conditionalBeforeError = structuredClone(
+      VALID_X_ACTIVATION_RESPONSE,
+    );
+    conditionalBeforeError.xMentionAutomation = {
+      ...conditionalBeforeError.xMentionAutomation,
+      ingestRequested: false,
+      ingestReady: false,
+      autoReplyReady: false,
+      blockers: [
+        "Automatic X replies require X mention ingestion.",
+        'OPENZAPS_X_MENTION_INGEST_ENABLED must be exactly "true" or "false".',
+      ],
+    };
+
+    const falseReadyFlag = structuredClone(VALID_X_ACTIVATION_RESPONSE);
+    falseReadyFlag.xMentionAutomation.autoReplyReady = false;
+
+    for (const response of [
+      missingRequiredBlocker,
+      spuriousBlocker,
+      errorWithTrueFlag,
+      conditionalBeforeError,
+      falseReadyFlag,
+    ]) {
+      expect(parseXActivationStatus(response)).toBeNull();
+    }
+  });
+
+  it("accepts an explicitly off, unavailable checkpoint without claiming readiness", () => {
+    const disabled = {
+      ...VALID_X_ACTIVATION_RESPONSE,
+      config: {
+        ...VALID_X_ACTIVATION_RESPONSE.config,
+        xAutomatedLabelConfirmed: false,
+        readiness: {
+          ...VALID_X_ACTIVATION_RESPONSE.config.readiness,
+          channels: { x: false },
+        },
+      },
+      xActivationEvidence: {
+        ...VALID_X_ACTIVATION_RESPONSE.xActivationEvidence,
+        expectedAccountIdentity: null,
+      },
+      xMentionAutomation: {
+        ...VALID_X_ACTIVATION_RESPONSE.xMentionAutomation,
+        ingestRequested: false,
+        autoReplyRequested: false,
+        autoResponseApproved: false,
+        commercialUseApproved: false,
+        complianceAttested: false,
+        complianceReady: false,
+        complianceHealth: "unavailable",
+        complianceValidUntil: null,
+        templateApprovalDigestValid: false,
+        hashSecretConfigured: false,
+        canonicalUsernameBound: false,
+        ingestReady: false,
+        autoReplyReady: false,
+        blockers: [],
+      },
+      xComplianceHealth: null,
+    };
+
+    const parsed = parseXActivationStatus(disabled);
+    expect(parsed).toMatchObject({
+      expectedAccountIdentity: null,
+      automatedLabelAttested: false,
+      automation: {
+        ingestRequested: false,
+        autoReplyRequested: false,
+        complianceHealth: "unavailable",
+        complianceValidUntil: null,
+        ingestReady: false,
+        autoReplyReady: false,
+      },
+      complianceHealth: null,
+    });
+    expect(
+      xActivationRows(parsed as XActivationStatus)
+        .find((row) => row.key === "xComplianceHold"),
+    ).toMatchObject({ ready: false, state: "unavailable" });
+  });
+
+  it("builds and copies a non-authorizing packet with the complete approval scope", async () => {
+    const parsed = parseXActivationStatus(VALID_X_ACTIVATION_RESPONSE);
+    expect(parsed).not.toBeNull();
+    const packet = xActivationApprovalPacket(parsed as XActivationStatus);
+
+    expect(packet).toContain("DOES NOT ENABLE OR AUTHORIZE AUTOMATION");
+    expect(packet).toContain("@0xzaps (account 123456789)");
+    expect(packet).toContain("1 deterministic automatic reply per UTC day");
+    expect(packet).toContain("global 10 X-reply cap");
+    expect(packet).toContain("@0xzaps stop");
+    expect(packet).toContain("https://www.0xzaps.com/legal#request-data");
+    expect(packet).toContain("about-v1\nExact eligible prompts:\n- /about");
+    expect(packet).toContain("Exact response:\nOpenZaps lets an owner pre-commit");
+    expect(packet).toContain("Automated label is visibly applied");
+    expect(packet).toContain("API credits and account-spend availability");
+    expect(packet).toContain("external verification required");
+
+    const writeText = vi.fn(async () => undefined);
+    await writeXActivationApprovalPacket(packet, { writeText });
+    expect(writeText).toHaveBeenCalledWith(packet);
+    await expect(
+      writeXActivationApprovalPacket(packet, undefined),
+    ).rejects.toThrow("Clipboard unavailable");
+  });
+
+  it("invalidates copied state after packet refresh and ignores stale in-flight writes", async () => {
+    expect(xApprovalPacketCopyRequestIsCurrent({
+      requestedPacket: "old packet",
+      currentPacket: "new packet",
+      requestGeneration: 1,
+      currentRequestGeneration: 1,
+      active: true,
+    })).toBe(false);
+    expect(xApprovalPacketCopyRequestIsCurrent({
+      requestedPacket: "same packet",
+      currentPacket: "same packet",
+      requestGeneration: 1,
+      currentRequestGeneration: 2,
+      active: true,
+    })).toBe(false);
+    expect(xApprovalPacketCopyRequestIsCurrent({
+      requestedPacket: "same packet",
+      currentPacket: "same packet",
+      requestGeneration: 1,
+      currentRequestGeneration: 1,
+      active: false,
+    })).toBe(false);
+
+    let resolveWrite: (() => void) | undefined;
+    const clipboard = {
+      writeText: vi.fn(() => new Promise<void>((resolve) => {
+        resolveWrite = resolve;
+      })),
+    };
+    let current = {
+      packet: "old packet",
+      requestGeneration: 1,
+      active: true,
+    };
+    const pending = writeCurrentXActivationApprovalPacket({
+      packet: "old packet",
+      clipboard,
+      requestGeneration: 1,
+      currentRequest: () => current,
+    });
+    current = {
+      packet: "new packet",
+      requestGeneration: 2,
+      active: true,
+    };
+    resolveWrite?.();
+
+    await expect(pending).resolves.toBe("stale");
+    expect(clipboard.writeText).toHaveBeenCalledWith("old packet");
+  });
+
+  it("reactivates copy lifecycle after Strict Mode effect replay", () => {
+    const lifecycle = { active: false, requestGeneration: 0 };
+
+    const firstCleanup = mountXApprovalPacketCopyLifecycle(lifecycle);
+    expect(lifecycle).toEqual({ active: true, requestGeneration: 0 });
+    firstCleanup();
+    expect(lifecycle).toEqual({ active: false, requestGeneration: 1 });
+
+    const secondCleanup = mountXApprovalPacketCopyLifecycle(lifecycle);
+    expect(lifecycle).toEqual({ active: true, requestGeneration: 1 });
+    secondCleanup();
+    expect(lifecycle).toEqual({ active: false, requestGeneration: 2 });
+  });
+
+  it("renders only a copy control and keeps malformed evidence non-actionable", () => {
+    const parsed = parseXActivationStatus(VALID_X_ACTIVATION_RESPONSE);
+    const validMarkup = renderToStaticMarkup(
+      createElement(XActivationApprovalPanel, { status: parsed }),
+    );
+    const invalidMarkup = renderToStaticMarkup(
+      createElement(XActivationApprovalPanel, { status: null }),
+    );
+    const buttons = validMarkup.match(/<button\b/gu) ?? [];
+
+    expect(buttons).toHaveLength(1);
+    expect(validMarkup).toContain("Copy approval packet");
+    expect(validMarkup).toContain("External verification still required");
+    expect(validMarkup).toContain("how do i try virtual trading");
+    expect(validMarkup).toContain("Try Virtual Trading with 10,000 virtual USDG");
+    expect(validMarkup).not.toMatch(/>Enable(?:\s|<)/u);
+    expect(validMarkup).not.toMatch(/>Post(?:\s|<)/u);
+    expect(validMarkup).not.toMatch(/>Reply(?:\s|<)/u);
+    expect(invalidMarkup).toContain("X activation evidence unavailable.");
+    expect(invalidMarkup).not.toContain("<button");
   });
 });
 

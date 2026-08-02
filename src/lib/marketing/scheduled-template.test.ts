@@ -1,15 +1,22 @@
 import { createHash } from "node:crypto";
+import { readdirSync, readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 
 import { describe, expect, it } from "vitest";
 
 import {
+  availableReviewOnlyMarketingCampaigns,
   isReviewedMarketingCampaignCandidate,
   reviewedMarketingCampaign,
   reviewedMarketingCampaignCanonicalPayload,
+  reviewedMarketingCampaignIsReviewOnly,
   reviewedMarketingCampaigns,
+  reviewOnlyMarketingCampaigns,
 } from "@/lib/marketing/scheduled-template";
 import {
   AGENT_KIT_MARKETING_CAMPAIGN_ID,
+  FEE_REWARDS_MARKETING_CAMPAIGN_ID,
   LEARN_HUB_MARKETING_CAMPAIGN_ID,
   SHARE_ZAP_DESIGN_MARKETING_CAMPAIGN_ID,
   type MarketingCandidate,
@@ -295,4 +302,114 @@ describe("source-reviewed marketing campaigns", () => {
       }
     },
   );
+
+  it.each(["x", "discord"] as const)(
+    "keeps the fee rewards %s artifact owner-review-only",
+    (channel) => {
+      const campaign = reviewedMarketingCampaign(
+        FEE_REWARDS_MARKETING_CAMPAIGN_ID,
+        channel,
+      );
+      const observedAt = "2026-08-03T00:24:00.000Z";
+      const candidate: MarketingCandidate = {
+        id: `fee-rewards-${channel}`,
+        channel,
+        action: "broadcast",
+        kind: "product_update",
+        topics: [...campaign.topics],
+        body: campaign.body,
+        links: [...campaign.links],
+        disclosures: [...campaign.disclosures],
+        claims: campaign.claims.map((claim) => ({
+          ...claim,
+          factKeys: [...claim.factKeys],
+        })),
+        flags: { ...campaign.flags },
+        interaction: null,
+        sourcePacket: {
+          id: `fee-rewards-${channel}-sources`,
+          createdAt: observedAt,
+          protocolPreAudit: true,
+          externalData: [],
+          interaction: null,
+          facts: campaign.requiredFacts.map((fact) => ({
+            key: fact.key,
+            label: fact.key,
+            value: "confirmed",
+            status: "confirmed" as const,
+            sourceUrl: fact.sourceUrl,
+            observedAt,
+          })),
+        },
+      };
+
+      expect(campaign.notBefore).toBe("2026-08-03T00:23:00.000Z");
+      expect(campaign.notAfter).toBe("2026-08-10T00:23:00.000Z");
+      expect(campaign.topics).toEqual(["token", "trading"]);
+      expect(campaign.body).toContain(
+        "active from Aug 3 00:23 UTC until Aug 10 00:23 UTC",
+      );
+      expect(campaign.body).toContain("claims until Sep 9 00:23 UTC");
+      expect(
+        reviewedMarketingCampaignIsReviewOnly(
+          FEE_REWARDS_MARKETING_CAMPAIGN_ID,
+          channel,
+        ),
+      ).toBe(true);
+      expect(
+        isReviewedMarketingCampaignCandidate(
+          candidate,
+          FEE_REWARDS_MARKETING_CAMPAIGN_ID,
+        ),
+      ).toBe(false);
+      if (channel === "x") {
+        expect(Array.from(campaign.body).length).toBeLessThanOrEqual(280);
+      }
+    },
+  );
+
+  it("exposes fee rewards only through the source review accessor and never the durable cron queue", () => {
+    const reviewOnly = reviewOnlyMarketingCampaigns();
+    const identities = reviewOnly.map(
+      (campaign) => `${campaign.id}:${campaign.channel}`,
+    );
+
+    expect(identities).toEqual([
+      `${FEE_REWARDS_MARKETING_CAMPAIGN_ID}:x`,
+      `${FEE_REWARDS_MARKETING_CAMPAIGN_ID}:discord`,
+    ]);
+    expect(
+      availableReviewOnlyMarketingCampaigns(
+        "2026-08-03T00:22:59.999Z",
+      ),
+    ).toEqual([]);
+    expect(
+      availableReviewOnlyMarketingCampaigns(
+        "2026-08-03T00:23:00.000Z",
+      ).map((campaign) => `${campaign.id}:${campaign.channel}`),
+    ).toEqual(identities);
+    expect(
+      availableReviewOnlyMarketingCampaigns(
+        "2026-08-10T00:22:59.999Z",
+      ).map((campaign) => `${campaign.id}:${campaign.channel}`),
+    ).toEqual(identities);
+    expect(
+      availableReviewOnlyMarketingCampaigns(
+        "2026-08-10T00:23:00.000Z",
+      ),
+    ).toEqual([]);
+
+    const migrationsDirectory = join(
+      dirname(fileURLToPath(import.meta.url)),
+      "../../../supabase/migrations",
+    );
+    const durableMigrationText = readdirSync(migrationsDirectory)
+      .filter((fileName) => fileName.endsWith(".sql"))
+      .map((fileName) => readFileSync(join(migrationsDirectory, fileName), "utf8"))
+      .join("\n");
+
+    expect(durableMigrationText).not.toContain(
+      FEE_REWARDS_MARKETING_CAMPAIGN_ID,
+    );
+  });
 });

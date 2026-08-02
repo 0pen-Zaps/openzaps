@@ -297,13 +297,13 @@ function zeroSnapshot() {
   };
 }
 
-function virtualMarketSnapshot() {
+function virtualMarketSnapshot(observedAt = CREATED_AT) {
   return {
     chainId: 4663,
     blockNumber: "23258886",
     blockHash: `0x${"cd".repeat(32)}`,
-    blockTimestamp: String(Math.floor(Date.parse(CREATED_AT) / 1_000)),
-    readAt: CREATED_AT,
+    blockTimestamp: String(Math.floor(Date.parse(observedAt) / 1_000)),
+    readAt: observedAt,
     source: "canonical Robinhood Chain head eth_call",
     markets: [
       {
@@ -326,7 +326,7 @@ function virtualMarketSnapshot() {
   };
 }
 
-function virtualQuote() {
+function virtualQuote(observedAt = CREATED_AT) {
   return {
     clientOrderId: "marketing-readiness",
     portfolioRevision: 0,
@@ -339,9 +339,9 @@ function virtualQuote() {
     chainId: 4663,
     blockNumber: "23258886",
     blockHash: `0x${"ef".repeat(32)}`,
-    blockTimestamp: String(Math.floor(Date.parse(CREATED_AT) / 1_000)),
-    quotedAt: CREATED_AT,
-    expiresAt: new Date(Date.parse(CREATED_AT) + 45_000).toISOString(),
+    blockTimestamp: String(Math.floor(Date.parse(observedAt) / 1_000)),
+    quotedAt: observedAt,
+    expiresAt: new Date(Date.parse(observedAt) + 45_000).toISOString(),
   };
 }
 
@@ -1591,6 +1591,13 @@ describe("bounded source collection", () => {
     });
 
     expect(fetchMock).toHaveBeenCalledTimes(14);
+    expect(fetchMock.mock.calls.flat().join(" ")).not.toContain("/rewards");
+    expect(fetchMock.mock.calls.flat().join(" ")).not.toContain(
+      "/api/protocol/rewards",
+    );
+    expect(
+      result.facts.some((fact) => fact.key.startsWith("product.fee_rewards")),
+    ).toBe(false);
     expect(result.facts).toEqual(
       expect.arrayContaining([
         expect.objectContaining({

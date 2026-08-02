@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { createHash } from "node:crypto";
 
 vi.mock("server-only", () => ({}));
 
@@ -13,6 +14,10 @@ import {
   type XMentionForClassification,
 } from "./x-mentions";
 import type { XComplianceHealth } from "./x-compliance-server";
+import {
+  X_MENTION_APPROVAL_REGISTRY,
+  X_MENTION_APPROVAL_REGISTRY_CANONICAL_JSON,
+} from "./x-mention-registry";
 
 const NOW = Date.parse("2026-08-01T16:00:00.000Z");
 const BASE: XMentionForClassification = {
@@ -53,6 +58,24 @@ describe("X mention automation", () => {
       templateId: expected,
       reason: "exact_reviewed_template",
     });
+  });
+
+  it("derives every executable prompt from the approval registry", () => {
+    for (const entry of X_MENTION_APPROVAL_REGISTRY) {
+      for (const prompt of entry.prompts) {
+        expect(
+          classifyXMention(
+            { ...BASE, text: `@0xzaps ${prompt}` },
+            OPTIONS,
+          ),
+        ).toEqual({
+          classification: entry.templateId,
+          eligibleForAutomaticReply: true,
+          templateId: entry.templateId,
+          reason: "exact_reviewed_template",
+        });
+      }
+    }
   });
 
   it("keeps freeform, sensitive, linked, media, reposted, stale, and self content out of auto-replies", () => {
@@ -127,6 +150,17 @@ describe("X mention automation", () => {
     }
   });
 
+  it("rejects a noncanonical expected username even when it is well shaped", () => {
+    expect(classifyXMention(BASE, {
+      ...OPTIONS,
+      expectedUsername: "otheraccount",
+    })).toMatchObject({
+      classification: "blocked_invalid",
+      eligibleForAutomaticReply: false,
+      reason: "invalid_metadata",
+    });
+  });
+
   it("HMACs transient text without returning it and renders bounded opt-out templates", () => {
     const first = xMentionContentHash(BASE.text, "a".repeat(32));
     const second = xMentionContentHash(BASE.text, "b".repeat(32));
@@ -134,11 +168,38 @@ describe("X mention automation", () => {
     expect(first).not.toBe(second);
     expect(first).not.toContain("docs");
     expect(X_MENTION_TEMPLATE_REGISTRY_DIGEST).toMatch(/^[0-9a-f]{64}$/u);
+    expect(
+      createHash("sha256")
+        .update(X_MENTION_APPROVAL_REGISTRY_CANONICAL_JSON)
+        .digest("hex"),
+    ).toBe(X_MENTION_TEMPLATE_REGISTRY_DIGEST);
 
     for (const templateId of X_MENTION_TEMPLATE_IDS) {
       const body = renderXMentionReply(templateId);
       expect(Array.from(body).length).toBeLessThanOrEqual(280);
       expect(body).toContain("Reply @0xzaps stop to opt out.");
+    }
+  });
+
+  it("changes the approval digest when either an eligible prompt or response changes", () => {
+    const changedPrompt = JSON.stringify({
+      version: 2,
+      templates: X_MENTION_APPROVAL_REGISTRY.map((entry, index) => ({
+        ...entry,
+        prompts: index === 0 ? [...entry.prompts, "new prompt"] : entry.prompts,
+      })),
+    });
+    const changedResponse = JSON.stringify({
+      version: 2,
+      templates: X_MENTION_APPROVAL_REGISTRY.map((entry, index) => ({
+        ...entry,
+        body: index === 0 ? `${entry.body} changed` : entry.body,
+      })),
+    });
+
+    for (const changed of [changedPrompt, changedResponse]) {
+      expect(createHash("sha256").update(changed).digest("hex"))
+        .not.toBe(X_MENTION_TEMPLATE_REGISTRY_DIGEST);
     }
   });
 
@@ -186,8 +247,20 @@ describe("X mention automation", () => {
       complianceAttested: true,
       complianceReady: true,
       complianceHealth: "healthy",
+      canonicalUsernameBound: true,
       dailyCap: 1,
       blockers: [],
+    });
+    expect(config({
+      ...env,
+      X_EXPECTED_USERNAME: "otheraccount",
+    })).toMatchObject({
+      canonicalUsernameBound: false,
+      ingestReady: false,
+      autoReplyReady: false,
+      blockers: expect.arrayContaining([
+        "X mention ingestion requires X_EXPECTED_USERNAME to be exactly 0xzaps.",
+      ]),
     });
     expect(
       config({

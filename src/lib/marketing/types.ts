@@ -17,6 +17,9 @@ export const SCHEDULED_MARKETING_TEMPLATE_ID =
 export const AGENT_KIT_MARKETING_CAMPAIGN_ID =
   "agent-kit-published-v1" as const;
 
+export const FEE_REWARDS_MARKETING_CAMPAIGN_ID =
+  "fee-rewards-campaign-v1" as const;
+
 export const LEARN_HUB_MARKETING_CAMPAIGN_ID =
   "learn-hub-launched-v1" as const;
 

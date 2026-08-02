@@ -30,6 +30,11 @@ describe("renderOpenZapsRss", () => {
 
     expect(identity).toEqual([
       {
+        id: "openzaps-fee-rewards-2026-08-02",
+        publishedAt: "2026-08-02T06:13:46.000Z",
+        url: "https://www.0xzaps.com/rewards",
+      },
+      {
         id: "openzaps-virtual-trading-2026-07-30",
         publishedAt: "2026-07-30T12:01:00.000Z",
         url: "https://www.0xzaps.com/virtual-trading",
@@ -56,6 +61,15 @@ describe("renderOpenZapsRss", () => {
       },
     ]);
     expect(new Set(identity.map((item) => item.id)).size).toBe(identity.length);
+    expect(xml).toContain(
+      "<link>https://www.0xzaps.com/rewards</link>",
+    );
+    expect(xml).toContain("Holding 0xZAPS alone grants no fee rights");
+    expect(xml).toContain("The contracts are pre-audit");
+    expect(xml).toContain(
+      "active from Aug 3 00:23 UTC until Aug 10 00:23 UTC",
+    );
+    expect(xml).toContain("until Sep 9 00:23 UTC");
     expect(xml).toContain("https://www.0xzaps.com/virtual-trading");
     expect(xml).toContain(
       "<link>https://www.0xzaps.com/agent-kit</link>",
