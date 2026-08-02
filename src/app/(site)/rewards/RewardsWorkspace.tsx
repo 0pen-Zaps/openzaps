@@ -1340,7 +1340,16 @@ function OperateWorkspace({
 }): React.JSX.Element {
   const timestamp = BigInt(data.blockTimestamp);
   const liveWindow = data.campaign.feeSharesFunded && !data.campaign.finalized && timestamp >= FEE_REWARDS_MANIFEST.campaign.startAt && timestamp <= FEE_REWARDS_MANIFEST.campaign.endAt;
-  const canFinalize = data.campaign.feeSharesFunded && !data.campaign.finalized && timestamp > FEE_REWARDS_MANIFEST.campaign.endAt;
+
+  // A disabled control has to say why. The contract reverts these with
+  // CampaignNotStarted before the window and refuses them after it closes,
+  // so the sublabel names the boundary instead of describing an action the
+  // reader cannot take.
+  const upkeepClosedNote = timestamp < FEE_REWARDS_MANIFEST.campaign.startAt
+    ? "Available at campaign start"
+    : data.campaign.finalized
+      ? "Campaign settled"
+      : "Closed with the campaign window";  const canFinalize = data.campaign.feeSharesFunded && !data.campaign.finalized && timestamp > FEE_REWARDS_MANIFEST.campaign.endAt;
   const canSweep = data.campaign.finalized && !data.campaign.rewardsSwept && timestamp > FEE_REWARDS_MANIFEST.campaign.claimDeadline;
   const canCheckpoint = timestamp >= FEE_REWARDS_MANIFEST.campaign.startAt && !data.campaign.rewardsSwept;
   const currentClaimLifecycle = rewardsClaimLifecycle(timestamp, data.campaign.rewardsSwept);
@@ -1370,8 +1379,8 @@ function OperateWorkspace({
         <article className={styles.operatorCard}>
           <header><Glyph name="harvest" /><div><h3>Live-window upkeep</h3><p>Bring new fees into the campaign and advance its accounting.</p></div></header>
           <div className={styles.operatorActions}>
-            <button disabled={!writesEnabled || !connected || !liveWindow || busy !== null} onClick={() => onOperate("harvest")} type="button"><strong>Harvest fees</strong><span>Pull vault WETH + sync</span><Glyph name="chevronRight" /></button>
-            <button disabled={!writesEnabled || !connected || !liveWindow || busy !== null} onClick={() => onOperate("sync")} type="button"><strong>Sync rewards</strong><span>Account for WETH already received</span><Glyph name="chevronRight" /></button>
+            <button disabled={!writesEnabled || !connected || !liveWindow || busy !== null} onClick={() => onOperate("harvest")} type="button"><strong>Harvest fees</strong><span>{liveWindow ? "Pull vault WETH + sync" : upkeepClosedNote}</span><Glyph name="chevronRight" /></button>
+            <button disabled={!writesEnabled || !connected || !liveWindow || busy !== null} onClick={() => onOperate("sync")} type="button"><strong>Sync rewards</strong><span>{liveWindow ? "Account for WETH already received" : upkeepClosedNote}</span><Glyph name="chevronRight" /></button>
             <button disabled={!writesEnabled || !connected || !canCheckpoint || busy !== null} onClick={() => onOperate("checkpoint")} type="button"><strong>Checkpoint index</strong><span>{canCheckpoint ? "No token transfer or upstream call" : "Available at campaign start"}</span><Glyph name="chevronRight" /></button>
           </div>
         </article>
