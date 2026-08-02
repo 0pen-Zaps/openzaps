@@ -1,11 +1,13 @@
 import Link from "next/link";
 
+import { CopyButton } from "@/components/CopyButton";
 import { JsonLd } from "@/components/JsonLd";
 import { Reveal } from "@/components/Reveal";
 import { LINKS } from "@/lib/config";
 import {
   PUBLIC_CONTENT_CATALOG_DIGEST,
   PUBLIC_CONTENT_ITEMS,
+  publicContentShareTargets,
 } from "@/lib/marketing/public-content";
 import {
   STATIC_PAGE_SEO,
@@ -203,48 +205,79 @@ export default function LearnPage(): React.JSX.Element {
         </header>
 
         <div className={styles.updateList}>
-          {PUBLIC_CONTENT_ITEMS.map((item, index) => (
-            <Reveal
-              as="article"
-              className={styles.updateCard}
-              data-public-content-id={item.id}
-              delay={(index % 3) * 45}
-              key={item.id}
-            >
-              <div className={styles.updateMeta}>
-                <span data-kind={item.kind}>
-                  {item.kind === "tutorial" ? "Tutorial" : "Product update"}
-                </span>
-                <time dateTime={item.publishedAt}>{displayDate(item.publishedAt)}</time>
-              </div>
-              <h3>{item.title}</h3>
-              <p>{item.summary}</p>
-              <div className={styles.updateFoot}>
-                <span>{item.sourceLabel}</span>
-                {item.external ? (
-                  <a
-                    href={item.canonicalUrl}
-                    target="_blank"
-                    rel="noreferrer noopener"
-                    data-analytics-event="content_update_opened"
-                    data-analytics-cta={item.kind}
-                    data-analytics-content="learn_hub"
-                  >
-                    Read tutorial <i aria-hidden>↗</i>
-                  </a>
-                ) : (
-                  <Link
-                    href={item.canonicalUrl}
-                    data-analytics-event="content_update_opened"
-                    data-analytics-cta={item.kind}
-                    data-analytics-content="learn_hub"
-                  >
-                    Open evidence <i aria-hidden>→</i>
-                  </Link>
-                )}
-              </div>
-            </Reveal>
-          ))}
+          {PUBLIC_CONTENT_ITEMS.map((item, index) => {
+            const share = publicContentShareTargets(item);
+            return (
+              <Reveal
+                as="article"
+                className={styles.updateCard}
+                data-public-content-id={item.id}
+                delay={(index % 3) * 45}
+                key={item.id}
+              >
+                <div className={styles.updateMeta}>
+                  <span data-kind={item.kind}>
+                    {item.kind === "tutorial" ? "Tutorial" : "Product update"}
+                  </span>
+                  <time dateTime={item.publishedAt}>{displayDate(item.publishedAt)}</time>
+                </div>
+                <h3>{item.title}</h3>
+                <p>{item.summary}</p>
+                <div className={styles.updateFoot}>
+                  <span>{item.sourceLabel}</span>
+                  <div className={styles.updateActions}>
+                    {item.external ? (
+                      <a
+                        href={item.canonicalUrl}
+                        target="_blank"
+                        rel="noreferrer noopener"
+                        data-analytics-event="content_update_opened"
+                        data-analytics-cta={item.kind}
+                        data-analytics-content="learn_hub"
+                      >
+                        Read <i aria-hidden>↗</i>
+                      </a>
+                    ) : (
+                      <Link
+                        href={item.canonicalUrl}
+                        data-analytics-event="content_update_opened"
+                        data-analytics-cta={item.kind}
+                        data-analytics-content="learn_hub"
+                      >
+                        Open <i aria-hidden>→</i>
+                      </Link>
+                    )}
+                    <span
+                      className={styles.copyAction}
+                      data-analytics-event="content_shared"
+                      data-analytics-cta="copy"
+                      data-analytics-content="learn_hub"
+                    >
+                      <CopyButton
+                        value={share.copyUrl}
+                        label="Copy link"
+                        ariaLabel={`Copy a share link for ${item.title}`}
+                        title={`Copy a tracked share link for ${item.title}`}
+                        className={styles.copyButton}
+                      />
+                    </span>
+                    <a
+                      className={styles.xShare}
+                      href={share.xIntentUrl}
+                      target="_blank"
+                      rel="noreferrer noopener"
+                      aria-label={`Share ${item.title} on X`}
+                      data-analytics-event="content_shared"
+                      data-analytics-cta="x"
+                      data-analytics-content="learn_hub"
+                    >
+                      Share on X <i aria-hidden>↗</i>
+                    </a>
+                  </div>
+                </div>
+              </Reveal>
+            );
+          })}
         </div>
       </section>
 

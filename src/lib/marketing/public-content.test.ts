@@ -7,6 +7,7 @@ import {
   PUBLIC_CONTENT_CATALOG_DIGEST,
   PUBLIC_CONTENT_ITEMS,
   publicContentCatalog,
+  publicContentShareTargets,
 } from "@/lib/marketing/public-content";
 
 describe("public content catalog", () => {
@@ -62,6 +63,48 @@ describe("public content catalog", () => {
 
     expect(() => publicContentCatalog(tutorialManifestJson, feed)).toThrow(
       "must be unique",
+    );
+  });
+
+  it("builds explicit tracked copy and X-composer links without publishing", () => {
+    const product = PUBLIC_CONTENT_ITEMS.find(
+      (item) => item.id === "openzaps:openzaps-virtual-trading-2026-07-30",
+    );
+    const tutorial = PUBLIC_CONTENT_ITEMS.find(
+      (item) => item.kind === "tutorial",
+    );
+    expect(product).toBeDefined();
+    expect(tutorial).toBeDefined();
+
+    const productTargets = publicContentShareTargets(product!);
+    const copyUrl = new URL(productTargets.copyUrl);
+    const xIntent = new URL(productTargets.xIntentUrl);
+    const xDestination = new URL(xIntent.searchParams.get("url")!);
+
+    expect(copyUrl.origin).toBe("https://www.0xzaps.com");
+    expect(copyUrl.pathname).toBe("/virtual-trading");
+    expect(Object.fromEntries(copyUrl.searchParams)).toEqual({
+      utm_source: "openzaps",
+      utm_medium: "referral",
+      utm_campaign: "product_update",
+      utm_content: "learn_hub",
+    });
+    expect(xIntent.origin).toBe("https://x.com");
+    expect(xIntent.pathname).toBe("/intent/post");
+    expect(xIntent.searchParams.get("text")).toContain(
+      "Practice deployed routes in Virtual Trading",
+    );
+    expect(xIntent.searchParams.get("text")).toContain("@0xzaps");
+    expect(xDestination.origin).toBe("https://www.0xzaps.com");
+    expect(xDestination.searchParams.get("utm_source")).toBe("x");
+    expect(xDestination.searchParams.get("utm_medium")).toBe("social");
+
+    const tutorialDestination = new URL(
+      new URL(publicContentShareTargets(tutorial!).xIntentUrl).searchParams.get("url")!,
+    );
+    expect(tutorialDestination.hostname).toBe("defitutorials.substack.com");
+    expect(tutorialDestination.searchParams.get("utm_campaign")).toBe(
+      "tutorial_update",
     );
   });
 });

@@ -34,5 +34,10 @@ describe("Learn page", () => {
     expect(html.match(/data-public-content-id=/gu)).toHaveLength(
       PUBLIC_CONTENT_ITEMS.length,
     );
+    expect(html.match(/Share on X/gu)).toHaveLength(PUBLIC_CONTENT_ITEMS.length);
+    expect(html.match(/Copy link/gu)).toHaveLength(PUBLIC_CONTENT_ITEMS.length);
+    expect(html).toContain("https://x.com/intent/post?");
+    expect(html).toContain("utm_campaign%3Dproduct_update");
+    expect(html).toContain('data-analytics-event="content_shared"');
   });
 });
