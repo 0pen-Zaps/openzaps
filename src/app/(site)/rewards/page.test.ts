@@ -265,7 +265,10 @@ describe("0xZAPS fee rewards public surface", () => {
     expect(workspace).toContain("HOW THE FEES REACH A STAKER");
     expect(workspace).toContain("{HOOK_FEE_LABEL}</b> hook fee, read live");
     expect(workspace).toContain("What this campaign does not promise");
-    expect(workspace).toContain("No yield, rate, or APR.");
+    expect(workspace).toContain("No yield or APR.");
+    // The terms panel states a fee-capture rate, so the boundary must say
+    // explicitly that it is not a return.
+    expect(workspace).toContain("not a return");
     expect(workspace).toContain("Holding 0xZAPS earns nothing.");
     // The share readout is a statement about principal, never a forecast.
     expect(workspace).toContain("Share of staked principal");

@@ -11,6 +11,7 @@ import {
   permitTokenAbi,
   projectedPrincipalShare,
 } from "@/lib/rewards";
+import { campaignSwapShareLabel } from "@/lib/robinhood";
 
 function functionNames(abi: readonly { type: string; name?: string }[]): string[] {
   return abi
@@ -69,6 +70,33 @@ describe("campaignPhase", () => {
     expect(formatCampaignPhase("settlement-pending")).toBe("Settlement pending");
     expect(formatCampaignPhase("claim-only")).toBe("Claim only");
     expect(formatCampaignPhase("expired")).toBe("Expired");
+  });
+});
+
+describe("campaignSwapShareLabel", () => {
+  it("derives the campaign's cut of a swap from the fee and the share split", () => {
+    // Verified onchain 2026-08-02: the Clanker locker's tokenRewards(0xZAPS)
+    // names a single reward recipient — the fee vault — at rewardBps 10000,
+    // i.e. 100% of this token's LP fee rewards. So the campaign's cut is the
+    // 1% pool fee times its 50 of 100 vault shares.
+    expect(
+      campaignSwapShareLabel(
+        FEE_REWARDS_MANIFEST.campaign.feeShareAllocation,
+        FEE_REWARDS_MANIFEST.vault.totalShares,
+      ),
+    ).toBe("0.5%");
+  });
+
+  it("tracks its inputs instead of being a hand-typed figure", () => {
+    const { totalShares } = FEE_REWARDS_MANIFEST.vault;
+    expect(campaignSwapShareLabel(totalShares, totalShares)).toBe("1%");
+    expect(campaignSwapShareLabel(totalShares / 4n, totalShares)).toBe("0.25%");
+    expect(campaignSwapShareLabel(0n, totalShares)).toBe("0%");
+  });
+
+  it("fails closed rather than dividing by an empty vault", () => {
+    expect(campaignSwapShareLabel(1n, 0n)).toBe("—");
+    expect(campaignSwapShareLabel(-1n, 100n)).toBe("—");
   });
 });
 
