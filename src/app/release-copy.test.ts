@@ -92,4 +92,27 @@ describe("public release copy", () => {
       "[ ] Verify in a production browser that Automate exposes stacking",
     );
   });
+
+  it("baselines DeFi Tutorials before publishing and documents the strict RSS receipt", () => {
+    const marketing = read("docs/marketing-agent.md");
+    const substack = marketing.split("### Substack")[1]?.split("## Deploy safely")[0]
+      ?? "";
+    const baseline = substack.indexOf("**Before clicking Publish**");
+    const publish = substack.indexOf(
+      "Publish or schedule from the official editor.",
+    );
+
+    expect(baseline).toBeGreaterThanOrEqual(0);
+    expect(publish).toBeGreaterThan(baseline);
+    expect(substack).toContain(
+      "the first snapshot must classify it as historical `baseline`",
+    );
+    expect(substack).toMatch(
+      /the `rss_confirmed` manifest\s+branch intentionally excludes draft-only handoff fields/u,
+    );
+    expect(substack).toMatch(
+      /The exact source\/body hashes remain fail-closed evidence in the\s+recorded approval/u,
+    );
+    expect(substack).not.toContain("title, and hashes; set");
+  });
 });
