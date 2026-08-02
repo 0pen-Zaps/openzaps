@@ -121,6 +121,9 @@ contract FeeShareTermWrap {
     function deposit(uint256 shares) external {
         require(block.timestamp < DEPOSIT_UNTIL, DepositWindowClosed());
         require(shares != 0, ZeroAmount());
+        // Fold any reward already owed to the CURRENT holders before minting,
+        // so a late depositor cannot dilute reward that accrued before them.
+        _harvestAndSync();
         _checkpoint(msg.sender);
         depositedShares[msg.sender] += shares;
         totalDeposited += shares;
@@ -144,6 +147,9 @@ contract FeeShareTermWrap {
     /// @notice One final permissionless harvest after maturity. Credits the
     ///         last in-term accrual to wrapped holders and opens principal
     ///         redemption. Callable exactly once.
+    /// @dev The redemption gate flips FIRST and the harvest is defensive
+    ///      (_harvestAndSync try/catches the vault claim), so a paused or
+    ///      underfunded vault can never trap principal by reverting finalize.
     function finalize() external {
         require(block.timestamp > MATURITY, TermNotEnded());
         require(!finalized, AlreadyFinalized());
@@ -194,6 +200,15 @@ contract FeeShareTermWrap {
         uint256 principal = depositedShares[msg.sender] + _redeemedPrincipal(msg.sender);
         require(principal != 0 && !sweepTaken[msg.sender], NothingToSweep());
         if (sweepSnapshot == 0) {
+            // The wrapper kept holding the locked shares until each depositor
+            // redeemed, so the vault kept paying reward to them after MATURITY.
+            // Claims are closed now, so the whole REAL balance — not just the
+            // in-term rewardReserve — belongs to the depositors; snapshotting
+            // rewardReserve alone would strand that post-finalize accrual.
+            if (IFeeShareVault(FEE_SHARES).claimable(address(this), REWARD) != 0) {
+                try IFeeShareVault(FEE_SHARES).claimFor(address(this)) {} catch {}
+            }
+            rewardReserve = IERC20(REWARD).balanceOf(address(this));
             require(rewardReserve != 0, NothingToSweep());
             sweepSnapshot = rewardReserve;
         }
@@ -210,9 +225,13 @@ contract FeeShareTermWrap {
 
     function _harvestAndSync() private returns (uint256 received) {
         // The vault pays claimFor to this wrapper; sync accounts anything the
-        // wrapper received, including reward sent to it directly.
+        // wrapper received, including reward sent to it directly. The claim is
+        // DEFENSIVE: a paused or underfunded vault must never revert a caller
+        // that also advances a redemption/settlement gate (finalize), so its
+        // failure degrades to "no new reward this call" rather than bricking
+        // principal. Balance-delta accounting below can't revert.
         if (IFeeShareVault(FEE_SHARES).claimable(address(this), REWARD) != 0) {
-            IFeeShareVault(FEE_SHARES).claimFor(address(this));
+            try IFeeShareVault(FEE_SHARES).claimFor(address(this)) {} catch {}
         }
         uint256 balance = IERC20(REWARD).balanceOf(address(this));
         received = balance - rewardReserve;

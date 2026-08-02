@@ -45,10 +45,10 @@ contract MockToken {
     }
 }
 
-/// @dev Fee-share vault mock: ERC-20 shares plus claimFor paying WETH.
 contract MockVault is MockToken {
     MockToken public immutable weth;
     mapping(address => uint256) public pendingClaim;
+    bool public reverts;
 
     constructor(MockToken weth_) MockToken("Mock fee shares") {
         weth = weth_;
@@ -58,18 +58,22 @@ contract MockVault is MockToken {
         pendingClaim[account] = amount;
     }
 
+    function setReverts(bool r) external {
+        reverts = r;
+    }
+
     function claimable(address account, address) external view returns (uint256) {
         return pendingClaim[account];
     }
 
     function claimFor(address account) external {
+        require(!reverts, "vault paused");
         uint256 amount = pendingClaim[account];
         pendingClaim[account] = 0;
         weth.mint(account, amount);
     }
 }
 
-/// @dev Swaps WETH into ZAPS at a settable rate in ZAPS-per-WETH 1e18 scale.
 contract MockAdapter is IAdapter {
     MockToken public immutable weth;
     MockToken public immutable zaps;
@@ -87,7 +91,7 @@ contract MockAdapter is IAdapter {
 
     function execute(address tokenIn, uint256 amountIn, bytes calldata data)
         external
-        returns (address tokenOut, uint256 amountOut)
+        returns (address, uint256 amountOut)
     {
         require(tokenIn == address(weth), "tokenIn");
         lastData = data;
@@ -109,7 +113,6 @@ contract MockOrientedSource is IOrientedPriceSource {
     }
 
     function setPriceZapsPerWeth(uint256 zapsPerWeth1e18) external {
-        // priceX96 = currency1 per currency0 in Q96.
         price = (zapsPerWeth1e18 * 2 ** 96) / 1e18;
     }
 
@@ -128,6 +131,8 @@ contract FeeShareAutoCompounderTest is Test {
 
     address internal alice = makeAddr("alice");
     address internal bob = makeAddr("bob");
+    address internal keeper = makeAddr("keeper");
+    address internal attacker = makeAddr("attacker");
 
     function setUp() public {
         weth = new MockToken("WETH");
@@ -135,7 +140,7 @@ contract FeeShareAutoCompounderTest is Test {
         vault = new MockVault(weth);
         adapter = new MockAdapter(weth, zaps);
         source = new MockOrientedSource(address(weth), address(zaps));
-        source.setPriceZapsPerWeth(1000e18); // 1 WETH = 1000 ZAPS spot
+        source.setPriceZapsPerWeth(1000e18);
         adapter.setRate(1000e18);
 
         comp = new FeeShareAutoCompounder(
@@ -145,7 +150,8 @@ contract FeeShareAutoCompounderTest is Test {
             adapter,
             source,
             9_900, // 99% floor
-            1e15, // 0.001 WETH min harvest
+            100e18, // max route 100 WETH
+            1e15, // min route 0.001 WETH
             hex"c0ffee"
         );
 
@@ -167,74 +173,136 @@ contract FeeShareAutoCompounderTest is Test {
     function test_constructorRejectsWrongOrientation() public {
         MockOrientedSource flipped = new MockOrientedSource(address(zaps), address(weth));
         vm.expectRevert(FeeShareAutoCompounder.WrongOrientation.selector);
-        new FeeShareAutoCompounder(address(vault), address(weth), address(zaps), adapter, flipped, 9_900, 1e15, "");
+        new FeeShareAutoCompounder(
+            address(vault), address(weth), address(zaps), adapter, flipped, 9_900, 100e18, 1e15, ""
+        );
     }
 
-    function test_harvestRoutesAndSplitsProRata() public {
+    function test_wethAccruesPerShareAndRoutes() public {
         _depositBoth();
         vault.setClaimable(address(comp), 1e18);
-        comp.harvestAndRoute();
 
-        // 1 WETH * 1000 = 1000 ZAPS out, split 30/40 and 10/40.
-        assertEq(comp.claimableZaps(alice), 750e18);
-        assertEq(comp.claimableZaps(bob), 250e18);
+        assertEq(comp.claimableWeth(alice), 0); // not synced yet
+        vm.prank(alice);
+        comp.route();
+
+        // Alice's 30/40 of 1 WETH = 0.75 WETH -> 750 ZAPS.
+        assertEq(zaps.balanceOf(alice), 750e18);
+        // Bob's share is still owed as WETH, unrouted.
+        assertEq(comp.claimableWeth(bob), 250e15); // 0.25 WETH
+    }
+
+    function test_claimWethEscapeHatch() public {
+        _depositBoth();
+        vault.setClaimable(address(comp), 1e18);
+        vm.prank(bob);
+        comp.claimWeth();
+        assertEq(weth.balanceOf(bob), 250e15); // 0.25 WETH
+    }
+
+    // AUDIT REGRESSION: a late depositor must not dilute earlier reward, and a
+    // 1-wei latecomer must not capture a prior depositor's yield.
+    function test_lateDepositorCannotStealPriorReward() public {
+        vm.prank(alice);
+        comp.deposit(30e18);
+        vault.setClaimable(address(comp), 3e18); // earned entirely by alice
+
+        // Attacker deposits 1 wei then tries to grab the reward.
+        vault.mint(attacker, 1);
+        vm.prank(attacker);
+        vault.approve(address(comp), type(uint256).max);
+        vm.prank(attacker);
+        comp.deposit(1); // sync folds the 3 WETH to alice BEFORE minting
+
+        // Alice keeps the full 3 WETH; attacker gets essentially nothing.
+        assertApproxEqAbs(comp.claimableWeth(alice), 3e18, 1e6);
+        assertLt(comp.claimableWeth(attacker), 1e6);
+    }
+
+    // AUDIT REGRESSION: withdrawing to an empty pool must not strand WETH or
+    // hand it to a latecomer.
+    function test_withdrawToEmptyPoolStrandsNothing() public {
+        vm.prank(alice);
+        comp.deposit(30e18);
+        vault.setClaimable(address(comp), 3e18);
+
+        // Alice withdraws everything: sync realizes her 3 WETH first.
+        vm.prank(alice);
+        comp.withdraw(30e18);
+        assertEq(comp.totalDeposits(), 0);
+        assertEq(comp.claimableWeth(alice), 3e18);
+
+        // A latecomer into the now-empty pool captures nothing of alice's.
+        vault.mint(attacker, 1);
+        vm.prank(attacker);
+        vault.approve(address(comp), type(uint256).max);
+        vm.prank(attacker);
+        comp.deposit(1);
+        assertEq(comp.claimableWeth(attacker), 0);
 
         vm.prank(alice);
-        comp.claimZaps();
+        comp.claimWeth();
+        assertEq(weth.balanceOf(alice), 3e18);
+    }
+
+    function test_keeperRoutesForDepositor() public {
+        _depositBoth();
+        vault.setClaimable(address(comp), 1e18);
+        vm.prank(keeper);
+        comp.routeFor(alice);
+        // ZAPS goes to alice, not the keeper.
         assertEq(zaps.balanceOf(alice), 750e18);
-        assertEq(comp.zapsReserve(), 250e18);
+        assertEq(zaps.balanceOf(keeper), 0);
     }
 
     function test_floorRevertsOnBadExecution() public {
         _depositBoth();
         vault.setClaimable(address(comp), 1e18);
-        adapter.setRate(980e18); // 98% of spot < 99% floor
-        vm.expectRevert(FeeShareAutoCompounder.FloorNotMet.selector);
-        comp.harvestAndRoute();
-    }
-
-    function test_minHarvestGate() public {
-        _depositBoth();
-        vault.setClaimable(address(comp), 1e14); // below 1e15 min
-        vm.expectRevert(FeeShareAutoCompounder.BelowMinHarvest.selector);
-        comp.harvestAndRoute();
-    }
-
-    function test_harvestRevertsWithNoDeposits() public {
-        vault.setClaimable(address(comp), 1e18);
-        vm.expectRevert(FeeShareAutoCompounder.NoDeposits.selector);
-        comp.harvestAndRoute();
-    }
-
-    function test_withdrawAnytimeKeepsAccrued() public {
-        _depositBoth();
-        vault.setClaimable(address(comp), 1e18);
-        comp.harvestAndRoute();
-
+        adapter.setRate(980e18); // 98% < 99% floor
         vm.prank(alice);
-        comp.withdraw(30e18);
-        assertEq(vault.balanceOf(alice), 30e18);
-        // Accrual earned while deposited survives withdrawal.
-        assertEq(comp.claimableZaps(alice), 750e18);
-
-        // New harvests no longer credit the withdrawn depositor.
-        vault.setClaimable(address(comp), 1e18);
-        comp.harvestAndRoute();
-        assertEq(comp.claimableZaps(alice), 750e18);
-        assertEq(comp.claimableZaps(bob), 250e18 + 1000e18);
+        vm.expectRevert(FeeShareAutoCompounder.FloorNotMet.selector);
+        comp.route();
     }
 
-    function test_adapterReceivesFrozenData() public {
+    function test_routeCapBoundsPerCall() public {
+        vault.mint(alice, 0);
+        vm.prank(alice);
+        comp.deposit(30e18);
+        vault.setClaimable(address(comp), 300e18); // alice owed 300 WETH
+        vm.prank(alice);
+        comp.route();
+        // Capped at 100 WETH -> 100_000 ZAPS; 200 WETH stays owed.
+        assertEq(zaps.balanceOf(alice), 100_000e18);
+        assertEq(comp.claimableWeth(alice), 200e18);
+    }
+
+    function test_belowMinRouteReverts() public {
+        _depositBoth();
+        vault.setClaimable(address(comp), 1e12); // dust
+        vm.prank(alice);
+        vm.expectRevert(FeeShareAutoCompounder.BelowMinRoute.selector);
+        comp.route();
+    }
+
+    function test_defensiveVaultDoesNotBrickClaim() public {
         _depositBoth();
         vault.setClaimable(address(comp), 1e18);
-        comp.harvestAndRoute();
-        assertEq(adapter.lastData(), hex"c0ffee");
+        // Realize the reward, then the vault breaks; escape hatch still works
+        // on already-accounted WETH.
+        vm.prank(alice);
+        comp.claimWeth();
+        vault.setReverts(true);
+        vault.setClaimable(address(comp), 5e18);
+        // A reverting vault degrades to no-new-reward, never a revert.
+        vm.prank(bob);
+        comp.claimWeth();
+        assertEq(weth.balanceOf(bob), 250e15);
     }
 
     function testFuzz_conservation(uint96 a, uint96 b, uint96 wethAmount) public {
         uint256 da = bound(uint256(a), 1, 1e24);
         uint256 db = bound(uint256(b), 1, 1e24);
-        uint256 w = bound(uint256(wethAmount), 1e15, 1e21);
+        uint256 w = bound(uint256(wethAmount), 1, 1e21);
 
         vault.mint(alice, da);
         vault.mint(bob, db);
@@ -244,11 +312,12 @@ contract FeeShareAutoCompounderTest is Test {
         comp.deposit(db);
 
         vault.setClaimable(address(comp), w);
-        comp.harvestAndRoute();
+        // Force a sync without changing shares.
+        vm.prank(alice);
+        comp.claimWeth();
 
-        uint256 out = comp.zapsReserve();
-        uint256 owed = comp.claimableZaps(alice) + comp.claimableZaps(bob);
-        assertLe(owed, out);
-        assertGe(owed + (da + db) / 1e18 + 2, out);
+        uint256 owed = comp.claimableWeth(alice) + weth.balanceOf(alice) + comp.claimableWeth(bob);
+        assertLe(owed, w);
+        assertGe(owed + (da + db) / 1e18 + 2, w);
     }
 }

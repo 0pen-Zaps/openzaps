@@ -9,75 +9,78 @@ import {SafeApprove} from "../libraries/SafeApprove.sol";
 
 /// @title FeeShareAutoCompounder
 /// @notice Deposit tokenized fee shares, keep them withdrawable at any time,
-///         and let permissionless upkeep convert the vault's WETH into 0xZAPS
-///         for the depositors. Exactly one route exists and it is welded at
-///         construction: vault reward -> pinned adapter -> 0xZAPS, floored
-///         against the pinned oriented price source. There is no path
-///         parameter, no action array, and no operator.
-/// @dev This is the pool.fans "automation" narrowed to OpenZaps invariants:
-///      the any-token/any-path router is rejected by design. The floor is a
-///      single immutable basis-point band for the whole pool rather than
-///      per-depositor: a per-depositor floor on a pooled swap would hand any
-///      depositor a veto over everyone's run (set an unclearable floor and
-///      no harvest ever settles). Depositors accept an instance's floor by
-///      depositing into it; different floors are different deployments.
-///      No rate is promised: routed 0xZAPS is whatever the vault's fee flow
-///      and the pool's spot produce, which may be zero.
+///         and turn the vault's WETH reward into 0xZAPS. Reward accrues to
+///         each depositor as WETH, per share, exactly as the fee campaign
+///         accrues — synced before every change to the share set so no
+///         depositor is ever diluted, no latecomer captures an earlier
+///         depositor's yield, and no WETH is stranded when the pool empties.
+///         A depositor takes their WETH directly (`claimWeth`, an escape
+///         hatch so value can never be trapped) or routes it into 0xZAPS
+///         through the constructor-pinned adapter (`route`), floored against
+///         the pinned oriented price source. A keeper may route on a
+///         depositor's behalf (`routeFor`) — the routed WETH and the 0xZAPS
+///         both belong to that depositor.
+/// @dev Routing is PER DEPOSITOR, not a pooled swap. That is deliberate: a
+///      pooled permissionless swap floored on same-block spot is sandwichable
+///      against unconsenting depositors (move the pool, clear the depressed
+///      floor, reverse). Per-depositor routing bounds any sandwich to one
+///      consenting depositor's WETH and to `MAX_ROUTE_WEI` per call, and that
+///      depositor chose to route. The floor is still same-block spot and is
+///      NOT proof against a sandwich of the routed leg; a depositor wanting
+///      stronger protection routes small amounts or claims WETH and swaps
+///      elsewhere. No rate is promised: routed 0xZAPS is whatever the vault's
+///      fee flow and the pool's spot produce, which may be zero.
 contract FeeShareAutoCompounder {
     using SafeApprove for address;
 
     // ---------------------------------------------------------------- errors
     error ZeroAmount();
     error ZeroAddress();
-    error NoDeposits();
+    error InsufficientBalance();
     error NothingToRoute();
-    error BelowMinHarvest();
+    error BelowMinRoute();
     error FloorNotMet();
     error WrongOrientation();
     error TransferFailed();
-    error InsufficientBalance();
 
     // ---------------------------------------------------------------- events
     event Deposited(address indexed account, uint256 shares);
     event Withdrawn(address indexed account, uint256 shares);
-    event HarvestedAndRouted(address indexed caller, uint256 wethIn, uint256 zapsOut, uint256 floor);
-    event ZapsClaimed(address indexed account, uint256 amount);
+    event WethClaimed(address indexed account, uint256 amount);
+    event Routed(address indexed caller, address indexed account, uint256 wethIn, uint256 zapsOut, uint256 floor);
 
     // ------------------------------------------------------------ immutables
-    /// @notice The fee-share token, which is also the vault paying WETH.
     address public immutable FEE_SHARES;
-    /// @notice The vault's reward asset and the swap input.
     address public immutable WETH;
-    /// @notice The routed output token.
     address public immutable ZAPS;
-    /// @notice The one allowlisted adapter this compounder may call.
     IAdapter public immutable ADAPTER;
-    /// @notice Spot source the floor derives from; orientation checked once
-    ///         at construction and trusted per its lifetime-immutability
-    ///         contract.
     IOrientedPriceSource public immutable PRICE_SOURCE;
-    /// @notice Floor band: routed output must be at least spot * bps / 10_000.
+    /// @notice Routed WETH must yield at least spot * MIN_OUT_BPS / 10_000.
     uint16 public immutable MIN_OUT_BPS;
-    /// @notice Runs below this much WETH revert instead of wasting the floor
-    ///         on dust.
-    uint256 public immutable MIN_HARVEST_WEI;
+    /// @notice A single route converts at most this much WETH, bounding the
+    ///         amount a same-block sandwich of the routed leg can extract.
+    uint256 public immutable MAX_ROUTE_WEI;
+    /// @notice Routes below this much WETH revert rather than waste the swap.
+    uint256 public immutable MIN_ROUTE_WEI;
 
     uint256 private constant BPS = 10_000;
     uint256 private constant Q96 = 2 ** 96;
     uint256 private constant ACC_SCALE = 1e18;
 
-    /// @dev The frozen adapter argument blob, set once at construction. The
-    ///      adapter's selector is constant, so (adapter, data) fully pins the
-    ///      protocol action.
+    /// @dev Frozen adapter argument blob; (adapter, constant selector, data)
+    ///      fully pins the protocol action.
     bytes public adapterData;
 
     // ----------------------------------------------------------- accounting
     mapping(address => uint256) public deposits;
     uint256 public totalDeposits;
-    uint256 public cumulativeZapsPerShare;
-    uint256 public zapsReserve;
-    mapping(address => uint256) private zapsDebt;
-    mapping(address => uint256) private accruedZaps;
+    /// @notice WETH owed per share, 1e18 scale, advanced by _sync().
+    uint256 public cumulativeWethPerShare;
+    /// @notice WETH accounted to depositors but not yet claimed or routed.
+    uint256 public wethReserve;
+    mapping(address => uint256) private wethDebt;
+    /// @notice Realized WETH each depositor may claim or route.
+    mapping(address => uint256) public wethOwed;
 
     constructor(
         address feeShares,
@@ -86,7 +89,8 @@ contract FeeShareAutoCompounder {
         IAdapter adapter,
         IOrientedPriceSource priceSource,
         uint16 minOutBps,
-        uint256 minHarvestWei,
+        uint256 maxRouteWei,
+        uint256 minRouteWei,
         bytes memory adapterData_
     ) {
         require(
@@ -95,8 +99,9 @@ contract FeeShareAutoCompounder {
             ZeroAddress()
         );
         require(minOutBps != 0 && minOutBps <= BPS, ZeroAmount());
-        // priceX96 is currency1 per one currency0. The floor below multiplies
-        // WETH input by priceX96, so the source must be oriented WETH -> ZAPS.
+        require(maxRouteWei != 0 && minRouteWei != 0 && minRouteWei <= maxRouteWei, ZeroAmount());
+        // priceX96 is currency1 per one currency0; the floor multiplies WETH
+        // in, so the source must be oriented WETH -> ZAPS.
         require(priceSource.currency0() == weth && priceSource.currency1() == zaps, WrongOrientation());
         FEE_SHARES = feeShares;
         WETH = weth;
@@ -104,7 +109,8 @@ contract FeeShareAutoCompounder {
         ADAPTER = adapter;
         PRICE_SOURCE = priceSource;
         MIN_OUT_BPS = minOutBps;
-        MIN_HARVEST_WEI = minHarvestWei;
+        MAX_ROUTE_WEI = maxRouteWei;
+        MIN_ROUTE_WEI = minRouteWei;
         adapterData = adapterData_;
     }
 
@@ -112,81 +118,112 @@ contract FeeShareAutoCompounder {
 
     function deposit(uint256 shares) external {
         require(shares != 0, ZeroAmount());
+        _sync();
         _checkpoint(msg.sender);
         deposits[msg.sender] += shares;
         totalDeposits += shares;
-        zapsDebt[msg.sender] = (deposits[msg.sender] * cumulativeZapsPerShare) / ACC_SCALE;
+        wethDebt[msg.sender] = (deposits[msg.sender] * cumulativeWethPerShare) / ACC_SCALE;
         require(IERC20(FEE_SHARES).transferFrom(msg.sender, address(this), shares), TransferFailed());
         emit Deposited(msg.sender, shares);
     }
 
-    /// @notice Withdraw fee shares at any time. Accrued 0xZAPS stays claimable.
+    /// @notice Withdraw fee shares at any time. Reward owed up to now is
+    ///         realized to the caller first, so leaving never forfeits it and
+    ///         never strands it against the departing shares.
     function withdraw(uint256 shares) external {
         require(shares != 0, ZeroAmount());
         require(deposits[msg.sender] >= shares, InsufficientBalance());
+        _sync();
         _checkpoint(msg.sender);
         deposits[msg.sender] -= shares;
         totalDeposits -= shares;
-        zapsDebt[msg.sender] = (deposits[msg.sender] * cumulativeZapsPerShare) / ACC_SCALE;
+        wethDebt[msg.sender] = (deposits[msg.sender] * cumulativeWethPerShare) / ACC_SCALE;
         require(IERC20(FEE_SHARES).transfer(msg.sender, shares), TransferFailed());
         emit Withdrawn(msg.sender, shares);
     }
 
-    // -------------------------------------------------------------- routing
+    // ------------------------------------------------------ claim and route
 
-    /// @notice Pull the vault's WETH and route it through the welded adapter
-    ///         into 0xZAPS for depositors. Permissionless: anyone pays gas,
-    ///         nobody chooses the route, and a run that cannot clear the
-    ///         spot-derived floor reverts for everyone rather than degrading
-    ///         anyone.
-    function harvestAndRoute() external {
-        require(totalDeposits != 0, NoDeposits());
-        if (IFeeShareVault(FEE_SHARES).claimable(address(this), WETH) != 0) {
-            IFeeShareVault(FEE_SHARES).claimFor(address(this));
-        }
-        uint256 wethIn = IERC20(WETH).balanceOf(address(this));
-        require(wethIn != 0, NothingToRoute());
-        require(wethIn >= MIN_HARVEST_WEI, BelowMinHarvest());
+    /// @notice Take the caller's realized WETH directly. The escape hatch:
+    ///         reward is always recoverable even if routing is impossible.
+    function claimWeth() external {
+        _sync();
+        _checkpoint(msg.sender);
+        uint256 amount = wethOwed[msg.sender];
+        if (amount == 0) return;
+        wethOwed[msg.sender] = 0;
+        wethReserve -= amount;
+        require(IERC20(WETH).transfer(msg.sender, amount), TransferFailed());
+        emit WethClaimed(msg.sender, amount);
+    }
 
-        // Spot floor. priceX96 is ZAPS per WETH in Q96; with wethIn <= ~1e21
-        // and priceX96 <= ~1e40 the product stays far below 2^256.
+    /// @notice Route the caller's own realized WETH into 0xZAPS.
+    function route() external {
+        _route(msg.sender);
+    }
+
+    /// @notice Route `account`'s realized WETH into 0xZAPS for them. Keeper
+    ///         convenience; the WETH spent and the 0xZAPS produced both belong
+    ///         to `account`, never the caller.
+    function routeFor(address account) external {
+        _route(account);
+    }
+
+    function _route(address account) private {
+        _sync();
+        _checkpoint(account);
+        uint256 owed = wethOwed[account];
+        uint256 amount = owed > MAX_ROUTE_WEI ? MAX_ROUTE_WEI : owed;
+        require(amount != 0, NothingToRoute());
+        require(amount >= MIN_ROUTE_WEI, BelowMinRoute());
+
+        // Same-block spot floor. Not sandwich-proof for the routed leg; the
+        // per-call cap bounds exposure and `account` consents by routing.
         uint256 priceX96 = PRICE_SOURCE.priceX96();
-        uint256 floor = (wethIn * priceX96 / Q96) * MIN_OUT_BPS / BPS;
+        uint256 floor = (amount * priceX96 / Q96) * MIN_OUT_BPS / BPS;
+
+        wethOwed[account] = owed - amount;
+        wethReserve -= amount;
 
         uint256 zapsBefore = IERC20(ZAPS).balanceOf(address(this));
-        WETH.approveExact(address(ADAPTER), wethIn);
-        ADAPTER.execute(WETH, wethIn, adapterData);
+        WETH.approveExact(address(ADAPTER), amount);
+        ADAPTER.execute(WETH, amount, adapterData);
         // Balance delta is the only trusted measure of output.
         uint256 zapsOut = IERC20(ZAPS).balanceOf(address(this)) - zapsBefore;
         require(zapsOut >= floor && zapsOut != 0, FloorNotMet());
 
-        cumulativeZapsPerShare += (zapsOut * ACC_SCALE) / totalDeposits;
-        zapsReserve += zapsOut;
-        emit HarvestedAndRouted(msg.sender, wethIn, zapsOut, floor);
+        require(IERC20(ZAPS).transfer(account, zapsOut), TransferFailed());
+        emit Routed(msg.sender, account, amount, zapsOut, floor);
     }
 
-    // --------------------------------------------------------------- claims
+    // ----------------------------------------------------------------- views
 
-    function claimZaps() external {
-        _checkpoint(msg.sender);
-        uint256 amount = accruedZaps[msg.sender];
-        if (amount == 0) return;
-        accruedZaps[msg.sender] = 0;
-        zapsReserve -= amount;
-        require(IERC20(ZAPS).transfer(msg.sender, amount), TransferFailed());
-        emit ZapsClaimed(msg.sender, amount);
-    }
-
-    function claimableZaps(address account) external view returns (uint256) {
-        uint256 pending = (deposits[account] * cumulativeZapsPerShare) / ACC_SCALE - zapsDebt[account];
-        return accruedZaps[account] + pending;
+    function claimableWeth(address account) external view returns (uint256) {
+        uint256 pending = (deposits[account] * cumulativeWethPerShare) / ACC_SCALE - wethDebt[account];
+        return wethOwed[account] + pending;
     }
 
     // ------------------------------------------------------------- internals
 
+    /// @dev Pull the vault's owed WETH (defensively) and fold whatever the
+    ///      contract received into the per-share accumulator. Runs before
+    ///      every share-set change and every claim/route, so realized reward
+    ///      is always attributed to the shares present when it was earned.
+    function _sync() private {
+        if (IFeeShareVault(FEE_SHARES).claimable(address(this), WETH) != 0) {
+            try IFeeShareVault(FEE_SHARES).claimFor(address(this)) {} catch {}
+        }
+        uint256 balance = IERC20(WETH).balanceOf(address(this));
+        uint256 received = balance - wethReserve;
+        if (received != 0 && totalDeposits != 0) {
+            cumulativeWethPerShare += (received * ACC_SCALE) / totalDeposits;
+            wethReserve = balance;
+        }
+    }
+
     function _checkpoint(address account) private {
-        uint256 pending = (deposits[account] * cumulativeZapsPerShare) / ACC_SCALE - zapsDebt[account];
-        if (pending != 0) accruedZaps[account] += pending;
-        zapsDebt[account] = (deposits[account] * cumulativeZapsPerShare) / ACC_SCALE;
+        uint256 pending = (deposits[account] * cumulativeWethPerShare) / ACC_SCALE - wethDebt[account];
+        if (pending != 0) wethOwed[account] += pending;
+        wethDebt[account] = (deposits[account] * cumulativeWethPerShare) / ACC_SCALE;
     }
 }

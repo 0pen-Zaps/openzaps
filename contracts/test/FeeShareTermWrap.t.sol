@@ -17,9 +17,14 @@ contract MockFeeShareVault {
 
     MockWeth public immutable weth;
     mapping(address => uint256) public pendingClaim;
+    bool public reverts;
 
     constructor(MockWeth weth_) {
         weth = weth_;
+    }
+
+    function setReverts(bool r) external {
+        reverts = r;
     }
 
     function mint(address to, uint256 amount) external {
@@ -54,6 +59,7 @@ contract MockFeeShareVault {
     }
 
     function claimFor(address account) external {
+        require(!reverts, "vault paused");
         uint256 amount = pendingClaim[account];
         pendingClaim[account] = 0;
         weth.mint(account, amount);
@@ -284,5 +290,71 @@ contract FeeShareTermWrapTest is Test {
         uint256 dustBound = (a + b) / 1e18 + 2;
         assertGe(owedTotal + dustBound, r);
         assertEq(wrap.rewardReserve(), r);
+    }
+
+    // -------------------------------------------------- audit regressions
+
+    /// A paused/underfunded vault must NEVER trap principal by reverting
+    /// finalize. The gate flips first; the harvest is defensive.
+    function test_finalizeSucceedsEvenIfVaultReverts() public {
+        _depositBoth();
+        vault.setClaimable(address(wrap), 2e18);
+        vault.setReverts(true);
+        vm.warp(uint256(maturity) + 1);
+
+        wrap.finalize(); // must not revert
+        assertTrue(wrap.finalized());
+
+        // Principal is redeemable regardless of the broken vault.
+        vm.prank(alice);
+        wrap.redeemShares();
+        assertEq(vault.balanceOf(alice), 30e18);
+    }
+
+    /// WETH that accrues after finalize (the wrapper keeps holding shares
+    /// until redemption) must not be stranded: the first sweep folds the
+    /// REAL balance, not just the in-term reserve.
+    function test_sweepCapturesPostFinalizeAccrual() public {
+        _depositBoth();
+        vault.setClaimable(address(wrap), 2e18);
+        vm.warp(uint256(maturity) + 1);
+        wrap.finalize(); // credits 2e18 in-term
+
+        // Everyone claims the in-term reward to zero the reserve.
+        vm.prank(alice);
+        wrap.claim();
+        vm.prank(bob);
+        wrap.claim();
+        assertEq(wrap.rewardReserve(), 0);
+
+        // The vault keeps paying the still-held shares after finalize.
+        vault.setClaimable(address(wrap), 5e18);
+        vault.claimFor(address(wrap)); // anyone can push it in
+
+        vm.warp(uint256(claimDeadline) + 1);
+        vm.prank(alice);
+        wrap.sweepExpired();
+        vm.prank(bob);
+        wrap.sweepExpired();
+
+        // The whole 5e18 post-finalize accrual reached depositors, 30/40 + 10/40.
+        // 1.5 claimed in-term + 3.75 swept (30/40 of 5) = 5.25 WETH.
+        assertEq(weth.balanceOf(alice), 15e17 + 375e16);
+        assertEq(weth.balanceOf(bob), 5e17 + 125e16);
+    }
+
+    /// A late depositor must not dilute reward already owed to earlier
+    /// depositors: deposit folds pending reward to current holders first.
+    function test_lateDepositorCannotDilute() public {
+        vm.prank(alice);
+        wrap.deposit(30e18);
+        vault.setClaimable(address(wrap), 3e18); // earned entirely by alice
+
+        // Bob deposits late; the 3e18 must fold to alice before bob mints.
+        vm.prank(bob);
+        wrap.deposit(10e18);
+
+        assertEq(wrap.claimableReward(alice), 3e18);
+        assertEq(wrap.claimableReward(bob), 0);
     }
 }
