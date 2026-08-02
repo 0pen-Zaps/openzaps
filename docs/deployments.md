@@ -245,7 +245,21 @@ Addresses are wired into `src/lib/robinhood.ts` (`OPENZAP_V3_1_CONTRACTS`).
 for the `recurring-relative` kind. Aggregate at that block: 28 creations, 37 executions of which 25
 are automated, 1 recovery, `319,932,354.4393` 0xZAPS of executed volume.
 
-### The v3.2 stacking stack — deployed candidate, activation canaries pending
+### The v3.2 stacking stack — deployed and active, pre-audit
+
+**Activation verified 2026-08-02.** The production surfaces are open end to end:
+`/api/health` reports `recurringStack: "open"` with the canonical seven-address set;
+the relay admits the `recurring-stack` intent kind
+(migration `20260726000000_allow_recurring_stack_kind.sql`); the reference executor
+runs the `v3.2` capsule lineage with its dedicated conversion pot; and the deployed
+implementation's runtime code hash re-read from chain matches the pinned release hash
+below. Mainnet usage exists beyond the canaries' receipts: the factory has clone
+creations at blocks 22,822,645
+(`0xfe362f94c076401e3984808043ce404557646761d1e5483d72313c871162d314`) and 23,046,697
+(`0xef38f71bb5f8121d429e4db2abf523dc5f2db1e74096ff736dec13ec80cd6a68`), with six
+execution-pot events. The onchain version strings intentionally remain
+`3.2.0-candidate`/`1.0.0-candidate` — they are immutable deployment identifiers, not
+status claims. The contracts remain unaudited.
 
 UNAUDITED CANDIDATE. Deployed on Robinhood Chain on 2026-07-29 from the contract tree at
 `91b386ad4f31cdd00afd318f6a56b13bc3d06039`. Source is in

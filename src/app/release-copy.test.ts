@@ -14,10 +14,15 @@ describe("public release copy", () => {
     const llms = read("public/llms.txt");
 
     expect(docs).toContain("v1.1 / v3 / v3.1");
-    expect(docs).toContain("Deployed candidate");
+    // v3.2 was promoted 2026-08-02: deployed, canaried with onchain receipts,
+    // and open across app, relay, and executor. It stays pre-audit.
+    expect(docs).toContain("v3.2 recurring stack");
+    expect(docs).toContain("canaries passed with onchain receipts");
+    expect(docs).not.toContain("Deployed candidate");
     expect(docs).toContain("Source-ready · not deployed");
-    expect(llms).toContain("activation canaries pending");
-    expect(llms).toContain("source-ready and undeployed");
+    expect(llms).toContain("canaries passed with onchain receipts");
+    expect(llms).toContain("It remains unaudited");
+    expect(llms).toContain("source-ready, undeployed, and not live");
   });
 
   it("exposes the practice, request, and connect entry paths", () => {
