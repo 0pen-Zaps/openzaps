@@ -30,10 +30,12 @@ import {
   syndicationSkipTriggerId,
   SyndicationSkipControls,
   SubstackHandoff,
+  SubstackPublicationReceipt,
   substackVerificationResponseIsCurrent,
   tutorialApprovalEchoFromDraft,
   type OperatorSyndicationItem,
   writeSubstackClipboard,
+  writeSubstackManifestPatchClipboard,
   xIdentityRequestIsCurrent,
 } from "./MarketingOperator";
 
@@ -898,7 +900,19 @@ describe("Substack handoff helpers", () => {
     runId: "wrun_substack_1",
     candidateId: "draft:paper-trade:substack",
     canonicalUrl: "https://defitutorials.substack.com/p/paper-trade-first",
+    tutorialId: "paper-trade-first-authority-map",
+    approvedTitle: "Paper Trade First",
+    sourcePath: "docs/tutorials/paper-trade-first-authority-map.md",
   };
+  const expectedManifestEntry = {
+    id: "paper-trade-first-authority-map",
+    title: "Paper Trade First",
+    sourcePath: "docs/tutorials/paper-trade-first-authority-map.md",
+    status: "rss_confirmed" as const,
+    canonicalUrl: expectedReceipt.canonicalUrl,
+    publishedAt: "2026-08-01T01:00:00.000Z",
+  };
+  const expectedManifestPatch = JSON.stringify(expectedManifestEntry, null, 2);
 
   it("accepts only bounded byte-verified tutorial selectors and approval echoes", () => {
     const sourceSha256 = "a".repeat(64);
@@ -989,7 +1003,7 @@ describe("Substack handoff helpers", () => {
     ).toBe(false);
   });
 
-  it("accepts only a bounded non-persisted RSS verification receipt", () => {
+  it("accepts only a bounded durable RSS verification receipt", () => {
     expect(
       parseSubstackVerification({
         ...expectedReceipt,
@@ -999,9 +1013,45 @@ describe("Substack handoff helpers", () => {
         feedUrl: "https://defitutorials.substack.com/feed",
         checkedAt: "2026-08-01T02:00:00.000Z",
         publishedAt: "2026-08-01T01:00:00.000Z",
+        persisted: true,
+        receiptResult: "recorded",
+        manifestEntry: expectedManifestEntry,
+        manifestPatch: expectedManifestPatch,
+      }, expectedReceipt),
+    ).toMatchObject({
+      status: "rss_confirmed",
+      persisted: true,
+      receiptResult: "recorded",
+      manifestEntry: expectedManifestEntry,
+      manifestPatch: expectedManifestPatch,
+    });
+
+    expect(
+      parseSubstackVerification({
+        ...expectedReceipt,
+        status: "rss_confirmed",
+        approvedTitle: "Paper Trade First",
+        feedUrl: "https://defitutorials.substack.com/feed",
+        checkedAt: "2026-08-01T02:00:00.000Z",
+        publishedAt: expectedManifestEntry.publishedAt,
+        persisted: true,
+        receiptResult: "already_recorded",
+        manifestEntry: expectedManifestEntry,
+        manifestPatch: expectedManifestPatch,
+      }, expectedReceipt),
+    ).toMatchObject({ receiptResult: "already_recorded" });
+
+    expect(
+      parseSubstackVerification({
+        ...expectedReceipt,
+        status: "rss_confirmed",
+        approvedTitle: "Paper Trade First",
+        feedUrl: "https://defitutorials.substack.com/feed",
+        checkedAt: "2026-08-01T02:00:00.000Z",
+        publishedAt: expectedManifestEntry.publishedAt,
         persisted: false,
       }, expectedReceipt),
-    ).toMatchObject({ status: "rss_confirmed", persisted: false });
+    ).toBeNull();
 
     expect(
       parseSubstackVerification({
@@ -1012,6 +1062,9 @@ describe("Substack handoff helpers", () => {
         feedUrl: "https://attacker.example/feed",
         checkedAt: "2026-08-01T02:00:00.000Z",
         persisted: true,
+        receiptResult: "recorded",
+        manifestEntry: expectedManifestEntry,
+        manifestPatch: expectedManifestPatch,
       }, expectedReceipt),
     ).toBeNull();
 
@@ -1024,7 +1077,11 @@ describe("Substack handoff helpers", () => {
         approvedTitle: "Paper Trade First",
         feedUrl: "https://defitutorials.substack.com/feed",
         checkedAt: "2026-08-01T02:00:00.000Z",
-        persisted: false,
+        publishedAt: expectedManifestEntry.publishedAt,
+        persisted: true,
+        receiptResult: "recorded",
+        manifestEntry: expectedManifestEntry,
+        manifestPatch: expectedManifestPatch,
       }, expectedReceipt),
     ).toBeNull();
 
@@ -1036,9 +1093,42 @@ describe("Substack handoff helpers", () => {
         approvedTitle: "Paper Trade First",
         feedUrl: "https://defitutorials.substack.com/feed",
         checkedAt: "2026-08-01T02:00:00.000Z",
-        persisted: false,
+        publishedAt: expectedManifestEntry.publishedAt,
+        persisted: true,
+        receiptResult: "recorded",
+        manifestEntry: expectedManifestEntry,
+        manifestPatch: expectedManifestPatch,
       }, expectedReceipt),
     ).toBeNull();
+
+    expect(
+      parseSubstackVerification({
+        ...expectedReceipt,
+        status: "rss_confirmed",
+        approvedTitle: "Paper Trade First",
+        feedUrl: "https://defitutorials.substack.com/feed",
+        checkedAt: "2026-08-01T02:00:00.000Z",
+        publishedAt: expectedManifestEntry.publishedAt,
+        persisted: true,
+        receiptResult: "recorded",
+        manifestEntry: expectedManifestEntry,
+        manifestPatch: JSON.stringify({
+          ...expectedManifestEntry,
+          canonicalUrl: "https://defitutorials.substack.com/p/tampered",
+        }, null, 2),
+      }, expectedReceipt),
+    ).toBeNull();
+
+    expect(
+      parseSubstackVerification({
+        ...expectedReceipt,
+        status: "title_mismatch",
+        approvedTitle: "Paper Trade First",
+        feedUrl: "https://defitutorials.substack.com/feed",
+        checkedAt: "2026-08-01T02:00:00.000Z",
+        persisted: false,
+      }, expectedReceipt),
+    ).toMatchObject({ status: "title_mismatch", persisted: false });
   });
 
   it("rejects stale verification responses after the URL or request changes", () => {
@@ -1086,6 +1176,47 @@ describe("Substack handoff helpers", () => {
     expect(clipboard.writeText).toHaveBeenCalledWith("Paper trade first.");
   });
 
+  it("copies the exact manifest replacement object without rewriting it", async () => {
+    const clipboard = {
+      writeText: vi.fn().mockResolvedValue(undefined),
+    };
+
+    await expect(
+      writeSubstackManifestPatchClipboard(expectedManifestPatch, clipboard),
+    ).resolves.toBeUndefined();
+    expect(clipboard.writeText).toHaveBeenCalledOnce();
+    expect(clipboard.writeText).toHaveBeenCalledWith(expectedManifestPatch);
+  });
+
+  it("renders immutable receipt evidence and a read-only owner-reviewed patch", () => {
+    const receipt = renderToStaticMarkup(
+      createElement(SubstackPublicationReceipt, {
+        verification: {
+          ...expectedReceipt,
+          status: "rss_confirmed",
+          approvedTitle: expectedManifestEntry.title,
+          feedUrl: "https://defitutorials.substack.com/feed",
+          checkedAt: "2026-08-01T02:00:00.000Z",
+          publishedAt: expectedManifestEntry.publishedAt,
+          persisted: true,
+          receiptResult: "recorded",
+          manifestEntry: expectedManifestEntry,
+          manifestPatch: expectedManifestPatch,
+        },
+      }),
+    );
+
+    expect(receipt).toContain('aria-label="Immutable Substack publication receipt"');
+    expect(receipt).toContain("RSS publication receipt recorded");
+    expect(receipt).toContain("Exact manifest replacement object");
+    expect(receipt).toContain('aria-label="Exact tutorial manifest patch"');
+    expect(receipt).toContain('readOnly=""');
+    expect(receipt).toContain("Copy exact manifest patch");
+    expect(receipt).toContain("Owner review is still required");
+    expect(receipt).toContain("docs/tutorials/manifest.json");
+    expect(receipt).toContain("never edits Substack or repository files automatically");
+  });
+
   it("exposes editor handoff controls only after the exact candidate is approved", () => {
     const props = {
       candidateId: expectedReceipt.candidateId,
@@ -1119,5 +1250,7 @@ describe("Substack handoff helpers", () => {
     expect(approvedHandoff).toContain("Copy rich text");
     expect(approvedHandoff).toContain("Open official editor");
     expect(approvedHandoff).toContain("Verify public RSS");
+    expect(approvedHandoff).toContain("stores an immutable evidence receipt");
+    expect(approvedHandoff).not.toContain("persist an RSS-confirmed receipt");
   });
 });

@@ -123,7 +123,7 @@ not invoke the model or the approval workflow.
 | `GET /api/marketing/syndication` | List the private feed inbox and reconcile attached workflow evidence | Operator bearer token |
 | `POST /api/marketing/syndication` | Draft, skip, or repair the durable run link for one exact inbox item | Operator bearer token |
 | `GET /api/marketing/syndication/cron` | Discover and deduplicate public feed metadata; never starts a workflow or provider write | `Authorization: Bearer <CRON_SECRET>` |
-| `POST /api/marketing/substack/verify` | Read-only canonical-URL check against public DeFi Tutorials RSS, bound to one completed, approved editor handoff whose recorded title is used server-side | Operator bearer token |
+| `POST /api/marketing/substack/verify` | Read-only provider check against public DeFi Tutorials RSS, followed only on an exact title/URL match by an immutable, idempotent internal publication receipt bound to the completed approved editor handoff | Operator bearer token |
 | `POST /api/marketing/discord/interactions` | Receive Discord application commands | Discord Ed25519 request signature and a five-minute freshness window |
 | `GET /api/leads/request` | Return non-secret, non-mutating lead-intake RPC readiness for fail-closed campaign evidence | Public; private/no-store response, with `503` while unavailable |
 | `GET /api/leads/scorecard` | Return PII-free accepted-request, qualification, lifecycle, SLA-backlog, and coarse-attribution aggregates; never returns lead rows | `Authorization: Bearer <OPENZAPS_LEAD_ADMIN_TOKEN>`; private/no-store |
@@ -609,12 +609,20 @@ The operator must:
    ordering mistake.
 5. Publish or schedule from the official editor.
 6. Paste the exact canonical `https://defitutorials.substack.com/p/...` URL
-   into the operator's read-only RSS verifier. The request carries only the run
+   into the operator's RSS verifier. The request carries only the run
    id, candidate id, and canonical URL. The server loads the completed workflow,
    requires its approved official-editor handoff, derives the recorded title,
-   and requires that URL and title to appear together in the public feed.
+   and requires that URL and title to appear together in the public feed. A
+   missing URL or title mismatch remains a read-only result and writes nothing.
+   After an exact match, the server appends an internal receipt containing only
+   the tutorial/run/candidate identifiers, approved source and body hashes,
+   approved title, canonical public URL, public feed URL, and publication/check
+   timestamps. It stores no editor session, post body, contact, or personal
+   data. An identical retry returns `already_recorded`; any different tuple for
+   the same tutorial returns a conflict without changing the first receipt.
 7. Update that tutorial's source-controlled entry in
-   `docs/tutorials/manifest.json` using the strict public-receipt shape. Keep
+   `docs/tutorials/manifest.json` using the exact replacement object returned by
+   the verifier. Review it against the immutable receipt before copying it. Keep
    only its stable `id`, approved `title`, and reviewed `sourcePath`; remove the
    draft-only `preparedAt`, `approvedAt`, `subtitle`, `tags`, `topics`,
    `disclosures`, `claims`, `sourceSha256`, and `bodySha256` fields. Then set
@@ -623,16 +631,21 @@ The operator must:
    recorded approval and official-editor handoff; the `rss_confirmed` manifest
    branch intentionally excludes draft-only handoff fields. Review, commit, and
    deploy that manifest change before expecting discovery to authorize a social
-   draft. The verifier does not mutate the manifest.
-8. Record the canonical public post URL with the run id. The verifier currently
-   reports `persisted: false`; it does not append a publication receipt to the
-   durable ledger.
-9. Confirm the next discovery run finds the RSS-confirmed item as `pending` in
+   draft. The verifier never mutates GitHub or the manifest automatically.
+8. Confirm the next discovery run finds the RSS-confirmed item as `pending` in
    the private feed inbox. If discovery observed it before the manifest deploy,
    it may first be `pending`/unknown and then be reclassified in place as a
    tutorial; it must never move from `baseline` to `pending`. Select **Draft X +
    Discord** to start the existing review workflow, then review and explicitly
    approve it as a separate outbound run.
+
+The publication-receipt table has RLS enabled, grants no direct Data API access,
+and is append-only. Only the service-role wrapper may call the bounded record
+RPC. The private writer uses an empty `search_path`, validates the canonical
+DeFi Tutorials origin and exact source path, serializes concurrent attempts per
+tutorial, and cannot update or delete earlier evidence. The operator receives
+only the receipt result and a deterministic manifest replacement; the internal
+table remains private.
 
 The daily discovery cron uses bounded public-RSS parsing plus validated ETag and
 `Last-Modified` cursors. The first complete snapshot is historical baseline,

@@ -1,9 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const { getRunMock, loadTutorialMock, verifyMock } = vi.hoisted(() => ({
+const { getRunMock, loadTutorialMock, verifyMock, recordReceiptMock } = vi.hoisted(() => ({
   getRunMock: vi.fn(),
   loadTutorialMock: vi.fn(),
   verifyMock: vi.fn(),
+  recordReceiptMock: vi.fn(),
 }));
 
 vi.mock("server-only", () => ({}));
@@ -22,6 +23,18 @@ vi.mock("@/lib/marketing/tutorial-handoff-source", async (importOriginal) => {
     loadSourceControlledTutorialApprovalBundle: loadTutorialMock,
   };
 });
+vi.mock(
+  "@/lib/marketing/tutorial-publication-receipt-server",
+  async (importOriginal) => {
+    const actual = await importOriginal<
+      typeof import("@/lib/marketing/tutorial-publication-receipt-server")
+    >();
+    return {
+      ...actual,
+      recordTutorialPublicationReceipt: recordReceiptMock,
+    };
+  },
+);
 
 import { ChannelAdapterError } from "@/lib/marketing/channels";
 import { POST } from "./route";
@@ -226,6 +239,21 @@ beforeEach(() => {
     publishedAt: "2026-08-01T01:00:00.000Z",
     persisted: false,
   });
+  recordReceiptMock.mockResolvedValue({
+    result: "recorded",
+    tutorialId: "paper-trade-first-authority-map",
+    runId: RUN_ID,
+    candidateId: CANDIDATE_ID,
+    sourcePath: "docs/tutorials/paper-trade-first-authority-map.md",
+    sourceSha256: "a".repeat(64),
+    bodySha256: "b".repeat(64),
+    approvedTitle: "Paper Trade First",
+    canonicalUrl: CANONICAL_URL,
+    feedUrl: "https://defitutorials.substack.com/feed",
+    publishedAt: "2026-08-01T01:00:00.000Z",
+    rssCheckedAt: "2026-08-01T02:00:00.000Z",
+    recordedAt: "2026-08-01T02:00:01.000Z",
+  });
 });
 
 afterEach(() => {
@@ -265,23 +293,89 @@ describe("Substack verification route", () => {
 
   it("derives the approved title from a completed recorded editor handoff", async () => {
     const response = await POST(request(verificationRequest()));
+    const body = await response.json();
 
     expect(response.status).toBe(200);
     expect(response.headers.get("cache-control")).toBe("private, no-store");
-    expect(await response.json()).toMatchObject({
+    expect(body).toMatchObject({
       runId: RUN_ID,
       candidateId: CANDIDATE_ID,
       status: "rss_confirmed",
-      persisted: false,
+      persisted: true,
+      receiptResult: "recorded",
       tutorialId: "paper-trade-first-authority-map",
       sourceSha256: "a".repeat(64),
       bodySha256: "b".repeat(64),
+      manifestEntry: {
+        id: "paper-trade-first-authority-map",
+        title: "Paper Trade First",
+        sourcePath: "docs/tutorials/paper-trade-first-authority-map.md",
+        status: "rss_confirmed",
+        canonicalUrl: CANONICAL_URL,
+        publishedAt: "2026-08-01T01:00:00.000Z",
+      },
     });
+    expect(body.manifestPatch).toBe(
+      JSON.stringify(body.manifestEntry, null, 2),
+    );
     expect(getRunMock).toHaveBeenCalledWith(RUN_ID);
     expect(verifyMock).toHaveBeenCalledWith({
       canonicalUrl: CANONICAL_URL,
       approvedTitle: "Paper Trade First",
     });
+    expect(recordReceiptMock).toHaveBeenCalledWith({
+      tutorialId: "paper-trade-first-authority-map",
+      runId: RUN_ID,
+      candidateId: CANDIDATE_ID,
+      sourcePath: "docs/tutorials/paper-trade-first-authority-map.md",
+      sourceSha256: "a".repeat(64),
+      bodySha256: "b".repeat(64),
+      approvedTitle: "Paper Trade First",
+      canonicalUrl: CANONICAL_URL,
+      feedUrl: "https://defitutorials.substack.com/feed",
+      publishedAt: "2026-08-01T01:00:00.000Z",
+      rssCheckedAt: "2026-08-01T02:00:00.000Z",
+    });
+  });
+
+  it("does not persist a receipt until the exact RSS title and URL are confirmed", async () => {
+    verifyMock.mockResolvedValue({
+      channel: "substack",
+      status: "not_found",
+      canonicalUrl: CANONICAL_URL,
+      approvedTitle: "Paper Trade First",
+      feedUrl: "https://defitutorials.substack.com/feed",
+      checkedAt: "2026-08-01T02:00:00.000Z",
+      persisted: false,
+    });
+
+    const response = await POST(request(verificationRequest()));
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      status: "not_found",
+      persisted: false,
+    });
+    expect(recordReceiptMock).not.toHaveBeenCalled();
+  });
+
+  it("fails closed when a different immutable receipt already exists", async () => {
+    const { TutorialPublicationReceiptError } = await import(
+      "@/lib/marketing/tutorial-publication-receipt-server"
+    );
+    recordReceiptMock.mockRejectedValue(
+      new TutorialPublicationReceiptError(
+        "conflict",
+        "secret conflicting tuple detail",
+      ),
+    );
+
+    const response = await POST(request(verificationRequest()));
+    const raw = await response.text();
+
+    expect(response.status).toBe(409);
+    expect(raw).toContain("immutable publication receipt");
+    expect(raw).not.toContain("secret conflicting tuple detail");
   });
 
   it("rejects RSS verification when the source bundle changed after approval", async () => {
