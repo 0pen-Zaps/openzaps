@@ -213,6 +213,22 @@ describe("0xZAPS fee rewards public surface", () => {
     ]);
   });
 
+  it("scales type against the column, not the viewport", () => {
+    // A vw-scaled clamp inside this container grew the type as its column
+    // narrowed: a 47px display serif over six lines in a 253px column.
+    const rewardsCss = read("src/app/(site)/rewards/rewards.module.css");
+    expect(rewardsCss).not.toMatch(/font-size:\s*clamp\([^)]*vw/u);
+    expect(rewardsCss).toMatch(/font-size:\s*clamp\([^)]*cqi/u);
+  });
+
+  it("tells the reader why an upkeep control is unavailable", () => {
+    // Checkpoint already named its boundary; harvest and sync described an
+    // action the contract refuses.
+    expect(workspace).toContain("upkeepClosedNote");
+    expect(workspace).toContain('"Available at campaign start"');
+    expect(workspace).toContain('"Closed with the campaign window"');
+  });
+
   it("keeps risk copy readable and reserves the alarm styling for blocked actions", () => {
     // --warn text on --warn-wash is 4.43:1 on Ivory. The border and icon keep
     // the hue (3:1 non-text floor); the sentence moves to --ink-2.

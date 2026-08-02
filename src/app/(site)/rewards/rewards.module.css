@@ -35,11 +35,14 @@
   letter-spacing: 0.1em;
 }
 
+/* cqi, not vw: this column is min(1128, vw - 316), so viewport-scaled type
+   grew exactly as its column narrowed — a 47px serif over six lines in a
+   253px column at ~900px wide. */
 .title {
   max-width: 760px;
   margin: 10px 0 0;
   font-family: var(--font-serif), Newsreader, serif;
-  font-size: clamp(42px, 5.2vw, 68px);
+  font-size: clamp(42px, 6.2cqi, 68px);
   font-weight: 480;
   letter-spacing: -0.045em;
   line-height: 0.98;
@@ -518,6 +521,17 @@
   box-shadow: none;
 }
 
+/* The rail keeps its own interior rhythm, but its outer edges belong to the
+   module: standalone it starts at 14px, which broke the 24px gutter every
+   other row in this card is aligned to. */
+.mechanic .settlementSteps li:first-child {
+  padding-left: 24px;
+}
+
+.mechanic .settlementSteps li:last-child {
+  padding-right: 24px;
+}
+
 /* On the narrowest screens the rail's single column costs ~520px of scroll
    before step 01 — too much for a diagram the steps restate. A 2x2 grid
    keeps the picture and halves the height. */
@@ -578,7 +592,7 @@
   max-width: 28ch;
   margin: 8px 0 0;
   font-family: var(--font-serif), Newsreader, serif;
-  font-size: clamp(26px, 3vw, 34px);
+  font-size: clamp(26px, 3.6cqi, 34px);
   font-weight: 480;
   letter-spacing: -0.03em;
   line-height: 1.06;
@@ -909,7 +923,7 @@
   margin: 8px 0 0;
   overflow: hidden;
   font-family: var(--font-mono), ui-monospace, monospace;
-  font-size: clamp(13px, 1.45vw, 17px);
+  font-size: clamp(13px, 1.6cqi, 17px);
   font-weight: 650;
   font-variant-numeric: tabular-nums;
   text-overflow: ellipsis;
