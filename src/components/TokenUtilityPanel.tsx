@@ -11,7 +11,7 @@ type TokenUtilityPanelProps = {
 };
 
 /**
- * One reusable, factual account of the token's live roles. Keeping the copy in
+ * One reusable, factual account of the token's verified roles. Keeping the copy in
  * one component prevents landing/docs/explore surfaces from inventing utility
  * that the contracts or app do not provide.
  */
@@ -19,21 +19,23 @@ export function TokenUtilityPanel({ className = "", id }: TokenUtilityPanelProps
   return (
     <section className={`${styles.panel} ${className}`.trim()} id={id} aria-labelledby={id ? `${id}-title` : undefined}>
       <div className={styles.copy}>
-        <span className={styles.eyebrow}>Live {TOKEN.symbol} utility</span>
-        <h2 id={id ? `${id}-title` : undefined}>Trade it. Use the app. Opt into one fixed fee campaign.</h2>
+        <span className={styles.eyebrow}>Verified {TOKEN.symbol} utility</span>
+        <h2 id={id ? `${id}-title` : undefined}>Trade it. Use the app. Inspect the first fixed fee campaign.</h2>
         <p>
           OpenZaps can buy {TOKEN.symbol} through its pinned aeWETH → {TOKEN.symbol} route. Every Zap contract created
           by the current app converts its visible 0.00001 ETH creation fee into {TOKEN.symbol} atomically. A connected
           wallet holding 100,000+ {TOKEN.symbol} also gets auto-refreshing quotes, more saved Zaps and receipts, and
-          receipt JSON export. A separate seven-day campaign holds 50 tokenized Clanker fee shares and distributes
-          campaign-accounted WETH to wallets that deliberately stake {TOKEN.symbol}. Its configured harvest path
-          collects Clanker fees, while direct WETH transfers can also be synchronized. Every core workflow stays
-          open without holding or staking the token.
+          receipt JSON export. The first {TOKEN.symbol} fee rewards campaign is fixed to a seven-day Aug 3–10, 2026
+          staking window. It was funded at launch with 50 of 100 tokenized Clanker fee shares and is configured to use
+          time-weighted stake to allocate campaign-accounted WETH to eligible deposits during that window. Its harvest
+          path was configured for Clanker fees,
+          while direct WETH transfers can also be synchronized. Check /rewards for the current phase and later claim
+          deadline. Every core workflow stays open without holding or staking the token.
         </p>
         <div className={styles.actions}>
           <BuyButton destination="openzaps" label={`Zap in to ${TOKEN.symbol}`} />
           <BuyButton label="Buy on Clanker" variant="ghost" />
-          <Link href="/rewards">Fee campaign →</Link>
+          <Link href="/rewards">Check campaign phase →</Link>
           <Link href="/token#utilities">Token details →</Link>
         </div>
       </div>
@@ -64,14 +66,15 @@ export function TokenUtilityPanel({ className = "", id }: TokenUtilityPanelProps
         </div>
         <div>
           <span>50 / 100 fee shares</span>
-          <strong>Fixed staking campaign</strong>
-          <p>Configured for Clanker fees; this site never asks for or spends sponsor-wallet WETH.</p>
+          <strong>Launch allocation</strong>
+          <p>Seven-day Aug 3–10, 2026 staking window; /rewards shows the current phase and later claim deadline.</p>
         </div>
       </div>
 
       <p className={styles.disclaimer}>
         Ownership alone grants no governance, automatic staking benefit, fee right, revenue claim, yield, equity, or
-        return. Campaign benefits require a deliberate deposit into the separately identified fixed contract.
+        return. The first campaign was limited to eligible deposits made during its fixed Aug 3–10, 2026 staking window;
+        /rewards shows the current phase and later claim deadline.
       </p>
     </section>
   );

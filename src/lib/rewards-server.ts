@@ -8,6 +8,7 @@ import {
   type Address,
   type Hex,
 } from "viem";
+import { unstable_cache } from "next/cache";
 
 import {
   FEE_REWARDS_MANIFEST,
@@ -24,6 +25,8 @@ import {
 } from "@/lib/robinhood";
 
 const ZERO_HASH = `0x${"0".repeat(64)}` as Hex;
+const MAX_SHARED_SNAPSHOT_AGE_MS = 30_000;
+const MAX_FUTURE_CLOCK_SKEW_MS = 5_000;
 
 const EIP712_DOMAIN_TYPES = {
   EIP712Domain: [
@@ -59,7 +62,14 @@ function rewardsRpcUrl(): string {
 function rewardsClient() {
   return createPublicClient({
     chain: robinhoodChain,
-    transport: http(rewardsRpcUrl(), { retryCount: 2, timeout: 15_000 }),
+    // Every snapshot is block-pinned and all-or-nothing, but most of its reads
+    // are independent. Robinhood's canonical RPC supports JSON-RPC batching,
+    // so one logical snapshot should not become dozens of HTTP requests.
+    transport: http(rewardsRpcUrl(), {
+      batch: { batchSize: 50, wait: 0 },
+      retryCount: 2,
+      timeout: 15_000,
+    }),
   });
 }
 
@@ -160,16 +170,11 @@ async function readViewer(
 }
 
 /**
- * Read the complete public campaign and optional wallet position at one block.
- * No partial payload is returned: runtime identity, immutable bindings, current
- * state, permit identity, viewer fields, and the final canonical hash recheck
- * all have to succeed together.
+ * Read the complete public campaign at one block. No partial payload is
+ * returned: runtime identity, immutable bindings, current state, permit
+ * identity, and the final canonical hash recheck all have to succeed together.
  */
-export async function fetchFeeRewards(viewer: Address | null): Promise<FeeRewardsPayload> {
-  if (viewer !== null && !isAddress(viewer)) {
-    throw new Error("Rewards viewer is not a valid address.");
-  }
-  const account = viewer === null ? null : getAddress(viewer);
+async function fetchPublicFeeRewardsUncached(): Promise<FeeRewardsPayload> {
   const manifest = FEE_REWARDS_MANIFEST;
   const client = rewardsClient();
 
@@ -229,7 +234,6 @@ export async function fetchFeeRewards(viewer: Address | null): Promise<FeeReward
     tokenDecimals,
     permitDomain,
     domainSeparator,
-    viewerState,
   ] = await Promise.all([
     client.getBytecode({ address: manifest.adapter.address, blockNumber }),
     client.getBytecode({ address: manifest.vault.address, blockNumber }),
@@ -464,7 +468,6 @@ export async function fetchFeeRewards(viewer: Address | null): Promise<FeeReward
       functionName: "DOMAIN_SEPARATOR",
       blockNumber,
     }),
-    account ? readViewer(client, account, blockNumber) : Promise.resolve(null),
   ]);
 
   if (!adapterCode || !vaultCode || !campaignCode) {
@@ -587,10 +590,98 @@ export async function fetchFeeRewards(viewer: Address | null): Promise<FeeReward
       accountedRewardBalance: vaultAccountedRewardBalance.toString(),
       queuedRewards: vaultQueuedRewards.toString(),
     },
-    viewer: viewerState,
+    viewer: null,
     permit: {
       name: domainName,
       version: domainVersion,
     },
   };
+}
+
+const cachedPublicFeeRewards = unstable_cache(
+  fetchPublicFeeRewardsUncached,
+  [
+    "0xzaps-fee-rewards-public-v1",
+    // A verifier implementation can change without changing the manifest.
+    // Vercel supplies this immutable SHA, preventing cross-release reuse.
+    process.env.VERCEL_GIT_COMMIT_SHA?.trim() || "local",
+    // Next's Data Cache can survive deployments. Bind the cache entry to the
+    // complete release manifest, including timing, allocations, immutables,
+    // source position, and runtime hashes—not merely contract addresses.
+    JSON.stringify(FEE_REWARDS_MANIFEST, (_key, value: unknown) =>
+      typeof value === "bigint" ? value.toString() : value,
+    ),
+  ],
+  { revalidate: 10, tags: ["0xzaps-fee-rewards-public"] },
+);
+
+function assertSharedSnapshotFresh(snapshot: FeeRewardsPayload, now = Date.now()): void {
+  const readAt = Date.parse(snapshot.readAt);
+  const age = now - readAt;
+  if (
+    !Number.isFinite(readAt)
+    || age > MAX_SHARED_SNAPSHOT_AGE_MS
+    || age < -MAX_FUTURE_CLOCK_SKEW_MS
+  ) {
+    // `unstable_cache` can retain its last successful value when background
+    // revalidation fails. Never let that turn an arbitrarily old chain read
+    // into a fresh-looking API response or a transaction-ready UI state.
+    throw new Error("The shared rewards snapshot is too old to use safely.");
+  }
+}
+
+function normalizeViewer(viewer: Address | null): Address | null {
+  if (viewer !== null && !isAddress(viewer)) {
+    throw new Error("Rewards viewer is not a valid address.");
+  }
+  return viewer === null ? null : getAddress(viewer);
+}
+
+async function attachViewer(
+  snapshot: FeeRewardsPayload,
+  account: Address | null,
+): Promise<FeeRewardsPayload> {
+  if (account === null) return snapshot;
+
+  const client = rewardsClient();
+  const blockNumber = BigInt(snapshot.headBlock);
+  const [chainId, viewer] = await Promise.all([
+    client.getChainId(),
+    readViewer(client, account, blockNumber),
+  ]);
+  if (chainId !== FEE_REWARDS_MANIFEST.chainId) {
+    throw new Error("Rewards RPC returned the wrong chain.");
+  }
+
+  // The public snapshot can be reused briefly, but private wallet fields must
+  // still prove they were read from that exact canonical block.
+  const canonicalBlock = await client.getBlock({ blockNumber });
+  if (!canonicalBlock.hash || !sameHash(canonicalBlock.hash, snapshot.blockHash)) {
+    throw new Error("The pinned Robinhood block changed during the rewards viewer read.");
+  }
+  assertSharedSnapshotFresh(snapshot);
+
+  return { ...snapshot, viewer };
+}
+
+/**
+ * Uncached verifier used by focused safety tests and explicit release checks.
+ * Runtime identity and all public values are freshly re-read before any
+ * optional wallet fields are attached at the same canonical block.
+ */
+export async function fetchFeeRewardsUncached(viewer: Address | null): Promise<FeeRewardsPayload> {
+  const account = normalizeViewer(viewer);
+  return attachViewer(await fetchPublicFeeRewardsUncached(), account);
+}
+
+/**
+ * Production read path. Public contract identity/state is shared for 10
+ * seconds across SSR and API callers; wallet fields remain private, uncached,
+ * and pinned to the cached snapshot's canonical block.
+ */
+export async function fetchFeeRewards(viewer: Address | null): Promise<FeeRewardsPayload> {
+  const account = normalizeViewer(viewer);
+  const snapshot = await cachedPublicFeeRewards();
+  assertSharedSnapshotFresh(snapshot);
+  return attachViewer(snapshot, account);
 }

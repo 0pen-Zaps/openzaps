@@ -77,8 +77,9 @@ export default async function PotPage(): Promise<React.JSX.Element> {
             <h2 className={styles.noteTitle}>No owner drain</h2>
             <p className={styles.noteBody}>
               Winner selection is governance-gated and the pot has no owner drain path. The token
-              alone confers no yield, equity, revenue claim, governance, or protocol access. The separate fee campaign
-              benefits only tokens deliberately staked into its fixed contract.
+              alone confers no yield, equity, revenue claim, governance, or protocol access. The first fee campaign
+              was limited to eligible deposits made during its fixed Aug 3–10, 2026 staking window; /rewards shows its
+              current phase and claim deadline.
             </p>
             <Link className={styles.noteLink} href="/zap?view=automate">
               Create an automated Zap →

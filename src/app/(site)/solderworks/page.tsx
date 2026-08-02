@@ -189,8 +189,8 @@ export default function SolderworksPage(): React.JSX.Element {
           <h2>Sinks and incentives for performed actions — nothing else.</h2>
           <p>
             {TOKEN.symbol} would gain burn sinks and a way to compensate real executions. It would gain no governance,
-            no protocol access, and no automatic claim on any asset. Today&apos;s separate fee campaign benefits only
-            tokens deliberately staked into its fixed contract; SOLDERWORKS would not change those terms. Creating,
+            no protocol access, and no automatic claim on any asset. The first fee campaign was limited to eligible
+            deposits made during its fixed Aug 3–10, 2026 window; SOLDERWORKS would not change those terms. Creating,
             funding, executing, and recovering a Zap never require holding it.
           </p>
         </header>
@@ -240,8 +240,9 @@ export default function SolderworksPage(): React.JSX.Element {
           result depends on chance. Any future payment would compensate executed onchain actions; it would not be yield,
           interest, or a return on holding any token. This page describes a design under review — not a live product,
           not an offer, and not financial advice. {TOKEN.symbol} ownership alone has no claim on revenue, yield, or
-          assets; the separate fixed campaign distributes WETH accounted under its own terms. Its configured harvest
-          path collects Clanker fees, while direct WETH transfers can also be synchronized. Onchain actions are
+          assets; the first fixed campaign was configured to allocate WETH under its Aug 3–10, 2026 terms. Its harvest
+          path was configured for Clanker fees, while direct WETH transfers can also be synchronized; /rewards shows
+          the current phase and claim deadline. Onchain actions are
           irreversible, and the OpenZap contracts have not been externally audited.
         </p>
         <div className={styles.actions}>

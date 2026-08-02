@@ -7,7 +7,7 @@ const BLOCK_HASH = `0x${"a".repeat(64)}` as const;
 const REORG_HASH = `0x${"b".repeat(64)}` as const;
 const DOMAIN_HASH = `0x${"d".repeat(64)}` as const;
 
-const { clientMock, keccak256Mock, hashDomainMock } = vi.hoisted(() => ({
+const { clientMock, keccak256Mock, hashDomainMock, cacheState } = vi.hoisted(() => ({
   clientMock: {
     getChainId: vi.fn(),
     getBlock: vi.fn(),
@@ -16,6 +16,7 @@ const { clientMock, keccak256Mock, hashDomainMock } = vi.hoisted(() => ({
   },
   keccak256Mock: vi.fn(),
   hashDomainMock: vi.fn(),
+  cacheState: { value: null as unknown },
 }));
 
 vi.mock("viem", async (importOriginal) => {
@@ -29,7 +30,12 @@ vi.mock("viem", async (importOriginal) => {
   };
 });
 
-import { fetchFeeRewards } from "@/lib/rewards-server";
+vi.mock("next/cache", () => ({
+  unstable_cache: (read: () => Promise<unknown>) => async () =>
+    cacheState.value ?? read(),
+}));
+
+import { fetchFeeRewards, fetchFeeRewardsUncached } from "@/lib/rewards-server";
 
 const address = (value: unknown): string => String(value).toLowerCase();
 
@@ -158,9 +164,10 @@ function mockReadContract(call: {
   throw new Error(`Unexpected read: ${call.address} ${call.functionName}`);
 }
 
-describe("fetchFeeRewards", () => {
+describe("fetchFeeRewardsUncached", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    cacheState.value = null;
     clientMock.getChainId.mockResolvedValue(FEE_REWARDS_MANIFEST.chainId);
     clientMock.getBlock.mockImplementation(async (request: { blockTag?: string; blockNumber?: bigint }) => ({
       number: request.blockTag ? BLOCK_NUMBER : request.blockNumber,
@@ -184,7 +191,7 @@ describe("fetchFeeRewards", () => {
   });
 
   it("returns one JSON-safe anonymous snapshot with every read pinned", async () => {
-    const payload = await fetchFeeRewards(null);
+    const payload = await fetchFeeRewardsUncached(null);
 
     expect(payload.phase).toBe("upcoming");
     expect(payload.viewer).toBeNull();
@@ -203,7 +210,7 @@ describe("fetchFeeRewards", () => {
 
   it("includes the complete viewer position at that same block", async () => {
     const viewer = "0x0000000000000000000000000000000000000001";
-    const payload = await fetchFeeRewards(viewer);
+    const payload = await fetchFeeRewardsUncached(viewer);
 
     expect(payload.viewer).toEqual({
       account: viewer,
@@ -222,9 +229,64 @@ describe("fetchFeeRewards", () => {
     }
   });
 
+  it("reuses the verified public snapshot and reads only private viewer state", async () => {
+    const snapshot = await fetchFeeRewardsUncached(null);
+    cacheState.value = snapshot;
+    vi.clearAllMocks();
+
+    const payload = await fetchFeeRewards(
+      "0x0000000000000000000000000000000000000001",
+    );
+
+    expect(payload.viewer?.earnedWeth).toBe("17");
+    expect(clientMock.getBytecode).not.toHaveBeenCalled();
+    expect(clientMock.readContract).toHaveBeenCalledTimes(9);
+    for (const [call] of clientMock.readContract.mock.calls) {
+      expect(call.blockNumber).toBe(BLOCK_NUMBER);
+    }
+    expect(clientMock.getBlock).toHaveBeenCalledTimes(1);
+    expect(clientMock.getBlock).toHaveBeenCalledWith({ blockNumber: BLOCK_NUMBER });
+  });
+
+  it("rejects an old shared snapshot before any private wallet reads", async () => {
+    const snapshot = await fetchFeeRewardsUncached(null);
+    cacheState.value = {
+      ...snapshot,
+      readAt: new Date(Date.now() - 31_000).toISOString(),
+    };
+    vi.clearAllMocks();
+
+    await expect(
+      fetchFeeRewards("0x0000000000000000000000000000000000000001"),
+    ).rejects.toThrow("shared rewards snapshot is too old");
+    expect(clientMock.getChainId).not.toHaveBeenCalled();
+    expect(clientMock.getBlock).not.toHaveBeenCalled();
+    expect(clientMock.readContract).not.toHaveBeenCalled();
+  });
+
+  it("rejects a snapshot that ages out while private wallet reads are running", async () => {
+    const snapshot = await fetchFeeRewardsUncached(null);
+    cacheState.value = snapshot;
+    vi.clearAllMocks();
+    const acceptedAt = Date.parse(snapshot.readAt) + 1_000;
+    const now = vi.spyOn(Date, "now")
+      .mockReturnValueOnce(acceptedAt)
+      .mockReturnValueOnce(acceptedAt + 31_000);
+
+    try {
+      await expect(
+        fetchFeeRewards("0x0000000000000000000000000000000000000001"),
+      ).rejects.toThrow("shared rewards snapshot is too old");
+      expect(clientMock.readContract).toHaveBeenCalled();
+      expect(clientMock.getBlock).toHaveBeenCalledWith({ blockNumber: BLOCK_NUMBER });
+    } finally {
+      now.mockRestore();
+    }
+  });
+
   it("rejects a runtime mismatch instead of returning partial state", async () => {
     keccak256Mock.mockReturnValue(`0x${"f".repeat(64)}`);
-    await expect(fetchFeeRewards(null)).rejects.toThrow("runtime identity");
+    await expect(fetchFeeRewardsUncached(null)).rejects.toThrow("runtime identity");
   });
 
   it("rejects a canonical hash change after the reads", async () => {
@@ -233,7 +295,7 @@ describe("fetchFeeRewards", () => {
       hash: request.blockTag ? BLOCK_HASH : REORG_HASH,
       timestamp: FEE_REWARDS_MANIFEST.campaign.startAt - 60n,
     }));
-    await expect(fetchFeeRewards(null)).rejects.toThrow("pinned Robinhood block changed");
+    await expect(fetchFeeRewardsUncached(null)).rejects.toThrow("pinned Robinhood block changed");
   });
 
   it("rejects a single failed contract read instead of substituting zero", async () => {
@@ -241,6 +303,6 @@ describe("fetchFeeRewards", () => {
       if (call.functionName === "totalStaked") throw new Error("RPC unavailable");
       return mockReadContract(call);
     });
-    await expect(fetchFeeRewards(null)).rejects.toThrow("RPC unavailable");
+    await expect(fetchFeeRewardsUncached(null)).rejects.toThrow("RPC unavailable");
   });
 });

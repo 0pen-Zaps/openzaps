@@ -92,6 +92,43 @@ const WORKSPACES: readonly { id: RewardsWorkspaceName; label: string; hint: stri
 ];
 
 const STAKE_DECIMALS = 18;
+const POST_RECEIPT_REFRESH_ATTEMPTS = 8;
+const POST_RECEIPT_REFRESH_DELAY_MS = 2_000;
+
+export type RewardsClaimLifecycle = "open" | "expired" | "swept";
+
+export function rewardsClaimLifecycle(
+  blockTimestamp: bigint,
+  rewardsSwept: boolean,
+): RewardsClaimLifecycle {
+  if (rewardsSwept) return "swept";
+  return blockTimestamp <= FEE_REWARDS_MANIFEST.campaign.claimDeadline ? "open" : "expired";
+}
+
+export function rewardsBalanceLabel(lifecycle: RewardsClaimLifecycle): string {
+  if (lifecycle === "open") return "Claimable now";
+  if (lifecycle === "swept") return "Accrued — rewards swept";
+  return "Accrued — claim expired";
+}
+
+export function sponsoredClaimReady(
+  currentLifecycle: RewardsClaimLifecycle,
+  previewLifecycle: RewardsClaimLifecycle,
+  earned: bigint,
+  beneficiaryMatches: boolean,
+): boolean {
+  return currentLifecycle === "open"
+    && previewLifecycle === "open"
+    && earned > 0n
+    && beneficiaryMatches;
+}
+
+export function snapshotIncludesBlock(
+  snapshot: FeeRewardsPayload,
+  minimumBlock: bigint,
+): boolean {
+  return BigInt(snapshot.headBlock) >= minimumBlock;
+}
 
 function expectedRuntimeCodeHash(address: Address): Hash | null {
   const normalized = address.toLowerCase();
@@ -158,12 +195,28 @@ export function RewardsWorkspace({
     }
   }, [fetchSnapshot]);
 
+  const refreshThroughBlock = useCallback(async (
+    viewer: Address,
+    minimumBlock: bigint,
+  ): Promise<boolean> => {
+    for (let attempt = 0; attempt < POST_RECEIPT_REFRESH_ATTEMPTS; attempt += 1) {
+      const snapshot = await load(viewer);
+      if (snapshot && snapshotIncludesBlock(snapshot, minimumBlock)) return true;
+      if (attempt + 1 < POST_RECEIPT_REFRESH_ATTEMPTS) {
+        await new Promise<void>((resolve) => {
+          window.setTimeout(resolve, POST_RECEIPT_REFRESH_DELAY_MS);
+        });
+      }
+    }
+    return false;
+  }, [load]);
+
   useEffect(() => {
     let cancelled = false;
     queueMicrotask(() => {
       if (!cancelled) void load(account);
     });
-    const timer = window.setInterval(() => void load(account), 30_000);
+    const timer = window.setInterval(() => void load(account), 60_000);
     return () => {
       cancelled = true;
       window.clearInterval(timer);
@@ -259,9 +312,20 @@ export function RewardsWorkspace({
         return false;
       }
 
+      const caughtUp = await refreshThroughBlock(account, receipt.blockNumber);
+      if (!caughtUp) {
+        const catchingUp = `${request.verifiedMessage} The shared position snapshot has not reached the receipt block yet, so further writes are paused while it catches up.`;
+        setState((current) => current.status === "ready"
+          ? { ...current, staleSince: current.staleSince ?? new Date().toISOString() }
+          : current);
+        setAction({ stage: "verified", label: request.label, hash: submittedHash, message: catchingUp });
+        setNotice(catchingUp);
+        // The submitted transaction succeeded, but false prevents a caller
+        // such as approve→stake from chaining a second write against old state.
+        return false;
+      }
       setAction({ stage: "verified", label: request.label, hash: submittedHash, message: request.verifiedMessage });
       setNotice(request.verifiedMessage);
-      await load(account);
       return true;
     } catch (cause) {
       const message = readableError(cause);
@@ -278,7 +342,7 @@ export function RewardsWorkspace({
     } finally {
       setBusy(null);
     }
-  }, [account, load, walletClients, writesEnabled]);
+  }, [account, load, refreshThroughBlock, walletClients, writesEnabled]);
 
   const failBeforeSubmission = useCallback((label: string, cause: unknown): void => {
     setAction({ stage: "not-submitted", label, hash: null, message: "Nothing was submitted." });
@@ -289,7 +353,9 @@ export function RewardsWorkspace({
   const data = state.status === "ready" ? state.data : null;
   const viewer = data?.viewer ?? null;
   const canStake = data?.phase === "upcoming" || data?.phase === "active";
-  const withinClaimWindow = data ? BigInt(data.blockTimestamp) <= FEE_REWARDS_MANIFEST.campaign.claimDeadline : false;
+  const claimLifecycle = data
+    ? rewardsClaimLifecycle(BigInt(data.blockTimestamp), data.campaign.rewardsSwept)
+    : "expired";
 
   const parsedStakeAmount = useMemo(() => parsePositiveAmount(stakeAmount), [stakeAmount]);
   const parsedWithdrawAmount = useMemo(() => parsePositiveAmount(withdrawAmount), [withdrawAmount]);
@@ -438,7 +504,17 @@ export function RewardsWorkspace({
   }, [account, failBeforeSubmission, parsedWithdrawAmount, runContract, viewer, walletClients]);
 
   const claimSelf = useCallback(async (): Promise<void> => {
-    if (!account || !viewer) return;
+    if (!account || !viewer || !data) return;
+    const currentLifecycle = rewardsClaimLifecycle(
+      BigInt(data.blockTimestamp),
+      data.campaign.rewardsSwept,
+    );
+    if (currentLifecycle !== "open") {
+      setError(currentLifecycle === "swept"
+        ? "Campaign rewards have been swept. No WETH claim can be submitted."
+        : "The claim deadline has passed. Accrued WETH is no longer claimable.");
+      return;
+    }
     try {
       const { publicClient } = await walletClients();
       const [before, earnedBefore] = await Promise.all([
@@ -464,7 +540,7 @@ export function RewardsWorkspace({
     } catch (cause) {
       failBeforeSubmission("Claim WETH rewards", cause);
     }
-  }, [account, failBeforeSubmission, runContract, viewer, walletClients]);
+  }, [account, data, failBeforeSubmission, runContract, viewer, walletClients]);
 
   const operate = useCallback(async (kind: "harvest" | "sync" | "checkpoint" | "finalize" | "sweep"): Promise<void> => {
     const calls = {
@@ -544,10 +620,24 @@ export function RewardsWorkspace({
 
   const claimBeneficiary = useCallback(async (): Promise<void> => {
     const preview = beneficiarySnapshot?.viewer;
-    if (!preview) return;
+    if (!preview || !beneficiarySnapshot || !data) return;
     if (!isAddress(beneficiary) || getAddress(beneficiary).toLowerCase() !== preview.account.toLowerCase()) {
       setBeneficiarySnapshot(null);
       setError("The beneficiary changed after preview. Verify the current address again before claiming.");
+      return;
+    }
+    const currentLifecycle = rewardsClaimLifecycle(
+      BigInt(data.blockTimestamp),
+      data.campaign.rewardsSwept,
+    );
+    const previewLifecycle = rewardsClaimLifecycle(
+      BigInt(beneficiarySnapshot.blockTimestamp),
+      beneficiarySnapshot.campaign.rewardsSwept,
+    );
+    if (currentLifecycle !== "open" || previewLifecycle !== "open") {
+      setError(currentLifecycle === "swept" || previewLifecycle === "swept"
+        ? "Campaign rewards have been swept. No sponsored claim can be submitted."
+        : "The claim deadline has passed. No sponsored claim can be submitted.");
       return;
     }
     const target = preview.account;
@@ -583,7 +673,7 @@ export function RewardsWorkspace({
     } catch (cause) {
       failBeforeSubmission("Claim for beneficiary", cause);
     }
-  }, [beneficiary, beneficiarySnapshot, failBeforeSubmission, fetchSnapshot, runContract, walletClients]);
+  }, [beneficiary, beneficiarySnapshot, data, failBeforeSubmission, fetchSnapshot, runContract, walletClients]);
 
   const connectWallet = useCallback(async (): Promise<void> => {
     setBusy("Connect wallet");
@@ -616,12 +706,13 @@ export function RewardsWorkspace({
       <div className={styles.heroGrid}>
         <div className={styles.heroCopy}>
           <span className={styles.eyebrow}>TOKENIZED FEES · ROBINHOOD CHAIN</span>
-          <h1 className={styles.title}>Stake into one fixed fee campaign.</h1>
+          <h1 className={styles.title}>Inspect the first fixed fee campaign.</h1>
           <p className={styles.lede}>
-            Holding 0xZAPS alone grants no fee rights. This separate contract holds 50 of 100 tokenized fee shares and
-            distributes their harvested WETH to wallets that deliberately stake during its seven-day window. Claims
-            are funded through WETH the campaign accounts for. Its configured harvest source is Clanker fees; this UI
-            never asks for or spends the sponsor&apos;s WETH.
+            Holding 0xZAPS alone grants no fee rights. This separate contract was funded at launch with 50 of 100
+            tokenized fee shares and is configured to allocate campaign-accounted WETH by time-weighted stake during
+            its seven-day window. Its harvest source was configured for Clanker fees; direct WETH transfers can also
+            be synchronized, and this UI never asks for or spends the sponsor&apos;s WETH. Live principal and settlement
+            state are shown below.
           </p>
           <SettlementRail data={data} />
         </div>
@@ -661,6 +752,7 @@ export function RewardsWorkspace({
               account={account}
               actionBusy={busy}
               canStake={canStake}
+              claimLifecycle={claimLifecycle}
               data={data}
               isRobinhoodChain={isRobinhoodChain}
               parsedStakeAmount={parsedStakeAmount}
@@ -669,7 +761,6 @@ export function RewardsWorkspace({
               stakeAmount={stakeAmount}
               walletStatus={walletStatus}
               withdrawAmount={withdrawAmount}
-              withinClaimWindow={withinClaimWindow}
               writesEnabled={writesEnabled}
               onApproveAndStake={() => void approveAndStake()}
               onClaim={() => void claimSelf()}
@@ -779,6 +870,7 @@ type EarnProps = {
   account: Address | null;
   actionBusy: string | null;
   canStake: boolean;
+  claimLifecycle: RewardsClaimLifecycle;
   data: FeeRewardsPayload;
   isRobinhoodChain: boolean;
   parsedStakeAmount: bigint | null;
@@ -787,7 +879,6 @@ type EarnProps = {
   stakeAmount: string;
   walletStatus: string;
   withdrawAmount: string;
-  withinClaimWindow: boolean;
   writesEnabled: boolean;
   onApproveAndStake: () => void;
   onClaim: () => void;
@@ -811,6 +902,14 @@ function EarnWorkspace(props: EarnProps): React.JSX.Element {
   const stakeBalance = viewer ? BigInt(viewer.tokenBalance) : 0n;
   const staked = viewer ? BigInt(viewer.stakedBalance) : 0n;
   const earned = viewer ? BigInt(viewer.earnedWeth) : 0n;
+  const claimsOpen = props.claimLifecycle === "open";
+  const claimNote = props.claimLifecycle === "swept"
+    ? "Expired campaign rewards have been swept to the fixed sponsor. This accrued figure is not claimable."
+    : props.claimLifecycle === "expired"
+      ? "The claim deadline has passed. This accrued figure is no longer claimable and may be swept to the fixed sponsor."
+      : earned === 0n
+        ? "No WETH is currently claimable at the verified block."
+        : "The caller cannot change the payout address; WETH goes to your connected account.";
   return (
     <section id="rewards-panel-earn" aria-labelledby="rewards-tab-earn" className={styles.workspace} role="tabpanel">
       <div className={styles.walletBar}>
@@ -833,13 +932,18 @@ function EarnWorkspace(props: EarnProps): React.JSX.Element {
       <dl className={styles.positionGrid}>
         <div><dt>Available</dt><dd>{viewer ? formatAmount(viewer.tokenBalance, "0xZAPS") : "—"}</dd></div>
         <div><dt>Staked principal</dt><dd>{viewer ? formatAmount(viewer.stakedBalance, "0xZAPS") : "—"}</dd></div>
-        <div className={styles.rewardStat}><dt>Claimable now</dt><dd>{viewer ? formatAmount(viewer.earnedWeth, "WETH", 8) : "—"}</dd></div>
+        <div className={styles.rewardStat}><dt>{rewardsBalanceLabel(props.claimLifecycle)}</dt><dd>{viewer ? formatAmount(viewer.earnedWeth, "WETH", 8) : "—"}</dd></div>
         <div><dt>Campaign total</dt><dd>{formatAmount(props.data.campaign.totalStaked, "0xZAPS")}</dd></div>
       </dl>
 
-      <div className={styles.actionGrid}>
+      <aside id="rewards-transaction-risk" className={styles.riskDisclosure} aria-label="Transaction risk">
+        <Glyph name="alert" />
+        <p><strong>These contracts have not been externally audited.</strong> Staking and other transactions put funds at risk and are irreversible once confirmed. Withdrawals are governed by contract state. Unclaimed rewards expire at the claim deadline.</p>
+      </aside>
+
+      <div className={styles.actionGrid} aria-describedby="rewards-transaction-risk">
         <article className={styles.actionCard}>
-          <header><span className={styles.cardIcon}><Glyph name="lock" /></span><div><h2>Stake 0xZAPS</h2><p>Principal stays withdrawable. Rewards use time-weighted stake through the fixed end.</p></div></header>
+          <header><span className={styles.cardIcon}><Glyph name="lock" /></span><div><h2>Stake 0xZAPS</h2><p>Deposited principal remains governed by the campaign contract and its withdrawal functions. Rewards use time-weighted stake through the fixed end.</p></div></header>
           {props.data.phase === "upcoming" ? <p className={styles.closedNote}>Pre-staking is open. Reward accounting begins at the fixed campaign start, not when tokens are deposited.</p> : null}
           <label className={styles.amountField}>
             <span>Amount</span>
@@ -859,8 +963,8 @@ function EarnWorkspace(props: EarnProps): React.JSX.Element {
 
         <article className={styles.actionCard}>
           <header><span className={styles.cardIcon}><Glyph name="coins" /></span><div><h2>Claim or withdraw</h2><p>Claims pay WETH to the beneficiary. Withdrawals return only your 0xZAPS principal.</p></div></header>
-          <button className={styles.primaryButton} disabled={!props.writesEnabled || !connected || !props.withinClaimWindow || earned === 0n || props.actionBusy !== null} onClick={props.onClaim} type="button"><Glyph name="download" />{props.actionBusy === "Claim WETH rewards" ? "Claiming…" : "Claim WETH"}</button>
-          <p className={styles.actionNote}>{earned === 0n ? "No WETH is currently claimable at the verified block." : "The caller cannot change the payout address; WETH goes to your connected account."}</p>
+          <button className={styles.primaryButton} disabled={!props.writesEnabled || !connected || !claimsOpen || earned === 0n || props.actionBusy !== null} onClick={props.onClaim} type="button"><Glyph name="download" />{props.actionBusy === "Claim WETH rewards" ? "Claiming…" : "Claim WETH"}</button>
+          <p className={styles.actionNote}>{claimNote}</p>
           <label className={styles.amountField}>
             <span>Principal to withdraw</span>
             <div><input inputMode="decimal" placeholder="0.0" value={props.withdrawAmount} onChange={(event) => props.onSetWithdrawAmount(event.target.value)} /><button type="button" onClick={() => props.onSetWithdrawAmount(formatUnits(staked, STAKE_DECIMALS))}>MAX</button><em>0xZAPS</em></div>
@@ -910,11 +1014,24 @@ function OperateWorkspace({
   const canFinalize = data.campaign.feeSharesFunded && !data.campaign.finalized && timestamp > FEE_REWARDS_MANIFEST.campaign.endAt;
   const canSweep = data.campaign.finalized && !data.campaign.rewardsSwept && timestamp > FEE_REWARDS_MANIFEST.campaign.claimDeadline;
   const canCheckpoint = timestamp >= FEE_REWARDS_MANIFEST.campaign.startAt && !data.campaign.rewardsSwept;
+  const currentClaimLifecycle = rewardsClaimLifecycle(timestamp, data.campaign.rewardsSwept);
   const beneficiaryEarned = beneficiarySnapshot?.viewer ? BigInt(beneficiarySnapshot.viewer.earnedWeth) : 0n;
+  const beneficiaryClaimLifecycle = beneficiarySnapshot
+    ? rewardsClaimLifecycle(
+        BigInt(beneficiarySnapshot.blockTimestamp),
+        beneficiarySnapshot.campaign.rewardsSwept,
+      )
+    : currentClaimLifecycle;
   const beneficiaryMatches = Boolean(
     beneficiarySnapshot?.viewer
     && isAddress(beneficiary)
     && getAddress(beneficiary).toLowerCase() === beneficiarySnapshot.viewer.account.toLowerCase(),
+  );
+  const canPayBeneficiary = sponsoredClaimReady(
+    currentClaimLifecycle,
+    beneficiaryClaimLifecycle,
+    beneficiaryEarned,
+    beneficiaryMatches,
   );
   const retainedClaimable = BigInt(data.vault.sponsorClaimableWeth);
   return (
@@ -947,13 +1064,14 @@ function OperateWorkspace({
           <p className={styles.actionNote}>Anyone may pay gas, but WETH can only go to {short(FEE_REWARDS_MANIFEST.campaign.sponsor)}.</p>
         </article>
         <article className={styles.operatorCard}>
-          <header><Glyph name="hand" /><div><h3>Sponsor a user claim</h3><p>Remove claim friction without taking custody or changing the beneficiary.</p></div></header>
+          <header><Glyph name="hand" /><div><h3>Sponsor a user claim</h3><p>{currentClaimLifecycle === "open" ? "Remove claim friction without taking custody or changing the beneficiary." : "The claim window is closed. Preview remains available for proof, but no claim can be submitted."}</p></div></header>
           <label className={styles.beneficiaryField}><span>Beneficiary</span><input placeholder="0x…" value={beneficiary} onChange={(event) => onBeneficiaryChange(event.target.value)} /></label>
           <div className={styles.buttonRow}>
             <button className={styles.secondaryButton} disabled={busy !== null || !isAddress(beneficiary)} onClick={onPreviewBeneficiary} type="button">Preview claim</button>
-            <button className={styles.primaryCompact} disabled={!writesEnabled || !connected || busy !== null || beneficiaryEarned === 0n || !beneficiaryMatches} onClick={onClaimBeneficiary} type="button">Pay beneficiary</button>
+            <button className={styles.primaryCompact} disabled={!writesEnabled || !connected || busy !== null || !canPayBeneficiary} onClick={onClaimBeneficiary} type="button">Pay beneficiary</button>
           </div>
-          {beneficiarySnapshot?.viewer ? <p className={styles.beneficiaryRead}>Verified for {short(beneficiarySnapshot.viewer.account)}: <strong>{formatAmount(beneficiarySnapshot.viewer.earnedWeth, "WETH", 8)}</strong> at block {Number(beneficiarySnapshot.headBlock).toLocaleString("en-US")}.</p> : null}
+          {currentClaimLifecycle !== "open" ? <p className={styles.closedNote}>{currentClaimLifecycle === "swept" ? "Expired rewards have already been swept; sponsored claims are permanently closed." : "The claim deadline has passed; accrued amounts are no longer claimable."}</p> : null}
+          {beneficiarySnapshot?.viewer ? <p className={styles.beneficiaryRead}>Verified for {short(beneficiarySnapshot.viewer.account)}: <strong>{formatAmount(beneficiarySnapshot.viewer.earnedWeth, "WETH", 8)}</strong> {beneficiaryClaimLifecycle === "open" ? "claimable" : beneficiaryClaimLifecycle === "swept" ? "accrued before rewards were swept" : "accrued, but expired"} at block {Number(beneficiarySnapshot.headBlock).toLocaleString("en-US")}.</p> : null}
         </article>
       </div>
       {!connected ? <div className={styles.boundary}><Glyph name="wallet" /><p>Connect a wallet on chain 4663 to submit upkeep. Inspection remains public; connecting grants no operator role or withdrawal authority.</p></div> : null}

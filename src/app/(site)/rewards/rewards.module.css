@@ -675,6 +675,7 @@
   margin-top: 11px;
 }
 
+.riskDisclosure,
 .boundary,
 .success,
 .error,
@@ -683,6 +684,26 @@
   align-items: flex-start;
   gap: 10px;
   border-radius: var(--r-card-sm);
+}
+
+.riskDisclosure {
+  padding: 12px 14px;
+  border: 1px solid var(--warn);
+  background: var(--warn-wash);
+  color: var(--warn);
+}
+
+.riskDisclosure svg {
+  width: 17px;
+  height: 17px;
+  flex: 0 0 auto;
+  margin-top: 1px;
+}
+
+.riskDisclosure p {
+  margin: 0;
+  font-size: 11px;
+  line-height: 1.55;
 }
 
 .boundary {
