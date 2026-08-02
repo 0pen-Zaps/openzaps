@@ -9,6 +9,7 @@ import {
   SourceControlledTutorialManifestSchema,
   loadSourceControlledTutorialApprovalBundle,
 } from "@/lib/marketing/tutorial-handoff-source";
+import { sanitizeAnalyticsPayload } from "@/lib/analytics";
 
 describe("DeFi Tutorials release manifest", () => {
   it("binds unique entries to source-controlled titles and truthful status fields", () => {
@@ -31,6 +32,44 @@ describe("DeFi Tutorials release manifest", () => {
         expect(bundle.sourcePath).toBe(tutorial.sourcePath);
         expect(bundle.title).toBe(tutorial.title);
         expect(bundle.modelRewriteAllowed).toBe(false);
+
+        const openZapsLinks = bundle.links
+          .map((link) => new URL(link))
+          .filter((url) =>
+            ["0xzaps.com", "www.0xzaps.com"].includes(url.hostname),
+          );
+        expect(openZapsLinks.length, tutorial.sourcePath).toBeGreaterThan(0);
+        for (const url of openZapsLinks) {
+          expect(url.searchParams.get("utm_source"), url.toString()).toBe(
+            "substack",
+          );
+          expect(url.searchParams.get("utm_medium"), url.toString()).toBe(
+            "email",
+          );
+          expect(url.searchParams.get("utm_campaign"), url.toString()).toBe(
+            `defitutorials-${tutorial.id}`,
+          );
+          expect([...url.searchParams.keys()].sort(), url.toString()).toEqual([
+            "utm_campaign",
+            "utm_content",
+            "utm_medium",
+            "utm_source",
+          ]);
+          expect(
+            sanitizeAnalyticsPayload({
+              source: url.searchParams.get("utm_source") ?? undefined,
+              medium: url.searchParams.get("utm_medium") ?? undefined,
+              campaign: url.searchParams.get("utm_campaign") ?? undefined,
+              content: url.searchParams.get("utm_content") ?? undefined,
+            }),
+            url.toString(),
+          ).toEqual({
+            source: "substack",
+            medium: "email",
+            campaign: "tutorial_update",
+            content: url.searchParams.get("utm_content"),
+          });
+        }
       }
     }
   });

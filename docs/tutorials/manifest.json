@@ -22,8 +22,8 @@
       "subtitle": "Test an agentic DeFi workflow without a wallet, then turn it into a human-reviewed OpenZaps authority map",
       "tags": ["DeFi", "AI agents", "OpenZaps", "Risk management"],
       "sourcePath": "docs/tutorials/paper-trade-first-authority-map.md",
-      "sourceSha256": "59b6319bddf143010a3ce3563a1a6ff5a4715b52452360db0cab06144f84606d",
-      "bodySha256": "6398a978bbdfd4e419c40d5f6f145e200a8d325a4f462dbbd7499d37e00a3628",
+      "sourceSha256": "e2e7e9539ec084d3fbd1f87de24ac97894a7337c15d705a17716d48989808aef",
+      "bodySha256": "362f181d2a18ce6d08fd239e76aa2c860133870f3784078accce22c92976b004",
       "topics": ["protocol", "simulation", "trading", "security"],
       "disclosures": ["pre_audit"],
       "claims": [

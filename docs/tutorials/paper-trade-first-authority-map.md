@@ -24,8 +24,8 @@ First, paper trade the route. Then write down the exact action that succeeded or
 
 OpenZaps now has two wallet-free surfaces for this sequence:
 
-- [Virtual Trading](https://www.0xzaps.com/virtual-trading) for testing the market hypothesis with virtual funds.
-- [Request a Zap](https://www.0xzaps.com/request-a-zap) for turning one workflow into a human-reviewed authority map.
+- [Virtual Trading](https://www.0xzaps.com/virtual-trading?utm_source=substack&utm_medium=email&utm_campaign=defitutorials-paper-trade-first-authority-map&utm_content=virtual_trading) for testing the market hypothesis with virtual funds.
+- [Request a Zap](https://www.0xzaps.com/request-a-zap?utm_source=substack&utm_medium=email&utm_campaign=defitutorials-paper-trade-first-authority-map&utm_content=tutorial) for turning one workflow into a human-reviewed authority map.
 
 Neither surface creates a Zap, signs a transaction, deposits funds, or authorizes an agent.
 
@@ -84,7 +84,7 @@ This is the important shift: the agent may hold the trigger, but the signed poli
 
 ## Use Request a Zap as a design review
 
-Once the map is specific, open [Request a Zap](https://www.0xzaps.com/request-a-zap).
+Once the map is specific, open [Request a Zap](https://www.0xzaps.com/request-a-zap?utm_source=substack&utm_medium=email&utm_campaign=defitutorials-paper-trade-first-authority-map&utm_content=tutorial).
 
 The request asks for one workflow, its trigger, the protocols or assets involved, the guardrails, and the intended timeline. Share the workflow, not private keys, API keys, wallet secrets, or confidential strategy data.
 
@@ -137,8 +137,8 @@ Start without a wallet. Earn precision before authority.
 
 ## Try the two-step workflow
 
-- [Practice in Virtual Trading](https://www.0xzaps.com/virtual-trading)
-- [Request a human-reviewed Zap authority map](https://www.0xzaps.com/request-a-zap)
+- [Practice in Virtual Trading](https://www.0xzaps.com/virtual-trading?utm_source=substack&utm_medium=email&utm_campaign=defitutorials-paper-trade-first-authority-map&utm_content=virtual_trading)
+- [Request a human-reviewed Zap authority map](https://www.0xzaps.com/request-a-zap?utm_source=substack&utm_medium=email&utm_campaign=defitutorials-paper-trade-first-authority-map&utm_content=tutorial)
 - [Read the OpenZaps security policy](https://github.com/0pen-Zaps/openzaps/blob/main/SECURITY.md)
 
 *Not financial advice. No return, execution, integration, audit, or safety guarantee is implied.*

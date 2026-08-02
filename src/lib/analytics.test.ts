@@ -199,6 +199,16 @@ describe("analytics privacy boundary", () => {
     ).toBe("openzaps|website|request_a_zap|learn_hub");
   });
 
+  it("reduces DeFi Tutorials links to anonymous tutorial attribution", () => {
+    stubBrowser();
+
+    expect(
+      captureAnalyticsAttribution(
+        "?utm_source=substack&utm_medium=email&utm_campaign=defitutorials-paper-trade-first-authority-map&utm_content=virtual_trading",
+      ),
+    ).toBe("substack|email|tutorial_update|virtual_trading");
+  });
+
   it("uses two intentional properties when no acquisition is available", () => {
     expect(
       providerAnalyticsPayload(
