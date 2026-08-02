@@ -80,6 +80,11 @@ const utility: readonly { title: string; where: keyof typeof WHERE; body: string
     body: "Hold 100,000+ 0xZAPS in the connected wallet and the app auto-refreshes live quotes, keeps 50 saved Zaps instead of 20, retains 100 receipts instead of 20, and enables receipt JSON export. At 1,000,000+ the saved-Zap limit is 100. The app reads the balance; the contracts never do.",
   },
   {
+    title: "A separate fixed fee campaign accepts it as stake",
+    where: "contracts",
+    body: "One identified seven-day campaign accepts deliberately staked 0xZAPS and uses its 50 tokenized fee shares to distribute campaign-accounted WETH by time-weighted stake. Its configured harvest path collects Clanker fees, and this site never asks for or spends sponsor-wallet WETH; the contract can also synchronize WETH sent directly to it. Holding the token outside that contract earns nothing.",
+  },
+  {
     title: "Wallet-readable ERC-20",
     where: "wallet",
     body: `Use the exact ${TOKEN_LAUNCH.network} address, ${TOKEN.decimals} decimals, and the add-to-wallet button on this page. Wallet support varies.`,
@@ -159,9 +164,10 @@ export default function TokenPage(): React.JSX.Element {
         <div className={styles.col}>
           <h1 className={`${styles.title} gradientText`}>{TOKEN.symbol}</h1>
           <p className={styles.lede}>
-            The ERC-20 paired with aeWETH in the protocol&apos;s first live route. It confers no yield, equity, revenue
-            claim, governance, or protocol access — every core workflow works without holding it. Verify the exact
-            contract on {TOKEN_LAUNCH.network} before you trade it or add it to a wallet.
+            The ERC-20 paired with aeWETH in the protocol&apos;s first live route. Ownership alone confers no yield,
+            equity, revenue claim, governance, or protocol access — every core workflow works without holding it. A
+            separate fixed campaign can reward wallets that deliberately stake into its identified contract. Verify
+            the exact token and campaign contracts on {TOKEN_LAUNCH.network} before signing.
           </p>
 
           <section className={styles.facts} id="token" aria-label={`${TOKEN.symbol} token facts`}>
@@ -246,9 +252,14 @@ export default function TokenPage(): React.JSX.Element {
               <span>· The pinned live routes trade it</span>
               <span>· The creation fee converts into it</span>
               <span>· The lottery pot accrues it</span>
+              <span>· A fixed fee campaign accepts it as stake</span>
             </div>
             <Link className={styles.railNoteLink} href="/token#utilities">
               All current utility <span aria-hidden>↓</span>
+            </Link>
+            <br />
+            <Link className={styles.railNoteLink} href="/rewards">
+              Open the fee campaign <span aria-hidden>→</span>
             </Link>
           </section>
         </aside>
@@ -297,9 +308,10 @@ export default function TokenPage(): React.JSX.Element {
           <div className={`${styles.row} ${styles.rowDanger}`}>
             <span className={styles.rowKey}>What it does not grant</span>
             <p className={styles.rowBody}>
-              The token grants no protocol governance, staking, revenue, yield, equity, or fee rights. It is not
-              equity and no return is implied. Every core workflow — create, fund, execute, recover — works without
-              holding it, and the app conveniences above are not protocol rights.
+              Ownership alone grants no protocol governance, automatic staking benefit, revenue claim, yield, equity,
+              or fee right. The separate fixed campaign benefits only tokens deliberately deposited into its contract
+              under its immutable dates and accounting rules. Every core workflow — create, fund, execute, recover —
+              works without holding it, and the app conveniences above are not protocol rights.
             </p>
           </div>
         </div>
@@ -351,8 +363,9 @@ export default function TokenPage(): React.JSX.Element {
           </p>
         </div>
         <p className={styles.footNote}>
-          Not financial advice. {TOKEN.symbol} is an ERC-20 with no claim on revenue, yield, or assets. It is not equity
-          and no return is implied.
+          Not financial advice. {TOKEN.symbol} ownership alone has no claim on revenue, yield, or assets. The separate
+          fee campaign distributes WETH accounted under its fixed contract terms. Its configured harvest path collects
+          Clanker fees, but direct WETH transfers can also be synchronized. It is not equity and no return is implied.
         </p>
       </section>
     </main>

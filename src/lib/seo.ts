@@ -111,11 +111,20 @@ export const STATIC_PAGE_SEO = {
   token: {
     title: `${TOKEN.symbol} Token: Contract, Utility & Market`,
     description:
-      `Verify the ${TOKEN.symbol} token contract, utility, official ${TOKEN_LAUNCH.venue} market, and ${CHAIN.name} details. The token grants no revenue, yield, equity, or fee rights.`,
+      `Verify the ${TOKEN.symbol} token contract, utility, ${TOKEN_LAUNCH.venue} market, and ${CHAIN.name} details. Ownership alone grants no automatic revenue, equity, or fee right.`,
     path: "/token",
     ogImage: "/og/token.png",
     changeFrequency: "weekly",
     priority: 0.8,
+  },
+  rewards: {
+    title: "0xZAPS Fee Rewards Campaign",
+    description:
+      "Stake 0xZAPS in a fixed seven-day campaign and claim a proportional share of WETH accounted by its tokenized Clanker fee campaign.",
+    path: "/rewards",
+    ogImage: "/og/token.png",
+    changeFrequency: "daily",
+    priority: 0.85,
   },
   pot: {
     title: "0xZAPS Automation Fee Pot",

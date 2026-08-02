@@ -189,8 +189,9 @@ export default function SolderworksPage(): React.JSX.Element {
           <h2>Sinks and incentives for performed actions — nothing else.</h2>
           <p>
             {TOKEN.symbol} would gain burn sinks and a way to compensate real executions. It would gain no governance,
-            no revenue share, no protocol access, and no claim on any asset — exactly as today. Creating, funding,
-            executing, and recovering a Zap never require holding it.
+            no protocol access, and no automatic claim on any asset. Today&apos;s separate fee campaign benefits only
+            tokens deliberately staked into its fixed contract; SOLDERWORKS would not change those terms. Creating,
+            funding, executing, and recovering a Zap never require holding it.
           </p>
         </header>
         <div className={styles.flows}>
@@ -238,8 +239,10 @@ export default function SolderworksPage(): React.JSX.Element {
           <strong>Every outcome in SOLDERWORKS is deterministic.</strong> Nothing is random, nothing is drawn, and no
           result depends on chance. Any future payment would compensate executed onchain actions; it would not be yield,
           interest, or a return on holding any token. This page describes a design under review — not a live product,
-          not an offer, and not financial advice. {TOKEN.symbol} is an ERC-20 with no claim on revenue, yield, or
-          assets. Onchain actions are irreversible, and the OpenZap contracts have not been externally audited.
+          not an offer, and not financial advice. {TOKEN.symbol} ownership alone has no claim on revenue, yield, or
+          assets; the separate fixed campaign distributes WETH accounted under its own terms. Its configured harvest
+          path collects Clanker fees, while direct WETH transfers can also be synchronized. Onchain actions are
+          irreversible, and the OpenZap contracts have not been externally audited.
         </p>
         <div className={styles.actions}>
           <Link className="btn btnGhost btnLg" href="/zap">

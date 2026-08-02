@@ -20,16 +20,20 @@ export function TokenUtilityPanel({ className = "", id }: TokenUtilityPanelProps
     <section className={`${styles.panel} ${className}`.trim()} id={id} aria-labelledby={id ? `${id}-title` : undefined}>
       <div className={styles.copy}>
         <span className={styles.eyebrow}>Live {TOKEN.symbol} utility</span>
-        <h2 id={id ? `${id}-title` : undefined}>Trade it. Fees convert into it. Hold it for app conveniences.</h2>
+        <h2 id={id ? `${id}-title` : undefined}>Trade it. Use the app. Opt into one fixed fee campaign.</h2>
         <p>
           OpenZaps can buy {TOKEN.symbol} through its pinned aeWETH → {TOKEN.symbol} route. Every Zap contract created
           by the current app converts its visible 0.00001 ETH creation fee into {TOKEN.symbol} atomically. A connected
           wallet holding 100,000+ {TOKEN.symbol} also gets auto-refreshing quotes, more saved Zaps and receipts, and
-          receipt JSON export. Every core workflow stays open without holding the token.
+          receipt JSON export. A separate seven-day campaign holds 50 tokenized Clanker fee shares and distributes
+          campaign-accounted WETH to wallets that deliberately stake {TOKEN.symbol}. Its configured harvest path
+          collects Clanker fees, while direct WETH transfers can also be synchronized. Every core workflow stays
+          open without holding or staking the token.
         </p>
         <div className={styles.actions}>
           <BuyButton destination="openzaps" label={`Zap in to ${TOKEN.symbol}`} />
           <BuyButton label="Buy on Clanker" variant="ghost" />
+          <Link href="/rewards">Fee campaign →</Link>
           <Link href="/token#utilities">Token details →</Link>
         </div>
       </div>
@@ -58,10 +62,16 @@ export function TokenUtilityPanel({ className = "", id }: TokenUtilityPanelProps
           <strong>Operator convenience</strong>
           <p>Raises the app&apos;s saved-zap limit to 100.</p>
         </div>
+        <div>
+          <span>50 / 100 fee shares</span>
+          <strong>Fixed staking campaign</strong>
+          <p>Configured for Clanker fees; this site never asks for or spends sponsor-wallet WETH.</p>
+        </div>
       </div>
 
       <p className={styles.disclaimer}>
-        App conveniences only. No governance, staking, fee share, revenue, yield, equity, or return is represented.
+        Ownership alone grants no governance, automatic staking benefit, fee right, revenue claim, yield, equity, or
+        return. Campaign benefits require a deliberate deposit into the separately identified fixed contract.
       </p>
     </section>
   );
