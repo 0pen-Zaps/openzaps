@@ -157,6 +157,21 @@ describe("0xZAPS fee rewards public surface", () => {
     expect(rollingCss).toContain("content: attr(data-prev)");
   });
 
+  it("routes the explainer's scroll through the motion preference", () => {
+    // Smooth scrolling is a motion source like any animation: calm mode must
+    // jump rather than glide.
+    expect(workspace).toContain('behavior: reducedMotion ? "auto" : "smooth"');
+  });
+
+  it("states the settlement path once, not twice", () => {
+    // The rail diagram and the five-step narration describe the same
+    // pipeline; the rail renders inside the explainer rather than as a
+    // second stacked card above it.
+    expect(workspace).toContain("<SettlementRail data={data} />");
+    expect(workspace.match(/<SettlementRail /gu)?.length).toBe(1);
+    expect(workspace).not.toContain("THE SETTLEMENT RAIL");
+  });
+
   it("never paints text with the brand fill token", () => {
     // --zap is the brand FILL. As a text colour it measures 1.10:1 against
     // --panel on the Ivory and Paper themes — invisible. Accent text uses
