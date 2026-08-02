@@ -103,6 +103,28 @@ X retention cron
 Discord slash-command answers are a separate deterministic FAQ path. They do
 not invoke the model or the approval workflow.
 
+### Source-only fee campaign review
+
+The first fixed 0xZAPS fee campaign is deliberately **not** stored in
+`public.marketing_reviewed_campaigns`. Token and trading material cannot enter
+the weekday automatic lane, and there is no hidden cron or database claim that
+starts either post. The two exact X/Discord artifacts remain source-controlled
+and can be listed for owner review with:
+
+```bash
+npx tsx -e 'import { availableReviewOnlyMarketingCampaigns } from "./src/lib/marketing/scheduled-template.ts"; const now = new Date().toISOString(); console.log(JSON.stringify({ now, campaigns: availableReviewOnlyMarketingCampaigns(now) }, null, 2))'
+```
+
+Their `notBefore` value is `2026-08-03T00:23:00.000Z`, the campaign start, and
+their exclusive `notAfter` value is `2026-08-10T00:23:00.000Z`, the campaign
+end. These are manual-publication guards rather than an automatic schedule. In
+that window, the owner must re-open `/rewards` and
+`/api/protocol/rewards`, confirm the snapshot is in the exact active fixed
+window with the reviewed runtime identities and funding state, approve the
+channel copy, and publish it manually through the intended provider account.
+The source accessor only returns copy for inspection; it does not reserve a
+slot, start a workflow, or call X or Discord.
+
 ## Surfaces and access
 
 | Surface | Purpose | Authentication |
@@ -992,6 +1014,26 @@ curl --fail-with-body --silent --show-error \
   --header "Authorization: Bearer ${MARKETING_OPERATOR_TOKEN}" \
   "${MARKETING_BASE_URL}/api/marketing/status"
 ```
+
+The private status response includes a sanitized `xActivationEvidence` object
+with the exact `@0xzaps` public account binding, the canonical X data-use
+notice, and the source-controlled deterministic prompt and response registry.
+The approval digest covers both every eligible prompt and its exact response;
+changing either invalidates readiness until the new digest is explicitly
+approved. The endpoint never returns a
+provider credential, operator token, mention-hash secret, or configured
+approval value. The `/marketing` operator page parses that object together with
+every `xMentionAutomation` gate, blocker, and bounded `xComplianceHealth` field
+as one fail-closed contract. Missing, contradictory, oversized, or unexpectedly
+shaped evidence invalidates the entire X activation panel.
+
+That panel is evidence-only. It exposes no enable, post, or reply action. Its
+single copy control creates a draft approval packet covering the expected
+identity, exact prompt and response registry and digest, scope, caps, opt-out,
+privacy notice, current blockers, and owner/provider checklist. Automated-label
+visibility and manager linkage plus X API credits/account-spend availability
+always remain explicitly marked **external verification required**; neither a
+local environment attestation nor the private status endpoint proves them.
 
 Verify the current X credential binding without posting:
 

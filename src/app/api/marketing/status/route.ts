@@ -8,6 +8,7 @@ import {
 import { readMarketingConfig } from "@/lib/marketing";
 import { listSourceControlledTutorialSelections } from "@/lib/marketing/tutorial-handoff-source";
 import { readXMentionAutomationConfig } from "@/lib/marketing/x-mentions";
+import { X_MENTION_APPROVAL_REGISTRY } from "@/lib/marketing/x-mention-registry";
 import {
   getMarketingXComplianceHealth,
   marketingXComplianceConfigured,
@@ -16,6 +17,9 @@ import {
 
 export const dynamic = "force-dynamic";
 
+const X_ACCOUNT_ID = /^[1-9][0-9]{0,18}$/u;
+const X_PRIVACY_URL = "https://www.0xzaps.com/legal#request-data";
+
 export async function GET(request: Request): Promise<Response> {
   if (!isMarketingAdminAuthorized(request)) {
     return marketingAdminUnauthorizedResponse();
@@ -23,10 +27,11 @@ export async function GET(request: Request): Promise<Response> {
 
   const config = readMarketingConfig();
   const accountId = process.env.X_EXPECTED_ACCOUNT_ID;
+  const username = process.env.X_EXPECTED_USERNAME;
   let xComplianceHealth: XComplianceHealth | null = null;
   if (
     accountId
-    && /^[1-9][0-9]{0,18}$/u.test(accountId)
+    && X_ACCOUNT_ID.test(accountId)
     && marketingXComplianceConfigured()
   ) {
     try {
@@ -35,15 +40,38 @@ export async function GET(request: Request): Promise<Response> {
       // Readiness stays fail-closed and reports an unavailable checkpoint.
     }
   }
+  const evaluatedAtMs = Date.now();
   const xMentionAutomation = readXMentionAutomationConfig(
     process.env,
     xComplianceHealth,
+    evaluatedAtMs,
   );
   return NextResponse.json(
     {
       service: "OpenZaps marketing agent",
       config,
       xMentionAutomation,
+      xActivationEvidence: {
+        schemaVersion: 2,
+        evaluatedAt: new Date(evaluatedAtMs).toISOString(),
+        expectedAccountIdentity:
+          accountId
+          && username
+          && X_ACCOUNT_ID.test(accountId)
+          && username === "0xzaps"
+            ? { accountId, username }
+            : null,
+        privacyUrl: X_PRIVACY_URL,
+        templates: X_MENTION_APPROVAL_REGISTRY.map(({
+          templateId,
+          prompts,
+          body,
+        }) => ({
+          templateId,
+          prompts: [...prompts],
+          body,
+        })),
+      },
       xComplianceHealth: xComplianceHealth
         ? {
             result: xComplianceHealth.result,

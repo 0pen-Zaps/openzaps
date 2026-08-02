@@ -21,6 +21,15 @@ const SITE_URL = "https://www.0xzaps.com";
  */
 export const OPENZAPS_FEED_ITEMS: readonly OpenZapsFeedItem[] = [
   {
+    id: "openzaps-fee-rewards-2026-08-02",
+    title: "Inspect the first fixed 0xZAPS fee campaign",
+    description:
+      "Inspect the separately funded 2026 campaign, active from Aug 3 00:23 UTC until Aug 10 00:23 UTC; claims remain available until Sep 9 00:23 UTC. It uses 50 of 100 tokenized Clanker fee shares, 0xZAPS stake principal, and WETH-only campaign rewards allocated by time-weighted stake. Holding 0xZAPS alone grants no fee rights. The contracts are pre-audit.",
+    url: `${SITE_URL}/rewards`,
+    // Canonical repository commit 5490328, which shipped the live rewards surface.
+    publishedAt: "2026-08-02T06:13:46.000Z",
+  },
+  {
     id: "openzaps-virtual-trading-2026-07-30",
     title: "Practice deployed routes in Virtual Trading",
     description:

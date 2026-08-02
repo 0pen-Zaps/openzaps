@@ -21,6 +21,11 @@ import {
   type SubstackRichText,
 } from "@/lib/marketing/substack-handoff";
 import { parseCanonicalXStatusUrl } from "@/lib/marketing/x-interaction";
+import {
+  X_MENTION_APPROVAL_REGISTRY,
+  X_MENTION_TEMPLATE_REGISTRY_DIGEST,
+  type XMentionTemplateId as XActivationTemplateId,
+} from "@/lib/marketing/x-mention-registry";
 import styles from "./marketing.module.css";
 
 const TOKEN_STORAGE_KEY = "openzaps:marketing:operator-token";
@@ -104,6 +109,61 @@ export type XIdentityVerification = {
   authenticatedAccountId: string;
   authenticatedUsername: string;
   observedAt: string;
+};
+
+const X_ACTIVATION_PRIVACY_URL =
+  "https://www.0xzaps.com/legal#request-data";
+const X_AUTOMATIC_REPLY_SCOPE =
+  "official mentions timeline only; exact reviewed deterministic commands; first-run baseline; one reply per interaction; opt-out; all other content remains review-only";
+
+type XComplianceResult =
+  | "healthy"
+  | "stale"
+  | "hold"
+  | "not_initialized"
+  | "account_not_found";
+
+export type XActivationStatus = {
+  evaluatedAt: string;
+  expectedAccountIdentity: {
+    accountId: string;
+    username: string;
+  } | null;
+  privacyUrl: typeof X_ACTIVATION_PRIVACY_URL;
+  automaticReplyScope: typeof X_AUTOMATIC_REPLY_SCOPE;
+  templates: Array<{
+    templateId: XActivationTemplateId;
+    prompts: string[];
+    body: string;
+  }>;
+  automation: {
+    ingestRequested: boolean;
+    autoReplyRequested: boolean;
+    autoResponseApproved: boolean;
+    commercialUseApproved: boolean;
+    complianceAttested: boolean;
+    complianceReady: boolean;
+    complianceHealth: XComplianceResult | "unavailable";
+    complianceValidUntil: string | null;
+    templateApprovalDigestValid: boolean;
+    templateRegistryDigest: string;
+    hashSecretConfigured: boolean;
+    canonicalUsernameBound: boolean;
+    ingestReady: boolean;
+    autoReplyReady: boolean;
+    dailyCap: number;
+    blockers: string[];
+  };
+  complianceHealth: {
+    result: XComplianceResult;
+    checkedAt: string | null;
+    validUntil: string | null;
+    subjectCount: number;
+    nonPresentCount: number;
+    hold: boolean;
+  } | null;
+  xReplyDailyCap: number;
+  automatedLabelAttested: boolean;
 };
 
 export type DiscordCommandReadbackCounts = {
@@ -342,6 +402,611 @@ export function parseXIdentityVerification(
     authenticatedUsername,
     observedAt,
   };
+}
+
+const X_AUTOMATION_BOOLEAN_KEYS = [
+  "ingestRequested",
+  "autoReplyRequested",
+  "autoResponseApproved",
+  "commercialUseApproved",
+  "complianceAttested",
+  "complianceReady",
+  "templateApprovalDigestValid",
+  "hashSecretConfigured",
+  "canonicalUsernameBound",
+  "ingestReady",
+  "autoReplyReady",
+] as const;
+
+const X_COMPLIANCE_RESULTS = new Set<XComplianceResult>([
+  "healthy",
+  "stale",
+  "hold",
+  "not_initialized",
+  "account_not_found",
+]);
+
+const X_AUTOMATION_FIXED_BLOCKERS = new Set([
+  "X mention ingestion requires recorded X commercial-use approval for this use case.",
+  "X mention ingestion requires the operator compliance-monitor attestation.",
+  "X mention ingestion requires a fresh healthy compliance checkpoint from the durable store.",
+  "X mention ingestion requires the bound durable marketing database.",
+  "X mention ingestion requires a valid global marketing configuration.",
+  "X mention ingestion requires the bound X user-context identity.",
+  "X mention ingestion requires the live marketing service.",
+  "X mention ingestion requires X_EXPECTED_USERNAME to be exactly 0xzaps.",
+  "Automatic X replies require X mention ingestion.",
+  "Automatic X replies require a recorded X auto-response campaign approval attestation.",
+  "Automatic X replies require approval of the exact current template registry digest.",
+  "Automatic X replies require the automated-account label attestation.",
+  "Automatic X replies require OPENZAPS_MARKETING_DAILY_X_REPLY_CAP to be at least 1.",
+]);
+
+function isSafeXAutomationBlocker(value: unknown): value is string {
+  if (typeof value !== "string" || !value || value.length > 500) return false;
+  if (X_AUTOMATION_FIXED_BLOCKERS.has(value)) return true;
+  return /^(?:OPENZAPS_X_MENTION_INGEST_ENABLED|OPENZAPS_X_AUTO_REPLY_ENABLED|OPENZAPS_X_AUTO_RESPONSE_APPROVED|OPENZAPS_X_COMMERCIAL_USE_APPROVED|OPENZAPS_X_COMPLIANCE_READY) must be exactly "true" or "false"\.$/u
+    .test(value)
+    || /^OPENZAPS_X_AUTO_REPLY_DAILY_CAP must be an integer from 0 to 5\.$/u
+      .test(value)
+    || /^OPENZAPS_X_MENTION_HASH_SECRET must be a server-only secret of at least 32 characters\.$/u
+      .test(value)
+    || /^X mention ingestion requires a fresh healthy compliance checkpoint; current state is (?:healthy|stale|hold|not_initialized|account_not_found)\.$/u
+      .test(value);
+}
+
+function parseXComplianceHealth(value: unknown): XActivationStatus["complianceHealth"] | undefined {
+  if (value === null) return null;
+  if (!isRecord(value)) return undefined;
+  const result = text(value.result);
+  const checkedAt = value.checkedAt === null ? null : text(value.checkedAt);
+  const validUntil = value.validUntil === null ? null : text(value.validUntil);
+  const subjectCount = value.subjectCount;
+  const nonPresentCount = value.nonPresentCount;
+  if (
+    !result
+    || !X_COMPLIANCE_RESULTS.has(result as XComplianceResult)
+    || (checkedAt !== null && !isBoundedTimestamp(checkedAt))
+    || (validUntil !== null && !isBoundedTimestamp(validUntil))
+    || typeof subjectCount !== "number"
+    || !Number.isSafeInteger(subjectCount)
+    || subjectCount < 0
+    || subjectCount > 5_000
+    || typeof nonPresentCount !== "number"
+    || !Number.isSafeInteger(nonPresentCount)
+    || nonPresentCount < 0
+    || nonPresentCount > subjectCount
+    || typeof value.hold !== "boolean"
+  ) return undefined;
+  return {
+    result: result as XComplianceResult,
+    checkedAt,
+    validUntil,
+    subjectCount,
+    nonPresentCount,
+    hold: value.hold,
+  };
+}
+
+function xComplianceHealthIsCoherent(
+  health: NonNullable<XActivationStatus["complianceHealth"]>,
+): boolean {
+  const timestampsPresent =
+    health.checkedAt !== null && health.validUntil !== null;
+  if ((health.checkedAt === null) !== (health.validUntil === null)) return false;
+  if (
+    health.result === "account_not_found"
+    && (
+      timestampsPresent
+      || health.subjectCount !== 0
+      || health.nonPresentCount !== 0
+      || health.hold
+    )
+  ) return false;
+  if (
+    health.result === "healthy"
+    && (
+      !timestampsPresent
+      || health.subjectCount < 1
+      || health.nonPresentCount !== 0
+      || health.hold
+      || Date.parse(health.validUntil as string)
+        <= Date.parse(health.checkedAt as string)
+    )
+  ) return false;
+  if ((health.result === "hold") !== health.hold) return false;
+  return true;
+}
+
+const X_BOOLEAN_CONFIGURATION_ERRORS = [
+  {
+    message:
+      'OPENZAPS_X_MENTION_INGEST_ENABLED must be exactly "true" or "false".',
+    key: "ingestRequested",
+  },
+  {
+    message:
+      'OPENZAPS_X_AUTO_REPLY_ENABLED must be exactly "true" or "false".',
+    key: "autoReplyRequested",
+  },
+  {
+    message:
+      'OPENZAPS_X_AUTO_RESPONSE_APPROVED must be exactly "true" or "false".',
+    key: "autoResponseApproved",
+  },
+  {
+    message:
+      'OPENZAPS_X_COMMERCIAL_USE_APPROVED must be exactly "true" or "false".',
+    key: "commercialUseApproved",
+  },
+  {
+    message:
+      'OPENZAPS_X_COMPLIANCE_READY must be exactly "true" or "false".',
+    key: "complianceAttested",
+  },
+] as const satisfies ReadonlyArray<{
+  message: string;
+  key: keyof XActivationStatus["automation"];
+}>;
+const X_CAP_CONFIGURATION_ERROR =
+  "OPENZAPS_X_AUTO_REPLY_DAILY_CAP must be an integer from 0 to 5.";
+
+function splitCoherentXConfigurationErrors(
+  automation: XActivationStatus["automation"],
+): { configurationErrors: string[]; conditionalBlockers: string[] } | null {
+  const configurationErrors: string[] = [];
+  const conditionalBlockers: string[] = [];
+  let lastRank = -1;
+  let conditionalStarted = false;
+  for (const blocker of automation.blockers) {
+    const booleanRank = X_BOOLEAN_CONFIGURATION_ERRORS.findIndex(
+      ({ message }) => message === blocker,
+    );
+    const rank = blocker === X_CAP_CONFIGURATION_ERROR
+      ? X_BOOLEAN_CONFIGURATION_ERRORS.length
+      : booleanRank;
+    if (rank < 0) {
+      conditionalStarted = true;
+      conditionalBlockers.push(blocker);
+      continue;
+    }
+    if (conditionalStarted || rank <= lastRank) return null;
+    if (rank === X_BOOLEAN_CONFIGURATION_ERRORS.length) {
+      if (automation.dailyCap !== 0) return null;
+    } else {
+      const key = X_BOOLEAN_CONFIGURATION_ERRORS[rank]?.key;
+      if (!key || automation[key] !== false) return null;
+    }
+    lastRank = rank;
+    configurationErrors.push(blocker);
+  }
+  return { configurationErrors, conditionalBlockers };
+}
+
+function expectedXConditionalBlockers(input: {
+  automation: XActivationStatus["automation"];
+  operationalComplianceReady: boolean;
+  complianceHealth: XActivationStatus["complianceHealth"];
+  configEnabled: boolean;
+  configDryRun: boolean;
+  configurationValid: boolean;
+  durableLedgerConfigured: boolean;
+  xChannelConfigured: boolean;
+  automatedLabelAttested: boolean;
+  xReplyDailyCap: number;
+}): string[] {
+  const {
+    automation,
+    operationalComplianceReady,
+    complianceHealth,
+  } = input;
+  const blockers: string[] = [];
+  if (automation.ingestRequested && !automation.hashSecretConfigured) {
+    blockers.push(
+      "OPENZAPS_X_MENTION_HASH_SECRET must be a server-only secret of at least 32 characters.",
+    );
+  }
+  if (automation.ingestRequested && !automation.canonicalUsernameBound) {
+    blockers.push(
+      "X mention ingestion requires X_EXPECTED_USERNAME to be exactly 0xzaps.",
+    );
+  }
+  if (automation.ingestRequested && !automation.commercialUseApproved) {
+    blockers.push(
+      "X mention ingestion requires recorded X commercial-use approval for this use case.",
+    );
+  }
+  if (automation.ingestRequested && !automation.complianceAttested) {
+    blockers.push(
+      "X mention ingestion requires the operator compliance-monitor attestation.",
+    );
+  }
+  if (
+    automation.ingestRequested
+    && automation.complianceAttested
+    && !operationalComplianceReady
+  ) {
+    blockers.push(
+      complianceHealth
+        ? "X mention ingestion requires a fresh healthy compliance checkpoint; current state is "
+          + complianceHealth.result + "."
+        : "X mention ingestion requires a fresh healthy compliance checkpoint from the durable store.",
+    );
+  }
+  if (automation.ingestRequested && !input.durableLedgerConfigured) {
+    blockers.push("X mention ingestion requires the bound durable marketing database.");
+  }
+  if (automation.ingestRequested && !input.configurationValid) {
+    blockers.push("X mention ingestion requires a valid global marketing configuration.");
+  }
+  if (automation.ingestRequested && !input.xChannelConfigured) {
+    blockers.push("X mention ingestion requires the bound X user-context identity.");
+  }
+  if (
+    automation.ingestRequested
+    && (!input.configEnabled || input.configDryRun)
+  ) {
+    blockers.push("X mention ingestion requires the live marketing service.");
+  }
+  if (automation.autoReplyRequested && !automation.ingestRequested) {
+    blockers.push("Automatic X replies require X mention ingestion.");
+  }
+  if (automation.autoReplyRequested && !automation.autoResponseApproved) {
+    blockers.push(
+      "Automatic X replies require a recorded X auto-response campaign approval attestation.",
+    );
+  }
+  if (
+    automation.autoReplyRequested
+    && !automation.templateApprovalDigestValid
+  ) {
+    blockers.push(
+      "Automatic X replies require approval of the exact current template registry digest.",
+    );
+  }
+  if (automation.autoResponseApproved && !input.automatedLabelAttested) {
+    blockers.push(
+      "Automatic X replies require the automated-account label attestation.",
+    );
+  }
+  if (automation.autoReplyRequested && input.xReplyDailyCap < 1) {
+    blockers.push(
+      "Automatic X replies require OPENZAPS_MARKETING_DAILY_X_REPLY_CAP to be at least 1.",
+    );
+  }
+  return blockers;
+}
+
+/**
+ * Parse the private status response as activation evidence, not as authority.
+ * Any missing, contradictory, or unexpectedly shaped field invalidates the
+ * whole panel so partial server data can never be presented as X readiness.
+ */
+export function parseXActivationStatus(value: unknown): XActivationStatus | null {
+  if (!isRecord(value) || value.service !== "OpenZaps marketing agent") return null;
+  const activation = isRecord(value.xActivationEvidence)
+    ? value.xActivationEvidence
+    : null;
+  const automation = isRecord(value.xMentionAutomation)
+    ? value.xMentionAutomation
+    : null;
+  const config = isRecord(value.config) ? value.config : null;
+  const dailyCaps = config && isRecord(config.dailyCaps) ? config.dailyCaps : null;
+  const configReadiness = config && isRecord(config.readiness)
+    ? config.readiness
+    : null;
+  const configChannels = configReadiness && isRecord(configReadiness.channels)
+    ? configReadiness.channels
+    : null;
+  const policy = isRecord(value.policy) ? value.policy : null;
+  const evaluatedAt = activation ? text(activation.evaluatedAt) : null;
+  if (
+    !activation
+    || activation.schemaVersion !== 2
+    || !automation
+    || !config
+    || !dailyCaps
+    || !configReadiness
+    || !configChannels
+    || !policy
+    || !isBoundedTimestamp(evaluatedAt)
+    || activation.privacyUrl !== X_ACTIVATION_PRIVACY_URL
+    || policy.xAutomaticReplyScope !== X_AUTOMATIC_REPLY_SCOPE
+    || typeof config.enabled !== "boolean"
+    || typeof config.dryRun !== "boolean"
+    || typeof config.xAutomatedLabelConfirmed !== "boolean"
+    || typeof configReadiness.configurationValid !== "boolean"
+    || typeof configReadiness.durableLedgerConfigured !== "boolean"
+    || typeof configChannels.x !== "boolean"
+  ) return null;
+
+  const expectedAccountIdentity = activation.expectedAccountIdentity;
+  let expectedIdentity: XActivationStatus["expectedAccountIdentity"] = null;
+  if (expectedAccountIdentity !== null) {
+    if (!isRecord(expectedAccountIdentity)) return null;
+    const accountId = text(expectedAccountIdentity.accountId);
+    const username = text(expectedAccountIdentity.username);
+    if (
+      !accountId
+      || !/^[1-9][0-9]{0,18}$/u.test(accountId)
+      || !username
+      || username !== "0xzaps"
+    ) return null;
+    expectedIdentity = { accountId, username };
+  }
+
+  if (!Array.isArray(activation.templates)) return null;
+  if (activation.templates.length !== X_MENTION_APPROVAL_REGISTRY.length) return null;
+  const templates: XActivationStatus["templates"] = [];
+  for (const [index, expectedTemplate] of X_MENTION_APPROVAL_REGISTRY.entries()) {
+    const candidate = activation.templates[index];
+    if (!isRecord(candidate)) return null;
+    const templateId = text(candidate.templateId);
+    const body = text(candidate.body);
+    const prompts = candidate.prompts;
+    if (
+      templateId !== expectedTemplate.templateId
+      || body !== expectedTemplate.body
+      || !Array.isArray(prompts)
+      || prompts.length !== expectedTemplate.prompts.length
+      || !prompts.every(
+        (prompt, promptIndex) => prompt === expectedTemplate.prompts[promptIndex],
+      )
+    ) return null;
+    templates.push({
+      templateId: expectedTemplate.templateId,
+      prompts: [...expectedTemplate.prompts],
+      body: expectedTemplate.body,
+    });
+  }
+
+  for (const key of X_AUTOMATION_BOOLEAN_KEYS) {
+    if (typeof automation[key] !== "boolean") return null;
+  }
+  const complianceHealthName = text(automation.complianceHealth);
+  const complianceValidUntil = automation.complianceValidUntil === null
+    ? null
+    : text(automation.complianceValidUntil);
+  const templateRegistryDigest = text(automation.templateRegistryDigest);
+  const dailyCap = automation.dailyCap;
+  const xReplyDailyCap = dailyCaps.xReplies;
+  if (
+    !complianceHealthName
+    || (complianceHealthName !== "unavailable"
+      && !X_COMPLIANCE_RESULTS.has(complianceHealthName as XComplianceResult))
+    || (complianceValidUntil !== null
+      && !isBoundedTimestamp(complianceValidUntil))
+    || !templateRegistryDigest
+    || templateRegistryDigest !== X_MENTION_TEMPLATE_REGISTRY_DIGEST
+    || typeof dailyCap !== "number"
+    || !Number.isSafeInteger(dailyCap)
+    || dailyCap < 0
+    || dailyCap > 5
+    || typeof xReplyDailyCap !== "number"
+    || !Number.isSafeInteger(xReplyDailyCap)
+    || xReplyDailyCap < 0
+    || xReplyDailyCap > 100
+    || dailyCap > xReplyDailyCap
+    || !Array.isArray(automation.blockers)
+    || automation.blockers.length > 32
+    || !automation.blockers.every(isSafeXAutomationBlocker)
+    || new Set(automation.blockers).size !== automation.blockers.length
+  ) return null;
+
+  const parsedAutomation: XActivationStatus["automation"] = {
+    ingestRequested: automation.ingestRequested as boolean,
+    autoReplyRequested: automation.autoReplyRequested as boolean,
+    autoResponseApproved: automation.autoResponseApproved as boolean,
+    commercialUseApproved: automation.commercialUseApproved as boolean,
+    complianceAttested: automation.complianceAttested as boolean,
+    complianceReady: automation.complianceReady as boolean,
+    complianceHealth: complianceHealthName as XComplianceResult | "unavailable",
+    complianceValidUntil,
+    templateApprovalDigestValid: automation.templateApprovalDigestValid as boolean,
+    templateRegistryDigest,
+    hashSecretConfigured: automation.hashSecretConfigured as boolean,
+    canonicalUsernameBound: automation.canonicalUsernameBound as boolean,
+    ingestReady: automation.ingestReady as boolean,
+    autoReplyReady: automation.autoReplyReady as boolean,
+    dailyCap,
+    blockers: [...automation.blockers] as string[],
+  };
+  const complianceHealth = parseXComplianceHealth(value.xComplianceHealth);
+  if (complianceHealth === undefined) return null;
+  if (
+    complianceHealth === null
+      ? complianceHealthName !== "unavailable"
+        || complianceValidUntil !== null
+      : !xComplianceHealthIsCoherent(complianceHealth)
+        || complianceHealthName !== complianceHealth.result
+        || complianceValidUntil !== complianceHealth.validUntil
+  ) return null;
+
+  const operationalComplianceReady = Boolean(
+    complianceHealth
+    && complianceHealth.result === "healthy"
+    && complianceHealth.validUntil
+    && Date.parse(complianceHealth.validUntil) > Date.parse(evaluatedAt)
+  );
+  if (
+    parsedAutomation.complianceReady
+      !== (parsedAutomation.complianceAttested && operationalComplianceReady)
+    || (
+      expectedIdentity !== null
+      && !parsedAutomation.canonicalUsernameBound
+    )
+    || (
+      configChannels.x
+      && parsedAutomation.canonicalUsernameBound
+      && expectedIdentity === null
+    )
+  ) return null;
+
+  const splitBlockers = splitCoherentXConfigurationErrors(parsedAutomation);
+  if (!splitBlockers) return null;
+  const expectedConditionalBlockers = expectedXConditionalBlockers({
+    automation: parsedAutomation,
+    operationalComplianceReady,
+    complianceHealth,
+    configEnabled: config.enabled,
+    configDryRun: config.dryRun,
+    configurationValid: configReadiness.configurationValid,
+    durableLedgerConfigured: configReadiness.durableLedgerConfigured,
+    xChannelConfigured: configChannels.x,
+    automatedLabelAttested: config.xAutomatedLabelConfirmed,
+    xReplyDailyCap,
+  });
+  if (
+    splitBlockers.conditionalBlockers.length
+      !== expectedConditionalBlockers.length
+    || !splitBlockers.conditionalBlockers.every(
+      (blocker, index) => blocker === expectedConditionalBlockers[index],
+    )
+  ) return null;
+
+  const expectedIngestReady =
+    parsedAutomation.ingestRequested
+    && splitBlockers.configurationErrors.length === 0
+    && parsedAutomation.hashSecretConfigured
+    && parsedAutomation.canonicalUsernameBound
+    && parsedAutomation.commercialUseApproved
+    && parsedAutomation.complianceAttested
+    && operationalComplianceReady
+    && configReadiness.configurationValid
+    && config.enabled
+    && !config.dryRun
+    && configReadiness.durableLedgerConfigured
+    && configChannels.x;
+  const expectedAutoReplyReady =
+    expectedIngestReady
+    && parsedAutomation.autoReplyRequested
+    && parsedAutomation.autoResponseApproved
+    && parsedAutomation.templateApprovalDigestValid
+    && config.xAutomatedLabelConfirmed
+    && dailyCap > 0;
+  if (
+    parsedAutomation.ingestReady !== expectedIngestReady
+    || parsedAutomation.autoReplyReady !== expectedAutoReplyReady
+  ) return null;
+
+  return {
+    evaluatedAt,
+    expectedAccountIdentity: expectedIdentity,
+    privacyUrl: X_ACTIVATION_PRIVACY_URL,
+    automaticReplyScope: X_AUTOMATIC_REPLY_SCOPE,
+    templates,
+    automation: parsedAutomation,
+    complianceHealth,
+    xReplyDailyCap,
+    automatedLabelAttested: config.xAutomatedLabelConfirmed,
+  };
+}
+
+export function xActivationApprovalPacket(status: XActivationStatus): string {
+  const identity = status.expectedAccountIdentity
+    ? `@${status.expectedAccountIdentity.username} (account ${status.expectedAccountIdentity.accountId})`
+    : "UNAVAILABLE — expected account binding must be fixed before activation";
+  const blockers = status.automation.blockers.length
+    ? status.automation.blockers.map((blocker) => `- ${blocker}`).join("\n")
+    : "- None reported by the server configuration snapshot.";
+  const templates = status.templates
+    .map((template, index) => [
+      `${index + 1}. ${template.templateId}`,
+      "Exact eligible prompts:",
+      ...template.prompts.map((prompt) => `- ${prompt}`),
+      "Exact response:",
+      template.body,
+    ].join("\n"))
+    .join("\n\n");
+  const automaticReplyCap = `${status.automation.dailyCap} deterministic automatic ${
+    status.automation.dailyCap === 1 ? "reply" : "replies"
+  }`;
+
+  return [
+    "DRAFT ONLY — DOES NOT ENABLE OR AUTHORIZE AUTOMATION",
+    "OpenZaps X deterministic mention-response approval packet",
+    "",
+    `Snapshot evaluated at: ${status.evaluatedAt}`,
+    `Expected account identity: ${identity}`,
+    `Requested scope: ${status.automaticReplyScope}.`,
+    "Hard boundaries: official mentions timeline only; exact prompt allowlist and reviewed replies only; first-run baseline; one reply per interaction; no search, scraping, DMs, freeform generation, media/external-link handling, or automatic replies to ambiguous or sensitive content.",
+    `Caps: ${automaticReplyCap} per UTC day within the global ${status.xReplyDailyCap} X-reply cap. A cap never enables a gated lane.`,
+    "Opt-out: an eligible author may reply @0xzaps stop. Suppression is persisted and no public confirmation is sent.",
+    `Privacy notice: ${status.privacyUrl}`,
+    `Template registry SHA-256: ${status.automation.templateRegistryDigest}`,
+    "",
+    "Exact deterministic prompt and response registry",
+    templates,
+    "",
+    "Current server-reported blockers",
+    blockers,
+    "",
+    "Owner and provider evidence required before activation",
+    "[ ] X written approval for this exact brand auto-response campaign is retained.",
+    "[ ] Commercial-use approval for official mention ingestion is retained.",
+    "[ ] The exact prompt and response registry digest above is approved.",
+    "[ ] The Automated label is visibly applied to @0xzaps and linked to the human-run managing account (external verification required).",
+    "[ ] X API credits and account-spend availability are confirmed in the Developer Console (external verification required).",
+    "[ ] A fresh healthy durable compliance checkpoint is present with no hold.",
+    "",
+    "This packet is evidence for owner/provider review only. Copying it does not change configuration, enable ingestion, enable replies, or contact X.",
+  ].join("\n");
+}
+
+export async function writeXActivationApprovalPacket(
+  packet: string,
+  clipboard: ClipboardAccess | undefined,
+): Promise<void> {
+  if (!packet || packet.length > 10_000 || !clipboard?.writeText) {
+    throw new Error("Clipboard unavailable");
+  }
+  await clipboard.writeText(packet);
+}
+
+export function xApprovalPacketCopyRequestIsCurrent(input: {
+  requestedPacket: string;
+  currentPacket: string;
+  requestGeneration: number;
+  currentRequestGeneration: number;
+  active: boolean;
+}): boolean {
+  return input.active
+    && input.requestedPacket === input.currentPacket
+    && input.requestGeneration === input.currentRequestGeneration;
+}
+
+export function mountXApprovalPacketCopyLifecycle(state: {
+  active: boolean;
+  requestGeneration: number;
+}): () => void {
+  state.active = true;
+  return () => {
+    state.active = false;
+    state.requestGeneration += 1;
+  };
+}
+
+export async function writeCurrentXActivationApprovalPacket(input: {
+  packet: string;
+  clipboard: ClipboardAccess | undefined;
+  requestGeneration: number;
+  currentRequest: () => {
+    packet: string;
+    requestGeneration: number;
+    active: boolean;
+  };
+}): Promise<"copied" | "stale"> {
+  await writeXActivationApprovalPacket(input.packet, input.clipboard);
+  const current = input.currentRequest();
+  return xApprovalPacketCopyRequestIsCurrent({
+    requestedPacket: input.packet,
+    currentPacket: current.packet,
+    requestGeneration: input.requestGeneration,
+    currentRequestGeneration: current.requestGeneration,
+    active: current.active,
+  })
+    ? "copied"
+    : "stale";
 }
 
 function discordCommandCount(value: unknown, maximum: number): number | null {
@@ -902,6 +1567,257 @@ export function readinessRows(status: JsonRecord | null): ReadinessRow[] {
     return [...rows, ...Object.entries(source).map(([key, value]) => readinessValue(key, value))];
   }
   return rows;
+}
+
+function xActivationGateRow(
+  key: string,
+  label: string,
+  ready: boolean,
+  readyState: string,
+  blockedState: string,
+  detail: string,
+): ReadinessRow {
+  return {
+    key,
+    label,
+    ready,
+    state: ready ? readyState : blockedState,
+    detail,
+  };
+}
+
+export function xActivationRows(status: XActivationStatus): ReadinessRow[] {
+  const automation = status.automation;
+  const health = status.complianceHealth;
+  const identity = status.expectedAccountIdentity;
+  const automaticReplyCap = `${automation.dailyCap} automatic ${
+    automation.dailyCap === 1 ? "reply" : "replies"
+  }`;
+  return [
+    xActivationGateRow(
+      "xExpectedIdentity",
+      "Expected X identity",
+      identity !== null,
+      "bound",
+      "gated",
+      identity
+        ? `Server expects @${identity.username}, account ${identity.accountId}. A live official-API identity check remains separate.`
+        : "The public expected account id and username are absent or invalid. Ingestion and replies must stay off.",
+    ),
+    xActivationGateRow(
+      "xMentionIngestRequested",
+      "Mention ingestion requested",
+      automation.ingestRequested,
+      "requested",
+      "off",
+      automation.ingestRequested
+        ? "The server flag requests official mentions-timeline ingestion; all remaining admission gates still apply."
+        : "Official mentions-timeline ingestion was not requested.",
+    ),
+    xActivationGateRow(
+      "xAutoReplyRequested",
+      "Automatic replies requested",
+      automation.autoReplyRequested,
+      "requested",
+      "off",
+      automation.autoReplyRequested
+        ? "The deterministic reply lane was requested; this does not establish provider approval or external readiness."
+        : "The deterministic automatic-reply lane was not requested.",
+    ),
+    xActivationGateRow(
+      "xAutoResponseApproved",
+      "Campaign approval attestation",
+      automation.autoResponseApproved,
+      "recorded",
+      "missing",
+      automation.autoResponseApproved
+        ? "A server-side attestation says written approval was recorded. The operator must retain the external approval evidence."
+        : "No server-side attestation of X approval for this exact brand auto-response campaign is recorded.",
+    ),
+    xActivationGateRow(
+      "xCommercialUseApproved",
+      "Commercial-use attestation",
+      automation.commercialUseApproved,
+      "recorded",
+      "missing",
+      automation.commercialUseApproved
+        ? "A server-side commercial-use attestation is recorded; its external approval evidence must still be retained."
+        : "Official mention ingestion is gated without the recorded commercial-use attestation.",
+    ),
+    xActivationGateRow(
+      "xComplianceAttested",
+      "Compliance monitor attestation",
+      automation.complianceAttested,
+      "recorded",
+      "missing",
+      automation.complianceAttested
+        ? "The compliance-monitor prerequisite flag is recorded. Durable health and freshness are checked separately."
+        : "The compliance-monitor prerequisite flag is not recorded.",
+    ),
+    xActivationGateRow(
+      "xComplianceReady",
+      "Operational compliance gate",
+      automation.complianceReady,
+      "ready",
+      "gated",
+      automation.complianceReady
+        ? "The attestation and current durable checkpoint jointly satisfy the operational gate for this snapshot."
+        : "The attestation and durable checkpoint do not jointly satisfy the operational compliance gate.",
+    ),
+    xActivationGateRow(
+      "xAutomationComplianceView",
+      "Automation compliance view",
+      automation.complianceHealth === "healthy"
+        && automation.complianceValidUntil !== null,
+      automation.complianceHealth,
+      automation.complianceHealth,
+      `The automation evaluator reports ${automation.complianceHealth}; valid until ${automation.complianceValidUntil ?? "unavailable"}.`,
+    ),
+    xActivationGateRow(
+      "xHashSecretConfigured",
+      "Content-hash prerequisite",
+      automation.hashSecretConfigured,
+      "configured",
+      "gated",
+      automation.hashSecretConfigured
+        ? "A bounded server-only content-hash secret is configured. Its value is never returned or rendered."
+        : "The server-only content-hash prerequisite is absent or invalid; no secret value is exposed.",
+    ),
+    xActivationGateRow(
+      "xCanonicalUsernameBound",
+      "Canonical username binding",
+      automation.canonicalUsernameBound,
+      "@0xzaps bound",
+      "gated",
+      automation.canonicalUsernameBound
+        ? "The deterministic mention lane is bound to the exact canonical username 0xzaps."
+        : "The exact canonical username 0xzaps is not bound. Ingestion and replies must stay off.",
+    ),
+    xActivationGateRow(
+      "xTemplateDigestApproved",
+      "Exact registry digest approval",
+      automation.templateApprovalDigestValid,
+      "matched",
+      "gated",
+      automation.templateApprovalDigestValid
+        ? `The recorded approval matches the exact prompt and response registry SHA-256 ${automation.templateRegistryDigest}.`
+        : `No approval matches the current prompt and response registry SHA-256 ${automation.templateRegistryDigest}.`,
+    ),
+    xActivationGateRow(
+      "xMentionIngestReady",
+      "Mention ingestion gate",
+      automation.ingestReady,
+      "locally ready",
+      "gated",
+      automation.ingestReady
+        ? "All server-side ingestion prerequisites passed for this snapshot. This is not a provider write or external verification."
+        : "At least one server-side ingestion prerequisite is unsatisfied. No ingestion-readiness claim is made.",
+    ),
+    xActivationGateRow(
+      "xAutoReplyReady",
+      "Automatic reply gate",
+      automation.autoReplyReady,
+      "locally ready",
+      "gated",
+      automation.autoReplyReady
+        ? "All server-side deterministic-reply prerequisites passed for this snapshot. External label visibility and API credits remain unverified."
+        : "At least one deterministic-reply prerequisite is unsatisfied. No automatic-reply readiness claim is made.",
+    ),
+    xActivationGateRow(
+      "xAutomaticReplyDailyCap",
+      "Deterministic reply cap",
+      automation.dailyCap > 0,
+      "bounded",
+      "zero",
+      `${automaticReplyCap} per UTC day. This effective cap cannot exceed the global X-reply cap and never enables a gated lane.`,
+    ),
+    xActivationGateRow(
+      "xGlobalReplyDailyCap",
+      "Global X reply cap",
+      status.xReplyDailyCap > 0,
+      "bounded",
+      "zero",
+      `${status.xReplyDailyCap} total X replies per UTC day across admitted reply lanes.`,
+    ),
+    xActivationGateRow(
+      "xAutomatedLabelAttestation",
+      "Automated-label config attestation",
+      status.automatedLabelAttested,
+      "recorded",
+      "missing",
+      status.automatedLabelAttested
+        ? "The configuration attestation is recorded. It does not prove that the label is currently visible or manager-linked on X."
+        : "The configuration attestation is missing; X publishing and automatic replies stay gated.",
+    ),
+    xActivationGateRow(
+      "xComplianceResult",
+      "Durable compliance result",
+      health?.result === "healthy",
+      "healthy",
+      health?.result ?? "unavailable",
+      health
+        ? `The durable checkpoint result is ${health.result}.`
+        : "No bounded durable compliance-health response was available.",
+    ),
+    xActivationGateRow(
+      "xComplianceCheckedAt",
+      "Compliance checked at",
+      health?.checkedAt !== null && health?.checkedAt !== undefined,
+      "recorded",
+      "unavailable",
+      health?.checkedAt
+        ? `The durable checkpoint was recorded at ${health.checkedAt}.`
+        : "The durable checkpoint has no bounded checked-at timestamp.",
+    ),
+    xActivationGateRow(
+      "xComplianceValidUntil",
+      "Compliance valid until",
+      health?.validUntil !== null && health?.validUntil !== undefined,
+      "recorded",
+      "unavailable",
+      health?.validUntil
+        ? `The durable checkpoint reports validity until ${health.validUntil}; action-time freshness is still required.`
+        : "The durable checkpoint has no bounded validity deadline.",
+    ),
+    xActivationGateRow(
+      "xComplianceCoverage",
+      "Compliance subject coverage",
+      health !== null && health.nonPresentCount === 0,
+      "complete",
+      health ? "action required" : "unavailable",
+      health
+        ? `${health.subjectCount} subjects checked; ${health.nonPresentCount} were not present.`
+        : "Subject and non-present counts are unavailable.",
+    ),
+    xActivationGateRow(
+      "xComplianceHold",
+      "Compliance hold",
+      health !== null && !health.hold,
+      "clear",
+      health?.hold ? "hold" : "unavailable",
+      health
+        ? health.hold
+          ? "A durable compliance hold is active. Outbound activity must remain fenced."
+          : "The bounded durable health response reports no compliance hold."
+        : "Hold state is unavailable, so the panel fails closed.",
+    ),
+    xActivationGateRow(
+      "xAutomatedLabelExternal",
+      "Automated label visibility",
+      false,
+      "verified",
+      "external verification required",
+      "This endpoint cannot prove that X currently displays the Automated label or links it to the human-run managing account. Verify on the canonical X profile.",
+    ),
+    xActivationGateRow(
+      "xApiCreditsExternal",
+      "X API credits",
+      false,
+      "verified",
+      "external verification required",
+      "This endpoint cannot inspect Developer Console credits or account-spend availability. Confirm them externally before any controlled test.",
+    ),
+  ];
 }
 
 export function operatorLeads(body: JsonRecord): OperatorLead[] {
@@ -1655,6 +2571,7 @@ export function MarketingOperator(): React.JSX.Element {
   const discordPreflightRequestGeneration = useRef(0);
 
   const readiness = useMemo(() => readinessRows(status), [status]);
+  const xActivation = useMemo(() => parseXActivationStatus(status), [status]);
   const tutorialSelections = useMemo(
     () => sourceControlledTutorialSelections(status?.sourceControlledTutorials),
     [status],
@@ -2715,6 +3632,8 @@ export function MarketingOperator(): React.JSX.Element {
             )}
           </section>
 
+          <XActivationApprovalPanel status={xActivation} />
+
           <section className={styles.panel} aria-labelledby="lead-request-queue">
             <div className={styles.sectionHead}>
               <div>
@@ -3447,6 +4366,261 @@ function StatusChip({ ready, label }: { ready: boolean; label: string }): React.
       <span aria-hidden />
       {titleCase(label)}
     </span>
+  );
+}
+
+function XApprovalPacketCopyControl({
+  packet,
+}: {
+  packet: string;
+}): React.JSX.Element {
+  const [copyState, setCopyState] = useState<"idle" | "copied" | "error">(
+    "idle",
+  );
+  const lifecycle = useRef({ active: true, requestGeneration: 0 });
+  const currentPacket = useRef(packet);
+
+  useEffect(
+    () => mountXApprovalPacketCopyLifecycle(lifecycle.current),
+    [],
+  );
+
+  const copyPacket = async (): Promise<void> => {
+    const requestedPacket = packet;
+    const requestedGeneration = ++lifecycle.current.requestGeneration;
+    setCopyState("idle");
+    const currentRequest = (): {
+      packet: string;
+      requestGeneration: number;
+      active: boolean;
+    } => ({
+      packet: currentPacket.current,
+      requestGeneration: lifecycle.current.requestGeneration,
+      active: lifecycle.current.active,
+    });
+    try {
+      const result = await writeCurrentXActivationApprovalPacket({
+        packet: requestedPacket,
+        clipboard: navigator.clipboard,
+        requestGeneration: requestedGeneration,
+        currentRequest,
+      });
+      if (result === "copied") setCopyState("copied");
+    } catch {
+      const current = currentRequest();
+      if (xApprovalPacketCopyRequestIsCurrent({
+        requestedPacket,
+        currentPacket: current.packet,
+        requestGeneration: requestedGeneration,
+        currentRequestGeneration: current.requestGeneration,
+        active: current.active,
+      })) {
+        setCopyState("error");
+      }
+    }
+  };
+
+  return (
+    <section
+      className={styles.xApprovalPacket}
+      aria-labelledby="x-approval-packet"
+    >
+      <div>
+        <div>
+          <h3 id="x-approval-packet">Copyable approval packet</h3>
+          <p>
+            Scope, exact prompts and responses, caps, opt-out, privacy,
+            identity, and external evidence checklist. Copying performs no
+            provider write.
+          </p>
+        </div>
+        <button
+          className={styles.secondaryButton}
+          type="button"
+          onClick={() => void copyPacket()}
+        >
+          {copyState === "copied" ? "Packet copied" : "Copy approval packet"}
+        </button>
+      </div>
+      <p
+        className={
+          copyState === "error"
+            ? styles.readinessEvidenceError
+            : styles.readinessEvidenceText
+        }
+        aria-live="polite"
+      >
+        {copyState === "copied"
+          ? "Approval packet copied. No configuration or provider state changed."
+          : copyState === "error"
+            ? "Clipboard access was unavailable. No configuration or provider state changed."
+            : "DRAFT ONLY — copying does not enable or authorize automation."}
+      </p>
+      <details>
+        <summary>Preview approval packet</summary>
+        <pre>{packet}</pre>
+      </details>
+    </section>
+  );
+}
+
+export function XActivationApprovalPanel({
+  status,
+}: {
+  status: XActivationStatus | null;
+}): React.JSX.Element {
+  const rows = useMemo(() => status ? xActivationRows(status) : [], [status]);
+  const packet = useMemo(
+    () => status ? xActivationApprovalPacket(status) : "",
+    [status],
+  );
+
+  return (
+    <section className={styles.panel} aria-labelledby="x-activation-approval">
+      <div className={styles.sectionHead}>
+        <div>
+          <span className={styles.step}>X</span>
+          <h2 id="x-activation-approval">X activation &amp; approval evidence</h2>
+        </div>
+        <StatusChip
+          ready={false}
+          label={status ? "owner approval required" : "invalid evidence"}
+        />
+      </div>
+      <p className={styles.xActivationIntro}>
+        Read-only operator evidence for the deterministic mention-response
+        lane. This panel cannot enable ingestion, enable replies, post, reply,
+        change provider settings, or establish external X approval.
+      </p>
+
+      {!status ? (
+        <div className={styles.xActivationInvalid} role="alert">
+          <strong>X activation evidence unavailable.</strong>
+          <p>
+            The private status response was missing, malformed, contradictory,
+            or outside the bounded schema. The panel fails closed and makes no
+            activation or readiness claim.
+          </p>
+        </div>
+      ) : (
+        <>
+          <dl className={styles.xActivationSummary}>
+            <div>
+              <dt>Expected account</dt>
+              <dd>
+                {status.expectedAccountIdentity
+                  ? "@" + status.expectedAccountIdentity.username
+                    + " · account " + status.expectedAccountIdentity.accountId
+                  : "Unavailable — activation gated"}
+              </dd>
+            </div>
+            <div>
+              <dt>Scope</dt>
+              <dd>{status.automaticReplyScope}.</dd>
+            </div>
+            <div>
+              <dt>Privacy</dt>
+              <dd>
+                <a href={status.privacyUrl} target="_blank" rel="noreferrer">
+                  Public X data-use notice
+                </a>
+              </dd>
+            </div>
+            <div>
+              <dt>Snapshot evaluated</dt>
+              <dd><time dateTime={status.evaluatedAt}>{status.evaluatedAt}</time></dd>
+            </div>
+          </dl>
+
+          <div className={styles.readinessGrid}>
+            {rows.map((item) => (
+              <article className={styles.readinessCard} key={item.key}>
+                <div>
+                  <h3>{item.label}</h3>
+                  <StatusChip ready={item.ready} label={item.state} />
+                </div>
+                <p>{item.detail}</p>
+              </article>
+            ))}
+          </div>
+
+          <section
+            className={styles.xActivationSection}
+            aria-labelledby="x-activation-blockers"
+          >
+            <h3 id="x-activation-blockers">Server-reported blockers</h3>
+            {status.automation.blockers.length ? (
+              <ul className={styles.xActivationBlockers}>
+                {status.automation.blockers.map((blocker) => (
+                  <li key={blocker}>{blocker}</li>
+                ))}
+              </ul>
+            ) : (
+              <p>
+                No server-configuration blocker is reported. Automated-label
+                visibility, managing-account linkage, X approval evidence, and
+                API credits still require external verification.
+              </p>
+            )}
+          </section>
+
+          <section
+            className={styles.xActivationSection}
+            aria-labelledby="x-template-registry"
+          >
+            <h3 id="x-template-registry">
+              Exact deterministic prompt and response registry
+            </h3>
+            <p className={styles.xTemplateDigest}>
+              Registry SHA-256: <code>{status.automation.templateRegistryDigest}</code>
+            </p>
+            <div className={styles.xTemplateList}>
+              {status.templates.map((template) => (
+                <article key={template.templateId}>
+                  <h4>{template.templateId}</h4>
+                  <div className={styles.xTemplatePrompts}>
+                    <strong>Exact eligible prompts</strong>
+                    <ul>
+                      {template.prompts.map((prompt) => (
+                        <li key={prompt}><code>{prompt}</code></li>
+                      ))}
+                    </ul>
+                  </div>
+                  <strong className={styles.xTemplateResponseLabel}>
+                    Exact response
+                  </strong>
+                  <pre>{template.body}</pre>
+                </article>
+              ))}
+            </div>
+          </section>
+
+          <section
+            className={styles.xActivationSection}
+            aria-labelledby="x-external-verification"
+          >
+            <h3 id="x-external-verification">External verification still required</h3>
+            <ul className={styles.xExternalChecks}>
+              <li>
+                <strong>Automated label visibility and manager linkage:</strong>{" "}
+                inspect the canonical{" "}
+                <a href="https://x.com/0xzaps" target="_blank" rel="noreferrer">
+                  @0xzaps profile
+                </a>
+                . The local configuration attestation is not provider proof.
+              </li>
+              <li>
+                <strong>API credits and account-spend availability:</strong>{" "}
+                inspect the X Developer Console before a controlled test. The
+                private OpenZaps status endpoint cannot read or prove either.
+              </li>
+            </ul>
+          </section>
+
+          <XApprovalPacketCopyControl key={packet} packet={packet} />
+        </>
+      )}
+    </section>
   );
 }
 

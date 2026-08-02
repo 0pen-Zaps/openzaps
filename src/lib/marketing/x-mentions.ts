@@ -1,9 +1,23 @@
 import "server-only";
 
-import { createHash, createHmac } from "node:crypto";
+import { createHmac } from "node:crypto";
 
 import { readMarketingConfig } from "@/lib/marketing/config";
 import type { XComplianceHealth } from "@/lib/marketing/x-compliance-server";
+import {
+  X_MENTION_APPROVAL_REGISTRY,
+  X_MENTION_TEMPLATE_IDS,
+  X_MENTION_TEMPLATE_REGISTRY_DIGEST,
+  X_MENTION_TEMPLATE_VERSION,
+  type XMentionTemplateId,
+} from "@/lib/marketing/x-mention-registry";
+
+export {
+  X_MENTION_TEMPLATE_IDS,
+  X_MENTION_TEMPLATE_REGISTRY_DIGEST,
+  X_MENTION_TEMPLATE_VERSION,
+};
+export type { XMentionTemplateId };
 
 const X_ACCOUNT_ID = /^\d{1,19}$/u;
 const CONTENT_HASH = /^[0-9a-f]{64}$/u;
@@ -13,18 +27,6 @@ const MIN_HASH_SECRET_LENGTH = 32;
 const MAX_AUTO_REPLY_DAILY_CAP = 5;
 
 type Environment = Readonly<Record<string, string | undefined>>;
-
-export const X_MENTION_TEMPLATE_VERSION = 1 as const;
-
-export const X_MENTION_TEMPLATE_IDS = [
-  "about-v1",
-  "agent-authority-v1",
-  "docs-v1",
-  "request-zap-v1",
-  "virtual-trading-v1",
-] as const;
-
-export type XMentionTemplateId = (typeof X_MENTION_TEMPLATE_IDS)[number];
 
 export type XMentionClassification =
   | XMentionTemplateId
@@ -73,34 +75,21 @@ export interface XMentionAutomationConfig {
   templateApprovalDigestValid: boolean;
   templateRegistryDigest: string;
   hashSecretConfigured: boolean;
+  canonicalUsernameBound: boolean;
   ingestReady: boolean;
   autoReplyReady: boolean;
   dailyCap: number;
   blockers: string[];
 }
 
-const AUTOMATIC_REPLY_TEMPLATES: Readonly<Record<XMentionTemplateId, string>> = {
-  "about-v1":
-    "OpenZaps lets an owner pre-commit one bounded onchain workflow. An agent may hold the trigger but cannot widen the signed route, recipient, asset, amount, calldata, cadence, or limits. https://www.0xzaps.com/docs\n\nPre-audit. Reply @0xzaps stop to opt out.",
-  "agent-authority-v1":
-    "Give the agent the trigger, never the authority. It may submit a due run, but the signed recipient, route, asset, amount, calldata, cadence, and safety limits stay fixed. https://www.0xzaps.com/docs\n\nPre-audit. Reply @0xzaps stop to opt out.",
-  "docs-v1":
-    "OpenZaps docs: https://www.0xzaps.com/docs\n\nOpenZaps is pre-audit software. Verify before use. Reply @0xzaps stop to opt out.",
-  "request-zap-v1":
-    "Request a Zap and get a human-reviewed authority map for one bounded workflow: https://www.0xzaps.com/request-a-zap\n\nThis is not an automatic deployment promise. Reply @0xzaps stop to opt out.",
-  "virtual-trading-v1":
-    "Try Virtual Trading with 10,000 virtual USDG—no wallet, deposit, approval, signature, transaction, or real funds: https://www.0xzaps.com/virtual-trading\n\nReply @0xzaps stop to opt out.",
-};
-
-export const X_MENTION_TEMPLATE_REGISTRY_DIGEST = createHash("sha256")
-  .update(JSON.stringify({
-    version: X_MENTION_TEMPLATE_VERSION,
-    templates: X_MENTION_TEMPLATE_IDS.map((templateId) => ({
-      templateId,
-      body: AUTOMATIC_REPLY_TEMPLATES[templateId],
-    })),
-  }))
-  .digest("hex");
+const AUTOMATIC_REPLY_TEMPLATES: ReadonlyMap<XMentionTemplateId, string> = new Map(
+  X_MENTION_APPROVAL_REGISTRY.map(({ templateId, body }) => [templateId, body]),
+);
+const DETERMINISTIC_PROMPT_TEMPLATES: ReadonlyMap<string, XMentionTemplateId> = new Map(
+  X_MENTION_APPROVAL_REGISTRY.flatMap(({ templateId, prompts }) =>
+    prompts.map((prompt) => [prompt, templateId] as const)
+  ),
+);
 
 const SENSITIVE_OR_AMBIGUOUS =
   /\b(?:abuse|address|airdrop|audit|audited|bug|buy|collab(?:orate|oration)?|email|exploit|hack(?:ed|ing)?|incident|investment|legal|outage|partner(?:ship)?|phone|price|private key|profit|revenue|safe|seed phrase|sell|security|token|trading|vulnerab\w*|yield)\b/iu;
@@ -162,6 +151,7 @@ export function readXMentionAutomationConfig(
   const compliance = strictBoolean(env, "OPENZAPS_X_COMPLIANCE_READY");
   const cap = automaticReplyDailyCap(env);
   const marketing = readMarketingConfig(env);
+  const canonicalUsernameBound = env.X_EXPECTED_USERNAME === "0xzaps";
   const effectiveDailyCap = Math.min(
     cap.value,
     marketing.dailyCaps.xReplies,
@@ -195,6 +185,11 @@ export function readXMentionAutomationConfig(
   if (ingest.value && !hashSecretConfigured) {
     blockers.push(
       `OPENZAPS_X_MENTION_HASH_SECRET must be a server-only secret of at least ${MIN_HASH_SECRET_LENGTH} characters.`,
+    );
+  }
+  if (ingest.value && !canonicalUsernameBound) {
+    blockers.push(
+      "X mention ingestion requires X_EXPECTED_USERNAME to be exactly 0xzaps.",
     );
   }
   if (ingest.value && !commercialUse.value) {
@@ -254,6 +249,7 @@ export function readXMentionAutomationConfig(
     ingest.value
     && errors.length === 0
     && hashSecretConfigured
+    && canonicalUsernameBound
     && commercialUse.value
     && compliance.value
     && operationalComplianceReady
@@ -282,6 +278,7 @@ export function readXMentionAutomationConfig(
     templateApprovalDigestValid,
     templateRegistryDigest: X_MENTION_TEMPLATE_REGISTRY_DIGEST,
     hashSecretConfigured,
+    canonicalUsernameBound,
     ingestReady,
     autoReplyReady,
     dailyCap: effectiveDailyCap,
@@ -322,32 +319,7 @@ function promptForms(
 }
 
 function deterministicTemplate(prompt: string): XMentionTemplateId | null {
-  if (
-    /^(?:\/docs|docs|documentation|where (?:are|can i find) (?:the )?docs)$/u.test(
-      prompt,
-    )
-  ) return "docs-v1";
-  if (
-    /^(?:\/request|request|request a zap|how (?:can|do) i request a zap|where can i request a zap)$/u.test(
-      prompt,
-    )
-  ) return "request-zap-v1";
-  if (
-    /^(?:\/virtual|virtual|virtual trading|how (?:can|do) i try virtual trading|where can i try virtual trading)$/u.test(
-      prompt,
-    )
-  ) return "virtual-trading-v1";
-  if (
-    /^(?:\/agent|agent|agent authority|how do agents work|what can an agent (?:change|do)|what authority does an agent have)$/u.test(
-      prompt,
-    )
-  ) return "agent-authority-v1";
-  if (
-    /^(?:\/about|about|what is openzaps|how does openzaps work|what is a zap)$/u.test(
-      prompt,
-    )
-  ) return "about-v1";
-  return null;
+  return DETERMINISTIC_PROMPT_TEMPLATES.get(prompt) ?? null;
 }
 
 function isExplicitOptOut(prompt: string): boolean {
@@ -365,7 +337,7 @@ export function classifyXMention(
     || !X_ACCOUNT_ID.test(mention.authorId)
     || !X_ACCOUNT_ID.test(mention.conversationId)
     || !X_ACCOUNT_ID.test(options.authenticatedAccountId)
-    || !/^[a-z0-9_]{1,15}$/u.test(options.expectedUsername)
+    || options.expectedUsername !== "0xzaps"
     || !mention.text
     || mention.text.length > 10_000
   ) {
@@ -505,7 +477,7 @@ export function isXMentionContentHash(value: string): boolean {
 }
 
 export function renderXMentionReply(templateId: XMentionTemplateId): string {
-  const body = AUTOMATIC_REPLY_TEMPLATES[templateId];
+  const body = AUTOMATIC_REPLY_TEMPLATES.get(templateId);
   if (!body || Array.from(body).length > 280) {
     throw new Error("The reviewed X mention template is invalid.");
   }

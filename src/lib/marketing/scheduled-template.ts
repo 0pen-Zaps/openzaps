@@ -7,6 +7,7 @@ import type {
 } from "@/lib/marketing/types";
 import {
   AGENT_KIT_MARKETING_CAMPAIGN_ID,
+  FEE_REWARDS_MARKETING_CAMPAIGN_ID,
   LEARN_HUB_MARKETING_CAMPAIGN_ID,
   SCHEDULED_MARKETING_TEMPLATE_ID,
   SHARE_ZAP_DESIGN_MARKETING_CAMPAIGN_ID,
@@ -32,6 +33,8 @@ export interface ReviewedMarketingCampaign {
   channel: ScheduledMarketingChannel;
   queueOrder: number;
   notBefore: string | null;
+  /** Exclusive manual-publication cutoff; omitted for automatic campaigns. */
+  notAfter?: string | null;
   body: string;
   links: string[];
   topics: MarketingTopic[];
@@ -176,6 +179,32 @@ const AGENT_KIT_X_CLAIMS: MarketingClaim[] = [
   },
 ];
 
+const FEE_REWARDS_FACTS: ReviewedMarketingFactRequirement[] = [
+  {
+    key: "product.fee_rewards_terms",
+    sourceUrl: "https://www.0xzaps.com/rewards",
+  },
+  {
+    key: "product.fee_rewards_active_snapshot",
+    sourceUrl: "https://www.0xzaps.com/api/protocol/rewards",
+  },
+];
+
+const FEE_REWARDS_CLAIMS: MarketingClaim[] = [
+  {
+    text:
+      "The live rewards surface identifies a separate fixed 2026 campaign active from Aug 3 00:23 UTC until Aug 10 00:23 UTC, with claims available until Sep 9 00:23 UTC; it is funded with 50 of 100 tokenized Clanker fee shares, uses 0xZAPS stake principal, pays WETH as the only campaign reward asset by time-weighted stake, and holding 0xZAPS alone grants no fee rights.",
+    factKeys: ["product.fee_rewards_terms"],
+    treatment: "asserted",
+  },
+  {
+    text:
+      "A fresh block-pinned production snapshot reports that the fixed campaign is active, its 50 fee-share principal is funded, its reviewed runtime identities still match, and its vault and configured Clanker fee source are verified.",
+    factKeys: ["product.fee_rewards_active_snapshot"],
+    treatment: "asserted",
+  },
+];
+
 const LEARN_HUB_FACTS: ReviewedMarketingFactRequirement[] = [
   {
     key: "product.learn_hub",
@@ -281,6 +310,42 @@ const CAMPAIGNS: readonly ReviewedMarketingCampaign[] = [
       "c0dc5ff730cdd8efaf58cf1af1940941e5c6dd60c75f542ad036226862448a0e",
   },
   {
+    id: FEE_REWARDS_MARKETING_CAMPAIGN_ID,
+    channel: "x",
+    queueOrder: 22,
+    notBefore: "2026-08-03T00:23:00.000Z",
+    notAfter: "2026-08-10T00:23:00.000Z",
+    body:
+      "0xZAPS fee campaign is active from Aug 3 00:23 UTC until Aug 10 00:23 UTC; claims until Sep 9 00:23 UTC.\n\n50/100 tokenized fee shares fund it. Stake: 0xZAPS. Rewards: WETH. Holding alone grants no fee rights.\n\nhttps://www.0xzaps.com/rewards\n\nPre-audit software. Verify before use.",
+    links: ["https://www.0xzaps.com/rewards"],
+    topics: ["token", "trading"],
+    disclosures: ["pre_audit"],
+    claims: FEE_REWARDS_CLAIMS,
+    flags: SAFE_FLAGS,
+    requiredFacts: FEE_REWARDS_FACTS,
+    canonicalSourceUrls: FEE_REWARDS_FACTS.map((fact) => fact.sourceUrl),
+    contentHash:
+      "69c67b003586adec1309b417161b967d4ff3003b26a208bfec29ea705082c749",
+  },
+  {
+    id: FEE_REWARDS_MARKETING_CAMPAIGN_ID,
+    channel: "discord",
+    queueOrder: 23,
+    notBefore: "2026-08-03T00:23:00.000Z",
+    notAfter: "2026-08-10T00:23:00.000Z",
+    body:
+      "**0xZAPS fee campaign — active from Aug 3 00:23 UTC until Aug 10 00:23 UTC; claims until Sep 9 00:23 UTC (2026).**\n\nThis separate campaign is funded with 50 of 100 tokenized Clanker fee shares. Stake principal is 0xZAPS. The campaign reward asset is WETH only, allocated by time-weighted stake; no payout amount is promised.\n\nHolding 0xZAPS alone grants no fee rights. Inspect the current phase, principal, exact contracts, and deadlines before acting:\nhttps://www.0xzaps.com/rewards\n\nThese contracts have not been externally audited. Pre-audit software. Verify before use.",
+    links: ["https://www.0xzaps.com/rewards"],
+    topics: ["token", "trading"],
+    disclosures: ["pre_audit"],
+    claims: FEE_REWARDS_CLAIMS,
+    flags: SAFE_FLAGS,
+    requiredFacts: FEE_REWARDS_FACTS,
+    canonicalSourceUrls: FEE_REWARDS_FACTS.map((fact) => fact.sourceUrl),
+    contentHash:
+      "1c8588ed3256b2802a2dc2510f77df1d7a48ee59ccaf382ff22508008a22abf3",
+  },
+  {
     id: LEARN_HUB_MARKETING_CAMPAIGN_ID,
     channel: "x",
     queueOrder: 30,
@@ -367,6 +432,11 @@ const AUTO_DELIVERY_CAMPAIGNS = new Set([
   `${SHARE_ZAP_DESIGN_MARKETING_CAMPAIGN_ID}:x`,
 ]);
 
+const REVIEW_ONLY_CAMPAIGNS = new Set([
+  `${FEE_REWARDS_MARKETING_CAMPAIGN_ID}:x`,
+  `${FEE_REWARDS_MARKETING_CAMPAIGN_ID}:discord`,
+]);
+
 function cloneCampaign(
   campaign: ReviewedMarketingCampaign,
 ): ReviewedMarketingCampaign {
@@ -376,6 +446,14 @@ function cloneCampaign(
       campaign.notBefore === null
         ? null
         : new Date(campaign.notBefore).toISOString(),
+    ...(campaign.notAfter === undefined
+      ? {}
+      : {
+          notAfter:
+            campaign.notAfter === null
+              ? null
+              : new Date(campaign.notAfter).toISOString(),
+        }),
     links: [...campaign.links],
     topics: [...campaign.topics],
     disclosures: [...campaign.disclosures],
@@ -410,6 +488,25 @@ export function reviewedMarketingCampaign(
   return cloneCampaign(campaign);
 }
 
+/** Financial/token artifacts stay owner-review-only even when source-exact. */
+export function reviewedMarketingCampaignIsReviewOnly(
+  campaignId: string,
+  channel: ScheduledMarketingChannel,
+): boolean {
+  return REVIEW_ONLY_CAMPAIGNS.has(`${campaignId}:${channel}`);
+}
+
+/**
+ * Source-only artifacts for an owner to inspect and copy into a manual post.
+ * These entries are deliberately absent from the durable cron queue and this
+ * accessor never claims a schedule slot or starts a workflow.
+ */
+export function reviewOnlyMarketingCampaigns(): ReviewedMarketingCampaign[] {
+  return CAMPAIGNS.filter((campaign) =>
+    REVIEW_ONLY_CAMPAIGNS.has(`${campaign.id}:${campaign.channel}`),
+  ).map(cloneCampaign);
+}
+
 export function reviewedMarketingCampaignIsAvailable(
   campaignId: string,
   channel: ScheduledMarketingChannel,
@@ -423,7 +520,25 @@ export function reviewedMarketingCampaignIsAvailable(
   }
   const evaluatedAt = Date.parse(now);
   if (!Number.isFinite(evaluatedAt)) return false;
-  return campaign.notBefore === null || evaluatedAt >= Date.parse(campaign.notBefore);
+  const afterStart = campaign.notBefore === null
+    || evaluatedAt >= Date.parse(campaign.notBefore);
+  const beforeEnd = campaign.notAfter === undefined
+    || campaign.notAfter === null
+    || evaluatedAt < Date.parse(campaign.notAfter);
+  return afterStart && beforeEnd;
+}
+
+/** Return only review-only artifacts inside their exact publication window. */
+export function availableReviewOnlyMarketingCampaigns(
+  now: string,
+): ReviewedMarketingCampaign[] {
+  return reviewOnlyMarketingCampaigns().filter((campaign) =>
+    reviewedMarketingCampaignIsAvailable(
+      campaign.id,
+      campaign.channel,
+      now,
+    ),
+  );
 }
 
 export function reviewedMarketingCampaignCanonicalPayload(
@@ -437,6 +552,14 @@ export function reviewedMarketingCampaignCanonicalPayload(
       campaign.notBefore === null
         ? null
         : new Date(campaign.notBefore).toISOString(),
+    ...(campaign.notAfter === undefined
+      ? {}
+      : {
+          notAfter:
+            campaign.notAfter === null
+              ? null
+              : new Date(campaign.notAfter).toISOString(),
+        }),
     body: campaign.body,
     links: campaign.links,
     topics: campaign.topics,

@@ -13,6 +13,10 @@ vi.mock("@/lib/marketing/x-compliance-server", () => ({
 }));
 
 import { GET } from "./route";
+import {
+  X_MENTION_APPROVAL_REGISTRY,
+  X_MENTION_TEMPLATE_REGISTRY_DIGEST,
+} from "@/lib/marketing/x-mention-registry";
 
 function request(token?: string): Request {
   return new Request("https://www.0xzaps.com/api/marketing/status", {
@@ -69,7 +73,23 @@ describe("marketing status route", () => {
     const raw = await response.text();
     const body = JSON.parse(raw) as {
       config: { readiness: { channels: { x: boolean; discordBroadcast: boolean } } };
-      xMentionAutomation: { ingestReady: boolean; hashSecretConfigured: boolean };
+      xMentionAutomation: {
+        ingestReady: boolean;
+        hashSecretConfigured: boolean;
+        canonicalUsernameBound: boolean;
+        templateRegistryDigest: string;
+      };
+      xActivationEvidence: {
+        schemaVersion: number;
+        evaluatedAt: string;
+        expectedAccountIdentity: { accountId: string; username: string } | null;
+        privacyUrl: string;
+        templates: Array<{
+          templateId: string;
+          prompts: string[];
+          body: string;
+        }>;
+      };
       xComplianceHealth: {
         result: string;
         checkedAt: string;
@@ -92,7 +112,39 @@ describe("marketing status route", () => {
     expect(body.xMentionAutomation).toMatchObject({
       ingestReady: false,
       hashSecretConfigured: false,
+      canonicalUsernameBound: true,
+      templateRegistryDigest: X_MENTION_TEMPLATE_REGISTRY_DIGEST,
     });
+    expect(body.xActivationEvidence).toMatchObject({
+      schemaVersion: 2,
+      expectedAccountIdentity: { accountId: "100", username: "0xzaps" },
+      privacyUrl: "https://www.0xzaps.com/legal#request-data",
+    });
+    expect(Number.isFinite(Date.parse(body.xActivationEvidence.evaluatedAt)))
+      .toBe(true);
+    expect(body.xActivationEvidence.templates.map(({ templateId }) => templateId))
+      .toEqual([
+        "about-v1",
+        "agent-authority-v1",
+        "docs-v1",
+        "request-zap-v1",
+        "virtual-trading-v1",
+      ]);
+    expect(body.xActivationEvidence.templates).toHaveLength(5);
+    expect(body.xActivationEvidence.templates).toEqual(
+      X_MENTION_APPROVAL_REGISTRY.map(({ templateId, prompts, body }) => ({
+        templateId,
+        prompts: [...prompts],
+        body,
+      })),
+    );
+    expect(body.xActivationEvidence.templates.every(
+      ({ body: templateBody }) =>
+        templateBody.length > 0 && Array.from(templateBody).length <= 280,
+    )).toBe(true);
+    expect(body.xActivationEvidence.templates.find(
+      ({ templateId }) => templateId === "request-zap-v1",
+    )?.body).toContain("https://www.0xzaps.com/request-a-zap");
     expect(body.xComplianceHealth).toEqual({
       result: "healthy",
       checkedAt: "2026-08-01T15:55:00.000Z",
@@ -106,6 +158,20 @@ describe("marketing status route", () => {
     expect(raw).not.toContain("operator-secret");
     expect(raw).not.toContain("x-provider-secret");
     expect(raw).not.toContain("discord-provider-secret");
+  });
+
+  it("does not expose a partial expected identity for a noncanonical username", async () => {
+    vi.stubEnv("OPENZAPS_MARKETING_ADMIN_TOKEN", "operator-secret");
+    vi.stubEnv("X_EXPECTED_ACCOUNT_ID", "100");
+    vi.stubEnv("X_EXPECTED_USERNAME", "otheraccount");
+
+    const response = await GET(request("operator-secret"));
+    const body = await response.json() as {
+      xActivationEvidence: { expectedAccountIdentity: unknown };
+    };
+
+    expect(response.status).toBe(200);
+    expect(body.xActivationEvidence.expectedAccountIdentity).toBeNull();
   });
 
   it("fails compliance readiness closed when the durable health read fails", async () => {

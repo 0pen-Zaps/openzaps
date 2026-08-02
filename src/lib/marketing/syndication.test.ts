@@ -28,15 +28,15 @@ describe("review-only feed syndication", () => {
   it("normalizes only the source-controlled OpenZaps feed as reviewable metadata", () => {
     const items = normalizeApprovedOpenZapsFeedItems();
 
-    expect(items).toHaveLength(5);
+    expect(items).toHaveLength(6);
     expect(items.every((item) => item.source === "openzaps")).toBe(true);
     expect(items.every((item) => item.classification === "reviewable")).toBe(true);
     expect(items.every((item) => item.draftable)).toBe(true);
     expect(items.every((item) => /^[a-f0-9]{64}$/u.test(item.key))).toBe(true);
     expect(new Set(items.map((item) => item.key)).size).toBe(items.length);
     expect(items[0]).toMatchObject({
-      sourceId: "openzaps-virtual-trading-2026-07-30",
-      canonicalUrl: "https://www.0xzaps.com/virtual-trading",
+      sourceId: "openzaps-fee-rewards-2026-08-02",
+      canonicalUrl: "https://www.0xzaps.com/rewards",
     });
     expect(Object.keys(items[0]).sort()).toEqual([
       "attributedUrls",
@@ -165,7 +165,7 @@ describe("review-only feed syndication", () => {
   it("combines both sources without creating a delivery or queue contract", () => {
     const items = discoverReviewOnlySyndicationItems([post()]);
 
-    expect(items).toHaveLength(6);
+    expect(items).toHaveLength(7);
     expect(items.filter((item) => item.source === "defitutorials")).toHaveLength(1);
     expect(items.every((item) => !Object.hasOwn(item, "delivery"))).toBe(true);
     expect(items.every((item) => !Object.hasOwn(item, "queue"))).toBe(true);
