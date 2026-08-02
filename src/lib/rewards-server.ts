@@ -28,6 +28,13 @@ const ZERO_HASH = `0x${"0".repeat(64)}` as Hex;
 const MAX_SHARED_SNAPSHOT_AGE_MS = 30_000;
 const MAX_FUTURE_CLOCK_SKEW_MS = 5_000;
 
+export class StaleRewardsSnapshotError extends Error {
+  constructor() {
+    super("The shared rewards snapshot is too old to use safely.");
+    this.name = "StaleRewardsSnapshotError";
+  }
+}
+
 const EIP712_DOMAIN_TYPES = {
   EIP712Domain: [
     { name: "name", type: "string" },
@@ -626,7 +633,7 @@ function assertSharedSnapshotFresh(snapshot: FeeRewardsPayload, now = Date.now()
     // `unstable_cache` can retain its last successful value when background
     // revalidation fails. Never let that turn an arbitrarily old chain read
     // into a fresh-looking API response or a transaction-ready UI state.
-    throw new Error("The shared rewards snapshot is too old to use safely.");
+    throw new StaleRewardsSnapshotError();
   }
 }
 

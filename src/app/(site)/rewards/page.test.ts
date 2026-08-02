@@ -76,6 +76,12 @@ describe("0xZAPS fee rewards public surface", () => {
     expect(workspace).not.toContain("30_000");
   });
 
+  it("retries a transient shared-cache refresh without accepting non-data as a snapshot", () => {
+    expect(workspace).toContain("SNAPSHOT_REFRESH_RETRY_ATTEMPTS = 2");
+    expect(workspace).toContain("response.status === 202");
+    expect(workspace).toContain("response.status !== 200");
+  });
+
   it("keeps writes paused until a post-transaction snapshot reaches the receipt block", () => {
     const snapshot = { headBlock: "101" } as FeeRewardsPayload;
     expect(snapshotIncludesBlock(snapshot, 100n)).toBe(true);

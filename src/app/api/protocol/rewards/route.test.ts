@@ -2,13 +2,15 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { FeeRewardsPayload } from "@/lib/rewards";
 
-const { fetchFeeRewardsMock, rateLimitMock } = vi.hoisted(() => ({
+const { fetchFeeRewardsMock, rateLimitMock, StaleSnapshotErrorMock } = vi.hoisted(() => ({
   fetchFeeRewardsMock: vi.fn(),
   rateLimitMock: vi.fn(),
+  StaleSnapshotErrorMock: class StaleRewardsSnapshotError extends Error {},
 }));
 
 vi.mock("@/lib/rewards-server", () => ({
   fetchFeeRewards: fetchFeeRewardsMock,
+  StaleRewardsSnapshotError: StaleSnapshotErrorMock,
 }));
 
 vi.mock("@/lib/relay-rate-limit", () => ({
@@ -130,6 +132,18 @@ describe("GET /api/protocol/rewards", () => {
     expect(response.headers.get("cache-control")).toBe("no-store, max-age=0");
     await expect(response.json()).resolves.toEqual({
       error: "Verified Robinhood fee-reward reads are unavailable right now.",
+    });
+  });
+
+  it("returns a bounded retry signal while the verified cache refreshes", async () => {
+    fetchFeeRewardsMock.mockRejectedValue(new StaleSnapshotErrorMock());
+    const response = await GET(new Request("https://www.0xzaps.com/api/protocol/rewards"));
+
+    expect(response.status).toBe(202);
+    expect(response.headers.get("cache-control")).toBe("no-store, max-age=0");
+    expect(response.headers.get("retry-after")).toBe("1");
+    await expect(response.json()).resolves.toEqual({
+      error: "Verified Robinhood fee-reward reads are refreshing.",
     });
   });
 });

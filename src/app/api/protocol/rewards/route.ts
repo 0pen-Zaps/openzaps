@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { getAddress, isAddress } from "viem";
 
 import { serverRateLimit } from "@/lib/relay-rate-limit";
-import { fetchFeeRewards } from "@/lib/rewards-server";
+import { StaleRewardsSnapshotError, fetchFeeRewards } from "@/lib/rewards-server";
 
 export const dynamic = "force-dynamic";
 
@@ -63,7 +63,22 @@ export async function GET(request: Request): Promise<NextResponse> {
           : "no-store, max-age=0",
       },
     });
-  } catch {
+  } catch (error) {
+    if (error instanceof StaleRewardsSnapshotError) {
+      // Next's shared Data Cache has started background revalidation. A 202 is
+      // not chain data: it tells the client to retry without turning a safe,
+      // transient refresh into a browser-level failed-resource error.
+      return NextResponse.json(
+        { error: "Verified Robinhood fee-reward reads are refreshing." },
+        {
+          status: 202,
+          headers: {
+            "cache-control": viewer ? "private, no-store" : "no-store, max-age=0",
+            "retry-after": "1",
+          },
+        },
+      );
+    }
     // Every surfaced number belongs to one all-or-nothing canonical snapshot.
     // Never turn a failed contract call, runtime mismatch, or reorg into zero.
     return errorResponse(

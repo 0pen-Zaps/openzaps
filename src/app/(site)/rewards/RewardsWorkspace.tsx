@@ -94,6 +94,8 @@ const WORKSPACES: readonly { id: RewardsWorkspaceName; label: string; hint: stri
 const STAKE_DECIMALS = 18;
 const POST_RECEIPT_REFRESH_ATTEMPTS = 8;
 const POST_RECEIPT_REFRESH_DELAY_MS = 2_000;
+const SNAPSHOT_REFRESH_RETRY_ATTEMPTS = 2;
+const SNAPSHOT_REFRESH_RETRY_DELAY_MS = 1_000;
 
 export type RewardsClaimLifecycle = "open" | "expired" | "swept";
 
@@ -172,8 +174,18 @@ export function RewardsWorkspace({
 
   const fetchSnapshot = useCallback(async (viewer: Address | null): Promise<FeeRewardsPayload> => {
     const query = viewer ? `?viewer=${encodeURIComponent(viewer)}` : "";
-    const response = await fetch(`/api/protocol/rewards${query}`, { cache: "no-store" });
-    if (!response.ok) throw new Error("The verified Robinhood Chain snapshot is unavailable.");
+    let response = await fetch(`/api/protocol/rewards${query}`, { cache: "no-store" });
+    for (
+      let attempt = 0;
+      response.status === 202 && attempt < SNAPSHOT_REFRESH_RETRY_ATTEMPTS;
+      attempt += 1
+    ) {
+      await new Promise<void>((resolve) => {
+        window.setTimeout(resolve, SNAPSHOT_REFRESH_RETRY_DELAY_MS);
+      });
+      response = await fetch(`/api/protocol/rewards${query}`, { cache: "no-store" });
+    }
+    if (response.status !== 200) throw new Error("The verified Robinhood Chain snapshot is unavailable.");
     return (await response.json()) as FeeRewardsPayload;
   }, []);
 
