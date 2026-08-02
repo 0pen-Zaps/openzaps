@@ -85,6 +85,7 @@ const GROUPS: readonly NavGroup[] = [
     label: "Watch",
     items: [
       { href: "/profile", label: "My zaps", icon: "wallet" },
+      { href: "/rewards", label: "Fee rewards", icon: "harvest" },
       { href: "/explore", label: "Explore", icon: "pulse" },
       { href: "/pot", label: "Pot", icon: "pot" },
     ],

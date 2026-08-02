@@ -112,6 +112,7 @@ export function SiteFooter(): React.JSX.Element {
           <div className={styles.col}>
             <h2>Token</h2>
             <Link href="/token">{TOKEN.symbol} token</Link>
+            <Link href="/rewards">Fee rewards campaign</Link>
             <Link href={LINKS.buyWithOpenZaps}>Zap in with OpenZaps</Link>
             <a href={LINKS.buy} target="_blank" rel="noreferrer">
               Buy on Clanker

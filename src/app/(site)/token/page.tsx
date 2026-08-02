@@ -80,6 +80,11 @@ const utility: readonly { title: string; where: keyof typeof WHERE; body: string
     body: "Hold 100,000+ 0xZAPS in the connected wallet and the app auto-refreshes live quotes, keeps 50 saved Zaps instead of 20, retains 100 receipts instead of 20, and enables receipt JSON export. At 1,000,000+ the saved-Zap limit is 100. The app reads the balance; the contracts never do.",
   },
   {
+    title: "The first fixed fee campaign has fixed dates",
+    where: "contracts",
+    body: "The first 0xZAPS fee rewards campaign is fixed to a seven-day Aug 3–10, 2026 staking window. It was funded at launch with 50 of 100 tokenized Clanker fee shares and is configured to use time-weighted stake to allocate campaign-accounted WETH to eligible deposits during that window. Its harvest path was configured for Clanker fees, while direct WETH transfers can also be synchronized; this site never asks for or spends sponsor-wallet WETH. Holding the token outside that contract earns nothing. Check /rewards for the current phase, live principal, and later claim deadline.",
+  },
+  {
     title: "Wallet-readable ERC-20",
     where: "wallet",
     body: `Use the exact ${TOKEN_LAUNCH.network} address, ${TOKEN.decimals} decimals, and the add-to-wallet button on this page. Wallet support varies.`,
@@ -159,9 +164,11 @@ export default function TokenPage(): React.JSX.Element {
         <div className={styles.col}>
           <h1 className={`${styles.title} gradientText`}>{TOKEN.symbol}</h1>
           <p className={styles.lede}>
-            The ERC-20 paired with aeWETH in the protocol&apos;s first live route. It confers no yield, equity, revenue
-            claim, governance, or protocol access — every core workflow works without holding it. Verify the exact
-            contract on {TOKEN_LAUNCH.network} before you trade it or add it to a wallet.
+            The ERC-20 paired with aeWETH in the protocol&apos;s first live route. Ownership alone confers no yield,
+            equity, revenue claim, governance, or protocol access — every core workflow works without holding it. The
+            first 0xZAPS fee rewards campaign has a fixed seven-day Aug 3–10, 2026 staking window and a later claim
+            deadline. Check the current phase on /rewards, then verify the exact token and campaign contracts on{" "}
+            {TOKEN_LAUNCH.network} before signing.
           </p>
 
           <section className={styles.facts} id="token" aria-label={`${TOKEN.symbol} token facts`}>
@@ -246,9 +253,14 @@ export default function TokenPage(): React.JSX.Element {
               <span>· The pinned live routes trade it</span>
               <span>· The creation fee converts into it</span>
               <span>· The lottery pot accrues it</span>
+              <span>· First fee campaign: Aug 3–10, 2026</span>
             </div>
             <Link className={styles.railNoteLink} href="/token#utilities">
-              All current utility <span aria-hidden>↓</span>
+              All token utility <span aria-hidden>↓</span>
+            </Link>
+            <br />
+            <Link className={styles.railNoteLink} href="/rewards">
+              Check campaign phase <span aria-hidden>→</span>
             </Link>
           </section>
         </aside>
@@ -274,9 +286,9 @@ export default function TokenPage(): React.JSX.Element {
           TokenUtilityPanel; the id is a route, not decoration. */}
       <section className={styles.section} id="utilities">
         <header className={styles.sectionHead}>
-          <h2 className={styles.sectionTitle}>What {TOKEN.symbol} is used for today</h2>
+          <h2 className={styles.sectionTitle}>How {TOKEN.symbol} is used</h2>
           <span className={styles.sectionNote}>
-            Every item below is live right now. The tag says where it is enforced.
+            Each row names its enforcement; the first fee campaign also states its fixed dates.
           </span>
         </header>
         <div className={styles.rows}>
@@ -297,9 +309,10 @@ export default function TokenPage(): React.JSX.Element {
           <div className={`${styles.row} ${styles.rowDanger}`}>
             <span className={styles.rowKey}>What it does not grant</span>
             <p className={styles.rowBody}>
-              The token grants no protocol governance, staking, revenue, yield, equity, or fee rights. It is not
-              equity and no return is implied. Every core workflow — create, fund, execute, recover — works without
-              holding it, and the app conveniences above are not protocol rights.
+              Ownership alone grants no protocol governance, automatic staking benefit, revenue claim, yield, equity,
+              or fee right. The first campaign recognizes only eligible deposits made during its fixed Aug 3–10, 2026
+              staking window, with a later claim deadline shown on /rewards. Every core workflow — create, fund,
+              execute, recover — works without holding it, and the app conveniences above are not protocol rights.
             </p>
           </div>
         </div>
@@ -351,8 +364,10 @@ export default function TokenPage(): React.JSX.Element {
           </p>
         </div>
         <p className={styles.footNote}>
-          Not financial advice. {TOKEN.symbol} is an ERC-20 with no claim on revenue, yield, or assets. It is not equity
-          and no return is implied.
+          Not financial advice. {TOKEN.symbol} ownership alone has no claim on revenue, yield, or assets. The first fee
+          campaign accounts WETH under its fixed terms and Aug 3–10, 2026 staking window. Its harvest path was
+          configured for Clanker fees, but direct WETH transfers can also be synchronized. Check /rewards for
+          the current phase and later claim deadline. It is not equity and no return is implied.
         </p>
       </section>
     </main>

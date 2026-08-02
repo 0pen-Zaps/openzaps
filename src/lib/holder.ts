@@ -4,7 +4,9 @@
  * These are conveniences the web app unlocks for connected wallets holding
  * 0xZAPS. They are enforced by the app, not the protocol: core workflows
  * (create, fund, execute, recover) are never token-gated, and holding the
- * token grants no governance, staking, revenue, yield, equity, or fee rights.
+ * token alone grants no governance, automatic staking benefit, revenue claim,
+ * yield, equity, or fee right. A separately identified fixed campaign can
+ * provide benefits only to tokens deliberately deposited into that contract.
  */
 
 export type HolderTier = "none" | "holder" | "operator";
