@@ -109,7 +109,15 @@ The first fixed 0xZAPS fee campaign is deliberately **not** stored in
 `public.marketing_reviewed_campaigns`. Token and trading material cannot enter
 the weekday automatic lane, and there is no hidden cron or database claim that
 starts either post. The two exact X/Discord artifacts remain source-controlled
-and can be listed for owner review with:
+and are exposed to the authenticated `/marketing` operator only while their
+manual-publication window is open. The operator reads them through
+`GET /api/marketing/campaigns/review-only`, which returns the exact body,
+content hash, evidence sources, and window plus explicit confirmation that it
+started no workflow and attempted no provider write. Copying an artifact is
+not an approval and does not contact X or Discord.
+
+For a local source review fallback, list the same currently available
+artifacts with:
 
 ```bash
 npx tsx -e 'import { availableReviewOnlyMarketingCampaigns } from "./src/lib/marketing/scheduled-template.ts"; const now = new Date().toISOString(); console.log(JSON.stringify({ now, campaigns: availableReviewOnlyMarketingCampaigns(now) }, null, 2))'
@@ -122,8 +130,9 @@ that window, the owner must re-open `/rewards` and
 `/api/protocol/rewards`, confirm the snapshot is in the exact active fixed
 window with the reviewed runtime identities and funding state, approve the
 channel copy, and publish it manually through the intended provider account.
-The source accessor only returns copy for inspection; it does not reserve a
-slot, start a workflow, or call X or Discord.
+The source accessor and authenticated GET only return copy for inspection;
+neither reserves a slot, starts a workflow, records approval, or calls X or
+Discord.
 
 ## Surfaces and access
 
@@ -132,6 +141,7 @@ slot, start a workflow, or call X or Discord.
 | `/marketing` | Private operator UI for readiness, drafting, review, approval, and rejection | The page shell is public and `noindex`; every data/action API requires the operator bearer token. |
 | `/learn` | Public, indexable catalog of reviewed product updates and RSS-confirmed DeFi Tutorials, with RSS/community follow paths and a bounded Request-a-Zap CTA | Public; source-controlled catalog only, with no provider write or draft access. |
 | `GET /api/marketing/status` | Secret-free readiness and policy posture | `Authorization: Bearer <OPENZAPS_MARKETING_ADMIN_TOKEN>` |
+| `GET /api/marketing/campaigns/review-only` | Return only source-controlled owner-review artifacts currently inside their inclusive-start, exclusive-end manual-publication window; never starts a workflow or contacts a provider | Operator bearer token; private/no-store |
 | `GET /api/marketing/x/identity` | Operator-triggered, read-only verification that the active X credentials resolve to the configured account id and username | Operator bearer token |
 | `GET /api/marketing/discord/preflight` | Operator-triggered, read-only verification of the exact OpenZaps guild/channel destination, official managed guild-command comparison when the server-side bot credential is configured, and privacy-safe current-manifest invocation receipts; never writes | Operator bearer token |
 | `GET /api/marketing/x/mentions` | List the metadata-only mention inbox and review-required count; never returns raw post text, usernames, or profiles | Operator bearer token |

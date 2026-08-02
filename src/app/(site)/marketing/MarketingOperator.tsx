@@ -52,6 +52,29 @@ type SyndicationStatus =
   | "failed";
 type JsonRecord = Record<string, unknown>;
 
+const REVIEW_ONLY_CAMPAIGN_LIMIT = 8;
+const REVIEW_ONLY_DRAFT_LABEL = "DRAFT ONLY — OWNER REVIEW REQUIRED";
+
+export type OperatorReviewOnlyCampaign = {
+  id: string;
+  channel: "x" | "discord";
+  body: string;
+  contentHash: string;
+  notBefore: string;
+  notAfter: string;
+  canonicalSourceUrls: string[];
+};
+
+export type OperatorReviewOnlyCampaignSnapshot = {
+  evaluatedAt: string;
+  campaigns: OperatorReviewOnlyCampaign[];
+};
+
+export type OperatorReviewOnlyCampaignClock = {
+  serverAtReceiptMs: number;
+  monotonicAtReceiptMs: number;
+};
+
 export type SourceControlledTutorialSelection = {
   tutorialId: string;
   title: string;
@@ -1481,6 +1504,14 @@ async function operatorRequest(
 
 type ClipboardAccess = Partial<Pick<Clipboard, "write" | "writeText">>;
 
+export async function writeReviewOnlyCampaignClipboard(
+  body: string,
+  clipboard: Pick<Clipboard, "writeText"> | undefined,
+): Promise<void> {
+  if (!body || !clipboard?.writeText) throw new Error("Clipboard unavailable");
+  await clipboard.writeText(body);
+}
+
 export async function writeSubstackClipboard(
   richText: SubstackRichText,
   clipboard: ClipboardAccess | undefined,
@@ -2307,6 +2338,150 @@ export function parseLeadScorecard(body: JsonRecord): LeadScorecard | null {
   };
 }
 
+function canonicalIsoTimestamp(value: unknown): string | null {
+  const candidate = text(value);
+  if (!isBoundedTimestamp(candidate)) return null;
+  const parsed = new Date(candidate);
+  return parsed.toISOString() === candidate ? candidate : null;
+}
+
+function canonicalReviewSourceUrl(value: unknown): string | null {
+  const candidate = text(value);
+  if (!candidate || candidate.length > 500) return null;
+  try {
+    const parsed = new URL(candidate);
+    if (
+      parsed.protocol !== "https:"
+      || parsed.username
+      || parsed.password
+      || parsed.port
+      || parsed.hash
+      || parsed.toString() !== candidate
+    ) return null;
+    return candidate;
+  } catch {
+    return null;
+  }
+}
+
+export function parseReviewOnlyCampaignSnapshot(
+  body: JsonRecord,
+): OperatorReviewOnlyCampaignSnapshot | null {
+  const evaluatedAt = canonicalIsoTimestamp(body.evaluatedAt);
+  if (
+    body.schemaVersion !== 1
+    || !evaluatedAt
+    || body.ownerReviewRequired !== true
+    || body.automaticQueueEligible !== false
+    || body.workflowsStarted !== false
+    || body.providerWritesAttempted !== false
+    || body.writesPerformed !== false
+    || !Array.isArray(body.campaigns)
+    || body.campaigns.length > REVIEW_ONLY_CAMPAIGN_LIMIT
+  ) return null;
+
+  const evaluatedAtMs = Date.parse(evaluatedAt);
+  const campaigns: OperatorReviewOnlyCampaign[] = [];
+  const seen = new Set<string>();
+  for (const value of body.campaigns) {
+    if (!isRecord(value)) return null;
+    const id = text(value.id);
+    const channel = text(value.channel);
+    const bodyText = typeof value.body === "string" ? value.body : null;
+    const contentHash = text(value.contentHash);
+    const notBefore = canonicalIsoTimestamp(value.notBefore);
+    const notAfter = canonicalIsoTimestamp(value.notAfter);
+    if (
+      !id
+      || !/^[a-z0-9][a-z0-9-]{0,95}$/u.test(id)
+      || (channel !== "x" && channel !== "discord")
+      || !bodyText
+      || bodyText.trim() !== bodyText
+      || Array.from(bodyText).length > (channel === "x" ? 280 : 2_000)
+      || !contentHash
+      || !/^[0-9a-f]{64}$/u.test(contentHash)
+      || !notBefore
+      || !notAfter
+      || Date.parse(notBefore) >= Date.parse(notAfter)
+      || evaluatedAtMs < Date.parse(notBefore)
+      || evaluatedAtMs >= Date.parse(notAfter)
+      || !Array.isArray(value.canonicalSourceUrls)
+      || value.canonicalSourceUrls.length === 0
+      || value.canonicalSourceUrls.length > 10
+    ) return null;
+    const canonicalSourceUrls = value.canonicalSourceUrls.map(
+      canonicalReviewSourceUrl,
+    );
+    if (
+      canonicalSourceUrls.some((sourceUrl) => sourceUrl === null)
+      || new Set(canonicalSourceUrls).size !== canonicalSourceUrls.length
+    ) return null;
+    const key = `${id}:${channel}`;
+    if (seen.has(key)) return null;
+    seen.add(key);
+    campaigns.push({
+      id,
+      channel,
+      body: bodyText,
+      contentHash,
+      notBefore,
+      notAfter,
+      canonicalSourceUrls: canonicalSourceUrls as string[],
+    });
+  }
+
+  return { evaluatedAt, campaigns };
+}
+
+export function reviewOnlyCampaignCanCopy(
+  campaign: OperatorReviewOnlyCampaign,
+  now = new Date().toISOString(),
+): boolean {
+  const evaluatedAt = Date.parse(now);
+  return Number.isFinite(evaluatedAt)
+    && evaluatedAt >= Date.parse(campaign.notBefore)
+    && evaluatedAt < Date.parse(campaign.notAfter);
+}
+
+export function reviewOnlyCampaignServerNow(
+  clock: OperatorReviewOnlyCampaignClock,
+  monotonicNowMs: number,
+): string | null {
+  if (
+    !Number.isFinite(clock.serverAtReceiptMs)
+    || !Number.isFinite(clock.monotonicAtReceiptMs)
+    || !Number.isFinite(monotonicNowMs)
+    || monotonicNowMs < clock.monotonicAtReceiptMs
+  ) return null;
+  const estimated = clock.serverAtReceiptMs
+    + (monotonicNowMs - clock.monotonicAtReceiptMs);
+  if (!Number.isFinite(estimated)) return null;
+  const estimatedDate = new Date(estimated);
+  return Number.isNaN(estimatedDate.valueOf())
+    ? null
+    : estimatedDate.toISOString();
+}
+
+export function reviewOnlyCampaignCopyRequestIsCurrent(input: {
+  expectedCopyGeneration: number;
+  currentCopyGeneration: number;
+  expectedRequestGeneration: number;
+  currentRequestGeneration: number;
+  campaign: OperatorReviewOnlyCampaign;
+  snapshot: OperatorReviewOnlyCampaignSnapshot | null;
+  serverNow: string;
+}): boolean {
+  return input.expectedCopyGeneration === input.currentCopyGeneration
+    && input.expectedRequestGeneration === input.currentRequestGeneration
+    && reviewOnlyCampaignCanCopy(input.campaign, input.serverNow)
+    && Boolean(input.snapshot?.campaigns.some((current) =>
+      current.id === input.campaign.id
+      && current.channel === input.campaign.channel
+      && current.contentHash === input.campaign.contentHash
+      && current.body === input.campaign.body
+    ));
+}
+
 export function operatorSyndicationItems(
   body: JsonRecord,
 ): OperatorSyndicationItem[] {
@@ -2743,12 +2918,29 @@ function sessionRemove(key: string): void {
   }
 }
 
+function monotonicNowMs(): number {
+  return typeof performance === "undefined" ? 0 : performance.now();
+}
+
 export function MarketingOperator(): React.JSX.Element {
   const [tokenInput, setTokenInput] = useState("");
   const [token, setToken] = useState("");
   const [leadTokenInput, setLeadTokenInput] = useState("");
   const [leadToken, setLeadToken] = useState("");
   const [status, setStatus] = useState<JsonRecord | null>(null);
+  const [reviewOnlyCampaignSnapshot, setReviewOnlyCampaignSnapshot] =
+    useState<OperatorReviewOnlyCampaignSnapshot | null>(null);
+  const [reviewOnlyCampaignState, setReviewOnlyCampaignState] = useState<
+    "idle" | "loading" | "ready" | "error"
+  >("idle");
+  const [reviewOnlyCampaignError, setReviewOnlyCampaignError] = useState("");
+  const [reviewOnlyCampaignNow, setReviewOnlyCampaignNow] = useState<
+    string | null
+  >(null);
+  const [copiedReviewOnlyCampaignKey, setCopiedReviewOnlyCampaignKey] =
+    useState("");
+  const [copyingReviewOnlyCampaignKey, setCopyingReviewOnlyCampaignKey] =
+    useState("");
   const [xIdentity, setXIdentity] =
     useState<XIdentityVerification | null>(null);
   const [xIdentityState, setXIdentityState] = useState<
@@ -2809,6 +3001,11 @@ export function MarketingOperator(): React.JSX.Element {
   const leadSessionGeneration = useRef(0);
   const leadActionGeneration = useRef(0);
   const syndicationRequestGeneration = useRef(0);
+  const reviewOnlyCampaignRequestGeneration = useRef(0);
+  const reviewOnlyCampaignCopyGeneration = useRef(0);
+  const reviewOnlyCampaignClock =
+    useRef<OperatorReviewOnlyCampaignClock | null>(null);
+  const reviewOnlyCampaignCopyInFlight = useRef(false);
   const xIdentityRequestGeneration = useRef(0);
   const discordPreflightRequestGeneration = useRef(0);
 
@@ -2863,6 +3060,10 @@ export function MarketingOperator(): React.JSX.Element {
     leadSessionGeneration.current += 1;
     leadActionGeneration.current += 1;
     syndicationRequestGeneration.current += 1;
+    reviewOnlyCampaignRequestGeneration.current += 1;
+    reviewOnlyCampaignCopyGeneration.current += 1;
+    reviewOnlyCampaignClock.current = null;
+    reviewOnlyCampaignCopyInFlight.current = false;
     xIdentityRequestGeneration.current += 1;
     discordPreflightRequestGeneration.current += 1;
     setToken("");
@@ -2870,6 +3071,12 @@ export function MarketingOperator(): React.JSX.Element {
     setLeadToken("");
     setLeadTokenInput("");
     setStatus(null);
+    setReviewOnlyCampaignSnapshot(null);
+    setReviewOnlyCampaignState("idle");
+    setReviewOnlyCampaignError("");
+    setReviewOnlyCampaignNow(null);
+    setCopiedReviewOnlyCampaignKey("");
+    setCopyingReviewOnlyCampaignKey("");
     setXIdentity(null);
     setXIdentityState("idle");
     setXIdentityError("");
@@ -3000,6 +3207,67 @@ export function MarketingOperator(): React.JSX.Element {
     }
   };
 
+  const loadReviewOnlyCampaigns = async (
+    candidateToken: string,
+    expectedSessionGeneration = leadSessionGeneration.current,
+  ): Promise<void> => {
+    if (leadSessionGeneration.current !== expectedSessionGeneration) return;
+    const requestGeneration = reviewOnlyCampaignRequestGeneration.current + 1;
+    reviewOnlyCampaignRequestGeneration.current = requestGeneration;
+    const requestStartedAt = monotonicNowMs();
+    setReviewOnlyCampaignState("loading");
+    setReviewOnlyCampaignError("");
+    setCopiedReviewOnlyCampaignKey("");
+    try {
+      const body = await operatorRequest(
+        "/api/marketing/campaigns/review-only",
+        candidateToken,
+      );
+      if (
+        reviewOnlyCampaignRequestGeneration.current !== requestGeneration
+        || leadSessionGeneration.current !== expectedSessionGeneration
+      ) return;
+      const parsed = parseReviewOnlyCampaignSnapshot(body);
+      if (!parsed) {
+        throw new Error("The review-only campaign response was invalid.");
+      }
+      const receivedAt = monotonicNowMs();
+      const clock = {
+        serverAtReceiptMs:
+          Date.parse(parsed.evaluatedAt)
+          + Math.max(0, receivedAt - requestStartedAt),
+        monotonicAtReceiptMs: receivedAt,
+      };
+      const serverNow = reviewOnlyCampaignServerNow(clock, receivedAt);
+      if (!serverNow) {
+        throw new Error("The review-only campaign clock was invalid.");
+      }
+      reviewOnlyCampaignClock.current = clock;
+      setReviewOnlyCampaignSnapshot(parsed);
+      setReviewOnlyCampaignNow(serverNow);
+      setReviewOnlyCampaignState("ready");
+    } catch (error) {
+      if (
+        reviewOnlyCampaignRequestGeneration.current !== requestGeneration
+        || leadSessionGeneration.current !== expectedSessionGeneration
+      ) return;
+      const requestError = error as OperatorError;
+      if (requestError?.status === 401) {
+        handleError(error, "The review-only campaigns could not be loaded.");
+        return;
+      }
+      reviewOnlyCampaignClock.current = null;
+      setReviewOnlyCampaignSnapshot(null);
+      setReviewOnlyCampaignNow(null);
+      setReviewOnlyCampaignState("error");
+      setReviewOnlyCampaignError(
+        error instanceof Error
+          ? error.message
+          : "The review-only campaigns could not be loaded.",
+      );
+    }
+  };
+
   const loadSyndicationInbox = async (
     candidateToken: string,
     expectedSessionGeneration = leadSessionGeneration.current,
@@ -3061,6 +3329,73 @@ export function MarketingOperator(): React.JSX.Element {
           ? error.message
           : "The syndication inbox could not be loaded.",
       );
+    }
+  };
+
+  const copyReviewOnlyCampaign = async (
+    campaign: OperatorReviewOnlyCampaign,
+  ): Promise<void> => {
+    if (
+      reviewOnlyCampaignState !== "ready"
+      || reviewOnlyCampaignCopyInFlight.current
+    ) return;
+    const clock = reviewOnlyCampaignClock.current;
+    const serverNow = clock
+      ? reviewOnlyCampaignServerNow(clock, monotonicNowMs())
+      : null;
+    if (!serverNow || !reviewOnlyCampaignCanCopy(campaign, serverNow)) {
+      setNotice(
+        "That manual campaign is outside its exact publication window. Refreshing the review lane.",
+      );
+      if (token) void loadReviewOnlyCampaigns(token);
+      return;
+    }
+    const campaignKey = `${campaign.id}:${campaign.channel}:${campaign.contentHash}`;
+    const requestGeneration = reviewOnlyCampaignRequestGeneration.current;
+    const copyGeneration = reviewOnlyCampaignCopyGeneration.current + 1;
+    reviewOnlyCampaignCopyGeneration.current = copyGeneration;
+    reviewOnlyCampaignCopyInFlight.current = true;
+    setCopyingReviewOnlyCampaignKey(campaignKey);
+    setCopiedReviewOnlyCampaignKey("");
+    try {
+      await writeReviewOnlyCampaignClipboard(
+        campaign.body,
+        typeof navigator === "undefined" ? undefined : navigator.clipboard,
+      );
+      const currentClock = reviewOnlyCampaignClock.current;
+      const currentServerNow = currentClock
+        ? reviewOnlyCampaignServerNow(currentClock, monotonicNowMs())
+        : null;
+      if (
+        !currentServerNow
+        || !reviewOnlyCampaignCopyRequestIsCurrent({
+          expectedCopyGeneration: copyGeneration,
+          currentCopyGeneration: reviewOnlyCampaignCopyGeneration.current,
+          expectedRequestGeneration: requestGeneration,
+          currentRequestGeneration:
+            reviewOnlyCampaignRequestGeneration.current,
+          campaign,
+          snapshot: reviewOnlyCampaignSnapshot,
+          serverNow: currentServerNow,
+        })
+      ) return;
+      setCopiedReviewOnlyCampaignKey(campaignKey);
+      setNotice(
+        "Exact draft copied locally. No approval, workflow, provider request, or publication was recorded.",
+      );
+    } catch {
+      if (
+        reviewOnlyCampaignCopyGeneration.current !== copyGeneration
+        || reviewOnlyCampaignRequestGeneration.current !== requestGeneration
+      ) {
+        return;
+      }
+      setNotice("Clipboard access is unavailable. Nothing was approved or published.");
+    } finally {
+      if (reviewOnlyCampaignCopyGeneration.current === copyGeneration) {
+        reviewOnlyCampaignCopyInFlight.current = false;
+        setCopyingReviewOnlyCampaignKey("");
+      }
     }
   };
 
@@ -3353,6 +3688,7 @@ export function MarketingOperator(): React.JSX.Element {
         }
         void loadLeadQueue(storedLeadToken, 3, sessionGeneration);
         void loadLeadScorecard(storedLeadToken, sessionGeneration);
+        void loadReviewOnlyCampaigns(storedToken, sessionGeneration);
         void loadSyndicationInbox(storedToken, sessionGeneration);
         setNotice("Operator session restored. Readiness is current.");
       })
@@ -3366,6 +3702,36 @@ export function MarketingOperator(): React.JSX.Element {
     // This runs once to restore only the credential scoped to this browser tab.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    if (!token || reviewOnlyCampaignState !== "ready") return;
+    const clock = reviewOnlyCampaignClock.current;
+    const currentServerNow = clock
+      ? reviewOnlyCampaignServerNow(clock, monotonicNowMs())
+      : null;
+    if (!currentServerNow) return;
+    const campaigns = reviewOnlyCampaignSnapshot?.campaigns ?? [];
+    const nextExpiry = campaigns.length
+      ? Math.min(...campaigns.map((campaign) => Date.parse(campaign.notAfter)))
+      : null;
+    const delay = nextExpiry === null
+      ? 15 * 60_000
+      : Math.max(0, nextExpiry - Date.parse(currentServerNow) + 250);
+    const timeout = setTimeout(() => {
+      const activeClock = reviewOnlyCampaignClock.current;
+      const advancedServerNow = activeClock
+        ? reviewOnlyCampaignServerNow(activeClock, monotonicNowMs())
+        : null;
+      if (advancedServerNow) setReviewOnlyCampaignNow(advancedServerNow);
+      void loadReviewOnlyCampaigns(
+        token,
+        leadSessionGeneration.current,
+      );
+    }, Math.min(delay, 2_147_483_647));
+    return () => clearTimeout(timeout);
+    // The loader is intentionally tied to the current token/session snapshot.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [reviewOnlyCampaignSnapshot, reviewOnlyCampaignState, token]);
 
   useEffect(() => {
     if (!token || !runId) return;
@@ -3436,6 +3802,7 @@ export function MarketingOperator(): React.JSX.Element {
     leadScorecardRequestGeneration.current += 1;
     leadActionGeneration.current += 1;
     syndicationRequestGeneration.current += 1;
+    reviewOnlyCampaignRequestGeneration.current += 1;
     xIdentityRequestGeneration.current += 1;
     discordPreflightRequestGeneration.current += 1;
     setXIdentity(null);
@@ -3471,6 +3838,7 @@ export function MarketingOperator(): React.JSX.Element {
           sessionGeneration,
         ),
         loadLeadScorecard(candidateLeadToken, sessionGeneration),
+        loadReviewOnlyCampaigns(candidate, sessionGeneration),
         loadSyndicationInbox(candidate, sessionGeneration),
       ]);
     } catch (error) {
@@ -3880,6 +4248,17 @@ export function MarketingOperator(): React.JSX.Element {
           </section>
 
           <XActivationApprovalPanel status={xActivation} />
+
+          <ReviewOnlyCampaignPanel
+            snapshot={reviewOnlyCampaignSnapshot}
+            state={reviewOnlyCampaignState}
+            error={reviewOnlyCampaignError}
+            serverNow={reviewOnlyCampaignNow}
+            copiedKey={copiedReviewOnlyCampaignKey}
+            copyingKey={copyingReviewOnlyCampaignKey}
+            onRefresh={() => void loadReviewOnlyCampaigns(token)}
+            onCopy={(campaign) => void copyReviewOnlyCampaign(campaign)}
+          />
 
           <section className={styles.panel} aria-labelledby="lead-request-queue">
             <div className={styles.sectionHead}>
@@ -4604,6 +4983,128 @@ export function MarketingOperator(): React.JSX.Element {
 
       <p className={styles.notice} aria-live="polite">{notice}</p>
     </div>
+  );
+}
+
+export function ReviewOnlyCampaignPanel({
+  snapshot,
+  state,
+  error,
+  serverNow,
+  copiedKey,
+  copyingKey,
+  onRefresh,
+  onCopy,
+}: {
+  snapshot: OperatorReviewOnlyCampaignSnapshot | null;
+  state: "idle" | "loading" | "ready" | "error";
+  error: string;
+  serverNow: string | null;
+  copiedKey: string;
+  copyingKey: string;
+  onRefresh: () => void;
+  onCopy: (campaign: OperatorReviewOnlyCampaign) => void;
+}): React.JSX.Element {
+  const campaigns = snapshot?.campaigns ?? [];
+  return (
+    <section className={styles.panel} aria-labelledby="review-only-campaigns">
+      <div className={styles.sectionHead}>
+        <div>
+          <span className={styles.step}>Manual lane</span>
+          <h2 id="review-only-campaigns">Owner-reviewed campaigns</h2>
+        </div>
+        <button
+          className={styles.textButton}
+          type="button"
+          onClick={onRefresh}
+          disabled={state === "loading"}
+        >
+          {state === "loading" ? "Checking…" : "Refresh"}
+        </button>
+      </div>
+      <p className={styles.reviewOnlyBoundary}>
+        <strong>{REVIEW_ONLY_DRAFT_LABEL}.</strong> Exact source-controlled copy
+        appears only inside its publication window. Copying stays local: it
+        records no approval, starts no workflow, contacts no provider, and
+        publishes nothing.
+      </p>
+
+      {state === "error" ? (
+        <p className={styles.queueError}>{error}</p>
+      ) : campaigns.length ? (
+        <div className={styles.syndicationInbox}>
+          {campaigns.map((campaign) => {
+            const campaignKey =
+              `${campaign.id}:${campaign.channel}:${campaign.contentHash}`;
+            const canCopy = state === "ready"
+              && Boolean(
+                serverNow
+                && reviewOnlyCampaignCanCopy(campaign, serverNow),
+              );
+            return (
+              <article className={styles.syndicationCard} key={campaignKey}>
+                <header>
+                  <div>
+                    <span className={styles.step}>
+                      {campaign.channel === "x" ? "X" : "Discord"}
+                    </span>
+                    <h3>{titleCase(campaign.id)}</h3>
+                    <p className={styles.reviewOnlyWindow}>
+                      <time dateTime={campaign.notBefore}>{campaign.notBefore}</time>
+                      {" → "}
+                      <time dateTime={campaign.notAfter}>{campaign.notAfter}</time>
+                      {" (end exclusive)"}
+                    </p>
+                  </div>
+                  <StatusChip ready={canCopy} label={canCopy ? "in window" : "expired"} />
+                </header>
+
+                <pre className={styles.reviewOnlyBody}>{campaign.body}</pre>
+
+                <div className={styles.reviewOnlyHash}>
+                  <span>Canonical campaign payload SHA-256</span>
+                  <code>{campaign.contentHash}</code>
+                </div>
+
+                <div className={styles.reviewOnlySources}>
+                  <strong>Recheck before posting</strong>
+                  <ul>
+                    {campaign.canonicalSourceUrls.map((sourceUrl) => (
+                      <li key={sourceUrl}>
+                        <a href={sourceUrl} target="_blank" rel="noreferrer">
+                          {sourceUrl}
+                        </a>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+
+                <div className={styles.reviewOnlyActions}>
+                  <button
+                    className={styles.secondaryButton}
+                    type="button"
+                    onClick={() => onCopy(campaign)}
+                    disabled={!canCopy || Boolean(copyingKey)}
+                  >
+                    {copyingKey === campaignKey
+                      ? "Copying…"
+                      : copiedKey === campaignKey
+                        ? "Copied exact draft"
+                        : "Copy exact draft"}
+                  </button>
+                </div>
+              </article>
+            );
+          })}
+        </div>
+      ) : (
+        <p className={styles.empty}>
+          {state === "loading"
+            ? "Checking exact review windows…"
+            : "No review-only campaign is currently inside its exact source window."}
+        </p>
+      )}
+    </section>
   );
 }
 
