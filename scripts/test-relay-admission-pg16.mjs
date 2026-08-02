@@ -2,7 +2,8 @@
 
 /**
  * Disposable PostgreSQL 16 integration test for relay, subscriptions, durable
- * marketing delivery, syndication admission, and lead notifications.
+ * marketing delivery, syndication admission, tutorial publication receipts,
+ * and lead notifications.
  *
  * This intentionally lives outside the default Vitest suite because it needs
  * local `initdb`, `postgres`, `pg_ctl`, and `psql` binaries. It applies every
@@ -336,6 +337,42 @@ function discoverSyndication(snapshot, initializeAsBaseline) {
   `);
 }
 
+function tutorialPublicationReceiptSql({
+  tutorialId,
+  runId,
+  candidateId,
+  sourcePath,
+  sourceSha256,
+  bodySha256,
+  approvedTitle,
+  canonicalUrl,
+  publishedAt,
+  rssCheckedAt,
+}) {
+  return `
+    select
+      result_code,
+      tutorial_id,
+      run_id,
+      candidate_id,
+      approved_title,
+      canonical_url
+    from public.record_marketing_tutorial_publication_receipt(
+      '${tutorialId}',
+      '${runId}',
+      '${candidateId}',
+      '${sourcePath}',
+      '${sourceSha256}',
+      '${bodySha256}',
+      '${approvedTitle}',
+      '${canonicalUrl}',
+      'https://defitutorials.substack.com/feed',
+      '${publishedAt}'::timestamptz,
+      '${rssCheckedAt}'::timestamptz
+    );
+  `;
+}
+
 const owner = "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 const firstZap = "0x1111111111111111111111111111111111111111";
 const cappedZap = "0x2222222222222222222222222222222222222222";
@@ -365,6 +402,8 @@ const syndicationInboxMigration =
   "20260801041508_marketing_syndication_inbox.sql";
 const xMentionInboxMigration =
   "20260801143000_marketing_x_mentions.sql";
+const tutorialPublicationReceiptMigration =
+  "20260802063540_marketing_tutorial_publication_receipts.sql";
 const subscriptionGrantHardeningMigration =
   "20260801224100_harden_subscription_authorization_grants.sql";
 const retentionSequenceHardeningMigration =
@@ -397,6 +436,41 @@ const syndicationPendingFailure = "50".repeat(32);
 const syndicationOpenZapsBaseline = "60".repeat(32);
 const syndicationOversizedXLink = "70".repeat(32);
 const syndicationMetadataDriftNew = "80".repeat(32);
+const tutorialReceiptFixture = {
+  tutorialId: "paper-trade-first-then-draw-the-authority-map",
+  runId: "run:substack-receipt-pg16",
+  candidateId: "candidate:substack-receipt-pg16",
+  sourcePath:
+    "docs/tutorials/paper-trade-first-then-draw-the-authority-map.md",
+  sourceSha256: "91".repeat(32),
+  bodySha256: "92".repeat(32),
+  approvedTitle: "Paper Trade First, Then Draw the Authority Map",
+  canonicalUrl:
+    "https://defitutorials.substack.com/p/paper-trade-first-then-draw-the-authority-map",
+  publishedAt: "2026-07-01T12:00:00Z",
+  rssCheckedAt: "2026-07-02T12:00:00Z",
+};
+const concurrentTutorialReceiptA = {
+  tutorialId: "concurrent-publication-receipt",
+  runId: "run:concurrent-publication-a",
+  candidateId: "candidate:concurrent-publication-a",
+  sourcePath: "docs/tutorials/concurrent-publication-receipt.md",
+  sourceSha256: "93".repeat(32),
+  bodySha256: "94".repeat(32),
+  approvedTitle: "Concurrent Publication Receipt A",
+  canonicalUrl:
+    "https://defitutorials.substack.com/p/concurrent-publication-receipt-a",
+  publishedAt: "2026-07-01T13:00:00Z",
+  rssCheckedAt: "2026-07-02T13:00:00Z",
+};
+const concurrentTutorialReceiptB = {
+  ...concurrentTutorialReceiptA,
+  runId: "run:concurrent-publication-b",
+  candidateId: "candidate:concurrent-publication-b",
+  approvedTitle: "Concurrent Publication Receipt B",
+  canonicalUrl:
+    "https://defitutorials.substack.com/p/concurrent-publication-receipt-b",
+};
 const malformedReceiptHash = `0x${"aa".repeat(32)}`;
 const rejectedMalformedReceiptHash = `0x${"bb".repeat(32)}`;
 const v3Factory = "0x70fcfd3615ea6651a670b6c4cd6b8ba1506717e9";
@@ -558,6 +632,7 @@ try {
           reviewedCampaignQueueMigration,
           syndicationInboxMigration,
           xMentionInboxMigration,
+          tutorialPublicationReceiptMigration,
         ].includes(
           filename,
         )
@@ -567,7 +642,9 @@ try {
           ? "marketing_reviewed_campaigns"
           : filename === syndicationInboxMigration
             ? "marketing_syndication_sources"
-            : "marketing_x_mention_accounts";
+            : filename === xMentionInboxMigration
+              ? "marketing_x_mention_accounts"
+              : "marketing_tutorial_publication_receipts";
         assert(
           replayProbe.status !== 0 &&
             new RegExp(`relation "${expectedRelation}" already exists`).test(
@@ -767,6 +844,309 @@ try {
   assert(
     replayState.join("|") === "0|0|0|5",
     `full-chain replay left unexpected relay state: ${replayState.join(", ")}`,
+  );
+
+  const tutorialReceiptSignature =
+    "public.record_marketing_tutorial_publication_receipt(text,text,text,text,text,text,text,text,text,timestamp with time zone,timestamp with time zone)";
+  const tutorialReceiptPrivileges = psqlScalar(`
+    select
+      (
+        select relrowsecurity
+        from pg_catalog.pg_class
+        where oid = 'public.marketing_tutorial_publication_receipts'::regclass
+      ),
+      has_function_privilege(
+        'service_role',
+        '${tutorialReceiptSignature}',
+        'execute'
+      ),
+      has_function_privilege(
+        'anon',
+        '${tutorialReceiptSignature}',
+        'execute'
+      ),
+      has_function_privilege(
+        'authenticated',
+        '${tutorialReceiptSignature}',
+        'execute'
+      ),
+      has_table_privilege(
+        'service_role',
+        'public.marketing_tutorial_publication_receipts',
+        'select'
+      ),
+      has_table_privilege(
+        'service_role',
+        'public.marketing_tutorial_publication_receipts',
+        'insert'
+      ),
+      has_table_privilege(
+        'service_role',
+        'public.marketing_tutorial_publication_receipts',
+        'update'
+      ),
+      has_table_privilege(
+        'service_role',
+        'public.marketing_tutorial_publication_receipts',
+        'delete'
+      ),
+      has_table_privilege(
+        'service_role',
+        'public.marketing_tutorial_publication_receipts',
+        'truncate'
+      );
+  `);
+  assert(
+    tutorialReceiptPrivileges === "t|t|f|f|f|f|f|f|f",
+    `unexpected tutorial publication receipt privileges: ${tutorialReceiptPrivileges}`,
+  );
+
+  for (const role of ["anon", "authenticated"]) {
+    const unauthorizedReceipt = await psqlScalarSession(`
+      set role ${role};
+      ${tutorialPublicationReceiptSql(tutorialReceiptFixture)}
+    `);
+    assert(
+      unauthorizedReceipt.status !== 0
+        && /permission denied/.test(
+          `${unauthorizedReceipt.stdout}${unauthorizedReceipt.stderr}`,
+        ),
+      `${role} unexpectedly recorded a tutorial publication receipt`,
+    );
+  }
+
+  const directTutorialReceiptRead = await psqlScalarSession(`
+    set role service_role;
+    select * from public.marketing_tutorial_publication_receipts;
+  `);
+  assert(
+    directTutorialReceiptRead.status !== 0
+      && /permission denied/.test(
+        `${directTutorialReceiptRead.stdout}${directTutorialReceiptRead.stderr}`,
+      ),
+    "service role unexpectedly read tutorial publication receipts directly",
+  );
+
+  const directTutorialReceiptInsert = await psqlScalarSession(`
+    set role service_role;
+    insert into public.marketing_tutorial_publication_receipts (
+      tutorial_id,
+      run_id,
+      candidate_id,
+      source_path,
+      source_sha256,
+      body_sha256,
+      approved_title,
+      canonical_url,
+      feed_url,
+      published_at,
+      rss_checked_at
+    ) values (
+      'direct-table-write-denied',
+      'run:direct-table-write-denied',
+      'candidate:direct-table-write-denied',
+      'docs/tutorials/direct-table-write-denied.md',
+      '${"95".repeat(32)}',
+      '${"96".repeat(32)}',
+      'Direct Table Write Denied',
+      'https://defitutorials.substack.com/p/direct-table-write-denied',
+      'https://defitutorials.substack.com/feed',
+      '2026-07-31T14:00:00Z'::timestamptz,
+      '2026-08-02T14:00:00Z'::timestamptz
+    );
+  `);
+  assert(
+    directTutorialReceiptInsert.status !== 0
+      && /permission denied/.test(
+        `${directTutorialReceiptInsert.stdout}${directTutorialReceiptInsert.stderr}`,
+      ),
+    "service role unexpectedly inserted a tutorial publication receipt directly",
+  );
+
+  const firstTutorialReceipt = await psqlScalarSession(`
+    set role service_role;
+    ${tutorialPublicationReceiptSql(tutorialReceiptFixture)}
+  `);
+  const expectedTutorialReceiptTuple = [
+    tutorialReceiptFixture.tutorialId,
+    tutorialReceiptFixture.runId,
+    tutorialReceiptFixture.candidateId,
+    tutorialReceiptFixture.approvedTitle,
+    tutorialReceiptFixture.canonicalUrl,
+  ].join("|");
+  assert(
+    firstTutorialReceipt.status === 0
+      && firstTutorialReceipt.stdout
+        .trim()
+        .split(/\r?\n/)
+        .includes(`recorded|${expectedTutorialReceiptTuple}`),
+    `first tutorial publication receipt was not recorded: ${firstTutorialReceipt.stdout}${firstTutorialReceipt.stderr}`,
+  );
+
+  const replayedTutorialReceipt = await psqlScalarSession(`
+    set role service_role;
+    ${tutorialPublicationReceiptSql(tutorialReceiptFixture)}
+  `);
+  assert(
+    replayedTutorialReceipt.status === 0
+      && replayedTutorialReceipt.stdout
+        .trim()
+        .split(/\r?\n/)
+        .includes(`already_recorded|${expectedTutorialReceiptTuple}`),
+    `identical tutorial publication receipt was not idempotent: ${replayedTutorialReceipt.stdout}${replayedTutorialReceipt.stderr}`,
+  );
+
+  const conflictingTutorialReceipt = await psqlScalarSession(`
+    set role service_role;
+    ${tutorialPublicationReceiptSql({
+      ...tutorialReceiptFixture,
+      runId: "run:substack-receipt-conflict",
+      candidateId: "candidate:substack-receipt-conflict",
+      approvedTitle: "Conflicting Publication Receipt",
+      canonicalUrl:
+        "https://defitutorials.substack.com/p/conflicting-publication-receipt",
+    })}
+  `);
+  assert(
+    conflictingTutorialReceipt.status === 0
+      && conflictingTutorialReceipt.stdout
+        .trim()
+        .split(/\r?\n/)
+        .includes(`conflict|${expectedTutorialReceiptTuple}`),
+    `conflicting tutorial receipt did not preserve the first tuple: ${conflictingTutorialReceipt.stdout}${conflictingTutorialReceipt.stderr}`,
+  );
+
+  const immutableFirstTutorialReceipt = psqlScalar(`
+    select
+      count(*),
+      bool_and(
+        run_id = '${tutorialReceiptFixture.runId}'
+        and candidate_id = '${tutorialReceiptFixture.candidateId}'
+        and source_path = '${tutorialReceiptFixture.sourcePath}'
+        and source_sha256 = '${tutorialReceiptFixture.sourceSha256}'
+        and body_sha256 = '${tutorialReceiptFixture.bodySha256}'
+        and approved_title = '${tutorialReceiptFixture.approvedTitle}'
+        and canonical_url = '${tutorialReceiptFixture.canonicalUrl}'
+        and feed_url = 'https://defitutorials.substack.com/feed'
+        and published_at = '${tutorialReceiptFixture.publishedAt}'::timestamptz
+        and rss_checked_at = '${tutorialReceiptFixture.rssCheckedAt}'::timestamptz
+      )
+    from public.marketing_tutorial_publication_receipts
+    where tutorial_id = '${tutorialReceiptFixture.tutorialId}';
+  `);
+  assert(
+    immutableFirstTutorialReceipt === "1|t",
+    `conflicting tutorial receipt mutated stored evidence: ${immutableFirstTutorialReceipt}`,
+  );
+
+  const concurrentTutorialReceipts = await Promise.all([
+    psqlScalarSession(`
+      set role service_role;
+      ${tutorialPublicationReceiptSql(concurrentTutorialReceiptA)}
+    `),
+    psqlScalarSession(`
+      set role service_role;
+      ${tutorialPublicationReceiptSql(concurrentTutorialReceiptB)}
+    `),
+  ]);
+  assert(
+    concurrentTutorialReceipts.every((result) => result.status === 0),
+    `concurrent tutorial publication receipt calls failed: ${concurrentTutorialReceipts
+      .map((result) => `${result.stdout}${result.stderr}`)
+      .join("\n")}`,
+  );
+  const concurrentTutorialReceiptLines = concurrentTutorialReceipts.map(
+    (result) => result.stdout
+      .trim()
+      .split(/\r?\n/)
+      .find((line) => /^(?:recorded|conflict)\|/.test(line)),
+  );
+  assert(
+    concurrentTutorialReceiptLines.every(Boolean),
+    `could not parse concurrent tutorial receipt results: ${concurrentTutorialReceiptLines.join(",")}`,
+  );
+  const concurrentTutorialReceiptCodes = concurrentTutorialReceiptLines
+    .map((line) => line.split("|", 1)[0])
+    .sort();
+  assert(
+    concurrentTutorialReceiptCodes.join("|") === "conflict|recorded",
+    `concurrent tutorial receipts were not serialized once: ${concurrentTutorialReceiptCodes.join("|")}`,
+  );
+  const concurrentTutorialReceiptTuples = concurrentTutorialReceiptLines.map(
+    (line) => line.replace(/^[^|]+\|/, ""),
+  );
+  assert(
+    concurrentTutorialReceiptTuples[0] === concurrentTutorialReceiptTuples[1],
+    `concurrent tutorial receipt calls returned different stored tuples: ${concurrentTutorialReceiptTuples.join(",")}`,
+  );
+  const storedConcurrentTutorialReceipt = psqlScalar(`
+    select
+      tutorial_id,
+      run_id,
+      candidate_id,
+      approved_title,
+      canonical_url
+    from public.marketing_tutorial_publication_receipts
+    where tutorial_id = '${concurrentTutorialReceiptA.tutorialId}';
+  `);
+  const expectedConcurrentTutorialReceiptA = [
+    concurrentTutorialReceiptA.tutorialId,
+    concurrentTutorialReceiptA.runId,
+    concurrentTutorialReceiptA.candidateId,
+    concurrentTutorialReceiptA.approvedTitle,
+    concurrentTutorialReceiptA.canonicalUrl,
+  ].join("|");
+  const expectedConcurrentTutorialReceiptB = [
+    concurrentTutorialReceiptB.tutorialId,
+    concurrentTutorialReceiptB.runId,
+    concurrentTutorialReceiptB.candidateId,
+    concurrentTutorialReceiptB.approvedTitle,
+    concurrentTutorialReceiptB.canonicalUrl,
+  ].join("|");
+  assert(
+    storedConcurrentTutorialReceipt === concurrentTutorialReceiptTuples[0]
+      && [
+        expectedConcurrentTutorialReceiptA,
+        expectedConcurrentTutorialReceiptB,
+      ].includes(storedConcurrentTutorialReceipt),
+    `concurrent tutorial receipt did not preserve exactly one input tuple: ${storedConcurrentTutorialReceipt}`,
+  );
+
+  for (const mutation of [
+    `update public.marketing_tutorial_publication_receipts
+     set run_id = 'run:mutated'
+     where tutorial_id = '${tutorialReceiptFixture.tutorialId}'`,
+    `delete from public.marketing_tutorial_publication_receipts
+     where tutorial_id = '${tutorialReceiptFixture.tutorialId}'`,
+    "truncate public.marketing_tutorial_publication_receipts",
+  ]) {
+    const mutationAttempt = await psqlScalarSession(mutation);
+    assert(
+      mutationAttempt.status !== 0
+        && /marketing tutorial publication receipts are immutable/.test(
+          `${mutationAttempt.stdout}${mutationAttempt.stderr}`,
+        ),
+      `tutorial publication receipt mutation was not rejected: ${mutation}\n${mutationAttempt.stdout}${mutationAttempt.stderr}`,
+    );
+  }
+
+  const finalTutorialReceiptState = psqlScalar(`
+    select
+      count(*),
+      count(*) filter (
+        where tutorial_id = '${tutorialReceiptFixture.tutorialId}'
+          and run_id = '${tutorialReceiptFixture.runId}'
+          and candidate_id = '${tutorialReceiptFixture.candidateId}'
+          and canonical_url = '${tutorialReceiptFixture.canonicalUrl}'
+      ),
+      count(*) filter (
+        where tutorial_id = '${concurrentTutorialReceiptA.tutorialId}'
+      )
+    from public.marketing_tutorial_publication_receipts;
+  `);
+  assert(
+    finalTutorialReceiptState === "2|1|1",
+    `rejected tutorial receipt mutations changed durable state: ${finalTutorialReceiptState}`,
   );
 
   const xMentionRpcs = [
@@ -5456,7 +5836,7 @@ Pre-audit software. Verify before use.$campaign$)::text
   );
 
   console.log(
-    "PostgreSQL 16 relay, marketing, syndication, and lead-notification integration: passed",
+    "PostgreSQL 16 relay, marketing, syndication, tutorial-receipt, and lead-notification integration: passed",
   );
 } finally {
   spawnSync("pg_ctl", ["-D", dataDirectory, "-m", "immediate", "stop"], {

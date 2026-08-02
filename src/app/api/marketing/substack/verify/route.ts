@@ -17,6 +17,12 @@ import {
   loadSourceControlledTutorialApprovalBundle,
 } from "@/lib/marketing/tutorial-handoff-source";
 import {
+  TutorialPublicationReceiptError,
+  recordTutorialPublicationReceipt,
+  tutorialPublicationManifestEntry,
+  tutorialPublicationManifestPatch,
+} from "@/lib/marketing/tutorial-publication-receipt-server";
+import {
   MarketingWorkflowResultSchema,
   type MarketingWorkflowResult,
 } from "@/workflows/marketing-agent/contracts";
@@ -129,6 +135,7 @@ export async function POST(request: Request): Promise<Response> {
       || tutorialApproval.tutorialId !== tutorialHandoff.tutorialId
       || tutorialApproval.sourceSha256 !== tutorialHandoff.sourceSha256
       || tutorialApproval.bodySha256 !== tutorialHandoff.bodySha256
+      || presentations[0].title !== tutorialHandoff.title
     ) {
       return NextResponse.json(
         { error: "The selected candidate has no approved Substack handoff." },
@@ -152,13 +159,51 @@ export async function POST(request: Request): Promise<Response> {
       canonicalUrl: parsed.data.canonicalUrl,
       approvedTitle: presentations[0].title,
     });
+    if (verification.status !== "rss_confirmed") {
+      return NextResponse.json({
+        ...verification,
+        runId: parsed.data.runId,
+        candidateId: parsed.data.candidateId,
+        tutorialId: tutorialHandoff.tutorialId,
+        sourceSha256: tutorialHandoff.sourceSha256,
+        bodySha256: tutorialHandoff.bodySha256,
+      }, {
+        status: 200,
+        headers: PRIVATE_HEADERS,
+      });
+    }
+    if (!verification.publishedAt) {
+      throw new TutorialPublicationReceiptError(
+        "invalid_response",
+        "The RSS-confirmed tutorial has no publication timestamp.",
+      );
+    }
+
+    const receipt = await recordTutorialPublicationReceipt({
+      tutorialId: tutorialHandoff.tutorialId,
+      runId: parsed.data.runId,
+      candidateId: parsed.data.candidateId,
+      sourcePath: tutorialHandoff.sourcePath,
+      sourceSha256: tutorialHandoff.sourceSha256,
+      bodySha256: tutorialHandoff.bodySha256,
+      approvedTitle: presentations[0].title,
+      canonicalUrl: verification.canonicalUrl,
+      feedUrl: verification.feedUrl,
+      publishedAt: verification.publishedAt,
+      rssCheckedAt: verification.checkedAt,
+    });
+    const manifestEntry = tutorialPublicationManifestEntry(receipt);
     return NextResponse.json({
       ...verification,
+      persisted: true,
+      receiptResult: receipt.result,
       runId: parsed.data.runId,
       candidateId: parsed.data.candidateId,
       tutorialId: tutorialHandoff.tutorialId,
       sourceSha256: tutorialHandoff.sourceSha256,
       bodySha256: tutorialHandoff.bodySha256,
+      manifestEntry,
+      manifestPatch: tutorialPublicationManifestPatch(manifestEntry),
     }, {
       status: 200,
       headers: PRIVATE_HEADERS,
@@ -180,6 +225,24 @@ export async function POST(request: Request): Promise<Response> {
             "Use the exact public https://defitutorials.substack.com/p/... URL for this approved handoff.",
         },
         { status: 400, headers: PRIVATE_HEADERS },
+      );
+    }
+    if (
+      error instanceof TutorialPublicationReceiptError
+      && error.code === "conflict"
+    ) {
+      return NextResponse.json(
+        {
+          error:
+            "A different immutable publication receipt already exists for this tutorial; review the stored receipt before continuing.",
+        },
+        { status: 409, headers: PRIVATE_HEADERS },
+      );
+    }
+    if (error instanceof TutorialPublicationReceiptError) {
+      return NextResponse.json(
+        { error: "The durable tutorial publication receipt could not be recorded." },
+        { status: 503, headers: PRIVATE_HEADERS },
       );
     }
 

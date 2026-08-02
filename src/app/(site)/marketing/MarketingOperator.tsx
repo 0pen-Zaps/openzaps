@@ -61,17 +61,38 @@ export type TutorialApprovalEcho = Pick<
   "tutorialId" | "sourceSha256" | "bodySha256"
 >;
 
-type SubstackVerification = {
+export type SubstackManifestEntry = {
+  id: string;
+  title: string;
+  sourcePath: string;
+  status: "rss_confirmed";
+  canonicalUrl: string;
+  publishedAt: string;
+};
+
+type SubstackVerificationBase = {
   runId: string;
   candidateId: string;
-  status: "rss_confirmed" | "not_found" | "title_mismatch";
   canonicalUrl: string;
   approvedTitle: string;
   feedUrl: string;
   checkedAt: string;
   publishedAt?: string;
-  persisted: false;
 };
+
+export type SubstackVerification =
+  | (SubstackVerificationBase & {
+      status: "rss_confirmed";
+      publishedAt: string;
+      persisted: true;
+      receiptResult: "recorded" | "already_recorded";
+      manifestEntry: SubstackManifestEntry;
+      manifestPatch: string;
+    })
+  | (SubstackVerificationBase & {
+      status: "not_found" | "title_mismatch";
+      persisted: false;
+    });
 
 type OperatorError = Error & {
   status?: number;
@@ -578,6 +599,14 @@ export async function writeSubstackClipboard(
     return "plain";
   }
   throw new Error("Clipboard unavailable");
+}
+
+export async function writeSubstackManifestPatchClipboard(
+  manifestPatch: string,
+  clipboard: ClipboardAccess | undefined,
+): Promise<void> {
+  if (!clipboard?.writeText) throw new Error("Clipboard unavailable");
+  await clipboard.writeText(manifestPatch);
 }
 
 const CHANNEL_READINESS_COPY: Record<
@@ -1381,7 +1410,14 @@ export function hasSubstackEditorHandoff(
 
 export function parseSubstackVerification(
   body: JsonRecord,
-  expected: { runId: string; candidateId: string; canonicalUrl: string },
+  expected: {
+    runId: string;
+    candidateId: string;
+    canonicalUrl: string;
+    tutorialId: string;
+    approvedTitle: string;
+    sourcePath: string;
+  },
 ): SubstackVerification | null {
   const runId = text(body.runId);
   const candidateId = text(body.candidateId);
@@ -1391,6 +1427,7 @@ export function parseSubstackVerification(
   const feedUrl = text(body.feedUrl);
   const checkedAt = text(body.checkedAt);
   const publishedAt = text(body.publishedAt);
+  const hasPublishedAt = body.publishedAt !== undefined && body.publishedAt !== null;
   if (
     runId !== expected.runId
     || candidateId !== expected.candidateId
@@ -1402,19 +1439,94 @@ export function parseSubstackVerification(
     || feedUrl !== "https://defitutorials.substack.com/feed"
     || !checkedAt
     || !Number.isFinite(Date.parse(checkedAt))
-    || body.persisted !== false
-    || (publishedAt !== null && !Number.isFinite(Date.parse(publishedAt)))
+    || (hasPublishedAt && (!publishedAt || !Number.isFinite(Date.parse(publishedAt))))
   ) return null;
-  return {
+
+  const base = {
     runId,
     candidateId,
-    status: status as SubstackVerification["status"],
     canonicalUrl,
     approvedTitle,
     feedUrl,
     checkedAt,
     ...(publishedAt ? { publishedAt } : {}),
-    persisted: false,
+  };
+
+  if (status !== "rss_confirmed") {
+    if (
+      body.persisted !== false
+      || body.receiptResult !== undefined
+      || body.manifestEntry !== undefined
+      || body.manifestPatch !== undefined
+    ) return null;
+    return {
+      ...base,
+      status: status as "not_found" | "title_mismatch",
+      persisted: false,
+    };
+  }
+
+  const receiptResult = text(body.receiptResult);
+  const rawManifestEntry = isRecord(body.manifestEntry)
+    ? body.manifestEntry
+    : null;
+  const manifestId = text(rawManifestEntry?.id);
+  const manifestTitle = text(rawManifestEntry?.title);
+  const manifestSourcePath = text(rawManifestEntry?.sourcePath);
+  const manifestStatus = text(rawManifestEntry?.status);
+  const manifestCanonicalUrl = text(rawManifestEntry?.canonicalUrl);
+  const manifestPublishedAt = text(rawManifestEntry?.publishedAt);
+  const manifestPatch = typeof body.manifestPatch === "string"
+    ? body.manifestPatch
+    : null;
+
+  if (
+    body.persisted !== true
+    || (receiptResult !== "recorded" && receiptResult !== "already_recorded")
+    || !publishedAt
+    || !manifestId
+    || !/^[a-z0-9]+(?:-[a-z0-9]+)*$/u.test(manifestId)
+    || manifestId !== expected.tutorialId
+    || manifestTitle !== approvedTitle
+    || manifestTitle !== expected.approvedTitle
+    || manifestSourcePath !== expected.sourcePath
+    || manifestSourcePath !== `docs/tutorials/${manifestId}.md`
+    || manifestStatus !== "rss_confirmed"
+    || manifestCanonicalUrl !== canonicalUrl
+    || manifestPublishedAt !== publishedAt
+    || !Number.isFinite(Date.parse(manifestPublishedAt))
+    || !manifestPatch
+    || manifestPatch.length > 20_000
+    || manifestPatch.includes("\0")
+  ) return null;
+
+  const manifestEntry: SubstackManifestEntry = {
+    id: manifestId,
+    title: manifestTitle,
+    sourcePath: manifestSourcePath,
+    status: "rss_confirmed",
+    canonicalUrl: manifestCanonicalUrl,
+    publishedAt: manifestPublishedAt,
+  };
+  try {
+    const parsedPatch = JSON.parse(manifestPatch) as unknown;
+    if (
+      !isRecord(parsedPatch)
+      || JSON.stringify(parsedPatch) !== JSON.stringify(manifestEntry)
+      || manifestPatch !== JSON.stringify(manifestEntry, null, 2)
+    ) return null;
+  } catch {
+    return null;
+  }
+
+  return {
+    ...base,
+    status: "rss_confirmed",
+    publishedAt,
+    persisted: true,
+    receiptResult,
+    manifestEntry,
+    manifestPatch,
   };
 }
 
@@ -3544,6 +3656,81 @@ function DraftReview({
   );
 }
 
+export function SubstackPublicationReceipt({
+  verification,
+}: {
+  verification: Extract<SubstackVerification, { persisted: true }>;
+}): React.JSX.Element {
+  const [copyState, setCopyState] = useState<"idle" | "copied" | "error">(
+    "idle",
+  );
+
+  const copyManifestPatch = async (): Promise<void> => {
+    setCopyState("idle");
+    try {
+      await writeSubstackManifestPatchClipboard(
+        verification.manifestPatch,
+        navigator.clipboard,
+      );
+      setCopyState("copied");
+    } catch {
+      setCopyState("error");
+    }
+  };
+
+  return (
+    <section
+      className={styles.substackPreview}
+      aria-label="Immutable Substack publication receipt"
+    >
+      <span>Immutable publication receipt</span>
+      <div className={styles.substackMeta}>
+        <strong>
+          {verification.receiptResult === "recorded"
+            ? "RSS publication receipt recorded"
+            : "Existing RSS publication receipt matched"}
+        </strong>
+        <p role="status">
+          {verification.receiptResult === "recorded"
+            ? "The exact public URL, approved title, and publication time are now durably recorded."
+            : "The exact durable receipt was already present; no duplicate record was created."}
+        </p>
+        <small>
+          Tutorial: <code>{verification.manifestEntry.id}</code>
+          <br />
+          Source: <code>{verification.manifestEntry.sourcePath}</code>
+        </small>
+      </div>
+      <label className={styles.field}>
+        <span>Exact manifest replacement object</span>
+        <textarea
+          aria-label="Exact tutorial manifest patch"
+          readOnly
+          rows={12}
+          value={verification.manifestPatch}
+        />
+      </label>
+      <div className={styles.substackActions}>
+        <button type="button" onClick={() => void copyManifestPatch()}>
+          {copyState === "copied"
+            ? "Manifest patch copied"
+            : "Copy exact manifest patch"}
+        </button>
+        <span role="status">
+          {copyState === "error"
+            ? "Clipboard access failed. Select the read-only patch above."
+            : "Owner review is still required before changing the source-controlled manifest."}
+        </span>
+      </div>
+      <small>
+        Review this replacement object against <code>docs/tutorials/manifest.json</code>
+        {" "}and commit it through the normal Git review. The verifier never edits
+        Substack or repository files automatically.
+      </small>
+    </section>
+  );
+}
+
 export function SubstackHandoff({
   candidateId,
   value,
@@ -3633,6 +3820,9 @@ export function SubstackHandoff({
         runId,
         candidateId,
         canonicalUrl: requestedCanonicalUrl,
+        tutorialId: text(source?.tutorialId) ?? "",
+        approvedTitle: draft.title,
+        sourcePath: tutorialSourcePath ?? "",
       });
       if (!parsed) throw new Error("The RSS verifier returned an invalid receipt.");
       setVerification(parsed);
@@ -3720,57 +3910,61 @@ export function SubstackHandoff({
       </details>
 
       {verificationEnabled ? (
-        <div className={styles.substackVerify}>
-          <label className={styles.field}>
-            <span>Published canonical URL</span>
-            <input
-              type="url"
-              inputMode="url"
-              spellCheck={false}
-              value={canonicalUrl}
-              onChange={(event) => {
-                verificationGeneration.current += 1;
-                canonicalUrlRef.current = event.target.value;
-                setCanonicalUrl(event.target.value);
-                setVerification(null);
-                setVerificationError("");
-                setVerificationBusy(false);
-              }}
-              placeholder="https://defitutorials.substack.com/p/..."
-            />
-          </label>
-          <button
-            type="button"
-            onClick={() => void verifyPublication()}
-            disabled={
-              verificationBusy
-              || !canonicalUrl.trim()
-              || !runId
-              || !candidateId
-            }
-          >
-            {verificationBusy ? "Checking RSS…" : "Verify public RSS"}
-          </button>
-          {verification ? (
-            <p data-status={verification.status} role="status">
-              {verification.status === "rss_confirmed"
-                ? `RSS confirmed the exact URL and approved title${
-                    verification.publishedAt
-                      ? ` · ${new Date(verification.publishedAt).toLocaleString()}`
-                      : ""
-                  }.`
-                : verification.status === "title_mismatch"
-                  ? "The URL is in the feed, but its title does not match the approved draft."
-                  : "The exact URL is not present in the public feed."}
-            </p>
+        <>
+          <div className={styles.substackVerify}>
+            <label className={styles.field}>
+              <span>Published canonical URL</span>
+              <input
+                type="url"
+                inputMode="url"
+                spellCheck={false}
+                value={canonicalUrl}
+                onChange={(event) => {
+                  verificationGeneration.current += 1;
+                  canonicalUrlRef.current = event.target.value;
+                  setCanonicalUrl(event.target.value);
+                  setVerification(null);
+                  setVerificationError("");
+                  setVerificationBusy(false);
+                }}
+                placeholder="https://defitutorials.substack.com/p/..."
+              />
+            </label>
+            <button
+              type="button"
+              onClick={() => void verifyPublication()}
+              disabled={
+                verificationBusy
+                || !canonicalUrl.trim()
+                || !runId
+                || !candidateId
+              }
+            >
+              {verificationBusy ? "Checking RSS…" : "Verify public RSS"}
+            </button>
+            {verification ? (
+              <p data-status={verification.status} role="status">
+                {verification.status === "rss_confirmed"
+                  ? `RSS confirmed the exact URL and approved title · ${
+                      new Date(verification.publishedAt).toLocaleString()
+                    }.`
+                  : verification.status === "title_mismatch"
+                    ? "The URL is in the feed, but its title does not match the approved draft."
+                    : "The exact URL is not present in the public feed."}
+              </p>
+            ) : null}
+            {verificationError ? <p role="status">{verificationError}</p> : null}
+            <small>
+              The verifier reads public RSS and never publishes or edits Substack.
+              On an exact match it stores an immutable evidence receipt and prepares
+              a manifest replacement object; an owner must still review and commit
+              that source-controlled change.
+            </small>
+          </div>
+          {verification?.persisted ? (
+            <SubstackPublicationReceipt verification={verification} />
           ) : null}
-          {verificationError ? <p role="status">{verificationError}</p> : null}
-          <small>
-            This is a read-only check. It does not publish, edit Substack, or
-            persist an RSS-confirmed receipt; the current ledger records only
-            the approved editor handoff.
-          </small>
-        </div>
+        </>
       ) : null}
     </div>
   );
