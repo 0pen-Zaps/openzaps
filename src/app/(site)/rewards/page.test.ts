@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
-import { FEE_REWARDS_MANIFEST, type FeeRewardsPayload } from "@/lib/rewards";
+import { FEE_REWARDS_MANIFEST, campaignPhaseNote, type FeeRewardsPayload } from "@/lib/rewards";
 import {
   rewardsBalanceLabel,
   rewardsClaimLifecycle,
@@ -138,7 +138,10 @@ describe("0xZAPS fee rewards public surface", () => {
     expect(rewardsCss).toContain("transform: translateY(-50%) translateX(");
     // The timeline fill derives from the same verified-block estimate as the
     // countdown, never the wall clock alone — and animates transform only.
-    expect(workspace).toContain("estimatedNow={countdown.target - remaining}");
+    // The timeline reads the verified block timestamp directly — it is not
+    // derived from the countdown, so it survives the phases that have no
+    // clock target (settlement-pending, expired) instead of vanishing.
+    expect(workspace).toContain("estimatedNow={BigInt(data.blockTimestamp)}");
     expect(workspace).toContain("scaleX(");
     expect(rewardsCss).not.toContain("transition: width");
   });
@@ -170,6 +173,31 @@ describe("0xZAPS fee rewards public surface", () => {
     expect(workspace).toContain("<SettlementRail data={data} />");
     expect(workspace.match(/<SettlementRail /gu)?.length).toBe(1);
     expect(workspace).not.toContain("THE SETTLEMENT RAIL");
+  });
+
+  it("keeps every campaign phase legible and never advertises a closed action", () => {
+    // Each phase states what is true and who may act; a phase word alone does
+    // not tell a reader whether their funds are stuck.
+    for (const phase of [
+      "unfunded",
+      "upcoming",
+      "active",
+      "settlement-pending",
+      "claim-only",
+      "expired",
+    ] as const) {
+      expect(campaignPhaseNote(phase).length, phase).toBeGreaterThan(20);
+    }
+    expect(campaignPhaseNote("settlement-pending")).toContain("Anyone can call finalize");
+    expect(campaignPhaseNote("expired")).toContain("deadline has passed");
+    // The closing cell must not invite staking once the window has closed, or
+    // claiming once the deadline has passed.
+    expect(workspace).toContain('data.phase === "upcoming" || data.phase === "active"');
+    expect(workspace).toContain('label: "Stake & claim"');
+    expect(workspace).toContain('label: "Claim & withdraw"');
+    expect(workspace).toContain('label: "View your position"');
+    // Past the deadline the claim fact reports closure rather than inviting.
+    expect(workspace).toContain("Claims closed");
   });
 
   it("never paints text with the brand fill token", () => {

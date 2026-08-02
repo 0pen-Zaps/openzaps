@@ -213,6 +213,15 @@
   letter-spacing: -0.02em;
 }
 
+/* One sentence under the phase word: what is true now, and who may act. */
+.phaseNote {
+  margin: -6px 0 12px;
+  padding: 0 16px;
+  color: var(--ink-2);
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+
 .countdown {
   display: flex;
   flex-wrap: wrap;
