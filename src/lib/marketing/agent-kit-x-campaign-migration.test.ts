@@ -3,7 +3,7 @@ import { fileURLToPath } from "node:url";
 
 import { describe, expect, it } from "vitest";
 
-import { AGENT_KIT_MARKETING_CAMPAIGN_ID } from "@/lib/marketing/types";
+import { LEGACY_AGENT_KIT_MARKETING_CAMPAIGN_ID } from "@/lib/marketing/types";
 import { reviewedMarketingCampaign } from "@/lib/marketing/scheduled-template";
 
 const migration = readFileSync(
@@ -18,7 +18,7 @@ const migration = readFileSync(
 
 describe("Agent Kit X campaign migration", () => {
   const campaign = reviewedMarketingCampaign(
-    AGENT_KIT_MARKETING_CAMPAIGN_ID,
+    LEGACY_AGENT_KIT_MARKETING_CAMPAIGN_ID,
     "x",
   );
 

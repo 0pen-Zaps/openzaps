@@ -41,9 +41,9 @@ measurable, privacy-minimized handoff to `/request-a-zap`.
 | Canonical links only | Outbound links are restricted to `0xzaps.com`, `www.0xzaps.com`, `defitutorials.substack.com`, and `github.com/0pen-Zaps/openzaps`. |
 | Human review | Every model-generated item and every freeform reply remains review-only. Tutorials, incidents, security, token/trading, partnerships, roadmaps, and new deployments always require approval. Only exact versioned X FAQ templates may use the independent auto-response lane after X campaign approval is attested. |
 | Paper simulation | The `simulation` topic is reserved for wallet-free, no-real-funds practice surfaces. Live or token trading remains `trading` and always requires approval. |
-| Bounded scheduled campaigns | Automatic delivery accepts only an immutable campaign/channel row that exactly matches the source-reviewed registry and its SHA-256 content binding, only for tier-1 X/Discord broadcasts. It rechecks typed source requirements, freshness, provider identity/destination, caps, and the durable delivery claim immediately before writing. A changed body, fact source, claim, or channel cannot inherit that authority. |
+| Bounded scheduled campaigns | Automatic delivery accepts only an immutable campaign/channel row that exactly matches the source-reviewed registry and its SHA-256 content binding, only for tier-1 X/Discord broadcasts. Every active queued artifact pins one exact channel-specific UTM URL in both body and link metadata. It rechecks typed source requirements, freshness, provider identity/destination, caps, and the durable delivery claim immediately before writing. A changed body, fact source, claim, link, or channel cannot inherit that authority. |
 | Review-only feed discovery | A separate daily cron reads only the source-controlled OpenZaps feed and public DeFi Tutorials RSS metadata. Its first complete snapshots are baselined, later canonical items are deduplicated into a private inbox, and it cannot start a workflow or call a provider. |
-| Exact syndication attribution | An operator-started inbox workflow binds a deterministic, non-personal X or Discord UTM URL to the canonical source and campaign slug. Generation fails unless the exact channel URL appears in both the reviewed body and its link metadata. |
+| Exact syndication attribution | An operator-started inbox workflow binds a deterministic, non-personal X or Discord UTM URL to the canonical source and campaign slug. Generation fails unless the exact channel URL appears in both the reviewed body and its link metadata. Only source-controlled campaign identities enter tab first-touch storage or durable lead attribution; Request a Zap carries that first touch across internal navigation and discards arbitrary UTM text and search terms. |
 | Prohibited means prohibited | A human cannot override credential exposure, guaranteed-return claims, impersonation, policy bypasses, unsolicited bulk messaging, unavailable-as-zero claims, or non-canonical links. |
 | No unverified X replies | Manual replies start from an operator-selected canonical status URL. Proactive discovery uses only X's official mentions endpoint—never search or scraping—baselines the first complete result, stores IDs plus a keyed content HMAC but no post text, re-reads the exact post before delivery, and enforces one lifetime reply per interaction. |
 | Bounded X auto-response | Only exact `/docs`, `/request`, `/virtual`, `/agent`, and `/about` prompts (plus narrowly equivalent questions) can select source-reviewed templates. Protected/withheld observations are not retained; links, media, stale posts, sensitive topics, ambiguity, and freeform text stay review-only or ignored. One reply per invocation, one per author/day, one per conversation/day, a default one/day cap, and explicit opt-out are enforced durably. |
@@ -284,13 +284,17 @@ distinct Discord Agent Kit announcement for the first eligible weekday; no
 duplicate row or fabricated historical delivery receipt is created. A separate
 append-only migration adds the X counterpart only after the dedicated
 `/agent-kit` page exists, preserving the already-queued Discord row byte-for-byte.
-The OpenZaps Learn release has one X row and one Discord row. All rows may exist
-in the durable queue. The later `share-zap-design-v1` pair is deliberately
-staggered after those launches: Discord becomes eligible on 7 August and X on
-10 August. It is sourced from the live docs boundary that a shared design is
-untrusted data and not wallet authority. Automatic delivery remains blocked
-until each deployed page proves its exact reviewed boundary. Each row has its
-own immutable content hash and delivery key.
+The original OpenZaps Learn release has one X row and one Discord row. The later
+`share-zap-design-v1` pair is deliberately staggered after those launches:
+Discord becomes eligible on 7 August and X on 10 August. When applied before
+any of those rows are claimed or delivered, the attribution supersession
+migration appends six `v2` replacements with exact channel-specific UTM links
+and records six immutable same-channel supersessions. The original rows remain
+historical release artifacts but the claim function excludes them. The migration aborts
+if any predecessor already has a schedule claim or delivery row; never bypass
+that reconciliation guard. Automatic delivery remains blocked until each
+deployed page proves its exact reviewed boundary. Each replacement has its own
+immutable content hash and delivery key.
 
 The separate feed-discovery route runs at `30 13 * * *`: 13:30 UTC every
 day. It becomes operational only after the syndication migration is applied
@@ -823,6 +827,7 @@ supabase/migrations/20260801224100_harden_subscription_authorization_grants.sql
 supabase/migrations/20260801224202_harden_marketing_retention_sequence_grants.sql
 supabase/migrations/20260802010000_queue_agent_kit_x_campaign.sql
 supabase/migrations/20260802020559_queue_share_zap_design_campaign.sql
+supabase/migrations/20260802040522_supersede_untagged_marketing_campaigns.sql
 ```
 
 If any file is already recorded remotely, apply only the missing exact files
@@ -835,8 +840,9 @@ Apply them transactionally while the marketing agent is disabled. Then verify:
 - `public.marketing_delivery_ledger` has RLS enabled and no direct table grants
   for `anon`, `authenticated`, or `service_role`;
 - `public.marketing_reviewed_campaigns` and
-  `public.marketing_campaign_schedule_claims` have RLS enabled and no direct
-  table grants for `anon`, `authenticated`, or `service_role`;
+  `public.marketing_campaign_schedule_claims` and
+  `public.marketing_reviewed_campaign_supersessions` have RLS enabled and no
+  direct table grants for `anon`, `authenticated`, or `service_role`;
 - `public.marketing_syndication_sources` and
   `public.marketing_syndication_items` have RLS enabled and no direct table
   grants for `anon`, `authenticated`, or `service_role`;
@@ -864,7 +870,12 @@ Apply them transactionally while the marketing agent is disabled. Then verify:
   Discord, and the Learn migration contains exactly one X and one Discord
   `learn-hub-launched-v1` artifact, while the share-design migration contains
   exactly one Discord and one X `share-zap-design-v1` artifact with distinct
-  `not_before` times;
+  `not_before` times; the attribution supersession migration appends exactly six
+  matching `v2` artifacts, pins one channel-specific UTM URL into each body and
+  link array, and maps each `v1` row to its same-channel `v2` replacement;
+- none of the six predecessor rows has a schedule claim or delivery key before
+  applying the supersession migration; if the migration guard rejects the
+  state, stop and reconcile rather than editing history;
 - before that artifact's `not_before`, an empty eligible queue returns
   `no_pending_campaign` without inserting a schedule claim or starting a
   workflow;
@@ -963,7 +974,7 @@ expectation. Disable the schedule first, deploy the matching source registry,
 apply the exact append-only queue migration, and verify its body, hash,
 channel, and `not_before` while provider writes are disabled. Re-enable the
 Discord-only schedule and redeploy only after those checks pass. The first
-eligible `agent-kit-published-v1` invocation is expected to return `202` with a
+eligible `agent-kit-published-v2` invocation is expected to return `202` with a
 run id and record `auto_authorized`, not `no_pending_campaign`. Confirm the
 canonical Discord receipt, then replay the same campaign and prove the stable
 delivery key returns the stored receipt without a second provider call. Before
@@ -1359,10 +1370,14 @@ A useful low-volume loop is:
 5. Record reach, meaningful replies, Discord command usage, tutorial reads,
    and resulting product actions separately from vanity impressions.
 
-The durable ledger records delivery admission and receipts, while syndication
-drafts carry deterministic per-channel UTM links. Neither surface proves visits,
-conversions, or semantic duplicate detection. Do not claim measured attribution
-until the analytics destination records it, and do not use engagement
+The durable ledger records delivery admission and receipts, while active queued
+campaigns and syndication drafts carry deterministic per-channel UTM links. The
+browser keeps only an allowlisted, non-personal first touch for the current tab,
+and Request a Zap carries that controlled label into an accepted submission even
+after intermediate site navigation. Unknown campaign ids and UTM search terms
+are discarded. These surfaces still do not prove visits, conversions, or
+semantic duplicate detection. Do not claim measured attribution until the
+analytics destination records it, and do not use engagement
 automation, bulk DMs, follow churn, trend hijacking, or substantially duplicate
 posts to manufacture reach.
 

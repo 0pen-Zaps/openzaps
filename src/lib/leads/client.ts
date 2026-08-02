@@ -1,12 +1,55 @@
+import type { CapturedAnalyticsAttribution } from "@/lib/analytics";
+import {
+  normalizeAttributionCampaign,
+  normalizeAttributionContent,
+  normalizeAttributionMedium,
+  normalizeAttributionSource,
+} from "@/lib/marketing/campaign-attribution";
+
 export type LeadClientAttribution = Readonly<{
   utmSource?: string;
   utmMedium?: string;
   utmCampaign?: string;
   utmContent?: string;
-  utmTerm?: string;
   entryPoint?: "builder_review";
   landingPath: "/request-a-zap";
 }>;
+
+function controlledLeadAttribution(
+  attribution: LeadClientAttribution,
+): LeadClientAttribution {
+  const utmSource = normalizeAttributionSource(attribution.utmSource);
+  const utmMedium = normalizeAttributionMedium(attribution.utmMedium);
+  const utmCampaign = normalizeAttributionCampaign(attribution.utmCampaign);
+  const utmContent = normalizeAttributionContent(attribution.utmContent);
+  return {
+    ...(utmSource ? { utmSource } : {}),
+    ...(utmMedium ? { utmMedium } : {}),
+    ...(utmCampaign ? { utmCampaign } : {}),
+    ...(utmContent ? { utmContent } : {}),
+    ...(attribution.entryPoint === "builder_review"
+      ? { entryPoint: "builder_review" as const }
+      : {}),
+    landingPath: "/request-a-zap",
+  };
+}
+
+/** Prefer the tab's first controlled touch while preserving the builder CTA. */
+export function leadSubmissionAttribution(
+  initial: LeadClientAttribution,
+  firstTouch: CapturedAnalyticsAttribution | null,
+): LeadClientAttribution {
+  const normalizedInitial = controlledLeadAttribution(initial);
+  if (!firstTouch) return normalizedInitial;
+  return controlledLeadAttribution({
+    utmSource: firstTouch.source,
+    utmMedium: firstTouch.medium,
+    utmCampaign: firstTouch.campaign,
+    utmContent: firstTouch.content,
+    entryPoint: normalizedInitial.entryPoint,
+    landingPath: "/request-a-zap",
+  });
+}
 
 function readString(data: FormData, key: string): string {
   const value = data.get(key);

@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
 import { reviewedMarketingCampaign } from "@/lib/marketing/scheduled-template";
-import { SHARE_ZAP_DESIGN_MARKETING_CAMPAIGN_ID } from "@/lib/marketing/types";
+import { LEGACY_SHARE_ZAP_DESIGN_MARKETING_CAMPAIGN_ID } from "@/lib/marketing/types";
 
 const migration = readFileSync(
   fileURLToPath(
@@ -19,7 +19,7 @@ const migration = readFileSync(
 describe("shareable Zap design campaign migration", () => {
   const campaigns = (["discord", "x"] as const).map((channel) =>
     reviewedMarketingCampaign(
-      SHARE_ZAP_DESIGN_MARKETING_CAMPAIGN_ID,
+      LEGACY_SHARE_ZAP_DESIGN_MARKETING_CAMPAIGN_ID,
       channel,
     ),
   );

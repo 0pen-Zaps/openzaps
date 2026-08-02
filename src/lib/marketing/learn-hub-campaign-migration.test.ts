@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
 import { reviewedMarketingCampaign } from "@/lib/marketing/scheduled-template";
-import { LEARN_HUB_MARKETING_CAMPAIGN_ID } from "@/lib/marketing/types";
+import { LEGACY_LEARN_HUB_MARKETING_CAMPAIGN_ID } from "@/lib/marketing/types";
 
 const migration = readFileSync(
   fileURLToPath(
@@ -18,7 +18,10 @@ const migration = readFileSync(
 
 describe("OpenZaps Learn launch campaign migration", () => {
   const campaigns = (["x", "discord"] as const).map((channel) =>
-    reviewedMarketingCampaign(LEARN_HUB_MARKETING_CAMPAIGN_ID, channel),
+    reviewedMarketingCampaign(
+      LEGACY_LEARN_HUB_MARKETING_CAMPAIGN_ID,
+      channel,
+    ),
   );
 
   it("queues both exact source-reviewed artifacts without an upsert", () => {

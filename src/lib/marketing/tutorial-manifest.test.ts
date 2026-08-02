@@ -66,7 +66,7 @@ describe("DeFi Tutorials release manifest", () => {
           ).toEqual({
             source: "substack",
             medium: "email",
-            campaign: "tutorial_update",
+            campaign: `defitutorials-${tutorial.id}`,
             content: url.searchParams.get("utm_content"),
           });
         }

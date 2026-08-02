@@ -126,7 +126,43 @@ describe("LeadRequestSchema", () => {
       utmMedium: "social",
       utmCampaign: undefined,
       utmContent: undefined,
-      utmTerm: "request a zap",
+      utmTerm: undefined,
+    });
+  });
+
+  it("persists exact controlled campaign attribution and drops lookalikes", () => {
+    expect(
+      LeadRequestSchema.parse({
+        ...validLead,
+        attribution: {
+          utmSource: " X ",
+          utmMedium: "SOCIAL",
+          utmCampaign: "agent-kit-published-v2",
+          utmContent: "feed_update",
+        },
+      }).attribution,
+    ).toEqual({
+      utmSource: "x",
+      utmMedium: "social",
+      utmCampaign: "agent-kit-published-v2",
+      utmContent: "feed_update",
+    });
+
+    expect(
+      LeadRequestSchema.parse({
+        ...validLead,
+        attribution: {
+          utmSource: "personal-handle",
+          utmMedium: "private-medium",
+          utmCampaign: "openzaps-private-note",
+          utmContent: "private-note",
+        },
+      }).attribution,
+    ).toEqual({
+      utmSource: undefined,
+      utmMedium: undefined,
+      utmCampaign: undefined,
+      utmContent: undefined,
     });
   });
 

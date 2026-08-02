@@ -76,6 +76,30 @@ describe("source-reviewed marketing campaigns", () => {
     ).toBe("2026-08-03T10:00:00.000Z");
   });
 
+  it("pins one exact channel-attributed CTA into every active queued artifact", () => {
+    const activeIds = new Set<string>([
+      AGENT_KIT_MARKETING_CAMPAIGN_ID,
+      LEARN_HUB_MARKETING_CAMPAIGN_ID,
+      SHARE_ZAP_DESIGN_MARKETING_CAMPAIGN_ID,
+    ]);
+    const campaigns = reviewedMarketingCampaigns().filter((campaign) =>
+      activeIds.has(campaign.id),
+    );
+
+    expect(campaigns).toHaveLength(6);
+    for (const campaign of campaigns) {
+      expect(campaign.links).toHaveLength(1);
+      expect(campaign.body).toContain(campaign.links[0]);
+      const url = new URL(campaign.links[0]!);
+      expect(url.searchParams.get("utm_source")).toBe(campaign.channel);
+      expect(url.searchParams.get("utm_medium")).toBe(
+        campaign.channel === "x" ? "social" : "community",
+      );
+      expect(url.searchParams.get("utm_campaign")).toBe(campaign.id);
+      expect(url.searchParams.get("utm_content")).toBe("feed_update");
+    }
+  });
+
   it.each(["discord", "x"] as const)(
     "auto-authorizes the Agent Kit %s campaign only with exact fresh evidence",
     (channel) => {
@@ -125,7 +149,7 @@ describe("source-reviewed marketing campaigns", () => {
       ),
     ).toBe(true);
     if (channel === "x") {
-      expect(Array.from(campaign.body)).toHaveLength(269);
+      expect(Array.from(campaign.body)).toHaveLength(277);
     }
     expect(
       isReviewedMarketingCampaignCandidate(
@@ -228,7 +252,7 @@ describe("source-reviewed marketing campaigns", () => {
         ),
       ).toBe(false);
       if (channel === "x") {
-        expect(Array.from(campaign.body)).toHaveLength(265);
+        expect(Array.from(campaign.body)).toHaveLength(273);
       }
     },
   );
