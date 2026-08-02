@@ -13,6 +13,46 @@ export const LEAD_TIMELINES = [
   "exploring",
 ] as const;
 
+export const LEAD_REQUEST_FORM_FIELDS = [
+  "persona",
+  "name",
+  "email",
+  "project",
+  "projectUrl",
+  "workflow",
+  "protocolsAssets",
+  "trigger",
+  "guardrails",
+  "timeline",
+  "consent",
+] as const;
+
+export type LeadRequestFormField = (typeof LEAD_REQUEST_FORM_FIELDS)[number];
+
+const LEAD_REQUEST_FORM_FIELD_SET = new Set<string>(
+  LEAD_REQUEST_FORM_FIELDS,
+);
+
+/**
+ * Reduce a schema failure to one allowlisted browser-editable field. Never
+ * expose submitted values, attribution internals, trap fields, or unknown
+ * object keys in the public response.
+ */
+export function firstLeadRequestFormIssue(
+  error: z.ZodError,
+): LeadRequestFormField | undefined {
+  for (const issue of error.issues) {
+    const field = issue.path[0];
+    if (
+      typeof field === "string"
+      && LEAD_REQUEST_FORM_FIELD_SET.has(field)
+    ) {
+      return field as LeadRequestFormField;
+    }
+  }
+  return undefined;
+}
+
 const optionalTrimmedString = (maximum: number) =>
   z.preprocess(
     (value) =>

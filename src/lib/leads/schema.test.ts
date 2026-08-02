@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
 
 import { qualificationScore } from "@/lib/leads/qualification";
-import { LeadRequestSchema } from "@/lib/leads/schema";
+import {
+  firstLeadRequestFormIssue,
+  LeadRequestSchema,
+} from "@/lib/leads/schema";
 
 const validLead = {
   persona: "agent_builder",
@@ -141,6 +144,44 @@ describe("LeadRequestSchema", () => {
         guardrails: "x".repeat(2001),
       }).success,
     ).toBe(false);
+  });
+
+  it("maps only browser-editable validation failures to a public field", () => {
+    for (const [field, value] of [
+      ["email", "person@localhost"],
+      ["projectUrl", "https://user:password@example.com"],
+      ["workflow", "                    "],
+    ] as const) {
+      const parsed = LeadRequestSchema.safeParse({
+        ...validLead,
+        [field]: value,
+      });
+      expect(parsed.success).toBe(false);
+      if (!parsed.success) {
+        expect(firstLeadRequestFormIssue(parsed.error)).toBe(field);
+      }
+    }
+
+    const unknownKey = LeadRequestSchema.safeParse({
+      ...validLead,
+      unexpectedPrivateField: "do not reflect this",
+    });
+    expect(unknownKey.success).toBe(false);
+    if (!unknownKey.success) {
+      expect(firstLeadRequestFormIssue(unknownKey.error)).toBeUndefined();
+    }
+
+    const attribution = LeadRequestSchema.safeParse({
+      ...validLead,
+      attribution: {
+        ...validLead.attribution,
+        unexpectedPrivateField: "do not reflect this",
+      },
+    });
+    expect(attribution.success).toBe(false);
+    if (!attribution.success) {
+      expect(firstLeadRequestFormIssue(attribution.error)).toBeUndefined();
+    }
   });
 });
 

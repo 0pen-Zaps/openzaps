@@ -4,7 +4,11 @@ import { after } from "next/server";
 
 import { leadNotificationDeliveryConfigured } from "@/lib/leads/notification-server";
 import { qualificationScore } from "@/lib/leads/qualification";
-import { LeadRequestSchema } from "@/lib/leads/schema";
+import {
+  firstLeadRequestFormIssue,
+  LeadRequestSchema,
+  type LeadRequestFormField,
+} from "@/lib/leads/schema";
 import { isSameOriginLeadRequest } from "@/lib/leads/origin";
 import {
   LeadStoreError,
@@ -67,13 +71,30 @@ function leadAnalyticsHeaders(requestHeaders: Headers): Headers {
 }
 
 function intakeResponse(
-  body: { accepted: boolean; error?: string },
+  body: {
+    accepted: boolean;
+    error?: string;
+    invalidField?: LeadRequestFormField;
+  },
   status: number,
   extraHeaders: Record<string, string> = {},
 ): Response {
   return Response.json(body, {
     status,
     headers: { ...PRIVATE_HEADERS, ...extraHeaders },
+  });
+}
+
+function logLeadStoreFailure(error: unknown): void {
+  console.error("openzaps_lead_request_store_failed", {
+    code: error instanceof LeadStoreError ? error.code : "unexpected",
+    status:
+      error instanceof LeadStoreError
+      && Number.isInteger(error.status)
+      && (error.status ?? 0) >= 400
+      && (error.status ?? 0) <= 599
+        ? error.status
+        : null,
   });
 }
 
@@ -144,8 +165,13 @@ export async function POST(request: Request): Promise<Response> {
 
   const parsed = LeadRequestSchema.safeParse(body);
   if (!parsed.success) {
+    const invalidField = firstLeadRequestFormIssue(parsed.error);
     return intakeResponse(
-      { accepted: false, error: "Invalid request." },
+      {
+        accepted: false,
+        error: "Invalid request.",
+        ...(invalidField ? { invalidField } : {}),
+      },
       400,
     );
   }
@@ -206,11 +232,13 @@ export async function POST(request: Request): Promise<Response> {
     return intakeResponse({ accepted: true }, 202);
   } catch (error) {
     if (error instanceof LeadStoreError && error.code === "invalid-input") {
+      logLeadStoreFailure(error);
       return intakeResponse(
         { accepted: false, error: "Invalid request." },
         400,
       );
     }
+    logLeadStoreFailure(error);
     return intakeResponse(
       {
         accepted: false,

@@ -43,22 +43,40 @@ const INVALID_REQUEST_MESSAGES: Readonly<Record<string, string>> = {
   persona: "Choose which path describes you before sending the request.",
   name: "Enter your name before sending the request.",
   email: "Enter a valid work email before sending the request.",
-  projectUrl: "Use a secure project URL beginning with https://, or leave it blank.",
+  project: "Keep the project or team name to 120 characters.",
+  projectUrl: "Use a credential-free HTTPS project URL, or leave it blank.",
   workflow: "Describe what the Zap should accomplish in at least 20 characters.",
+  protocolsAssets: "Keep protocols and assets to 2,000 characters.",
   trigger: "Describe the trigger or cadence before sending the request.",
   guardrails: "Describe what the agent must never be allowed to change.",
   timeline: "Choose when you would test the Zap.",
   consent: "Agree to the request data-use notice before sending.",
 };
 
+function isRequestValidationField(value: unknown): value is string {
+  return (
+    typeof value === "string"
+    && Object.hasOwn(INVALID_REQUEST_MESSAGES, value)
+  );
+}
+
 export function requestValidationMessage(fieldName: string | null): string {
-  if (fieldName && INVALID_REQUEST_MESSAGES[fieldName]) {
+  if (isRequestValidationField(fieldName)) {
     return INVALID_REQUEST_MESSAGES[fieldName];
   }
   return "Complete every required field marked with an asterisk before sending.";
 }
 
-export function requestSubmissionErrorMessage(status: number): string {
+export function requestSubmissionErrorMessage(
+  status: number,
+  invalidField?: string,
+): string {
+  if (
+    status === 400
+    && isRequestValidationField(invalidField)
+  ) {
+    return requestValidationMessage(invalidField);
+  }
   if (status === 429) {
     return "This network reached today's request limit. Try again after the daily UTC reset, or contact us in Discord if the request is urgent.";
   }
@@ -197,7 +215,7 @@ export function RequestZapForm({
       >("[name]:invalid");
       setErrorMessage(requestValidationMessage(firstInvalid?.name ?? null));
       setSubmission("error");
-      requestAnimationFrame(() => statusRef.current?.focus());
+      requestAnimationFrame(() => firstInvalid?.focus());
       return;
     }
 
@@ -219,18 +237,30 @@ export function RequestZapForm({
         body: JSON.stringify(payload),
       });
       const result = (await response.json().catch(() => null)) as
-        | { accepted?: boolean; error?: string }
+        | { accepted?: boolean; error?: string; invalidField?: string }
         | null;
 
       if (!response.ok || result?.accepted !== true) {
-        setErrorMessage(requestSubmissionErrorMessage(response.status));
+        const invalidField =
+          response.status === 400
+          && isRequestValidationField(result?.invalidField)
+            ? result.invalidField
+            : undefined;
+        setErrorMessage(
+          requestSubmissionErrorMessage(response.status, invalidField),
+        );
         setSubmission("error");
         trackEvent("lead_request_error", {
           ...analyticsAttribution,
           persona: selectedPersona,
           status: response.status,
         });
-        requestAnimationFrame(() => statusRef.current?.focus());
+        requestAnimationFrame(() => {
+          const invalidControl = invalidField
+            ? form.querySelector<HTMLElement>(`[name="${invalidField}"]`)
+            : null;
+          (invalidControl ?? statusRef.current)?.focus();
+        });
         return;
       }
 

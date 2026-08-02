@@ -35,7 +35,10 @@ The browser sends the form to `POST /api/leads/request`. The route:
 - calls one service-role-only database RPC.
 
 The public response is deliberately minimal. It never returns contact data,
-the qualification score, a database identifier, or quota fingerprint.
+the qualification score, a database identifier, or quota fingerprint. A
+schema rejection may return only the first allowlisted browser-editable field
+name so the form can focus that control and explain the correction; submitted
+values, attribution internals, trap fields, and unknown keys are never echoed.
 
 The Zap Builder review panel can prepare a deterministic link into this form.
 That handoff contains only catalog-owned block names, validated catalog select
