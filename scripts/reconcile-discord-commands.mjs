@@ -15,8 +15,12 @@ const MAX_REQUEST_BYTES = 64 * 1_024;
 const DEFAULT_TIMEOUT_MS = 10_000;
 const DISCORD_SNOWFLAKE = /^[1-9]\d{16,19}$/u;
 const DISCORD_BOT_TOKEN = /^[A-Za-z0-9._-]{20,256}$/u;
-const COMMAND_NAME = /^[a-z0-9_-]{1,32}$/u;
+const MANAGED_COMMAND_NAME = /^[a-z0-9_-]{1,32}$/u;
+const REMOTE_CHAT_INPUT_COMMAND_NAME =
+  /^[-_'\p{L}\p{N}\p{Script=Devanagari}\p{Script=Thai}]{1,32}$/u;
 const COMMAND_TYPES = new Set([1, 2, 3]);
+const COMMAND_TYPE_LIMITS = new Map([[1, 100], [2, 15], [3, 15]]);
+const MAX_REMOTE_COMMANDS = 130;
 const DESIRED_COMMAND_KEYS = new Set(["name", "description", "type", "options"]);
 const DESIRED_OPTION_KEYS = new Set([
   "name",
@@ -90,7 +94,7 @@ export function validateDesiredCommands(value) {
       100,
       "command description",
     );
-    if (!COMMAND_NAME.test(name) || commandNames.has(name) || rawCommand.type !== 1) {
+    if (!MANAGED_COMMAND_NAME.test(name) || commandNames.has(name) || rawCommand.type !== 1) {
       fail("invalid-manifest", "Discord command manifest command identity is invalid.");
     }
     commandNames.add(name);
@@ -113,7 +117,7 @@ export function validateDesiredCommands(value) {
         "option description",
       );
       if (
-        !COMMAND_NAME.test(optionName)
+        !MANAGED_COMMAND_NAME.test(optionName)
         || optionNames.has(optionName)
         || rawOption.type !== 3
         || typeof rawOption.required !== "boolean"
@@ -155,35 +159,62 @@ function commandKey(type, name) {
   return `${type}:${name}`;
 }
 
+function validRemoteCommandName(type, name) {
+  if (
+    typeof name !== "string"
+    || codePointLength(name) < 1
+    || codePointLength(name) > 32
+  ) return false;
+  if (type === 1) {
+    return REMOTE_CHAT_INPUT_COMMAND_NAME.test(name)
+      && name === name.toLocaleLowerCase();
+  }
+  return true;
+}
+
 function displayCommand(type, name) {
   if (type === 1) return `/${name}`;
   return `${type === 2 ? "user" : "message"}:${name}`;
 }
 
 function parseRemoteCommands(value) {
-  if (!Array.isArray(value) || value.length > 100) {
+  if (!Array.isArray(value) || value.length > MAX_REMOTE_COMMANDS) {
     fail("invalid-response", "Discord returned an invalid command list.");
   }
   const commands = new Map();
+  const typeCounts = new Map([[1, 0], [2, 0], [3, 0]]);
   for (const rawCommand of value) {
     if (!isRecord(rawCommand)) {
       fail("invalid-response", "Discord returned an invalid command list.");
     }
-    const type = rawCommand.type;
+    const type = rawCommand.type === undefined ? 1 : rawCommand.type;
     const name = rawCommand.name;
     if (
       typeof type !== "number"
       || !COMMAND_TYPES.has(type)
-      || typeof name !== "string"
-      || !COMMAND_NAME.test(name)
+      || !validRemoteCommandName(type, name)
     ) {
       fail("invalid-response", "Discord returned an invalid command identity.");
+    }
+    const nextTypeCount = (typeCounts.get(type) ?? 0) + 1;
+    if (nextTypeCount > (COMMAND_TYPE_LIMITS.get(type) ?? 0)) {
+      fail("invalid-response", "Discord returned too many commands for one type.");
+    }
+    typeCounts.set(type, nextTypeCount);
+    if (
+      type !== 1
+      && (rawCommand.description !== "" || rawCommand.options !== undefined)
+    ) {
+      fail("invalid-response", "Discord returned an invalid context command.");
     }
     const key = commandKey(type, name);
     if (commands.has(key)) {
       fail("invalid-response", "Discord returned duplicate command identities.");
     }
-    commands.set(key, rawCommand);
+    commands.set(
+      key,
+      rawCommand.type === undefined ? { ...rawCommand, type } : rawCommand,
+    );
   }
   return commands;
 }
@@ -353,6 +384,8 @@ export function verifyGuildCommandReadback({
   return {
     ...diff,
     providerReadbackVerified: true,
+    guildPermissionVisibility: "unchecked",
+    liveInvocationVerified: false,
     manifestSha256: sha256Json(manifestProjection),
     managedReadbackSha256: sha256Json(managedReadbackProjection),
   };
@@ -534,6 +567,8 @@ export async function reconcileDiscordCommands({
       applied: false,
       verified: true,
       providerReadbackVerified: diff.providerReadbackVerified,
+      guildPermissionVisibility: diff.guildPermissionVisibility,
+      liveInvocationVerified: diff.liveInvocationVerified,
       manifestSha256: diff.manifestSha256,
       managedReadbackSha256: diff.managedReadbackSha256,
       counts: diff.counts,
@@ -584,11 +619,33 @@ export async function reconcileDiscordCommands({
     applied: true,
     verified: true,
     providerReadbackVerified: verification.providerReadbackVerified,
+    guildPermissionVisibility: verification.guildPermissionVisibility,
+    liveInvocationVerified: verification.liveInvocationVerified,
     manifestSha256: verification.manifestSha256,
     managedReadbackSha256: verification.managedReadbackSha256,
     counts: diff.counts,
     changes: diff.changes,
   };
+}
+
+/**
+ * Production-safe read boundary for operator observability. Unlike the CLI
+ * reconciler, this wrapper exposes no apply flag, so callers cannot make a
+ * Discord command mutation reachable from request input.
+ */
+export async function readDiscordGuildCommands({
+  environment = process.env,
+  desiredCommands,
+  fetchImpl = fetch,
+  timeoutMs = DEFAULT_TIMEOUT_MS,
+} = {}) {
+  return reconcileDiscordCommands({
+    environment,
+    apply: false,
+    desiredCommands,
+    fetchImpl,
+    timeoutMs,
+  });
 }
 
 async function main() {

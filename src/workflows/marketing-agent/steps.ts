@@ -397,6 +397,7 @@ export async function collectMarketingSourcesStep(
     virtualTradingPageReady,
     requestZapPageReady,
     agentKitDocsReady,
+    shareDesignDocsReady,
     agentKitPageReady,
     learnPageReady,
     sdkRegistryValue,
@@ -430,6 +431,12 @@ export async function collectMarketingSourcesStep(
       "no signing or broadcast method",
       "Stays with your wallet or Safe.",
       "Lives inside the immutable policy",
+    ]),
+    fetchFeaturePage(docsUrl, [
+      "payload as untrusted",
+      "The link grants no wallet authority.",
+      "Design mode never prompts for wallet access, approval, funding, a signature, or a transaction.",
+      "anything outside the supported routes remains a design-only blueprint.",
     ]),
     fetchFeaturePage(agentKitUrl, [
       'data-agent-kit-boundary="read-only-and-unsigned"',
@@ -667,6 +674,15 @@ export async function collectMarketingSourcesStep(
         ? "OpenZaps Learn publishes source-reviewed product updates and only RSS-confirmed DeFi Tutorials, withholds drafts and editor handoffs from its catalog until RSS confirmation, and links to Request a Zap for a human-reviewed authority map."
         : null,
       learnUrl,
+      observedAt,
+    ),
+    knownOrUnavailable(
+      "product.shareable_zap_design",
+      "Shareable Zap design boundary",
+      shareDesignDocsReady
+        ? "A design link carries only a bounded, validated chain into the builder for recompilation. It grants no wallet authority; design mode never prompts for wallet access, approval, funding, a signature, or a transaction, and a supported live action remains a separate wallet-reviewed step."
+        : null,
+      docsUrl,
       observedAt,
     ),
     fact(

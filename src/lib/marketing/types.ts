@@ -20,6 +20,9 @@ export const AGENT_KIT_MARKETING_CAMPAIGN_ID =
 export const LEARN_HUB_MARKETING_CAMPAIGN_ID =
   "learn-hub-launched-v1" as const;
 
+export const SHARE_ZAP_DESIGN_MARKETING_CAMPAIGN_ID =
+  "share-zap-design-v1" as const;
+
 export const MARKETING_RUN_STATES = [
   "queued",
   "drafting",

@@ -3,6 +3,9 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 
 import {
+  DISCORD_PREFLIGHT_BUTTON_LABEL,
+  discordActivationSummary,
+  discordPreflightRequestIsCurrent,
   hasSubstackEditorHandoff,
   LeadDeleteControls,
   leadDeleteTriggerId,
@@ -13,6 +16,7 @@ import {
   operatorResetClearsSyndicationRepair,
   parseSyndicationRepairPair,
   parseSubstackVerification,
+  parseDiscordActivationVerification,
   parseXIdentityVerification,
   pollRetryDelay,
   readinessRows,
@@ -31,6 +35,33 @@ import {
   writeSubstackClipboard,
   xIdentityRequestIsCurrent,
 } from "./MarketingOperator";
+
+const VALID_DISCORD_PREFLIGHT = {
+  service: "OpenZaps Discord destination and command-manifest preflight",
+  destination: {
+    schemaVersion: 1,
+    channel: "discord",
+    transport: "webhook",
+    scope: "configured_guild_channel",
+    verified: true,
+    mutationsPerformed: false,
+  },
+  commandReadback: {
+    schemaVersion: 1,
+    status: "in_sync",
+    scope: "configured_application_guild",
+    verified: true,
+    providerReadbackVerified: true,
+    managedCommandsInSync: true,
+    guildPermissionVisibility: "unchecked",
+    liveInvocationVerified: false,
+    manifestSha256: "a".repeat(64),
+    managedReadbackSha256: "a".repeat(64),
+    counts: { desired: 3, remote: 3, create: 0, update: 0, delete: 0 },
+    writesPerformed: false,
+  },
+  writesPerformed: false,
+};
 
 describe("X identity evidence parsing", () => {
   it("accepts only a bounded public identity proof", () => {
@@ -108,6 +139,181 @@ describe("X identity request lifecycle", () => {
         currentSessionGeneration: 6,
       }),
     ).toBe(false);
+  });
+});
+
+describe("Discord activation evidence", () => {
+  it("accepts only bounded read-only destination and command evidence", () => {
+    const parsed = parseDiscordActivationVerification(VALID_DISCORD_PREFLIGHT);
+
+    expect(parsed).toMatchObject({
+      destination: { transport: "webhook", verified: true },
+      commandReadback: {
+        status: "in_sync",
+        managedCommandsInSync: true,
+        counts: { desired: 3, create: 0, update: 0 },
+        writesPerformed: false,
+      },
+      writesPerformed: false,
+    });
+    expect(parsed && discordActivationSummary(parsed)).toContain(
+      "Official guild command-manifest projection matches all 3 source-controlled managed commands.",
+    );
+    expect(parsed && discordActivationSummary(parsed)).toContain(
+      "no command was registered or changed",
+    );
+    expect(parsed && discordActivationSummary(parsed)).toContain(
+      "Guild command permissions were not checked",
+    );
+    expect(parsed && discordActivationSummary(parsed)).toContain(
+      "does not prove a live signed invocation",
+    );
+    expect(DISCORD_PREFLIGHT_BUTTON_LABEL).toBe(
+      "Verify Discord destination and command manifest",
+    );
+    expect(DISCORD_PREFLIGHT_BUTTON_LABEL).not.toMatch(
+      /activation|permissions? verified|invocation verified/iu,
+    );
+  });
+
+  it("keeps missing command credentials explicit while the destination is healthy", () => {
+    const parsed = parseDiscordActivationVerification({
+      ...VALID_DISCORD_PREFLIGHT,
+      commandReadback: {
+        schemaVersion: 1,
+        status: "not_configured",
+        scope: "configured_application_guild",
+        verified: false,
+        providerReadbackVerified: false,
+        managedCommandsInSync: false,
+        guildPermissionVisibility: "unchecked",
+        liveInvocationVerified: false,
+        writesPerformed: false,
+      },
+    });
+
+    expect(parsed).toMatchObject({
+      destination: { verified: true },
+      commandReadback: { status: "not_configured", verified: false },
+    });
+    expect(parsed && discordActivationSummary(parsed)).toContain(
+      "server credential is missing or invalid",
+    );
+  });
+
+  it("accepts bounded managed-command drift and explains the exact counts", () => {
+    const parsed = parseDiscordActivationVerification({
+      ...VALID_DISCORD_PREFLIGHT,
+      commandReadback: {
+        ...VALID_DISCORD_PREFLIGHT.commandReadback,
+        status: "drift",
+        managedCommandsInSync: false,
+        managedReadbackSha256: "b".repeat(64),
+        counts: { desired: 3, remote: 2, create: 1, update: 0, delete: 0 },
+      },
+    });
+
+    expect(parsed).toMatchObject({
+      destination: { verified: true },
+      commandReadback: {
+        status: "drift",
+        managedCommandsInSync: false,
+        counts: { create: 1, update: 0 },
+      },
+    });
+    expect(parsed && discordActivationSummary(parsed)).toContain(
+      "found 1 missing and 0 drifted managed commands",
+    );
+  });
+
+  it("accepts an unavailable command provider without erasing destination proof", () => {
+    const parsed = parseDiscordActivationVerification({
+      ...VALID_DISCORD_PREFLIGHT,
+      commandReadback: {
+        schemaVersion: 1,
+        status: "unavailable",
+        scope: "configured_application_guild",
+        verified: false,
+        providerReadbackVerified: false,
+        managedCommandsInSync: false,
+        guildPermissionVisibility: "unchecked",
+        liveInvocationVerified: false,
+        writesPerformed: false,
+      },
+    });
+
+    expect(parsed).toMatchObject({
+      destination: { verified: true },
+      commandReadback: { status: "unavailable", verified: false },
+    });
+    expect(parsed && discordActivationSummary(parsed)).toContain(
+      "currently unavailable",
+    );
+  });
+
+  it("rejects malformed, oversized, or internally inconsistent command evidence", () => {
+    expect(parseDiscordActivationVerification([])).toBeNull();
+    expect(parseDiscordActivationVerification({
+      ...VALID_DISCORD_PREFLIGHT,
+      writesPerformed: true,
+    })).toBeNull();
+    expect(parseDiscordActivationVerification({
+      ...VALID_DISCORD_PREFLIGHT,
+      commandReadback: {
+        ...VALID_DISCORD_PREFLIGHT.commandReadback,
+        counts: {
+          ...VALID_DISCORD_PREFLIGHT.commandReadback.counts,
+          remote: 131,
+        },
+      },
+    })).toBeNull();
+    expect(parseDiscordActivationVerification({
+      ...VALID_DISCORD_PREFLIGHT,
+      commandReadback: {
+        ...VALID_DISCORD_PREFLIGHT.commandReadback,
+        counts: {
+          ...VALID_DISCORD_PREFLIGHT.commandReadback.counts,
+          remote: 0,
+        },
+      },
+    })).toBeNull();
+    expect(parseDiscordActivationVerification({
+      ...VALID_DISCORD_PREFLIGHT,
+      commandReadback: {
+        ...VALID_DISCORD_PREFLIGHT.commandReadback,
+        managedReadbackSha256: "b".repeat(64),
+      },
+    })).toBeNull();
+    expect(parseDiscordActivationVerification({
+      ...VALID_DISCORD_PREFLIGHT,
+      commandReadback: {
+        ...VALID_DISCORD_PREFLIGHT.commandReadback,
+        manifestSha256: "provider-secret",
+      },
+    })).toBeNull();
+  });
+});
+
+describe("Discord preflight request lifecycle", () => {
+  it("rejects a response after either refresh or session invalidation", () => {
+    expect(discordPreflightRequestIsCurrent({
+      requestGeneration: 3,
+      currentRequestGeneration: 3,
+      sessionGeneration: 5,
+      currentSessionGeneration: 5,
+    })).toBe(true);
+    expect(discordPreflightRequestIsCurrent({
+      requestGeneration: 3,
+      currentRequestGeneration: 4,
+      sessionGeneration: 5,
+      currentSessionGeneration: 5,
+    })).toBe(false);
+    expect(discordPreflightRequestIsCurrent({
+      requestGeneration: 3,
+      currentRequestGeneration: 3,
+      sessionGeneration: 5,
+      currentSessionGeneration: 6,
+    })).toBe(false);
   });
 });
 

@@ -4,6 +4,7 @@ import { DISCORD_COMMAND_MANIFEST } from "@/lib/marketing/discord-commands";
 import {
   DiscordCommandReconciliationError,
   parseCliArguments,
+  readDiscordGuildCommands,
   reconcileDiscordCommands,
   validateDiscordEnvironment,
   verifyGuildCommandReadback,
@@ -45,6 +46,30 @@ function remoteManifest(): Record<string, unknown>[] {
 }
 
 describe("Discord command reconciliation", () => {
+  it("exposes a GET-only production wrapper with no apply input", async () => {
+    // Keep the provider deliberately out of sync. An accidental apply:true
+    // would now reach a POST/PATCH instead of hiding behind the in-sync return.
+    const fetchMock = vi.fn(async () => Response.json(remoteManifest().slice(1)));
+
+    const result = await readDiscordGuildCommands({
+      environment: ENVIRONMENT,
+      desiredCommands: DISCORD_COMMAND_MANIFEST,
+      fetchImpl: fetchMock,
+    });
+
+    expect(result).toMatchObject({
+      mode: "dry-run",
+      applied: false,
+      verified: true,
+      managedCommandsInSync: false,
+      counts: { create: 1, update: 0 },
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+    expect(init.method).toBe("GET");
+    expect(init.body).toBeUndefined();
+  });
+
   it("defaults to a content-free read-only guild diff", async () => {
     const remote = [
       {
@@ -86,6 +111,8 @@ describe("Discord command reconciliation", () => {
       applied: false,
       verified: true,
       providerReadbackVerified: true,
+      guildPermissionVisibility: "unchecked",
+      liveInvocationVerified: false,
       manifestSha256: expect.stringMatching(/^[0-9a-f]{64}$/u),
       managedReadbackSha256: expect.stringMatching(/^[0-9a-f]{64}$/u),
       counts: { desired: 3, remote: 3, create: 1, update: 1, delete: 1 },
@@ -280,6 +307,8 @@ describe("Discord command reconciliation", () => {
     expect(verified).toMatchObject({
       inSync: true,
       providerReadbackVerified: true,
+      guildPermissionVisibility: "unchecked",
+      liveInvocationVerified: false,
       manifestSha256: expect.stringMatching(/^[0-9a-f]{64}$/u),
     });
     expect(verified.managedReadbackSha256).toBe(verified.manifestSha256);
@@ -294,6 +323,44 @@ describe("Discord command reconciliation", () => {
     })).toThrowError(
       "Discord command readback did not match the configured application and guild.",
     );
+  });
+
+  it("accepts Discord's default chat-input type and documented apostrophe", () => {
+    const remote = remoteManifest();
+    delete remote[0]?.type;
+    remote.push({
+      name: "rock'n_roll",
+      description: "Unrelated chat-input command",
+      type: 1,
+      id: "444444444444444444",
+      application_id: APPLICATION_ID,
+      guild_id: GUILD_ID,
+    });
+
+    const verified = verifyGuildCommandReadback({
+      desiredValue: DISCORD_COMMAND_MANIFEST,
+      remoteValue: remote,
+      applicationId: APPLICATION_ID,
+      guildId: GUILD_ID,
+    });
+
+    expect(verified).toMatchObject({
+      inSync: false,
+      counts: { desired: 3, remote: 4, create: 0, update: 0, delete: 1 },
+    });
+    expect(verified.managedReadbackSha256).toBe(verified.manifestSha256);
+  });
+
+  it("rejects an explicit null command type instead of treating it as omitted", () => {
+    const remote = remoteManifest();
+    remote[0] = { ...remote[0], type: null };
+
+    expect(() => verifyGuildCommandReadback({
+      desiredValue: DISCORD_COMMAND_MANIFEST,
+      remoteValue: remote,
+      applicationId: APPLICATION_ID,
+      guildId: GUILD_ID,
+    })).toThrowError("Discord returned an invalid command identity.");
   });
 
   it("fails before fetch for malformed ids or token values without echoing secrets", async () => {

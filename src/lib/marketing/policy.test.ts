@@ -13,6 +13,7 @@ import {
   isCanonicalOutboundUrl,
 } from "@/lib/marketing/policy";
 import {
+  reviewedMarketingCampaign,
   scheduledMarketingTemplate,
 } from "@/lib/marketing/scheduled-template";
 import {
@@ -28,7 +29,10 @@ import type {
   MarketingPolicyContext,
   MarketingPolicyFlags,
 } from "@/lib/marketing/types";
-import { SCHEDULED_MARKETING_TEMPLATE_ID } from "@/lib/marketing/types";
+import {
+  SCHEDULED_MARKETING_TEMPLATE_ID,
+  SHARE_ZAP_DESIGN_MARKETING_CAMPAIGN_ID,
+} from "@/lib/marketing/types";
 
 const NOW = "2026-07-29T12:00:00.000Z";
 const DAY = "2026-07-29";
@@ -499,6 +503,92 @@ describe("deterministic marketing policy", () => {
     expect(missingEvidence.disposition).toBe("blocked");
     expect(missingEvidence.issues.map((issue) => issue.code)).toContain(
       "unknown_fact",
+    );
+  });
+
+  it("requires fresh live evidence for automatic shareable-design delivery", () => {
+    const observedAt = "2026-08-07T14:00:00.000Z";
+    const campaign = reviewedMarketingCampaign(
+      SHARE_ZAP_DESIGN_MARKETING_CAMPAIGN_ID,
+      "discord",
+    );
+    const config = readMarketingConfig({
+      OPENZAPS_MARKETING_ENABLED: "true",
+      OPENZAPS_MARKETING_DRY_RUN: "false",
+      OPENZAPS_MARKETING_AUTO_PUBLISH: "true",
+      OPENZAPS_MARKETING_DURABLE_LEDGER_CONFIGURED: "true",
+      OPENZAPS_X_AUTOMATED_LABEL_CONFIRMED: "true",
+      X_USER_ACCESS_TOKEN: "token",
+      X_EXPECTED_ACCOUNT_ID: "100",
+      X_EXPECTED_USERNAME: "0xzaps",
+      DISCORD_MARKETING_WEBHOOK_URL:
+        "https://discord.com/api/webhooks/123/public-token",
+      OPENZAPS_DISCORD_GUILD_ID: "456",
+      DISCORD_MARKETING_CHANNEL_ID: "789",
+      OPENZAPS_MARKETING_SUPABASE_PROJECT_REF: "abcdefghijklmnopqrst",
+      SUPABASE_URL: "https://abcdefghijklmnopqrst.supabase.co",
+      SUPABASE_SERVICE_ROLE_KEY: "service-secret",
+    });
+    const draft = candidate({
+      id: "share-design-discord-policy-test",
+      channel: "discord",
+      topics: [...campaign.topics],
+      body: campaign.body,
+      links: [...campaign.links],
+      disclosures: [...campaign.disclosures],
+      claims: campaign.claims.map((claim) => ({
+        ...claim,
+        factKeys: [...claim.factKeys],
+      })),
+      flags: { ...campaign.flags },
+      sourcePacket: {
+        id: "share-design-discord-policy-source",
+        createdAt: observedAt,
+        protocolPreAudit: true,
+        externalData: [],
+        interaction: null,
+        facts: campaign.requiredFacts.map((fact) => ({
+          key: fact.key,
+          label: "Shareable Zap design boundary",
+          value: "confirmed",
+          status: "confirmed" as const,
+          sourceUrl: fact.sourceUrl,
+          observedAt,
+        })),
+      },
+    });
+    const automaticContext = context({
+      now: observedAt,
+      config,
+      usage: {
+        day: "2026-08-07",
+        counts: {
+          xPosts: 0,
+          xReplies: 0,
+          discordPosts: 0,
+          substackTutorials: 0,
+          directMessages: 0,
+        },
+      },
+      automaticAuthorization: {
+        kind: "scheduled_template",
+        templateId: SHARE_ZAP_DESIGN_MARKETING_CAMPAIGN_ID,
+      },
+    });
+
+    expect(evaluateMarketingPolicy(draft, automaticContext).disposition).toBe(
+      "allow",
+    );
+
+    const stale = evaluateMarketingPolicy(draft, {
+      ...automaticContext,
+      now: new Date(
+        Date.parse(observedAt) + MAX_VOLATILE_MARKETING_SOURCE_AGE_MS + 1,
+      ).toISOString(),
+    });
+    expect(stale.disposition).toBe("blocked");
+    expect(stale.issues.map((issue) => issue.code)).toContain(
+      "volatile_source_stale",
     );
   });
 
