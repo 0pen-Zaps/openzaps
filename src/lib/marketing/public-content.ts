@@ -13,8 +13,10 @@ import {
 } from "@/lib/marketing/tutorial-publication";
 
 const OPENZAPS_ORIGIN = "https://www.0xzaps.com";
+const X_SHARE_INTENT = "https://x.com/intent/post";
 const MAX_PUBLIC_ITEMS = 200;
 const MAX_PUBLIC_SUMMARY_LENGTH = 500;
+const MAX_X_SHARE_TEXT_LENGTH = 220;
 
 export type PublicContentKind = "product_update" | "tutorial";
 
@@ -27,6 +29,11 @@ export interface PublicContentItem {
   publishedAt: string;
   sourceLabel: "OpenZaps" | "DeFi Tutorials";
   external: boolean;
+}
+
+export interface PublicContentShareTargets {
+  copyUrl: string;
+  xIntentUrl: string;
 }
 
 export class PublicContentError extends Error {
@@ -80,6 +87,48 @@ function isoTimestamp(value: string, label: string): string {
     throw new PublicContentError(`${label} is invalid.`);
   }
   return new Date(timestamp).toISOString();
+}
+
+function attributedShareUrl(
+  item: PublicContentItem,
+  source: "openzaps" | "x",
+  medium: "referral" | "social",
+): string {
+  const url = new URL(item.canonicalUrl);
+  url.searchParams.set("utm_source", source);
+  url.searchParams.set("utm_medium", medium);
+  url.searchParams.set(
+    "utm_campaign",
+    item.kind === "tutorial" ? "tutorial_update" : "product_update",
+  );
+  url.searchParams.set("utm_content", "learn_hub");
+  return url.toString();
+}
+
+function boundedXShareText(item: PublicContentItem): string {
+  const suffix = item.kind === "tutorial"
+    ? " — DeFi Tutorials via @0xzaps"
+    : " — OpenZaps via @0xzaps";
+  const titleBudget = MAX_X_SHARE_TEXT_LENGTH - Array.from(suffix).length;
+  const title = Array.from(item.title).slice(0, titleBudget).join("");
+  return `${title}${suffix}`;
+}
+
+/**
+ * Prepare explicit, user-confirmed distribution links for one verified public
+ * item. These links open an X composer or copy a tracked URL; they never post.
+ */
+export function publicContentShareTargets(
+  item: PublicContentItem,
+): PublicContentShareTargets {
+  const xIntent = new URL(X_SHARE_INTENT);
+  xIntent.searchParams.set("text", boundedXShareText(item));
+  xIntent.searchParams.set("url", attributedShareUrl(item, "x", "social"));
+
+  return {
+    copyUrl: attributedShareUrl(item, "openzaps", "referral"),
+    xIntentUrl: xIntent.toString(),
+  };
 }
 
 /**

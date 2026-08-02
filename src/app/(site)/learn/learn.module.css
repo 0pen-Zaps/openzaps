@@ -354,10 +354,57 @@
   text-transform: uppercase;
 }
 
-.updateFoot a {
+.updateActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  align-items: center;
+  justify-content: flex-end;
+}
+
+.updateActions > a,
+.copyButton {
+  display: inline-flex;
+  min-height: 31px;
+  align-items: center;
+  padding: 0 9px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-ctl-sm);
+  background: var(--panel);
   color: var(--link);
   font-size: 12.5px;
   font-weight: 650;
+  line-height: 1;
+  transition:
+    border-color var(--dur-2) var(--ease-standard),
+    background var(--dur-2) var(--ease-standard),
+    color var(--dur-2) var(--ease-standard);
+}
+
+.updateActions > a:hover,
+.copyButton:hover {
+  border-color: var(--line-hover);
+  background: var(--chip);
+}
+
+.copyAction {
+  display: inline-flex;
+}
+
+.copyButton {
+  gap: 6px;
+  font-family: inherit;
+}
+
+.updateActions > .xShare {
+  border-color: var(--ink);
+  background: var(--ink);
+  color: var(--panel);
+}
+
+.updateActions > .xShare:hover {
+  border-color: var(--ink-2);
+  background: var(--ink-2);
 }
 
 .updateFoot i {
@@ -479,6 +526,10 @@
   .updateFoot {
     align-items: flex-start;
     flex-direction: column;
+  }
+
+  .updateActions {
+    justify-content: flex-start;
   }
 
   .conversion {

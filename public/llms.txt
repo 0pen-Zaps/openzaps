@@ -17,6 +17,8 @@ Key facts:
 - [My zaps](https://www.0xzaps.com/profile): browser-local designs plus source-backed Zap and automation records associated with the connected owner
 - [Fee rewards](https://www.0xzaps.com/rewards): the fixed 50-share, seven-day 0xZAPS staking campaign; stake or withdraw principal, claim campaign-accounted WETH, run permissionless upkeep, and inspect the immutable release manifest
 - [Developer docs & security](https://www.0xzaps.com/docs): policy schema, simulation API, templates, execution lifecycle, and the security model (threat model, controls, production gates) at /docs#security
+- [Agent Kit](https://www.0xzaps.com/agent-kit): published TypeScript SDK and read-only MCP server for compiling exact policy and unsigned EIP-712 artifacts; neither package signs nor broadcasts
+- [Learn](https://www.0xzaps.com/learn): source-reviewed product updates and RSS-confirmed DeFi Tutorials, with drafts withheld until publication evidence exists
 - [Release evals](https://www.0xzaps.com/evals): dated release-evaluation evidence and its covered source revision
 - [Roadmap](https://www.0xzaps.com/roadmap): current live capabilities, proposed route expansion, submission tooling, and hardening gates
 - [0xZAPS token](https://www.0xzaps.com/token): verified contract, official Clanker market, FAQ
@@ -32,10 +34,14 @@ Every verified factory-created Zap has a canonical detail page at `https://www.0
 - Robots: https://www.0xzaps.com/robots.txt
 - Web app manifest: https://www.0xzaps.com/manifest.webmanifest
 - OpenSearch descriptor: https://www.0xzaps.com/opensearch.xml
+- RSS updates feed: https://www.0xzaps.com/feed.xml
 
 ## Official links
 
 - X (Twitter): https://x.com/0xzaps
+- Discord: https://discord.com/invite/openzaps
+- DeFi Tutorials: https://defitutorials.substack.com
+- GitHub: https://github.com/0pen-Zaps/openzaps
 - Verified contract source: https://robinhoodchain.blockscout.com/address/0xFC775017b25d2458623E2f3E735A4B750dD8b4E4?tab=contract
 - Token market (Clanker): https://www.clanker.world/clanker/0xDd90bFa4adC7F4401E611AbaC692D939F9F4CB07
 - Explorer: https://robinhoodchain.blockscout.com/token/0xDd90bFa4adC7F4401E611AbaC692D939F9F4CB07
