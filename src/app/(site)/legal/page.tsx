@@ -156,6 +156,93 @@ export default function LegalPage(): React.JSX.Element {
         </div>
       </section>
 
+      <section className={styles.section} aria-labelledby="discord-app-heading">
+        <h2 className={styles.h2} id="discord-app-heading">
+          OpenZaps Discord app
+        </h2>
+        <div className={styles.defs}>
+          <div className={styles.def} id="discord-app-terms">
+            <strong className={styles.defTerm}>Discord app terms</strong>
+            <p className={styles.defBody}>
+              <b>Effective August 1, 2026.</b> These terms apply to the official
+              OpenZaps Discord app in the OpenZaps server. The app provides
+              deterministic educational responses to <b>/ask, /openzaps, and
+              /status</b>, and it may publish source-reviewed OpenZaps updates
+              through the configured public channel. It is not an AI chat
+              agent, wallet, signer, executor, trading service, financial
+              adviser, or security audit. Using a command does not connect a
+              wallet, request a signature, submit or reverse a transaction,
+              create or fund a Zap, or grant an agent any authority. OpenZaps
+              contracts remain pre-audit.
+            </p>
+            <p className={styles.defBody}>
+              Responses may be incomplete or become outdated and are provided
+              without guaranteed availability. Use the app only in compliance
+              with Discord&apos;s terms, community guidelines, and applicable law.
+              Do not submit passwords, access tokens, private keys, seed
+              phrases, wallet signatures, personal or sensitive information,
+              or non-public vulnerability details in a command. Command text
+              and the response may be visible in the Discord channel. Report
+              vulnerabilities through
+              {" "}
+              <a href="https://github.com/0pen-Zaps/openzaps/security/advisories/new">
+                GitHub private security reporting
+              </a>
+              .
+            </p>
+            <p className={styles.defBody}>
+              OpenZaps may limit, change, or disable the app to protect users or
+              comply with platform requirements. Server administrators may
+              remove it at any time. Nothing returned by the app is an offer,
+              solicitation, investment recommendation, or guarantee. The
+              effective date will change when these terms materially change.
+            </p>
+          </div>
+          <div className={styles.def} id="discord-app-privacy">
+            <strong className={styles.defTerm}>Discord app privacy</strong>
+            <p className={styles.defBody}>
+              <b>Effective August 1, 2026.</b> When a member invokes a command,
+              Discord sends OpenZaps a signed interaction payload. It includes
+              the command and option text and can include interaction,
+              application, server, channel, and invoking-member identifiers;
+              member, permission, and locale metadata; and a short-lived
+              response token. OpenZaps uses this payload only to verify that the
+              signed request belongs to the configured application and OpenZaps
+              server, select a deterministic answer, and return that answer to
+              Discord.
+            </p>
+            <p className={styles.defBody}>
+              The deployed app does not read ordinary server messages or direct
+              messages, connect to Discord&apos;s Gateway, use command text to
+              prompt or train an AI model, build member profiles, target
+              advertising, sell data, or contact members. OpenZaps does not
+              persist the command question, member profile, username, or
+              message content and does not intentionally write interaction
+              payloads to its database or application logs; it processes them
+              in memory for the request. Discord and Vercel necessarily process
+              the payload and standard transport or security metadata under
+              their respective policies. The command and response may remain
+              visible in Discord according to the channel&apos;s settings.
+            </p>
+            <p className={styles.defBody}>
+              OpenZaps retains only delivery-receipt metadata needed to prevent
+              duplicate source-reviewed broadcasts; this receipt does not
+              contain a member&apos;s command text. Because OpenZaps does not
+              intentionally retain Discord interaction payloads, it normally
+              has no application-level Discord record to delete. For access,
+              correction, deletion, or privacy questions, contact the official
+              {" "}
+              <a href="https://x.com/0xzaps">@0xzaps account</a>
+              {" "}and ask to arrange a private channel. Requests concerning
+              data retained by Discord must use Discord&apos;s privacy controls.
+              Discord processes the interaction under its own terms and
+              retention policies. This notice will be updated before the app
+              stores Discord data or activates additional scopes.
+            </p>
+          </div>
+        </div>
+      </section>
+
       <section className={styles.note}>
         <span className={styles.noteEyebrow}>No financial advice</span>
         <strong className={styles.noteTitle}>

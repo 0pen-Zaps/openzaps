@@ -16,14 +16,34 @@ describe("Discord command manifest", () => {
       {
         name: "ask",
         type: 1,
-        options: [{ name: "question", type: 3, required: true }],
+        options: [
+          {
+            name: "question",
+            description:
+              "OpenZaps topic only—never include keys, credentials, or personal data",
+            type: 3,
+            required: true,
+          },
+        ],
       },
       {
         name: "openzaps",
         type: 1,
-        options: [{ name: "question", type: 3, required: false }],
+        options: [
+          {
+            name: "question",
+            description:
+              "Topic: Zaps, agents, security, audit, or token. Never include secrets.",
+            type: 3,
+            required: false,
+          },
+        ],
       },
-      { name: "status", type: 1 },
+      {
+        name: "status",
+        description: "Read OpenZaps audit status and live-contract caveats",
+        type: 1,
+      },
     ]);
     expect(Object.isFrozen(DISCORD_COMMAND_MANIFEST)).toBe(true);
   });

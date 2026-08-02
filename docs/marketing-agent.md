@@ -450,6 +450,24 @@ match.
 4. Register commands to the OpenZaps guild first. Guild commands update
    quickly and are safer for testing than global commands.
 
+Keep the Discord application profile aligned with the deployed capability:
+
+```text
+Description: Deterministic OpenZaps answers for the official OpenZaps server.
+Use /ask, /openzaps, or /status for bounded DeFi execution, agent authority,
+audit posture, security reporting, and the 0xZAPS distinction. No AI chat or
+general-message/DM monitoring. The app holds no wallet keys and cannot sign or
+execute transactions. OpenZaps contracts remain pre-audit.
+
+Terms of Service URL: https://www.0xzaps.com/legal#discord-app-terms
+Privacy Policy URL: https://www.0xzaps.com/legal#discord-app-privacy
+```
+
+The profile must not call slash commands general chat auto-replies. The current
+application has no Discord Gateway listener and receives only signed application
+interactions at the configured endpoint. Verify both legal anchors on the exact
+production deployment before saving these provider fields.
+
 The canonical payload lives in
 `src/lib/marketing/discord-commands.json`; the signed interaction route and
 reconciliation tests consume the same manifest. Keep the bot token in the

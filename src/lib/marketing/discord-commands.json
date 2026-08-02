@@ -6,7 +6,7 @@
     "options": [
       {
         "name": "question",
-        "description": "Your OpenZaps question",
+        "description": "OpenZaps topic only—never include keys, credentials, or personal data",
         "type": 3,
         "required": true
       }
@@ -19,7 +19,7 @@
     "options": [
       {
         "name": "question",
-        "description": "Optional topic: Zaps, agents, security, audit status, or token",
+        "description": "Topic: Zaps, agents, security, audit, or token. Never include secrets.",
         "type": 3,
         "required": false
       }
@@ -27,7 +27,7 @@
   },
   {
     "name": "status",
-    "description": "Read the current OpenZaps audit and production posture",
+    "description": "Read OpenZaps audit status and live-contract caveats",
     "type": 1
   }
 ]

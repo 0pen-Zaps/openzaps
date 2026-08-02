@@ -1,9 +1,15 @@
+import tutorialManifestJson from "../../../docs/tutorials/manifest.json";
+
+import { normalizeConfirmedTutorialManifest } from "@/lib/marketing/tutorial-publication";
+
 export interface OpenZapsFeedItem {
   id: string;
   title: string;
   description: string;
   url: string;
   publishedAt: string;
+  ctaLabel?: string;
+  ctaUrl?: string;
 }
 
 const SITE_URL = "https://www.0xzaps.com";
@@ -29,6 +35,9 @@ export const OPENZAPS_FEED_ITEMS: readonly OpenZapsFeedItem[] = [
     description:
       "Submit one DeFi workflow to request a human-reviewed authority map covering what an agent may trigger and what it can never change.",
     url: `${SITE_URL}/request-a-zap`,
+    ctaLabel: "Request a Zap",
+    ctaUrl:
+      `${SITE_URL}/request-a-zap?utm_source=openzaps&utm_medium=rss&utm_campaign=request_a_zap&utm_content=feed_update`,
     // Canonical repository commit bc4db0a, which shipped the lead engine.
     publishedAt: "2026-07-30T09:15:30.000Z",
   },
@@ -52,6 +61,21 @@ export const OPENZAPS_FEED_ITEMS: readonly OpenZapsFeedItem[] = [
   },
 ] as const;
 
+const CONFIRMED_TUTORIAL_FEED_ITEMS: readonly OpenZapsFeedItem[] =
+  normalizeConfirmedTutorialManifest(tutorialManifestJson).map((tutorial) => ({
+    id: `defitutorials-${tutorial.id}`,
+    title: tutorial.title,
+    description:
+      "Read the source-reviewed walkthrough on DeFi Tutorials. OpenZaps remains pre-audit; verify every bound before using real funds.",
+    url: tutorial.canonicalUrl,
+    publishedAt: tutorial.publishedAt,
+  }));
+
+export const OPENZAPS_RSS_ITEMS: readonly OpenZapsFeedItem[] = Object.freeze([
+  ...OPENZAPS_FEED_ITEMS,
+  ...CONFIRMED_TUTORIAL_FEED_ITEMS,
+]);
+
 function escapeXml(value: string): string {
   return value.replace(/[&<>"']/gu, (character) => {
     const entity: Record<string, string> = {
@@ -66,7 +90,7 @@ function escapeXml(value: string): string {
 }
 
 export function renderOpenZapsRss(
-  items: readonly OpenZapsFeedItem[] = OPENZAPS_FEED_ITEMS,
+  items: readonly OpenZapsFeedItem[] = OPENZAPS_RSS_ITEMS,
 ): string {
   const sorted = [...items].sort(
     (left, right) => Date.parse(right.publishedAt) - Date.parse(left.publishedAt),
@@ -78,7 +102,11 @@ export function renderOpenZapsRss(
       <guid isPermaLink="false">${escapeXml(item.id)}</guid>
       <title>${escapeXml(item.title)}</title>
       <link>${escapeXml(item.url)}</link>
-      <description>${escapeXml(item.description)}</description>
+      <description>${escapeXml(
+        item.ctaLabel && item.ctaUrl
+          ? `${item.description}\n\n${item.ctaLabel}: ${item.ctaUrl}`
+          : item.description,
+      )}</description>
       <pubDate>${new Date(item.publishedAt).toUTCString()}</pubDate>
     </item>`,
     )
