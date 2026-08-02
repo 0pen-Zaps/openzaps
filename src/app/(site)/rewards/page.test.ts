@@ -17,6 +17,9 @@ function read(path: string): string {
 describe("0xZAPS fee rewards public surface", () => {
   const page = read("src/app/(site)/rewards/page.tsx");
   const workspace = read("src/app/(site)/rewards/RewardsWorkspace.tsx");
+  const countdownHook = read("src/components/useCampaignCountdown.ts");
+  const campaignStrip = read("src/app/(landing)/CampaignStrip.tsx");
+  const landingPage = read("src/app/(landing)/page.tsx");
   const shell = read("src/components/AppShell.tsx");
   const seo = read("src/lib/seo.ts");
   const tokenPage = read("src/app/(site)/token/page.tsx");
@@ -72,8 +75,57 @@ describe("0xZAPS fee rewards public surface", () => {
   });
 
   it("refreshes public snapshots once per minute", () => {
-    expect(workspace).toContain("60_000");
-    expect(workspace).not.toContain("30_000");
+    expect(workspace).toContain("window.setInterval(() => void load(account), 60_000)");
+  });
+
+  it("counts down to verified boundaries without flipping phase from the local clock", () => {
+    // The countdown estimates from the verified block timestamp plus a local
+    // monotonic delta; at zero it defers to the chain rather than declaring
+    // the phase.
+    expect(countdownHook).toContain("BigInt(data.blockTimestamp) + elapsed");
+    expect(countdownHook).toContain("performance.now()");
+    expect(countdownHook).not.toContain("Date.now()");
+    expect(workspace).toContain("awaiting the next verified block");
+    // Per-second ticking is cinematic-only; calm motion updates by the minute.
+    expect(countdownHook).toContain("COUNTDOWN_CALM_TICK_MS = 30_000");
+    expect(workspace).toContain('formatCountdown(remaining, reduced ? "minute" : "second")');
+  });
+
+  it("keeps boundary polling gated, bounded, and at the reviewed cadence", () => {
+    // Pin the gate and the usage, not just declarations: deleting the reached
+    // gate or hardcoding a faster interval must fail this test.
+    expect(countdownHook).toContain("if (!reached) return;");
+    expect(countdownHook).toContain("boundaryPollMs * (0.9 + Math.random() * 0.2)");
+    expect(countdownHook).toContain("}, jitteredPollMs);");
+    expect(countdownHook).toContain("if (!document.hidden) onResync();");
+    expect(countdownHook).toContain("if (polls > COUNTDOWN_FAST_POLL_LIMIT && polls % slowEvery !== 0) return;");
+    expect(countdownHook).toContain("if (document.hidden) return;");
+    expect(countdownHook).toContain("COUNTDOWN_FAST_POLL_LIMIT = 18");
+    expect(countdownHook).toContain("COUNTDOWN_SLOW_POLL_MS = 60_000");
+    expect(workspace).toContain("COUNTDOWN_BOUNDARY_POLL_MS = 10_000");
+    expect(workspace).toContain("COUNTDOWN_BOUNDARY_POLL_MS,");
+  });
+
+  it("fails the landing campaign strip closed and keeps it honest", () => {
+    // The landing page is static: the strip renders nothing until a verified
+    // snapshot confirms a clock-bound phase, and never invents live claims.
+    expect(campaignStrip).toContain("if (!data || !countdown) return null;");
+    expect(campaignStrip).toContain('response.status === 200');
+    expect(campaignStrip).toContain('href="/rewards');
+    expect(campaignStrip).toContain("confirming onchain");
+    // The rewards app closes new stakes in claim-only, so the CTA must not
+    // advertise staking there.
+    expect(campaignStrip).toContain('data.phase === "claim-only" ? "Claim & inspect →" : "Stake & inspect →"');
+    expect(landingPage).toContain("<CampaignStrip />");
+  });
+
+  it("coalesces concurrent shared-snapshot fills per instance", () => {
+    // unstable_cache has no MISS coalescing and the cache key rotates every
+    // deploy; without this funnel, landing traffic during a deploy becomes an
+    // RPC herd of parallel full-snapshot reads.
+    const server = read("src/lib/rewards-server.ts");
+    expect(server).toContain("let inflightPublicSnapshot");
+    expect(server).toContain("await coalescedPublicFeeRewards()");
   });
 
   it("retries a transient shared-cache refresh without accepting non-data as a snapshot", () => {

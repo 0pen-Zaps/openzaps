@@ -213,6 +213,42 @@
   letter-spacing: -0.02em;
 }
 
+.countdown {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 4px 12px;
+  margin: 0 16px 14px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-card-sm);
+  background: var(--sunk);
+  color: var(--ink-3);
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.countdown strong {
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+}
+
+/* Reached state signals through the border and copy; the text itself stays on
+   --ink because --warn on --sunk fails the 4.5:1 AA floor on Ivory (4.20:1). */
+.countdown[data-reached] {
+  border-color: var(--warn);
+}
+
+.countdown[data-reached] strong {
+  color: var(--ink);
+  text-transform: none;
+  letter-spacing: 0.02em;
+}
+
 .allocation {
   display: grid;
   grid-template-columns: 1fr 1fr;

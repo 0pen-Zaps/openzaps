@@ -685,6 +685,84 @@
   align-items: center;
 }
 
+/* Reserved slot so the strip appearing after hydration cannot shift the hero.
+   The reserve must cover the strip's WRAPPED height, not one line: the wrap
+   count depends on viewport width and on the widest phase copy ("Live · Ends
+   in 6d 23h 59m"), so the floor is three wrapped rows below the single-line
+   breakpoint and two above it. */
+.campaignSlot {
+  min-height: 5rem;
+  margin-top: 1.1rem;
+}
+
+@media (min-width: 1280px) {
+  .campaignSlot {
+    min-height: 3.7rem;
+  }
+}
+
+/* The strip occupies the copy column's last row — the same band the centered
+   scroll cue drops through on short desktop viewports. The strip's own arrow
+   is the scroll-adjacent affordance while a campaign is running. */
+.hero:has(.campaignStrip) .scrollCue {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.campaignStrip {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.35rem 0.85rem;
+  padding: 0.6rem 0.95rem;
+  border: 1px solid var(--line);
+  background: var(--glass);
+  color: var(--muted);
+  font-family: var(--font-jetbrains-mono), ui-monospace, monospace;
+  font-size: 0.72rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  text-decoration: none;
+  transition: border-color 160ms cubic-bezier(0.4, 0, 0.2, 1), color 160ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.campaignStrip:hover {
+  border-color: var(--accent-dim);
+  color: var(--text);
+}
+
+.campaignStrip strong {
+  color: var(--fg);
+  font-weight: 500;
+}
+
+.campaignStripTime {
+  color: var(--accent);
+  font-variant-numeric: tabular-nums;
+}
+
+.campaignStrip em {
+  font-style: normal;
+  color: var(--muted);
+}
+
+.campaignStrip:hover em {
+  color: var(--accent-dim);
+}
+
+.campaignStripDot {
+  display: inline-block;
+  width: 0.4rem;
+  height: 0.4rem;
+  align-self: center;
+  background: var(--accent);
+  animation: microBlink 2.4s steps(1) infinite;
+}
+
+.campaignStrip[data-live] .campaignStripDot {
+  background: var(--ok);
+}
+
 .heroChipLink {
   color: var(--muted);
   text-decoration: none;

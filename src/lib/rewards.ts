@@ -181,6 +181,58 @@ export function formatCampaignPhase(phase: FeeRewardsPhase): string {
   }
 }
 
+export type CampaignCountdown = {
+  label: string;
+  reachedLabel: string;
+  target: bigint;
+};
+
+/**
+ * The fixed onchain timestamp the current phase is waiting on, or null when
+ * the campaign is not waiting on the clock: settlement waits on finalize(),
+ * and unfunded/expired have no future boundary.
+ */
+export function campaignCountdown(
+  phase: FeeRewardsPhase,
+  startAt: bigint = FEE_REWARDS_MANIFEST.campaign.startAt,
+  endAt: bigint = FEE_REWARDS_MANIFEST.campaign.endAt,
+  claimDeadline: bigint = FEE_REWARDS_MANIFEST.campaign.claimDeadline,
+): CampaignCountdown | null {
+  switch (phase) {
+    case "upcoming":
+      return { label: "Starts in", reachedLabel: "Start reached", target: startAt };
+    case "active":
+      return { label: "Ends in", reachedLabel: "End reached", target: endAt };
+    case "claim-only":
+      return { label: "Claims close in", reachedLabel: "Deadline reached", target: claimDeadline };
+    default:
+      return null;
+  }
+}
+
+/**
+ * Formats a remaining duration for the countdown row. Multi-day spans omit
+ * seconds so the display only changes once a minute; minute granularity
+ * (calm motion) rounds up so a reader never sees a boundary understated as
+ * already reached while it is still pending.
+ */
+export function formatCountdown(
+  secondsRemaining: bigint,
+  granularity: "second" | "minute" = "second",
+): string {
+  const clamped = secondsRemaining < 0n ? 0n : secondsRemaining;
+  const total = granularity === "minute" ? ((clamped + 59n) / 60n) * 60n : clamped;
+  const days = total / 86_400n;
+  const hours = (total % 86_400n) / 3_600n;
+  const minutes = (total % 3_600n) / 60n;
+  const parts: string[] = [];
+  if (days > 0n) parts.push(`${days}d`);
+  if (days > 0n || hours > 0n) parts.push(`${hours}h`);
+  parts.push(`${minutes}m`);
+  if (granularity === "second" && days === 0n) parts.push(`${total % 60n}s`);
+  return parts.join(" ");
+}
+
 export type FeeRewardsPayload = {
   headBlock: string;
   blockHash: Hex;

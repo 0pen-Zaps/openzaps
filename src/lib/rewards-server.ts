@@ -682,13 +682,34 @@ export async function fetchFeeRewardsUncached(viewer: Address | null): Promise<F
 }
 
 /**
+ * Per-instance in-flight coalescing for the shared snapshot. `unstable_cache`
+ * has no MISS coalescing: on a cold key — and the key deliberately rotates
+ * every deploy via the commit SHA — each concurrent request would execute the
+ * full multi-read RPC snapshot inline, so landing traffic arriving during a
+ * deploy becomes an uncoalesced herd against the public RPC. One warm
+ * instance instead funnels every concurrent caller through a single fill.
+ * The promise is cleared on settle, so a failed fill is retried by the next
+ * request rather than poisoning the instance.
+ */
+let inflightPublicSnapshot: Promise<FeeRewardsPayload> | null = null;
+
+function coalescedPublicFeeRewards(): Promise<FeeRewardsPayload> {
+  if (inflightPublicSnapshot === null) {
+    inflightPublicSnapshot = cachedPublicFeeRewards().finally(() => {
+      inflightPublicSnapshot = null;
+    });
+  }
+  return inflightPublicSnapshot;
+}
+
+/**
  * Production read path. Public contract identity/state is shared for 10
  * seconds across SSR and API callers; wallet fields remain private, uncached,
  * and pinned to the cached snapshot's canonical block.
  */
 export async function fetchFeeRewards(viewer: Address | null): Promise<FeeRewardsPayload> {
   const account = normalizeViewer(viewer);
-  const snapshot = await cachedPublicFeeRewards();
+  const snapshot = await coalescedPublicFeeRewards();
   assertSharedSnapshotFresh(snapshot);
   return attachViewer(snapshot, account);
 }
