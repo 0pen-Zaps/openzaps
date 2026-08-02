@@ -65,7 +65,7 @@ describe("RequestZapForm deployment boundary", () => {
       "Choose which path describes you before sending the request.",
     );
     expect(requestValidationMessage("projectUrl")).toBe(
-      "Use a secure project URL beginning with https://, or leave it blank.",
+      "Use a credential-free HTTPS project URL, or leave it blank.",
     );
     expect(requestValidationMessage(null)).toBe(
       "Complete every required field marked with an asterisk before sending.",
@@ -79,5 +79,22 @@ describe("RequestZapForm deployment boundary", () => {
     expect(requestSubmissionErrorMessage(503)).toContain(
       "temporarily unavailable",
     );
+  });
+
+  it("turns safe server validation fields into actionable messages", () => {
+    expect(requestSubmissionErrorMessage(400, "email")).toBe(
+      "Enter a valid work email before sending the request.",
+    );
+    expect(requestSubmissionErrorMessage(400, "projectUrl")).toBe(
+      "Use a credential-free HTTPS project URL, or leave it blank.",
+    );
+    expect(requestSubmissionErrorMessage(400, "attribution")).toBe(
+      "We could not send your request. Check the form and try again.",
+    );
+    for (const prototypeKey of ["toString", "constructor", "__proto__"]) {
+      expect(requestSubmissionErrorMessage(400, prototypeKey)).toBe(
+        "We could not send your request. Check the form and try again.",
+      );
+    }
   });
 });

@@ -38,7 +38,10 @@ vi.mock("@/lib/leads/server", async (importOriginal) => ({
   submitLeadRequest: vi.fn(),
 }));
 
-import { submitLeadRequest } from "@/lib/leads/server";
+import {
+  LeadStoreError,
+  submitLeadRequest,
+} from "@/lib/leads/server";
 import { GET, POST, leadQuotaRetryAfterSeconds } from "./route";
 
 const mockedSubmit = vi.mocked(submitLeadRequest);
@@ -282,7 +285,14 @@ describe("POST /api/leads/request", () => {
   });
 
   it("never turns a legacy honeypot into false success when storage fails", async () => {
-    mockedSubmit.mockRejectedValue(new Error("database unavailable"));
+    const errorLog = vi.spyOn(console, "error").mockImplementation(() => {});
+    mockedSubmit.mockRejectedValue(
+      new LeadStoreError(
+        "rpc-error",
+        "provider body must not enter logs",
+        503,
+      ),
+    );
 
     const response = await POST(
       request({ ...body, website: "autofilled by a stale client" }),
@@ -297,8 +307,16 @@ describe("POST /api/leads/request", () => {
       { ...body, website: "", attribution: {} },
       expect.any(Headers),
     );
+    expect(errorLog).toHaveBeenCalledWith(
+      "openzaps_lead_request_store_failed",
+      { code: "rpc-error", status: 503 },
+    );
+    expect(JSON.stringify(errorLog.mock.calls)).not.toContain(
+      "provider body must not enter logs",
+    );
     expect(mocks.start).not.toHaveBeenCalled();
     expect(mocks.track).not.toHaveBeenCalled();
+    errorLog.mockRestore();
   });
 
   it("rejects missing or cross-origin browser provenance before reading", async () => {
@@ -318,9 +336,17 @@ describe("POST /api/leads/request", () => {
     expect(
       (await POST(request(body, { "content-type": "text/plain" }))).status,
     ).toBe(415);
-    expect(
-      (await POST(request({ ...body, surprise: true }))).status,
-    ).toBe(400);
+    const strictResponse = await POST(request({
+      ...body,
+      surprise: "private value must not be echoed",
+    }));
+    const strictRaw = await strictResponse.text();
+    expect(strictResponse.status).toBe(400);
+    expect(JSON.parse(strictRaw)).toEqual({
+      accepted: false,
+      error: "Invalid request.",
+    });
+    expect(strictRaw).not.toContain("private value must not be echoed");
     expect(
       (
         await POST(
@@ -331,6 +357,47 @@ describe("POST /api/leads/request", () => {
       ).status,
     ).toBe(413);
     expect(mockedSubmit).not.toHaveBeenCalled();
+  });
+
+  it("returns only an allowlisted invalid field without echoing its value", async () => {
+    const submittedEmail = "private-person@localhost";
+
+    const response = await POST(request({ ...body, email: submittedEmail }));
+    const raw = await response.text();
+
+    expect(response.status).toBe(400);
+    expect(JSON.parse(raw)).toEqual({
+      accepted: false,
+      error: "Invalid request.",
+      invalidField: "email",
+    });
+    expect(raw).not.toContain(submittedEmail);
+    expect(mockedSubmit).not.toHaveBeenCalled();
+  });
+
+  it("logs a controlled code when the durable store rejects valid input", async () => {
+    const secretBearingMessage =
+      "invalid input sk-proj-secret-must-not-enter-logs";
+    const errorLog = vi.spyOn(console, "error").mockImplementation(() => {});
+    mockedSubmit.mockRejectedValue(
+      new LeadStoreError("invalid-input", secretBearingMessage, 400),
+    );
+
+    const response = await POST(request());
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({
+      accepted: false,
+      error: "Invalid request.",
+    });
+    expect(errorLog).toHaveBeenCalledWith(
+      "openzaps_lead_request_store_failed",
+      { code: "invalid-input", status: 400 },
+    );
+    expect(JSON.stringify(errorLog.mock.calls)).not.toContain(
+      secretBearingMessage,
+    );
+    errorLog.mockRestore();
   });
 
   it("surfaces the durable quota without exposing its fingerprint", async () => {
@@ -355,7 +422,10 @@ describe("POST /api/leads/request", () => {
   });
 
   it("fails closed when durable storage is unavailable", async () => {
-    mockedSubmit.mockRejectedValue(new Error("database unavailable"));
+    const secretBearingMessage =
+      "database unavailable sk-proj-secret-must-not-enter-logs";
+    const errorLog = vi.spyOn(console, "error").mockImplementation(() => {});
+    mockedSubmit.mockRejectedValue(new Error(secretBearingMessage));
 
     const response = await POST(request());
     expect(response.status).toBe(503);
@@ -363,8 +433,16 @@ describe("POST /api/leads/request", () => {
       accepted: false,
       error: "Lead intake is temporarily unavailable.",
     });
+    expect(errorLog).toHaveBeenCalledWith(
+      "openzaps_lead_request_store_failed",
+      { code: "unexpected", status: null },
+    );
+    expect(JSON.stringify(errorLog.mock.calls)).not.toContain(
+      secretBearingMessage,
+    );
     expect(mocks.start).not.toHaveBeenCalled();
     expect(mocks.track).not.toHaveBeenCalled();
+    errorLog.mockRestore();
   });
 });
 
