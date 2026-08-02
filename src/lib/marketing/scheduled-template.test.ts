@@ -68,15 +68,19 @@ describe("source-reviewed marketing campaigns", () => {
     ).toBe("2026-08-03T10:00:00.000Z");
   });
 
-  it("auto-authorizes the Agent Kit campaign only with exact fresh evidence", () => {
+  it.each(["discord", "x"] as const)(
+    "auto-authorizes the Agent Kit %s campaign only with exact fresh evidence",
+    (channel) => {
     const campaign = reviewedMarketingCampaign(
       AGENT_KIT_MARKETING_CAMPAIGN_ID,
-      "discord",
+      channel,
     );
-    const observedAt = "2026-08-03T14:00:00.000Z";
+    const observedAt = channel === "discord"
+      ? "2026-08-03T14:00:00.000Z"
+      : "2026-08-05T14:00:00.000Z";
     const candidate: MarketingCandidate = {
-      id: "agent-kit-campaign-discord",
-      channel: "discord",
+      id: `agent-kit-campaign-${channel}`,
+      channel,
       action: "broadcast",
       kind: "product_update",
       topics: [...campaign.topics],
@@ -112,9 +116,9 @@ describe("source-reviewed marketing campaigns", () => {
         AGENT_KIT_MARKETING_CAMPAIGN_ID,
       ),
     ).toBe(true);
-    expect(() =>
-      reviewedMarketingCampaign(AGENT_KIT_MARKETING_CAMPAIGN_ID, "x"),
-    ).toThrow("Unknown reviewed marketing campaign.");
+    if (channel === "x") {
+      expect(Array.from(campaign.body)).toHaveLength(269);
+    }
     expect(
       isReviewedMarketingCampaignCandidate(
         { ...candidate, body: `${candidate.body}\nChanged.` },

@@ -1,3 +1,10 @@
+export const OPENZAPS_SDK_PACKAGE = "@openzaps/sdk";
+export const OPENZAPS_SDK_VERSION = "0.1.0";
+export const OPENZAPS_SDK_PACKAGE_SPEC =
+  `${OPENZAPS_SDK_PACKAGE}@${OPENZAPS_SDK_VERSION}`;
+export const OPENZAPS_SDK_INSTALL_COMMAND =
+  `npm install ${OPENZAPS_SDK_PACKAGE_SPEC}`;
+
 export const OPENZAPS_MCP_PACKAGE = "@openzaps/mcp";
 export const OPENZAPS_MCP_VERSION = "0.1.0";
 export const OPENZAPS_MCP_PACKAGE_SPEC =

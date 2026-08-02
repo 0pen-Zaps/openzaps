@@ -30,6 +30,7 @@ const VOLATILE_SOURCE_FACT_KEYS = new Set([
   "product.agent_kit_sdk_release",
   "product.agent_kit_mcp_release",
   "product.agent_kit_boundaries",
+  "product.agent_kit_page",
   "product.learn_hub",
 ]);
 

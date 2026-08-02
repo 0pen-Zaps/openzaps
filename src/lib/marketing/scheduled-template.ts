@@ -139,6 +139,42 @@ const AGENT_KIT_CLAIMS: MarketingClaim[] = [
   },
 ];
 
+const AGENT_KIT_X_FACTS: ReviewedMarketingFactRequirement[] = [
+  {
+    key: "product.agent_kit_sdk_release",
+    sourceUrl: "https://registry.npmjs.org/@openzaps%2fsdk/0.1.0",
+  },
+  {
+    key: "product.agent_kit_mcp_release",
+    sourceUrl: "https://registry.npmjs.org/@openzaps%2fmcp/0.1.0",
+  },
+  {
+    key: "product.agent_kit_page",
+    sourceUrl: "https://www.0xzaps.com/agent-kit",
+  },
+];
+
+const AGENT_KIT_X_CLAIMS: MarketingClaim[] = [
+  {
+    text:
+      "The npm registry publishes @openzaps/sdk@0.1.0, and the live Agent Kit page states that the SDK compiles the exact policy tuple and prepares unsigned EIP-712 data.",
+    factKeys: ["product.agent_kit_sdk_release", "product.agent_kit_page"],
+    treatment: "asserted",
+  },
+  {
+    text:
+      "The npm registry publishes @openzaps/mcp@0.1.0, and the live Agent Kit page states that the MCP surface gives agent clients read-only capsule discovery.",
+    factKeys: ["product.agent_kit_mcp_release", "product.agent_kit_page"],
+    treatment: "asserted",
+  },
+  {
+    text:
+      "The live Agent Kit page states that neither package holds a wallet key, signs, or broadcasts.",
+    factKeys: ["product.agent_kit_page"],
+    treatment: "asserted",
+  },
+];
+
 const LEARN_HUB_FACTS: ReviewedMarketingFactRequirement[] = [
   {
     key: "product.learn_hub",
@@ -211,6 +247,23 @@ const CAMPAIGNS: readonly ReviewedMarketingCampaign[] = [
       "516443309a2b558c1335bb4f672a649a1f728ddc643bb0a762564835c6ff59ca",
   },
   {
+    id: AGENT_KIT_MARKETING_CAMPAIGN_ID,
+    channel: "x",
+    queueOrder: 21,
+    notBefore: "2026-08-05T14:00:00.000Z",
+    body:
+      "OpenZaps Agent Kit is published.\n\n→ SDK: compiles the exact policy tuple and prepares unsigned EIP-712 data.\n→ MCP: read-only capsule discovery.\n\nNeither package holds a key, signs, or broadcasts.\nhttps://www.0xzaps.com/agent-kit\n\nPre-audit software. Verify before use.",
+    links: ["https://www.0xzaps.com/agent-kit"],
+    topics: ["protocol"],
+    disclosures: ["pre_audit"],
+    claims: AGENT_KIT_X_CLAIMS,
+    flags: SAFE_FLAGS,
+    requiredFacts: AGENT_KIT_X_FACTS,
+    canonicalSourceUrls: AGENT_KIT_X_FACTS.map((fact) => fact.sourceUrl),
+    contentHash:
+      "c0dc5ff730cdd8efaf58cf1af1940941e5c6dd60c75f542ad036226862448a0e",
+  },
+  {
     id: LEARN_HUB_MARKETING_CAMPAIGN_ID,
     channel: "x",
     queueOrder: 30,
@@ -256,6 +309,7 @@ const CAMPAIGNS: readonly ReviewedMarketingCampaign[] = [
 const AUTO_DELIVERY_CAMPAIGNS = new Set([
   `${SCHEDULED_MARKETING_TEMPLATE_ID}:discord`,
   `${AGENT_KIT_MARKETING_CAMPAIGN_ID}:discord`,
+  `${AGENT_KIT_MARKETING_CAMPAIGN_ID}:x`,
   `${LEARN_HUB_MARKETING_CAMPAIGN_ID}:x`,
   `${LEARN_HUB_MARKETING_CAMPAIGN_ID}:discord`,
 ]);

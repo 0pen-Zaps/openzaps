@@ -59,6 +59,14 @@ describe("SEO primitives", () => {
     });
   });
 
+  it("indexes the bounded Agent Kit surface", () => {
+    expect(STATIC_PAGE_SEO.agentKit).toMatchObject({
+      path: "/agent-kit",
+      changeFrequency: "weekly",
+      priority: 0.85,
+    });
+  });
+
   it("emits canonical, Open Graph, and Twitter metadata from one route definition", () => {
     const entry = STATIC_PAGE_SEO.docs;
     const metadata = pageMetadata(entry);

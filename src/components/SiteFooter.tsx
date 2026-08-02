@@ -51,6 +51,14 @@ export function SiteFooter(): React.JSX.Element {
             >
               Request a Zap
             </Link>
+            <Link
+              href="/agent-kit"
+              data-analytics-event="builder_cta_clicked"
+              data-analytics-cta="agent_kit"
+              data-analytics-content="site_footer"
+            >
+              Agent Kit
+            </Link>
             <Link href="/explore">Explore</Link>
             <Link href="/learn">Updates &amp; tutorials</Link>
             <Link href="/docs">Developer docs</Link>

@@ -42,6 +42,18 @@ export const OPENZAPS_FEED_ITEMS: readonly OpenZapsFeedItem[] = [
     publishedAt: "2026-07-30T09:15:30.000Z",
   },
   {
+    id: "openzaps-agent-kit-2026-07-29",
+    title: "Connect an agent with the OpenZaps Agent Kit",
+    description:
+      "The published SDK compiles exact policy and unsigned EIP-712 artifacts; the read-only MCP server discovers capsules and can request deployment-gated, block-pinned simulation. Neither package signs or broadcasts.",
+    url: `${SITE_URL}/agent-kit`,
+    ctaLabel: "Explore the Agent Kit",
+    ctaUrl:
+      `${SITE_URL}/agent-kit?utm_source=openzaps&utm_medium=rss&utm_campaign=agent_kit&utm_content=feed_update`,
+    // npm registry publication time for @openzaps/mcp@0.1.0.
+    publishedAt: "2026-07-29T23:42:16.227Z",
+  },
+  {
     id: "openzaps-bounded-agent-authority-2026-07-27",
     title: "Give an agent the trigger, never the authority",
     description:

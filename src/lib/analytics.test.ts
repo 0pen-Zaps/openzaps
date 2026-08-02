@@ -179,6 +179,16 @@ describe("analytics privacy boundary", () => {
     expect(storage.length).toBe(2);
   });
 
+  it("keeps coarse Agent Kit conversion attribution", () => {
+    stubBrowser();
+
+    expect(
+      captureAnalyticsAttribution(
+        "?utm_source=openzaps&utm_medium=website&utm_campaign=openzaps-agent-kit&utm_content=agent_kit",
+      ),
+    ).toBe("openzaps|website|product_update|agent_kit");
+  });
+
   it("accepts the bounded owned learning-hub attribution", () => {
     stubBrowser();
 

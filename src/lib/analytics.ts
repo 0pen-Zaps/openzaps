@@ -59,6 +59,7 @@ const ATTRIBUTION_CONTENT = new Set([
   "developer_section",
   "docs_release",
   "execution_demo",
+  "agent_kit",
   "feed_update",
   "final_cta",
   "hero",

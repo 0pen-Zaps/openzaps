@@ -40,6 +40,11 @@ describe("renderOpenZapsRss", () => {
         url: "https://www.0xzaps.com/request-a-zap",
       },
       {
+        id: "openzaps-agent-kit-2026-07-29",
+        publishedAt: "2026-07-29T23:42:16.227Z",
+        url: "https://www.0xzaps.com/agent-kit",
+      },
+      {
         id: "openzaps-bounded-agent-authority-2026-07-27",
         publishedAt: "2026-07-29T00:21:56.000Z",
         url: "https://www.0xzaps.com/docs",
@@ -52,6 +57,10 @@ describe("renderOpenZapsRss", () => {
     ]);
     expect(new Set(identity.map((item) => item.id)).size).toBe(identity.length);
     expect(xml).toContain("https://www.0xzaps.com/virtual-trading");
+    expect(xml).toContain(
+      "<link>https://www.0xzaps.com/agent-kit</link>",
+    );
+    expect(xml).toContain("deployment-gated, block-pinned simulation");
     expect(xml).toContain(
       "<link>https://www.0xzaps.com/request-a-zap</link>",
     );

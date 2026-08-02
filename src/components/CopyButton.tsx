@@ -15,12 +15,15 @@ type Status = "idle" | "copied" | "failed";
 export function CopyButton({
   value,
   label,
+  ariaLabel,
   title,
   className = "",
 }: {
   value: string;
   /** Visible text; defaults to the value itself (useful for addresses). */
   label?: string;
+  /** Distinct accessible name when the visible label is intentionally terse. */
+  ariaLabel?: string;
   title?: string;
   className?: string;
 }): React.JSX.Element {
@@ -45,6 +48,7 @@ export function CopyButton({
   return (
     <button
       className={`${styles.copy} ${className}`.trim()}
+      aria-label={ariaLabel}
       data-status={status}
       onClick={() => void copy()}
       title={title ?? `Copy ${value}`}
