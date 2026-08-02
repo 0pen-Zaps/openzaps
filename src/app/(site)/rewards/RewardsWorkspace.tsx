@@ -20,12 +20,14 @@ import {
 
 import { CopyButton } from "@/components/CopyButton";
 import { Glyph } from "@/components/Glyph";
+import { useCampaignCountdown } from "@/components/useCampaignCountdown";
 import { useWalletSession } from "@/components/WalletProvider";
 import {
   FEE_REWARDS_MANIFEST,
   feeRewardsCampaignAbi,
   feeRewardsVaultAbi,
   formatCampaignPhase,
+  formatCountdown,
   permitTokenAbi,
   type FeeRewardsPayload,
 } from "@/lib/rewards";
@@ -233,6 +235,10 @@ export function RewardsWorkspace({
       cancelled = true;
       window.clearInterval(timer);
     };
+  }, [account, load]);
+
+  const refreshAtBoundary = useCallback((): void => {
+    void load(account);
   }, [account, load]);
 
   const chooseWorkspace = useCallback((next: RewardsWorkspaceName): void => {
@@ -729,7 +735,7 @@ export function RewardsWorkspace({
           <SettlementRail data={data} />
         </div>
 
-        <CampaignTerms data={data} />
+        <CampaignTerms data={data} onResync={refreshAtBoundary} />
       </div>
 
       <nav className={styles.tabs} aria-label="Fee rewards workspace" role="tablist">
@@ -847,7 +853,48 @@ function SettlementRail({ data }: { data: FeeRewardsPayload | null }): React.JSX
   );
 }
 
-function CampaignTerms({ data }: { data: FeeRewardsPayload | null }): React.JSX.Element {
+const COUNTDOWN_BOUNDARY_POLL_MS = 10_000;
+
+/**
+ * Live time-to-boundary readout for the current phase. The anchored estimate
+ * lives in useCampaignCountdown; this row only renders it. The phase label
+ * never flips from the local clock: once the boundary passes, the row reads
+ * "awaiting the next verified block" while the hook nudges a snapshot refetch
+ * until verified state moves.
+ */
+function CampaignCountdown({
+  data,
+  onResync,
+}: {
+  data: FeeRewardsPayload;
+  onResync: () => void;
+}): React.JSX.Element | null {
+  const { countdown, remaining, reached, reduced } = useCampaignCountdown(
+    data,
+    onResync,
+    COUNTDOWN_BOUNDARY_POLL_MS,
+  );
+
+  if (!countdown) return null;
+  return (
+    <p className={styles.countdown} role="timer" data-reached={reached || undefined}>
+      <span>{reached ? countdown.reachedLabel : countdown.label}</span>
+      <strong>
+        {reached
+          ? "awaiting the next verified block"
+          : formatCountdown(remaining, reduced ? "minute" : "second")}
+      </strong>
+    </p>
+  );
+}
+
+function CampaignTerms({
+  data,
+  onResync,
+}: {
+  data: FeeRewardsPayload | null;
+  onResync: () => void;
+}): React.JSX.Element {
   return (
     <aside className={styles.terms} aria-label="Campaign terms">
       <div className={styles.termsHead}>
@@ -855,6 +902,7 @@ function CampaignTerms({ data }: { data: FeeRewardsPayload | null }): React.JSX.
         <i data-live={data?.phase === "active" || undefined} />
       </div>
       <strong className={styles.phase}>{data ? formatCampaignPhase(data.phase) : "Reading chain…"}</strong>
+      {data ? <CampaignCountdown data={data} onResync={onResync} /> : null}
       <div className={styles.allocation} aria-label="Launch allocation: 50 fee shares in the campaign and 50 retained by the sponsor">
         <span className={styles.campaignHalf} />
         <span className={styles.sponsorHalf} />

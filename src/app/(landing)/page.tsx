@@ -20,6 +20,7 @@ import { compileChain, makeNode } from "@/lib/blocks";
 import { MAX_POLICY_STEPS } from "@/lib/chains";
 import { AgentIntent } from "./AgentIntent";
 import { Atmosphere } from "./Atmosphere";
+import { CampaignStrip } from "./CampaignStrip";
 import { Collapse } from "./Collapse";
 import { Cursor } from "./Cursor";
 import { DevPanel } from "./DevPanel";
@@ -267,6 +268,12 @@ export default function LandingPage(): React.JSX.Element {
                   Risk &amp; disclosures
                 </Link>
               </span>
+            </div>
+            <div
+              className={`${styles.campaignSlot} ${styles.heroEnter}`}
+              style={{ "--enter-delay": "640ms" } as React.CSSProperties}
+            >
+              <CampaignStrip />
             </div>
           </div>
           <div className={styles.heroVisual}>

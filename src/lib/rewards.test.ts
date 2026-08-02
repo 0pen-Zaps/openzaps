@@ -2,10 +2,12 @@ import { describe, expect, it } from "vitest";
 
 import {
   FEE_REWARDS_MANIFEST,
+  campaignCountdown,
   campaignPhase,
   feeRewardsCampaignAbi,
   feeRewardsVaultAbi,
   formatCampaignPhase,
+  formatCountdown,
   permitTokenAbi,
 } from "@/lib/rewards";
 
@@ -66,6 +68,58 @@ describe("campaignPhase", () => {
     expect(formatCampaignPhase("settlement-pending")).toBe("Settlement pending");
     expect(formatCampaignPhase("claim-only")).toBe("Claim only");
     expect(formatCampaignPhase("expired")).toBe("Expired");
+  });
+});
+
+describe("campaignCountdown", () => {
+  const { startAt, endAt, claimDeadline } = FEE_REWARDS_MANIFEST.campaign;
+
+  it("targets the manifest boundary each clock-bound phase waits on", () => {
+    expect(campaignCountdown("upcoming")).toEqual({
+      label: "Starts in",
+      reachedLabel: "Start reached",
+      target: startAt,
+    });
+    expect(campaignCountdown("active")).toEqual({
+      label: "Ends in",
+      reachedLabel: "End reached",
+      target: endAt,
+    });
+    expect(campaignCountdown("claim-only")).toEqual({
+      label: "Claims close in",
+      reachedLabel: "Deadline reached",
+      target: claimDeadline,
+    });
+  });
+
+  it("offers no countdown for phases that do not wait on the clock", () => {
+    expect(campaignCountdown("unfunded")).toBeNull();
+    expect(campaignCountdown("settlement-pending")).toBeNull();
+    expect(campaignCountdown("expired")).toBeNull();
+  });
+});
+
+describe("formatCountdown", () => {
+  it("drops seconds on multi-day spans and leading units at zero", () => {
+    expect(formatCountdown(6n * 86_400n + 23n * 3_600n + 59n * 60n + 8n)).toBe("6d 23h 59m");
+    expect(formatCountdown(86_400n)).toBe("1d 0h 0m");
+    expect(formatCountdown(13n * 3_600n + 22n * 60n + 8n)).toBe("13h 22m 8s");
+    expect(formatCountdown(22n * 60n + 8n)).toBe("22m 8s");
+    expect(formatCountdown(8n)).toBe("0m 8s");
+    expect(formatCountdown(0n)).toBe("0m 0s");
+  });
+
+  it("clamps negative durations instead of showing a negative clock", () => {
+    expect(formatCountdown(-30n)).toBe("0m 0s");
+    expect(formatCountdown(-30n, "minute")).toBe("0m");
+  });
+
+  it("rounds minute granularity up so calm motion never understates", () => {
+    expect(formatCountdown(61n, "minute")).toBe("2m");
+    expect(formatCountdown(60n, "minute")).toBe("1m");
+    expect(formatCountdown(59n, "minute")).toBe("1m");
+    expect(formatCountdown(13n * 3_600n + 22n * 60n + 8n, "minute")).toBe("13h 23m");
+    expect(formatCountdown(7n * 86_400n, "minute")).toBe("7d 0h 0m");
   });
 });
 
