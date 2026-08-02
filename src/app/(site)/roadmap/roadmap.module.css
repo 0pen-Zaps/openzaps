@@ -1091,7 +1091,11 @@
   justify-content: flex-end;
 }
 
-@media (max-width: 1120px) {
+/* Seven cells with 40px of horizontal padding each need real room: at the
+   old 1120px threshold the loop went 7-up in an 805px column, leaving a
+   65px text measure that wrapped every two-word label. The shell column is
+   viewport - 316, so 7-up now waits for ~1045px of column. */
+@media (max-width: 1360px) {
   .visionLoop {
     grid-template-columns: repeat(4, minmax(0, 1fr));
   }
