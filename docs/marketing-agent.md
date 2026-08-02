@@ -596,24 +596,43 @@ The operator must:
    fallback.
 3. Recheck every fact, link, image right, disclosure, and call to action in the
    Substack preview.
-4. Publish or schedule from the official editor.
-5. Paste the exact canonical `https://defitutorials.substack.com/p/...` URL
+4. **Before clicking Publish**, prove the `defitutorials` discovery cursor is
+   already initialized from a complete feed snapshot while the approved title
+   is still absent from the public feed. Invoke the syndication cron and require
+   the DeFi Tutorials source to report `initialized`, `discovered`, or
+   `not_modified`; an `initialized` result must contain only `baseline` rows and
+   zero pending items. Invoke it once more and require zero new pending items.
+   If the approved article is already public while the cursor is uninitialized,
+   stop: the first snapshot must classify it as historical `baseline`, and
+   there is no safe automatic backfill that can distinguish it from older feed
+   history. Never reset the cursor or promote a baseline row to work around the
+   ordering mistake.
+5. Publish or schedule from the official editor.
+6. Paste the exact canonical `https://defitutorials.substack.com/p/...` URL
    into the operator's read-only RSS verifier. The request carries only the run
    id, candidate id, and canonical URL. The server loads the completed workflow,
    requires its approved official-editor handoff, derives the recorded title,
    and requires that URL and title to appear together in the public feed.
-6. Update that tutorial's source-controlled entry in
-   `docs/tutorials/manifest.json`: keep its reviewed source path, stable id,
-   title, and hashes; set `status: "rss_confirmed"`, the canonical public URL,
-   and RSS publication timestamp. Review, commit, and deploy that manifest
-   change before expecting discovery to authorize a social draft. The verifier
-   does not mutate the manifest.
-7. Record the canonical public post URL with the run id. The verifier currently
+7. Update that tutorial's source-controlled entry in
+   `docs/tutorials/manifest.json` using the strict public-receipt shape. Keep
+   only its stable `id`, approved `title`, and reviewed `sourcePath`; remove the
+   draft-only `preparedAt`, `approvedAt`, `subtitle`, `tags`, `topics`,
+   `disclosures`, `claims`, `sourceSha256`, and `bodySha256` fields. Then set
+   `status: "rss_confirmed"`, the canonical public URL, and the RSS publication
+   timestamp. The exact source/body hashes remain fail-closed evidence in the
+   recorded approval and official-editor handoff; the `rss_confirmed` manifest
+   branch intentionally excludes draft-only handoff fields. Review, commit, and
+   deploy that manifest change before expecting discovery to authorize a social
+   draft. The verifier does not mutate the manifest.
+8. Record the canonical public post URL with the run id. The verifier currently
    reports `persisted: false`; it does not append a publication receipt to the
    durable ledger.
-8. Confirm the next discovery run promotes or finds the RSS-confirmed item in the private
-   feed inbox. Select **Draft X + Discord** to start the existing review
-   workflow, then review and explicitly approve it as a separate outbound run.
+9. Confirm the next discovery run finds the RSS-confirmed item as `pending` in
+   the private feed inbox. If discovery observed it before the manifest deploy,
+   it may first be `pending`/unknown and then be reclassified in place as a
+   tutorial; it must never move from `baseline` to `pending`. Select **Draft X +
+   Discord** to start the existing review workflow, then review and explicitly
+   approve it as a separate outbound run.
 
 The daily discovery cron uses bounded public-RSS parsing plus validated ETag and
 `Last-Modified` cursors. The first complete snapshot is historical baseline,
