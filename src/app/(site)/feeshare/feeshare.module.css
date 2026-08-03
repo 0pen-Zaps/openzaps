@@ -1,0 +1,315 @@
+/* Breakpoints measure THIS column, not the viewport: AppShell puts a 264px
+   rail beside the content and caps the column, so a viewport query fires early.
+   Container queries keep the authored numbers on the box they were drawn for. */
+.screen {
+  container-type: inline-size;
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.hero {
+  min-width: 0;
+}
+
+.eyebrow {
+  color: var(--ink-3);
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-size: 10.5px;
+  font-weight: 650;
+  letter-spacing: 0.1em;
+}
+
+/* cqi, not vw: this column is narrower than the viewport, so viewport-scaled
+   type would grow exactly as the column shrank. */
+.title {
+  max-width: 20ch;
+  margin: 10px 0 0;
+  font-family: var(--font-serif), Newsreader, serif;
+  font-size: clamp(34px, 5cqi, 52px);
+  font-weight: 480;
+  letter-spacing: -0.04em;
+  line-height: 1.02;
+}
+
+.lede {
+  max-width: 66ch;
+  margin: 16px 0 0;
+  color: var(--ink-prose);
+  font-size: 15.5px;
+  line-height: 1.7;
+}
+
+.lineage {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin: 16px 0 0;
+  padding: 5px 11px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-pill);
+  background: var(--chip);
+  color: var(--ink-2);
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+
+.lineage[data-live] {
+  border-color: var(--ok);
+  color: var(--ink);
+}
+
+/* The not-live notice reserves the amber identity: --warn-wash-ink on
+   --warn-wash clears AA on every theme, where bare --warn would not. */
+.notice {
+  padding: 16px 18px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-card);
+  background: var(--warn-wash);
+  color: var(--warn-wash-ink);
+}
+
+.notice h2 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 640;
+  letter-spacing: -0.01em;
+}
+
+.notice p {
+  margin: 8px 0 0;
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.notice code {
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-size: 0.92em;
+}
+
+.instruments {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+}
+
+.card {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 16px;
+  padding: 20px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-card);
+  background: var(--panel);
+  box-shadow: var(--sh-2);
+}
+
+.cardHead {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.cardKicker {
+  color: var(--ink-3);
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-size: 10.5px;
+  font-weight: 650;
+  letter-spacing: 0.08em;
+}
+
+.cardName {
+  margin: 0;
+  font-family: var(--font-serif), Newsreader, serif;
+  font-size: 25px;
+  font-weight: 500;
+  letter-spacing: -0.02em;
+}
+
+.cardTagline {
+  margin: 0;
+  color: var(--ink-prose);
+  font-size: 14.5px;
+  line-height: 1.55;
+}
+
+.points {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.points li {
+  position: relative;
+  padding-left: 18px;
+  color: var(--ink-2);
+  font-size: 14px;
+  line-height: 1.58;
+}
+
+.points li::before {
+  content: "";
+  position: absolute;
+  top: 8px;
+  left: 2px;
+  width: 6px;
+  height: 6px;
+  border-radius: 2px;
+  background: var(--link);
+}
+
+.terms {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  margin: 0;
+  border-top: 1px solid var(--line-soft);
+}
+
+.termRow {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 9px 0;
+  border-bottom: 1px solid var(--line-soft);
+}
+
+.termRow dt {
+  color: var(--ink-3);
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.termRow dd {
+  margin: 0;
+  color: var(--ink-2);
+  font-size: 12.5px;
+  text-align: right;
+}
+
+.boundary {
+  padding: 18px 20px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-card);
+  background: var(--panel-2);
+}
+
+.boundary h2 {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 640;
+  letter-spacing: 0.01em;
+}
+
+.boundary p {
+  max-width: 74ch;
+  margin: 8px 0 0;
+  color: var(--ink-prose);
+  font-size: 14px;
+  line-height: 1.66;
+}
+
+.reference {
+  padding: 18px 20px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-card);
+  background: var(--panel);
+}
+
+.reference h2 {
+  margin: 0;
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-size: 10.5px;
+  font-weight: 650;
+  letter-spacing: 0.1em;
+  color: var(--ink-3);
+}
+
+.referenceNote {
+  max-width: 74ch;
+  margin: 10px 0 0;
+  color: var(--ink-prose);
+  font-size: 13.5px;
+  line-height: 1.6;
+}
+
+.referenceNote a {
+  color: var(--link);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.refList {
+  margin: 14px 0 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.refRow {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 10px 0;
+  border-top: 1px solid var(--line-soft);
+}
+
+.refRow dt {
+  color: var(--ink-3);
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.refRow dd {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+  margin: 0;
+  text-align: right;
+}
+
+.refRow dd span {
+  color: var(--ink-2);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.refLink {
+  max-width: 100%;
+  overflow: hidden;
+  color: var(--link);
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@container (max-width: 640px) {
+  .instruments {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .refRow {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 3px;
+  }
+
+  .refRow dd {
+    align-items: flex-start;
+    text-align: left;
+  }
+}
