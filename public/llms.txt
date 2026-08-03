@@ -16,6 +16,7 @@ Key facts:
 - [Explore](https://www.0xzaps.com/explore): the live feed of creations, executions, and recoveries read from Robinhood Chain logs, every Zap the factory deployed, and the verified contract set — one page
 - [My zaps](https://www.0xzaps.com/profile): browser-local designs plus source-backed Zap and automation records associated with the connected owner
 - [Fee rewards](https://www.0xzaps.com/rewards): the fixed 50-share, seven-day 0xZAPS staking campaign; stake or withdraw principal, claim campaign-accounted WETH, run permissionless upkeep, and inspect the immutable release manifest
+- [Fee-share wrappers](https://www.0xzaps.com/feeshare): a term-bound coupon strip and a WETH-to-0xZAPS auto-compounder over the same tokenized fee shares; contracts are source-ready and not deployed, so the surface fails closed
 - [Developer docs & security](https://www.0xzaps.com/docs): policy schema, simulation API, templates, execution lifecycle, and the security model (threat model, controls, production gates) at /docs#security
 - [Agent Kit](https://www.0xzaps.com/agent-kit): published TypeScript SDK and read-only MCP server for compiling exact policy and unsigned EIP-712 artifacts; neither package signs nor broadcasts
 - [Learn](https://www.0xzaps.com/learn): source-reviewed product updates and RSS-confirmed DeFi Tutorials, with drafts withheld until publication evidence exists

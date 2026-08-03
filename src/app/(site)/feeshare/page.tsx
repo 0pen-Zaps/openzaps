@@ -1,3 +1,5 @@
+import Link from "next/link";
+
 import { JsonLd } from "@/components/JsonLd";
 import {
   STATIC_PAGE_SEO,
@@ -23,8 +25,6 @@ export const metadata = pageMetadata({
   ],
 });
 
-export const dynamic = "force-dynamic";
-
 const MANIFEST = FEESHARE_WRAP_MANIFEST;
 
 // Disclosure copy kept as single-line constants: these sentences are the
@@ -37,6 +37,12 @@ const AUDIT_STATUS =
 
 function explorer(address: string): string {
   return `${MANIFEST.explorerUrl}/address/${address}`;
+}
+
+// Middle-truncate like every other address surface in the app (0x1234…5678):
+// the distinguishing tail is what a reader compares when verifying a contract.
+function shortAddress(address: string): string {
+  return `${address.slice(0, 6)}…${address.slice(-4)}`;
 }
 
 const REFERENCES = [
@@ -140,15 +146,17 @@ export default function FeeShareWrapPage(): React.JSX.Element {
                   href={explorer(ref.address)}
                   target="_blank"
                   rel="noreferrer"
+                  title={ref.address}
+                  aria-label={`${ref.label} contract ${ref.address} on the block explorer`}
                 >
-                  {ref.address}
+                  {shortAddress(ref.address)}
                 </a>
               </dd>
             </div>
           ))}
         </dl>
         <p className={styles.referenceNote}>
-          The live fee campaign these compose with is on <a href="/rewards">/rewards</a>.
+          The live fee campaign these compose with is on <Link href="/rewards">/rewards</Link>.
         </p>
       </section>
     </main>
