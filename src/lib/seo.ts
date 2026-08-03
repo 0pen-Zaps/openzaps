@@ -126,6 +126,15 @@ export const STATIC_PAGE_SEO = {
     changeFrequency: "daily",
     priority: 0.85,
   },
+  feeshare: {
+    title: "Fee-Share Wrappers: Term Wrap & Auto-Compounder",
+    description:
+      "Inspect the 0xZAPS fee-share wrappers: a term-bound coupon strip and a WETH-to-0xZAPS auto-compounder over tokenized fee shares. Source-ready, not deployed.",
+    path: "/feeshare",
+    ogImage: "/og/token.png",
+    changeFrequency: "monthly",
+    priority: 0.6,
+  },
   pot: {
     title: "0xZAPS Automation Fee Pot",
     description:
