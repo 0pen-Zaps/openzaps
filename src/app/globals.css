@@ -517,6 +517,19 @@ textarea {
   color: inherit;
 }
 
+/* iOS Safari zooms the viewport whenever a focused input/select/textarea
+   computes below 16px, and leaves the page zoomed after. Hold the 16px floor on
+   phones so focusing any field — the intent composer, the builder palette
+   search, connect, request-a-zap — never jump-zooms the layout. The landing
+   sets the same floor for its own demo controls; desktop density is untouched. */
+@media (max-width: 820px) {
+  input,
+  select,
+  textarea {
+    font-size: 16px;
+  }
+}
+
 /* The ground is flat. On app routes the shell paints `--bg` across the whole
    viewport, so the texture below only ever reaches the landing page — which is
    where the horizontal-rule motif belongs. */

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { Suspense, useCallback, useEffect, useMemo, useState, useSyncExternalStore } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 
 import { Glyph } from "./Glyph";
 import { OpenZapMark } from "./OpenZapMark";
@@ -181,6 +181,67 @@ export function AppShell({ children }: { children: React.ReactNode }): React.JSX
     return () => document.removeEventListener("keydown", onKeyDown);
   }, [drawerOpen]);
 
+  // The sidebar is a persistent rail on desktop and an off-canvas drawer on
+  // mobile. Only in drawer mode do we manage focus and inert the background.
+  const drawerToggleRef = useRef<HTMLButtonElement>(null);
+  const sidebarRef = useRef<HTMLElement>(null);
+  const [isDrawerMode, setIsDrawerMode] = useState(false);
+
+  useEffect(() => {
+    const mq = window.matchMedia("(max-width: 900px)");
+    const update = (): void => setIsDrawerMode(mq.matches);
+    update();
+    mq.addEventListener("change", update);
+    return () => mq.removeEventListener("change", update);
+  }, []);
+
+  // When the drawer opens on mobile, move focus into the sheet and trap Tab
+  // inside it; on close, restore focus to the toggle. The background column is
+  // marked inert (in the JSX) so the scrim can't be tabbed past regardless.
+  //
+  // Focus is moved on the actual open/close TRANSITION, tracked with a ref, not
+  // in the effect cleanup — a cleanup that refocused the toggle would steal the
+  // move-in whenever the effect re-ran for any reason.
+  const drawerWasOpen = useRef(false);
+  useEffect(() => {
+    if (!isDrawerMode) {
+      drawerWasOpen.current = drawerOpen;
+      return;
+    }
+    const sidebar = sidebarRef.current;
+    const focusables = (): HTMLElement[] =>
+      sidebar
+        ? Array.from(
+            sidebar.querySelectorAll<HTMLElement>(
+              'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])',
+            ),
+          ).filter((el) => el.offsetParent !== null)
+        : [];
+    if (drawerOpen && !drawerWasOpen.current) {
+      focusables()[0]?.focus();
+    } else if (!drawerOpen && drawerWasOpen.current) {
+      drawerToggleRef.current?.focus();
+    }
+    drawerWasOpen.current = drawerOpen;
+    if (!drawerOpen || !sidebar) return;
+    const onKeyDown = (event: KeyboardEvent): void => {
+      if (event.key !== "Tab") return;
+      const items = focusables();
+      if (items.length === 0) return;
+      const first = items[0];
+      const last = items[items.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+    sidebar.addEventListener("keydown", onKeyDown);
+    return () => sidebar.removeEventListener("keydown", onKeyDown);
+  }, [isDrawerMode, drawerOpen]);
+
   /**
    * `N` starts a new zap.
    *
@@ -208,6 +269,7 @@ export function AppShell({ children }: { children: React.ReactNode }): React.JSX
     <div className={styles.root} data-drawer={drawerOpen || undefined}>
       <button
         type="button"
+        ref={drawerToggleRef}
         className={styles.drawerToggle}
         aria-expanded={drawerOpen}
         aria-controls="app-sidebar"
@@ -221,7 +283,12 @@ export function AppShell({ children }: { children: React.ReactNode }): React.JSX
         <div className={styles.drawerScrim} onClick={() => setDrawerOpen(false)} aria-hidden />
       ) : null}
 
-      <aside id="app-sidebar" className={styles.sidebar}>
+      <aside
+        id="app-sidebar"
+        ref={sidebarRef}
+        className={styles.sidebar}
+        inert={isDrawerMode && !drawerOpen}
+      >
         <Link href="/" className={styles.brand}>
           <span className={styles.brandTile}>
             <OpenZapMark className={styles.brandMark} />
@@ -252,7 +319,7 @@ export function AppShell({ children }: { children: React.ReactNode }): React.JSX
         </div>
       </aside>
 
-      <div className={styles.column}>
+      <div className={styles.column} inert={isDrawerMode && drawerOpen}>
         <Suspense fallback={<ContextBar pathname={pathname} view={null} />}>
           <ContextBarLive pathname={pathname} />
         </Suspense>

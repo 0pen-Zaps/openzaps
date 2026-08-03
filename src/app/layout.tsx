@@ -137,6 +137,10 @@ export const metadata: Metadata = {
 export const viewport: Viewport = {
   colorScheme: THEME_SCHEME[DEFAULT_THEME],
   themeColor: THEME_BG[DEFAULT_THEME],
+  // Expose real notch/home-indicator insets so the env(safe-area-inset-*) rules
+  // already in globals.css and the shell (drawer toggle, floating controls)
+  // engage on notched iPhones and installed PWAs instead of always falling back.
+  viewportFit: "cover",
 };
 
 const siteGraph = {
