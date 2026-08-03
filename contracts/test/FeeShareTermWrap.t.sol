@@ -381,6 +381,74 @@ contract FeeShareTermWrapTest is Test {
         assertEq(vault.balanceOf(alice), 30e18);
     }
 
+    /// ROUND-4 REGRESSION (high): a post-maturity coupon transfer must NOT
+    /// pull the vault reward that is reserved for depositors via the sweep.
+    function test_postMaturityTransferCannotSiphonSweepReward() public {
+        // Alice deposits, sells all coupon units to bob before the term.
+        vm.prank(alice);
+        wrap.deposit(30e18);
+        vm.prank(bob);
+        wrap.deposit(10e18);
+        vm.prank(alice);
+        wrap.transfer(bob, 30e18); // bob now holds 40 units; alice is the depositor
+
+        vm.warp(uint256(maturity) + 1);
+        wrap.finalize();
+
+        // Post-maturity the vault keeps paying the still-held principal.
+        vault.setClaimable(address(wrap), 10e18);
+        vault.claimFor(address(wrap));
+
+        // Bob shuffles a unit while claims are open — must NOT pull the 10e18
+        // into the coupon distribution.
+        vm.prank(bob);
+        wrap.transfer(carol, 1e18);
+        vm.prank(bob);
+        wrap.claim();
+        assertEq(weth.balanceOf(bob), 0);
+
+        // The full 10e18 is swept by the depositors (alice 30/40, bob 10/40).
+        vm.warp(uint256(claimDeadline) + 1);
+        vm.prank(alice);
+        wrap.sweepExpired();
+        vm.prank(bob);
+        wrap.sweepExpired();
+        assertEq(weth.balanceOf(alice), 75e17); // 30/40 of 10
+        assertEq(weth.balanceOf(bob), 25e17); // 10/40 of 10
+    }
+
+    /// ROUND-4 REGRESSION (med): reward the vault pays AFTER the first sweep
+    /// must not be stranded — sweepExpired is repeatable and captures it.
+    function test_sweepCapturesRewardArrivingAfterFirstSweep() public {
+        _depositBoth();
+        vm.warp(uint256(maturity) + 1);
+        wrap.finalize();
+
+        vault.setClaimable(address(wrap), 4e18);
+        vault.claimFor(address(wrap));
+        vm.warp(uint256(claimDeadline) + 1);
+
+        // First sweep round.
+        vm.prank(alice);
+        wrap.sweepExpired();
+        vm.prank(bob);
+        wrap.sweepExpired();
+        assertEq(weth.balanceOf(alice), 3e18);
+
+        // More reward arrives after the first sweep.
+        vault.setClaimable(address(wrap), 8e18);
+        vault.claimFor(address(wrap));
+
+        // A second sweep round captures it — nothing stranded.
+        vm.prank(alice);
+        wrap.sweepExpired();
+        vm.prank(bob);
+        wrap.sweepExpired();
+        assertEq(weth.balanceOf(alice), 3e18 + 6e18); // 30/40 of 12 total
+        assertEq(weth.balanceOf(bob), 1e18 + 2e18);
+        assertEq(weth.balanceOf(address(wrap)), 0); // nothing left
+    }
+
     /// A late depositor must not dilute reward already owed to earlier
     /// depositors: deposit folds pending reward to current holders first.
     function test_lateDepositorCannotDilute() public {

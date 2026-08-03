@@ -89,10 +89,12 @@ contract FeeShareTermWrap {
     uint256 public totalDeposited;
 
     bool public finalized;
-    /// @notice Unclaimed reward snapshotted when the first sweep executes.
-    uint256 public sweepSnapshot;
-    uint256 public sweptPrincipal;
-    mapping(address => bool) public sweepTaken;
+    /// @notice Total reward already paid out through the expired sweep.
+    uint256 public totalSwept;
+    /// @notice Reward each depositor has already swept, against a monotonic
+    ///         cumulative so repeated sweeps capture later accrual without
+    ///         diluting earlier sweepers.
+    mapping(address => uint256) public sweptOf;
 
     constructor(
         address feeShares,
@@ -192,29 +194,27 @@ contract FeeShareTermWrap {
     }
 
     /// @notice After the claim deadline, a depositor pulls their principal's
-    ///         pro-rata slice of whatever reward was never claimed. The pool
-    ///         is snapshotted on the first sweep so late sweeps cannot dilute
-    ///         earlier ones.
+    ///         pro-rata slice of the reward that was never claimed. Callable
+    ///         repeatedly: each call pulls whatever the vault has since paid
+    ///         the still-held principal and distributes against a monotonic
+    ///         cumulative, so post-sweep accrual is never stranded and a later
+    ///         sweeper never dilutes an earlier one.
     function sweepExpired() external {
         require(block.timestamp > CLAIM_DEADLINE, ClaimsStillOpen());
-        uint256 principal = depositedShares[msg.sender] + _redeemedPrincipal(msg.sender);
-        require(principal != 0 && !sweepTaken[msg.sender], NothingToSweep());
-        if (sweepSnapshot == 0) {
-            // The wrapper kept holding the locked shares until each depositor
-            // redeemed, so the vault kept paying reward to them after MATURITY.
-            // Claims are closed now, so the whole REAL balance — not just the
-            // in-term rewardReserve — belongs to the depositors; snapshotting
-            // rewardReserve alone would strand that post-finalize accrual.
-            _pullReward();
-            rewardReserve = IERC20(REWARD).balanceOf(address(this));
-            require(rewardReserve != 0, NothingToSweep());
-            sweepSnapshot = rewardReserve;
-        }
-        sweepTaken[msg.sender] = true;
-        uint256 amount = (sweepSnapshot * principal) / totalDeposited;
+        // Redeemed principal still counts, so redeeming never forfeits a slice.
+        uint256 principal = depositedShares[msg.sender] + redeemedShares[msg.sender];
+        require(principal != 0, NothingToSweep());
+        // Claims are closed, so the whole real balance plus what has already
+        // been swept is the depositors' pool. The per-principal entitlement
+        // only rises, so every increment reaches a depositor on some later
+        // sweep instead of being frozen out by the first one.
+        _pullReward();
+        uint256 pool = IERC20(REWARD).balanceOf(address(this)) + totalSwept;
+        uint256 entitled = (pool * principal) / totalDeposited;
+        uint256 amount = entitled - sweptOf[msg.sender];
         require(amount != 0, NothingToSweep());
-        sweptPrincipal += principal;
-        rewardReserve -= amount;
+        sweptOf[msg.sender] = entitled;
+        totalSwept += amount;
         require(IERC20(REWARD).transfer(msg.sender, amount), TransferFailed());
         emit ExpiredSwept(msg.sender, amount);
     }
@@ -258,12 +258,6 @@ contract FeeShareTermWrap {
         rewardDebt[account] = (balanceOf[account] * cumulativeRewardPerUnit) / ACC_SCALE;
     }
 
-    /// @dev Principal already redeemed still counts for the expired sweep:
-    ///      redeeming early must never silently forfeit the sweep slice.
-    function _redeemedPrincipal(address account) private view returns (uint256) {
-        return redeemedShares[account];
-    }
-
     // -------------------------------------------------------------- ERC-20
 
     function transfer(address to, uint256 value) external returns (bool) {
@@ -289,11 +283,13 @@ contract FeeShareTermWrap {
         require(to != address(0), ZeroAmount());
         require(balanceOf[from] >= value, InsufficientBalance());
         // Fold reward accrued to these units BEFORE they move, so the seller
-        // keeps everything earned while they held. Without this, reward that
-        // accrued but was not yet harvested is silently handed to the buyer at
-        // the next harvest — a forfeit on the coupon's primary trading path,
-        // and unavoidable for units held in an AMM that cannot harvest atomically.
-        _harvestAndSync();
+        // keeps everything earned while they held. Gated to the term, exactly
+        // like harvest(): after MATURITY the vault's reward on the still-held
+        // principal is reserved for DEPOSITORS via sweepExpired, so pulling it
+        // here would let a coupon transfer divert it to wrapped holders. Past
+        // maturity the checkpoints below still preserve each side's in-term
+        // accrual (held in `accrued`).
+        if (block.timestamp <= MATURITY) _harvestAndSync();
         _checkpoint(from);
         _checkpoint(to);
         balanceOf[from] -= value;
