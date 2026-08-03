@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   createPublicClient,
@@ -1122,6 +1123,14 @@ function FeeMechanic({
           </ul>
         </div>
       </div>
+
+      <nav className={styles.relatedLinks} aria-label="Related pages">
+        <span className={styles.panelEyebrow}>Related</span>
+        <Link href="/token">0xZAPS token &amp; contract</Link>
+        <Link href="/feeshare">Fee-share wrappers</Link>
+        <Link href="/pot">Automation fee pot</Link>
+        <Link href="/explore">Explore live Zaps</Link>
+      </nav>
     </section>
   );
 }

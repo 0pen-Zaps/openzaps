@@ -699,6 +699,30 @@
   font-weight: 620;
 }
 
+/* Contextual outbound links: /rewards sits at the centre of the token economy
+   (token facts, the fee-share wrappers, the pot, the live explorer) but linked
+   to none of them, dead-ending crawl flow. Descriptive anchors, not "here". */
+.relatedLinks {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 16px;
+  margin-top: 20px;
+  padding-top: 18px;
+  border-top: 1px solid var(--line-soft);
+}
+
+.relatedLinks a {
+  color: var(--link);
+  font-size: 13px;
+  font-weight: 550;
+}
+
+.relatedLinks a:hover {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
 /* Live share-of-principal readout under the stake amount. The figure is
    prominent; the qualifier under it is not optional decoration. */
 .shareProjection {

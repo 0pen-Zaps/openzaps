@@ -222,7 +222,9 @@ export default async function ZapDetailPage({ params }: Params): Promise<React.J
                   },
                 ],
               },
-              breadcrumbJsonLd(`/explore/${zap}`, `Zap ${shortAddress(zap)}`),
+              breadcrumbJsonLd(`/explore/${zap}`, `Zap ${shortAddress(zap)}`, [
+                { name: "Explore", path: "/explore" },
+              ]),
             ],
           }}
         />

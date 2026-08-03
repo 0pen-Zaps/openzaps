@@ -162,7 +162,12 @@ export default function TokenPage(): React.JSX.Element {
 
       <div className={styles.top}>
         <div className={styles.col}>
-          <h1 className={`${styles.title} gradientText`}>{TOKEN.symbol}</h1>
+          {/* Keyword-bearing h1: the page targets "0xZAPS token" / "0xZAPS
+              contract", so the highest-weight heading carries the term while the
+              ticker keeps its gradient treatment via the span. */}
+          <h1 className={styles.title}>
+            <span className="gradientText">{TOKEN.symbol}</span> token
+          </h1>
           <p className={styles.lede}>
             The ERC-20 paired with aeWETH in the protocol&apos;s first live route. Ownership alone confers no yield,
             equity, revenue claim, governance, or protocol access — every core workflow works without holding it. The

@@ -9,7 +9,7 @@ import { OpenZapsAnalytics } from "@/components/OpenZapsAnalytics";
 import { JsonLd } from "@/components/JsonLd";
 import { ThemeProvider } from "@/components/ThemeProvider";
 import { WalletProvider } from "@/components/WalletProvider";
-import { LINKS, TOKEN, TOKEN_LAUNCH, X_HANDLE } from "@/lib/config";
+import { LINKS, TOKEN_LAUNCH, X_HANDLE } from "@/lib/config";
 import { MOTION_STORAGE_KEY } from "@/lib/motion-preference";
 import { DEFAULT_THEME, THEME_BG, THEME_GUARD, THEME_SCHEME } from "@/lib/theme";
 import {
@@ -185,34 +185,14 @@ const siteGraph = {
       description: DEFAULT_DESCRIPTION,
       publisher: { "@id": `${SITE_URL}/#organization` },
       inLanguage: "en-US",
-      potentialAction: {
-        "@type": "SearchAction",
-        target: `${SITE_URL}/explore/{search_term_string}`,
-        "query-input": "required name=search_term_string",
-      },
+      // No SearchAction: /explore/{term} only resolves checksummed addresses (it
+      // 404s on free text), and Google deprecated the sitelinks searchbox in
+      // late 2024, so the markup was inert at best and misleading at worst.
     },
-    {
-      "@type": "Product",
-      "@id": `${SITE_URL}/#token`,
-      name: `${TOKEN.name} (${TOKEN.symbol})`,
-      alternateName: `$${TOKEN.symbol}`,
-      description: `${TOKEN.symbol} is the ERC-20 paired with aeWETH in OpenZaps' first bounded live route, live on ${TOKEN_LAUNCH.network} through ${TOKEN_LAUNCH.venue}.`,
-      url: absoluteUrl("/token"),
-      image: absoluteUrl(TOKEN.logoPath),
-      category: "Cryptocurrency",
-      sku: TOKEN_LAUNCH.contract,
-      brand: { "@id": `${SITE_URL}/#organization` },
-      sameAs: [LINKS.clanker, LINKS.dexscreener, LINKS.tokenExplorer],
-      additionalProperty: [
-        { "@type": "PropertyValue", name: "Contract address", value: TOKEN_LAUNCH.contract },
-        { "@type": "PropertyValue", name: "Network", value: TOKEN_LAUNCH.network },
-        { "@type": "PropertyValue", name: "Chain ID", value: TOKEN_LAUNCH.chainId },
-        { "@type": "PropertyValue", name: "Launch venue", value: TOKEN_LAUNCH.venue },
-        { "@type": "PropertyValue", name: "Decimals", value: TOKEN.decimals },
-        { "@type": "PropertyValue", name: "Total supply", value: TOKEN.totalSupply },
-        { "@type": "PropertyValue", name: "Dexscreener market", value: LINKS.dexscreener },
-      ],
-    },
+    // The token Product lives ONLY on /token (token/page.tsx), where it is the
+    // representative entity. A sitewide Product node shipped it on every route —
+    // /docs, /legal, /roadmap — which Google's guidelines say markup must not do,
+    // and it conflicted with the token page's own Product for the same asset.
   ],
 };
 
