@@ -54,6 +54,7 @@ contract FeeShareTermWrap {
     error TransferFailed();
     error InsufficientBalance();
     error InsufficientAllowance();
+    error Reentrancy();
 
     // ---------------------------------------------------------------- events
     event Deposited(address indexed account, uint256 shares);
@@ -129,6 +130,22 @@ contract FeeShareTermWrap {
     /// @notice Realized post-maturity reward each depositor may claim.
     mapping(address => uint256) public postAccrued;
 
+    /// @dev Reentrancy mutex. Every state-changing entry point pulls from the
+    ///      untrusted vault (or the untrusted fee-share/reward token) before it
+    ///      finishes writing state, so a hostile token that is also a depositor
+    ///      could reenter to double-redeem principal or double-spend wrapped
+    ///      units. The guard degrades a reentrant call to a revert, which the
+    ///      _pullReward try/catch then swallows — so the outer call still
+    ///      completes and principal is never trapped.
+    uint256 private _entered = 1;
+
+    modifier nonReentrant() {
+        require(_entered == 1, Reentrancy());
+        _entered = 2;
+        _;
+        _entered = 1;
+    }
+
     constructor(
         address feeShares,
         address reward,
@@ -153,7 +170,7 @@ contract FeeShareTermWrap {
 
     /// @notice Lock `shares` fee shares and mint the same amount of wrapped
     ///         units to the caller. Only before the deposit window closes.
-    function deposit(uint256 shares) external {
+    function deposit(uint256 shares) external nonReentrant {
         require(block.timestamp < DEPOSIT_UNTIL, DepositWindowClosed());
         require(shares != 0, ZeroAmount());
         // Fold any reward already owed to the CURRENT holders before minting,
@@ -180,13 +197,13 @@ contract FeeShareTermWrap {
 
     /// @notice Pull the vault reward accrued to the locked shares and account
     ///         it to wrapped holders. Permissionless; only during the term.
-    function harvest() external {
+    function harvest() external nonReentrant {
         require(block.timestamp <= MATURITY, TermEnded());
         _harvestAndSync();
     }
 
     /// @notice Claim the caller's accrued in-term reward. Open until the deadline.
-    function claim() external {
+    function claim() external nonReentrant {
         require(block.timestamp <= CLAIM_DEADLINE, ClaimsClosed());
         _checkpoint(msg.sender);
         uint256 amount = accrued[msg.sender];
@@ -208,13 +225,24 @@ contract FeeShareTermWrap {
     /// @notice Return the caller's deposited fee shares after the term ends.
     ///         Gated only on the clock, never on a reward transfer, so a paused
     ///         or underfunded vault can never trap principal. Before the shares
-    ///         leave, the caller's post-maturity (Bucket-2) reward accrued while
-    ///         they were locked is checkpointed into `postAccrued` (collect it
-    ///         with `claimLockedReward`), and the shares are removed from the
-    ///         Bucket-2 base so they no longer earn a stream they no longer
-    ///         generate. Wrapped units are not required or burned: the units
-    ///         carry the term's coupon, the principal record carries reversion.
-    function redeemShares() external {
+    ///         leave, the wrapper syncs and checkpoints the caller's
+    ///         post-maturity (Bucket-2) reward accrued while they were locked
+    ///         into `postAccrued` (collect it with `claimLockedReward`), then
+    ///         removes the shares from the Bucket-2 base so they no longer earn
+    ///         a stream they no longer generate. Wrapped units are not required
+    ///         or burned: the units carry the term's coupon, the principal
+    ///         record carries reversion.
+    /// @dev LIMITATION (reward, not principal): the Bucket-2 checkpoint can only
+    ///      credit reward the wrapper has actually received. If the vault is
+    ///      unable to pay at the instant of redemption (claimable/claimFor both
+    ///      revert), the guarded sync pulls nothing, so post-maturity reward
+    ///      earned since the last successful pull is not credited to the exiting
+    ///      caller and, once their shares leave the base, accrues to the
+    ///      remaining lockers when it is finally pulled. Principal is always
+    ///      returned regardless. A caller who wants every wei of Bucket-2 reward
+    ///      should redeem (or first call `claimLockedReward`) while the vault is
+    ///      live; frequent settlement bounds any such gap to one pull interval.
+    function redeemShares() external nonReentrant {
         require(block.timestamp > MATURITY, TermNotEnded());
         uint256 shares = depositedShares[msg.sender];
         require(shares != 0, ZeroAmount());
@@ -239,7 +267,7 @@ contract FeeShareTermWrap {
     ///         past maturity. Still-locked depositors accrue it continuously;
     ///         a redeemed depositor collects the frozen amount their shares
     ///         earned before they left. Open once the term has ended.
-    function claimLockedReward() external {
+    function claimLockedReward() external nonReentrant {
         require(block.timestamp > MATURITY, TermNotEnded());
         _syncPost();
         _checkpointPost(msg.sender);
@@ -264,8 +292,13 @@ contract FeeShareTermWrap {
     ///         is a fixed basis; redeemed principal still counts, so redeeming
     ///         never forfeits this slice. Post-maturity accrual is NOT here — it
     ///         belongs to still-locked principal via `claimLockedReward`.
-    function sweepExpired() external {
+    function sweepExpired() external nonReentrant {
         require(block.timestamp > CLAIM_DEADLINE, ClaimsStillOpen());
+        // Sync first: if every depositor has already redeemed (totalLocked == 0),
+        // _syncPost folds any late post-maturity reward into rewardReserve so it
+        // is recovered here rather than stranded. If some principal is still
+        // locked, that late reward stays Bucket 2 (claimLockedReward), untouched.
+        _syncPost();
         // Redeemed principal still counts: this reward was earned in-term while
         // that principal was locked, so redeeming never forfeits the slice.
         uint256 principal = depositedShares[msg.sender] + redeemedShares[msg.sender];
@@ -322,9 +355,17 @@ contract FeeShareTermWrap {
         uint256 balance = IERC20(REWARD).balanceOf(address(this));
         uint256 earmarked = _earmarked();
         uint256 received = balance > earmarked ? balance - earmarked : 0;
-        if (received != 0 && totalLocked != 0) {
+        if (received == 0) return;
+        if (totalLocked != 0) {
             cumulativePostPerLocked += (received * ACC_SCALE) / totalLocked;
             postReserve += received;
+        } else {
+            // No shares are locked to attribute this to (the last depositor has
+            // already redeemed). Rather than strand it, fold it into the in-term
+            // forfeit pool so the ORIGINAL depositors recover it via sweepExpired
+            // — they are exactly who was locked when it was earned. sweptOf makes
+            // the sweep re-runnable, so a later top-up here is never frozen out.
+            rewardReserve += received;
         }
     }
 
@@ -354,12 +395,12 @@ contract FeeShareTermWrap {
 
     // -------------------------------------------------------------- ERC-20
 
-    function transfer(address to, uint256 value) external returns (bool) {
+    function transfer(address to, uint256 value) external nonReentrant returns (bool) {
         _transfer(msg.sender, to, value);
         return true;
     }
 
-    function transferFrom(address from, address to, uint256 value) external returns (bool) {
+    function transferFrom(address from, address to, uint256 value) external nonReentrant returns (bool) {
         uint256 allowed = allowance[from][msg.sender];
         require(allowed >= value, InsufficientAllowance());
         if (allowed != type(uint256).max) allowance[from][msg.sender] = allowed - value;

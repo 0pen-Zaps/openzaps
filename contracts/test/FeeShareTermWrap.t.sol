@@ -89,6 +89,70 @@ contract MockWeth {
     }
 }
 
+/// @dev A hostile contract that is BOTH the FEE_SHARES token AND the reward
+///      vault, whose claimFor reenters redeemShares once. Used to prove the
+///      reentrancy guard blocks a double-redeem (round-7 HIGH).
+contract ReenterVault {
+    mapping(address => uint256) public balanceOf;
+    mapping(address => mapping(address => uint256)) public allowance;
+    MockWeth public immutable weth;
+    FeeShareTermWrap public wrap;
+    bool public armed;
+    bool public reentered;
+
+    constructor(MockWeth weth_) {
+        weth = weth_;
+    }
+
+    function setWrap(address w) external {
+        wrap = FeeShareTermWrap(w);
+    }
+
+    function mint(address to, uint256 amt) external {
+        balanceOf[to] += amt;
+    }
+
+    function approve(address spender, uint256 v) external returns (bool) {
+        allowance[msg.sender][spender] = v;
+        return true;
+    }
+
+    function transfer(address to, uint256 v) external returns (bool) {
+        require(balanceOf[msg.sender] >= v, "fee bal");
+        balanceOf[msg.sender] -= v;
+        balanceOf[to] += v;
+        return true;
+    }
+
+    function transferFrom(address from, address to, uint256 v) external returns (bool) {
+        require(balanceOf[from] >= v, "fee bal");
+        balanceOf[from] -= v;
+        balanceOf[to] += v;
+        return true;
+    }
+
+    function claimable(address, address) external view returns (uint256) {
+        return (armed && !reentered) ? 1 : 0;
+    }
+
+    function claimFor(address account) external {
+        weth.mint(account, 1);
+        if (armed && !reentered) {
+            reentered = true;
+            wrap.redeemShares(); // reenter: msg.sender == this vault (a depositor)
+        }
+    }
+
+    function doDeposit(uint256 shares) external {
+        wrap.deposit(shares);
+    }
+
+    function attackRedeem() external {
+        armed = true;
+        wrap.redeemShares();
+    }
+}
+
 contract FeeShareTermWrapTest is Test {
     MockWeth internal weth;
     MockFeeShareVault internal vault;
@@ -581,5 +645,106 @@ contract FeeShareTermWrapTest is Test {
         assertEq(weth.balanceOf(alice) + weth.balanceOf(bob) + weth.balanceOf(address(wrap)), rA + rB);
         // Alice is capped at her fair round-1 share and gets NOTHING from round 2.
         assertLe(weth.balanceOf(alice), rA * 30e18 / 40e18);
+    }
+
+    /// ROUND-7 REGRESSION (high): a hostile FEE_SHARES/vault that reenters
+    /// redeemShares via claimFor must NOT double-redeem principal. The guard
+    /// reverts the reentrant call, _pullReward swallows it, and the outer redeem
+    /// completes exactly once; the honest depositor's principal stays safe.
+    function test_reentrantRedeemCannotDoubleSpendPrincipal() public {
+        MockWeth w = new MockWeth();
+        ReenterVault rv = new ReenterVault(w);
+        uint64 du = uint64(block.timestamp + 1 days);
+        uint64 mat = uint64(block.timestamp + 8 days);
+        uint64 cd = uint64(block.timestamp + 38 days);
+        FeeShareTermWrap wrap2 = new FeeShareTermWrap(address(rv), address(w), du, mat, cd, "wrap", "wT");
+        rv.setWrap(address(wrap2));
+
+        uint256 vAmt = 10e18; // attacker principal
+        uint256 hAmt = 30e18; // honest principal
+        rv.mint(address(rv), vAmt);
+        rv.mint(address(this), hAmt);
+        rv.doDeposit(vAmt); // attacker deposits
+        rv.approve(address(wrap2), type(uint256).max);
+        wrap2.deposit(hAmt); // honest (this test contract) deposits
+
+        assertEq(rv.balanceOf(address(wrap2)), vAmt + hAmt);
+        assertEq(wrap2.totalLocked(), vAmt + hAmt);
+
+        vm.warp(uint256(mat) + 1);
+        uint256 before = rv.balanceOf(address(rv));
+        rv.attackRedeem();
+
+        // Single redeem only: attacker got exactly its principal back.
+        assertEq(rv.balanceOf(address(rv)) - before, vAmt, "no double-redeem");
+        assertEq(rv.balanceOf(address(wrap2)), hAmt, "honest principal intact");
+        assertEq(wrap2.totalLocked(), hAmt, "totalLocked decremented once");
+
+        // Honest depositor still redeems in full.
+        wrap2.redeemShares();
+        assertEq(rv.balanceOf(address(this)), hAmt, "honest fully redeemed");
+        assertEq(rv.balanceOf(address(wrap2)), 0);
+    }
+
+    /// ROUND-7 REGRESSION (low): post-maturity reward that arrives after the LAST
+    /// depositor has redeemed (totalLocked == 0) must not be stranded — it folds
+    /// into the forfeit pool and is recovered by original depositors via sweep.
+    function test_postMaturityRewardAfterAllRedeemedIsRecoverable() public {
+        _depositBoth();
+        vm.warp(uint256(maturity) + 1);
+        // Both redeem with nothing pending → totalLocked hits 0.
+        vm.prank(alice);
+        wrap.redeemShares();
+        vm.prank(bob);
+        wrap.redeemShares();
+        assertEq(wrap.totalLocked(), 0);
+
+        // Late reward lands on the now-empty wrapper.
+        vault.setClaimable(address(wrap), 5e18);
+        vault.claimFor(address(wrap));
+
+        // sweepExpired syncs it into the forfeit pool and pays original principal.
+        vm.warp(uint256(claimDeadline) + 1);
+        vm.prank(alice);
+        wrap.sweepExpired();
+        vm.prank(bob);
+        wrap.sweepExpired();
+        assertEq(weth.balanceOf(alice), 375e16); // 30/40 of 5
+        assertEq(weth.balanceOf(bob), 125e16); // 10/40 of 5
+        assertEq(weth.balanceOf(address(wrap)), 0);
+    }
+
+    /// ROUND-7 (medium, DOCUMENTED LIMITATION): redeeming while the vault cannot
+    /// pay (claimable + claimFor both revert) always returns PRINCIPAL, but the
+    /// caller's unsettled Bucket-2 reward earned since the last pull is forfeited
+    /// to the remaining lockers when it is finally pulled. Principal safety is the
+    /// guarantee; reward is best-effort. This pins the honest behavior + that no
+    /// value is created or destroyed.
+    function test_redeemDuringVaultOutageKeepsPrincipalRewardIsBestEffort() public {
+        _depositBoth(); // alice 30, bob 10
+        vm.warp(uint256(maturity) + 1);
+        // 8e18 is owed for the both-locked period, but the vault is now paused.
+        vault.setClaimable(address(wrap), 8e18);
+        vault.setReverts(true);
+        vault.setViewReverts(true);
+
+        // Alice redeems: principal returned in full despite the outage.
+        vm.prank(alice);
+        wrap.redeemShares();
+        assertEq(vault.balanceOf(alice), 30e18, "principal always safe");
+
+        // Vault recovers; the 8e18 is pulled over the reduced locked base.
+        vault.setReverts(false);
+        vault.setViewReverts(false);
+        vm.prank(alice);
+        wrap.claimLockedReward();
+        vm.prank(bob);
+        wrap.claimLockedReward();
+
+        // Documented: alice forfeited her unsettled slice to bob; nothing is
+        // created or lost — the 8e18 is fully distributed.
+        assertEq(weth.balanceOf(alice), 0, "unsettled B2 forfeited (documented)");
+        assertEq(weth.balanceOf(bob), 8e18, "reward conserved, went to remaining locker");
+        assertEq(weth.balanceOf(address(wrap)), 0);
     }
 }
