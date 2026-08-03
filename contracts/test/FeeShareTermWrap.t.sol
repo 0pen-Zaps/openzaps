@@ -186,15 +186,16 @@ contract FeeShareTermWrapTest is Test {
         wrap.harvest();
     }
 
-    // ---------------------------------------------------- finalize / redeem
+    // ---------------------------------------------------- redeem after term
 
-    function test_finalizeCreditsLastAccrualAndOpensRedemption() public {
+    function test_redeemAfterMaturityReturnsPrincipal() public {
         _depositBoth();
+        // Coupon holders take their in-term reward via harvest before maturity.
         vault.setClaimable(address(wrap), 2e18);
-        vm.warp(uint256(maturity) + 1);
-        wrap.finalize();
-
+        wrap.harvest();
         assertEq(wrap.claimableReward(alice), 15e17);
+
+        vm.warp(uint256(maturity) + 1);
         vm.prank(alice);
         wrap.redeemShares();
         assertEq(vault.balanceOf(alice), 30e18);
@@ -206,19 +207,11 @@ contract FeeShareTermWrapTest is Test {
         wrap.redeemShares();
     }
 
-    function test_redeemRevertsBeforeFinalize() public {
+    function test_redeemRevertsDuringTerm() public {
         _depositBoth();
         vm.prank(alice);
-        vm.expectRevert(FeeShareTermWrap.NotFinalized.selector);
+        vm.expectRevert(FeeShareTermWrap.TermNotEnded.selector);
         wrap.redeemShares();
-    }
-
-    function test_finalizeOnlyOnce() public {
-        _depositBoth();
-        vm.warp(uint256(maturity) + 1);
-        wrap.finalize();
-        vm.expectRevert(FeeShareTermWrap.AlreadyFinalized.selector);
-        wrap.finalize();
     }
 
     // ---------------------------------------------------------------- sweep
@@ -228,18 +221,16 @@ contract FeeShareTermWrapTest is Test {
         vault.setClaimable(address(wrap), 4e18);
         wrap.harvest();
 
-        // Nobody claims. Alice redeems principal after finalize — redemption
+        // Nobody claims. Alice redeems principal after maturity — redemption
         // must not forfeit her sweep slice.
         vm.warp(uint256(maturity) + 1);
-        wrap.finalize();
         vm.prank(alice);
         wrap.redeemShares();
 
         vm.warp(uint256(claimDeadline) + 1);
         vm.prank(alice);
         wrap.sweepExpired();
-        // 4e18 unclaimed, alice principal 30/40.
-        assertEq(weth.balanceOf(alice), 3e18);
+        assertEq(weth.balanceOf(alice), 3e18); // 30/40 of the 4e18 unclaimed
 
         vm.prank(bob);
         wrap.sweepExpired();
@@ -269,9 +260,8 @@ contract FeeShareTermWrapTest is Test {
 
     // ----------------------------------------------------------------- fuzz
 
-    /// @dev Reward conservation: whatever two depositors are owed never
-    ///      exceeds what was harvested, and the shortfall is only dust from
-    ///      integer division.
+    /// @dev In-term reward conservation: whatever two holders are owed never
+    ///      exceeds what was harvested; the shortfall is only division dust.
     function testFuzz_accountingConservesReward(uint96 depositA, uint96 depositB, uint96 rewardAmount) public {
         uint256 a = bound(uint256(depositA), 1, 1e24);
         uint256 b = bound(uint256(depositB), 1, 1e24);
@@ -288,11 +278,7 @@ contract FeeShareTermWrapTest is Test {
         wrap.harvest();
 
         uint256 owedTotal = wrap.claimableReward(alice) + wrap.claimableReward(bob);
-        // Conservation: never over-credit.
         assertLe(owedTotal, r);
-        // Truncating (received * 1e18) / supply loses at most supply / 1e18
-        // units before per-holder rounding; the dust stays in rewardReserve
-        // and remains sweepable, so no value leaves the system.
         uint256 dustBound = (a + b) / 1e18 + 2;
         assertGe(owedTotal + dustBound, r);
         assertEq(wrap.rewardReserve(), r);
@@ -300,114 +286,83 @@ contract FeeShareTermWrapTest is Test {
 
     // -------------------------------------------------- audit regressions
 
-    /// A paused/underfunded vault must NEVER trap principal by reverting
-    /// finalize. The gate flips first; the harvest is defensive.
-    function test_finalizeSucceedsEvenIfVaultReverts() public {
+    /// A paused/underfunded vault must NEVER trap principal: redemption is
+    /// gated only on the clock and touches no vault reward path.
+    function test_redeemSucceedsEvenIfVaultReverts() public {
         _depositBoth();
         vault.setClaimable(address(wrap), 2e18);
         vault.setReverts(true);
+        vault.setViewReverts(true);
         vm.warp(uint256(maturity) + 1);
-
-        wrap.finalize(); // must not revert
-        assertTrue(wrap.finalized());
-
-        // Principal is redeemable regardless of the broken vault.
         vm.prank(alice);
-        wrap.redeemShares();
+        wrap.redeemShares(); // must not revert
         assertEq(vault.balanceOf(alice), 30e18);
     }
 
-    /// WETH that accrues after finalize (the wrapper keeps holding shares
-    /// until redemption) must not be stranded: the first sweep folds the
-    /// REAL balance, not just the in-term reserve.
-    function test_sweepCapturesPostFinalizeAccrual() public {
+    /// WETH that accrues after maturity (the wrapper keeps holding shares
+    /// until redemption) reaches DEPOSITORS via the sweep, never coupon
+    /// holders — the reward accounting freezes at maturity.
+    function test_postMaturityRewardGoesToDepositors() public {
         _depositBoth();
         vault.setClaimable(address(wrap), 2e18);
-        vm.warp(uint256(maturity) + 1);
-        wrap.finalize(); // credits 2e18 in-term
-
-        // Everyone claims the in-term reward to zero the reserve.
+        wrap.harvest(); // in-term reward to coupon holders
         vm.prank(alice);
         wrap.claim();
         vm.prank(bob);
         wrap.claim();
-        assertEq(wrap.rewardReserve(), 0);
 
-        // The vault keeps paying the still-held shares after finalize.
+        vm.warp(uint256(maturity) + 1);
+        // Post-maturity accrual pushed into the wrapper by anyone.
         vault.setClaimable(address(wrap), 5e18);
-        vault.claimFor(address(wrap)); // anyone can push it in
+        vault.claimFor(address(wrap));
+
+        // A coupon holder cannot fold it into their distribution: harvest is
+        // gated, and there is no finalize to do it.
+        vm.expectRevert(FeeShareTermWrap.TermEnded.selector);
+        wrap.harvest();
 
         vm.warp(uint256(claimDeadline) + 1);
         vm.prank(alice);
         wrap.sweepExpired();
         vm.prank(bob);
         wrap.sweepExpired();
-
-        // The whole 5e18 post-finalize accrual reached depositors, 30/40 + 10/40.
-        // 1.5 claimed in-term + 3.75 swept (30/40 of 5) = 5.25 WETH.
-        assertEq(weth.balanceOf(alice), 15e17 + 375e16);
+        assertEq(weth.balanceOf(alice), 15e17 + 375e16); // 1.5 in-term + 3.75 swept
         assertEq(weth.balanceOf(bob), 5e17 + 125e16);
     }
 
-    /// Selling wrapped units must not forfeit reward that accrued to the
-    /// seller before the sale: transfer harvests first.
+    /// Selling wrapped units in-term must not forfeit reward that accrued to
+    /// the seller before the sale: transfer harvests first.
     function test_transferDoesNotForfeitUnharvestedReward() public {
         _depositBoth();
-        // Reward accrues to the wrapper but nobody harvests yet.
         vault.setClaimable(address(wrap), 4e18);
-
-        // Alice sells to carol WITHOUT a prior harvest.
         vm.prank(alice);
         wrap.transfer(carol, 30e18);
-
-        // The 4e18 that accrued while alice held is credited to alice (3),
-        // bob (1) — not handed to the buyer carol.
         assertEq(wrap.claimableReward(alice), 3e18);
         assertEq(wrap.claimableReward(bob), 1e18);
         assertEq(wrap.claimableReward(carol), 0);
     }
 
-    /// A vault whose claimable() VIEW reverts (not just claimFor) must NOT
-    /// brick finalize/redeem/sweep — the probe is fully guarded.
-    function test_finalizeSurvivesRevertingClaimableView() public {
-        _depositBoth();
-        vault.setClaimable(address(wrap), 2e18);
-        vault.setViewReverts(true);
-        vm.warp(uint256(maturity) + 1);
-        wrap.finalize(); // must not revert
-        assertTrue(wrap.finalized());
-        vm.prank(alice);
-        wrap.redeemShares();
-        assertEq(vault.balanceOf(alice), 30e18);
-    }
-
-    /// ROUND-4 REGRESSION (high): a post-maturity coupon transfer must NOT
-    /// pull the vault reward that is reserved for depositors via the sweep.
+    /// ROUND-5 REGRESSION (high): a post-maturity coupon transfer must NOT
+    /// pull sweep-reserved reward into the coupon distribution.
     function test_postMaturityTransferCannotSiphonSweepReward() public {
-        // Alice deposits, sells all coupon units to bob before the term.
         vm.prank(alice);
         wrap.deposit(30e18);
         vm.prank(bob);
         wrap.deposit(10e18);
         vm.prank(alice);
-        wrap.transfer(bob, 30e18); // bob now holds 40 units; alice is the depositor
+        wrap.transfer(bob, 30e18); // bob holds all 40 units; alice is depositor
 
         vm.warp(uint256(maturity) + 1);
-        wrap.finalize();
-
-        // Post-maturity the vault keeps paying the still-held principal.
         vault.setClaimable(address(wrap), 10e18);
         vault.claimFor(address(wrap));
 
-        // Bob shuffles a unit while claims are open — must NOT pull the 10e18
-        // into the coupon distribution.
+        // Bob shuffles a unit while claims are open; must not credit coupons.
         vm.prank(bob);
         wrap.transfer(carol, 1e18);
         vm.prank(bob);
         wrap.claim();
         assertEq(weth.balanceOf(bob), 0);
 
-        // The full 10e18 is swept by the depositors (alice 30/40, bob 10/40).
         vm.warp(uint256(claimDeadline) + 1);
         vm.prank(alice);
         wrap.sweepExpired();
@@ -417,36 +372,47 @@ contract FeeShareTermWrapTest is Test {
         assertEq(weth.balanceOf(bob), 25e17); // 10/40 of 10
     }
 
+    /// ROUND-5 REGRESSION (high): sweeping before redemption must not brick
+    /// later redemption via a reserve underflow. Redeem is clock-gated and
+    /// independent of any reward path.
+    function test_sweepThenRedeemStillWorks() public {
+        _depositBoth();
+        vault.setClaimable(address(wrap), 4e18);
+        wrap.harvest();
+        vm.warp(uint256(claimDeadline) + 1);
+        vm.prank(alice);
+        wrap.sweepExpired();
+        // Redemption still works after a sweep.
+        vm.prank(alice);
+        wrap.redeemShares();
+        assertEq(vault.balanceOf(alice), 30e18);
+    }
+
     /// ROUND-4 REGRESSION (med): reward the vault pays AFTER the first sweep
     /// must not be stranded — sweepExpired is repeatable and captures it.
     function test_sweepCapturesRewardArrivingAfterFirstSweep() public {
         _depositBoth();
         vm.warp(uint256(maturity) + 1);
-        wrap.finalize();
-
         vault.setClaimable(address(wrap), 4e18);
         vault.claimFor(address(wrap));
         vm.warp(uint256(claimDeadline) + 1);
 
-        // First sweep round.
         vm.prank(alice);
         wrap.sweepExpired();
         vm.prank(bob);
         wrap.sweepExpired();
         assertEq(weth.balanceOf(alice), 3e18);
 
-        // More reward arrives after the first sweep.
         vault.setClaimable(address(wrap), 8e18);
         vault.claimFor(address(wrap));
 
-        // A second sweep round captures it — nothing stranded.
         vm.prank(alice);
         wrap.sweepExpired();
         vm.prank(bob);
         wrap.sweepExpired();
-        assertEq(weth.balanceOf(alice), 3e18 + 6e18); // 30/40 of 12 total
+        assertEq(weth.balanceOf(alice), 3e18 + 6e18); // 30/40 of 12
         assertEq(weth.balanceOf(bob), 1e18 + 2e18);
-        assertEq(weth.balanceOf(address(wrap)), 0); // nothing left
+        assertEq(weth.balanceOf(address(wrap)), 0);
     }
 
     /// A late depositor must not dilute reward already owed to earlier
@@ -454,12 +420,9 @@ contract FeeShareTermWrapTest is Test {
     function test_lateDepositorCannotDilute() public {
         vm.prank(alice);
         wrap.deposit(30e18);
-        vault.setClaimable(address(wrap), 3e18); // earned entirely by alice
-
-        // Bob deposits late; the 3e18 must fold to alice before bob mints.
+        vault.setClaimable(address(wrap), 3e18);
         vm.prank(bob);
         wrap.deposit(10e18);
-
         assertEq(wrap.claimableReward(alice), 3e18);
         assertEq(wrap.claimableReward(bob), 0);
     }

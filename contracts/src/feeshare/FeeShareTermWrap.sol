@@ -33,8 +33,6 @@ contract FeeShareTermWrap {
     error ZeroAmount();
     error TermEnded();
     error TermNotEnded();
-    error NotFinalized();
-    error AlreadyFinalized();
     error ClaimsClosed();
     error ClaimsStillOpen();
     error NothingToSweep();
@@ -46,7 +44,6 @@ contract FeeShareTermWrap {
     event Deposited(address indexed account, uint256 shares);
     event Harvested(address indexed caller, uint256 rewardReceived);
     event RewardClaimed(address indexed account, uint256 amount);
-    event Finalized(uint256 finalRewardReceived);
     event SharesRedeemed(address indexed account, uint256 shares);
     event ExpiredSwept(address indexed account, uint256 amount);
     event Transfer(address indexed from, address indexed to, uint256 value);
@@ -88,7 +85,6 @@ contract FeeShareTermWrap {
     mapping(address => uint256) public redeemedShares;
     uint256 public totalDeposited;
 
-    bool public finalized;
     /// @notice Total reward already paid out through the expired sweep.
     uint256 public totalSwept;
     /// @notice Reward each depositor has already swept, against a monotonic
@@ -146,20 +142,6 @@ contract FeeShareTermWrap {
         _harvestAndSync();
     }
 
-    /// @notice One final permissionless harvest after maturity. Credits the
-    ///         last in-term accrual to wrapped holders and opens principal
-    ///         redemption. Callable exactly once.
-    /// @dev The redemption gate flips FIRST and the harvest is defensive
-    ///      (_harvestAndSync try/catches the vault claim), so a paused or
-    ///      underfunded vault can never trap principal by reverting finalize.
-    function finalize() external {
-        require(block.timestamp > MATURITY, TermNotEnded());
-        require(!finalized, AlreadyFinalized());
-        finalized = true;
-        uint256 received = _harvestAndSync();
-        emit Finalized(received);
-    }
-
     /// @notice Claim the caller's accrued reward. Open until the deadline.
     function claim() external {
         require(block.timestamp <= CLAIM_DEADLINE, ClaimsClosed());
@@ -180,11 +162,13 @@ contract FeeShareTermWrap {
 
     // ------------------------------------------------------------ principal
 
-    /// @notice Return the caller's deposited fee shares after finalization.
-    ///         Wrapped units are not required or burned: the units carry the
-    ///         term's reward claim, the principal record carries reversion.
+    /// @notice Return the caller's deposited fee shares after the term ends.
+    ///         Gated only on the clock, never on a reward harvest, so a paused
+    ///         or underfunded vault can never trap principal. Wrapped units are
+    ///         not required or burned: the units carry the term's reward claim,
+    ///         the principal record carries reversion.
     function redeemShares() external {
-        require(finalized, NotFinalized());
+        require(block.timestamp > MATURITY, TermNotEnded());
         uint256 shares = depositedShares[msg.sender];
         require(shares != 0, ZeroAmount());
         depositedShares[msg.sender] = 0;
@@ -224,7 +208,7 @@ contract FeeShareTermWrap {
     /// @dev Pull the vault's owed reward WITHOUT letting the untrusted vault
     ///      revert the caller: BOTH the claimable() view and claimFor() are
     ///      guarded, so a paused/misconfigured/self-destructed vault degrades
-    ///      to "no reward pulled" and can never brick finalize, redemption, or
+    ///      to "no reward pulled" and can never brick harvest, redemption, or
     ///      the sweep. Balance-delta accounting downstream is the source of
     ///      truth, not the vault's own view.
     function _pullReward() private {
@@ -238,10 +222,9 @@ contract FeeShareTermWrap {
     function _harvestAndSync() private returns (uint256 received) {
         // The vault pays claimFor to this wrapper; sync accounts anything the
         // wrapper received, including reward sent to it directly. The claim is
-        // DEFENSIVE: a paused or underfunded vault must never revert a caller
-        // that also advances a redemption/settlement gate (finalize), so its
-        // failure degrades to "no new reward this call" rather than bricking
-        // principal. Balance-delta accounting below can't revert.
+        // DEFENSIVE: a paused or underfunded vault must never revert a caller,
+        // so its failure degrades to "no new reward this call" rather than
+        // bricking principal. Balance-delta accounting below can't revert.
         _pullReward();
         uint256 balance = IERC20(REWARD).balanceOf(address(this));
         received = balance - rewardReserve;
