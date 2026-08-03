@@ -64,9 +64,13 @@ time, and let permissionless upkeep route your WETH into 0xZAPS.
   the compounder, swaps through the **constructor-pinned** aeWETH↔0xZAPS
   pool adapter (the same adapter lineage the app already allowlists), and
   pays 0xZAPS out per depositor pro-rata.
-- Per-depositor `minOutBps` floor against the pinned oriented price source
-  (v3.2's floor pattern); a run that cannot clear every affected floor
-  reverts rather than degrading anyone's execution.
+- One immutable `MIN_OUT_BPS` floor per instance against the pinned
+  oriented price source (v3.2's floor pattern). Implementation note: the
+  design originally called for per-depositor floors, but a per-depositor
+  floor on a pooled swap hands any depositor a veto over everyone's run —
+  set an unclearable floor and no harvest ever settles. A pooled instrument
+  gets a pooled floor; depositors accept it by choosing the instance, and
+  different floors are different deployments.
 - No action arrays, no paths, no empty configs (the Base `NoActions()`
   lesson becomes: there is exactly one action and it is immutable). "Hold"
   is simply not depositing.
