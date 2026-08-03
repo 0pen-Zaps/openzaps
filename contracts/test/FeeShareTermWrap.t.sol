@@ -299,9 +299,10 @@ contract FeeShareTermWrapTest is Test {
         assertEq(vault.balanceOf(alice), 30e18);
     }
 
-    /// WETH that accrues after maturity (the wrapper keeps holding shares
-    /// until redemption) reaches DEPOSITORS via the sweep, never coupon
-    /// holders — the reward accounting freezes at maturity.
+    /// WETH that accrues after maturity (the wrapper keeps holding shares until
+    /// redemption) reaches DEPOSITORS by LOCKED principal via claimLockedReward,
+    /// never coupon holders — in-term accrual freezes at maturity, and the
+    /// forfeited-coupon sweep is a separate, empty pool here.
     function test_postMaturityRewardGoesToDepositors() public {
         _depositBoth();
         vault.setClaimable(address(wrap), 2e18);
@@ -310,24 +311,103 @@ contract FeeShareTermWrapTest is Test {
         wrap.claim();
         vm.prank(bob);
         wrap.claim();
+        assertEq(weth.balanceOf(alice), 15e17);
+        assertEq(weth.balanceOf(bob), 5e17);
 
         vm.warp(uint256(maturity) + 1);
         // Post-maturity accrual pushed into the wrapper by anyone.
         vault.setClaimable(address(wrap), 5e18);
         vault.claimFor(address(wrap));
 
-        // A coupon holder cannot fold it into their distribution: harvest is
-        // gated, and there is no finalize to do it.
+        // A coupon holder cannot fold it into the in-term distribution: harvest
+        // is gated and there is no finalize to do it.
         vm.expectRevert(FeeShareTermWrap.TermEnded.selector);
         wrap.harvest();
 
+        // It is Bucket 2: claimable by still-locked principal, pro-rata by lock.
+        vm.prank(alice);
+        wrap.claimLockedReward();
+        vm.prank(bob);
+        wrap.claimLockedReward();
+        assertEq(weth.balanceOf(alice), 15e17 + 375e16); // 1.5 in-term + 3.75 post
+        assertEq(weth.balanceOf(bob), 5e17 + 125e16); // 0.5 in-term + 1.25 post
+
+        // The forfeited-coupon sweep is empty: every in-term unit was claimed.
         vm.warp(uint256(claimDeadline) + 1);
         vm.prank(alice);
+        vm.expectRevert(FeeShareTermWrap.NothingToSweep.selector);
         wrap.sweepExpired();
+    }
+
+    /// ROUND-6 REGRESSION (med): post-maturity reward is generated ONLY by shares
+    /// still locked in the wrapper. An early redeemer — whose shares have left
+    /// and now earn for her directly — must NOT capture a still-locked
+    /// depositor's post-maturity stream. Bucket 2 is keyed on LOCKED principal.
+    function test_redeemerCannotSiphonLockedHoldersPostMaturityReward() public {
+        _depositBoth(); // alice 30, bob 10; totalLocked 40
+        vm.warp(uint256(maturity) + 1);
+
+        // Alice redeems: her 30 shares leave the wrapper and earn for her directly.
+        vm.prank(alice);
+        wrap.redeemShares();
+        assertEq(vault.balanceOf(alice), 30e18);
+        assertEq(vault.balanceOf(address(wrap)), 10e18); // only bob's remain locked
+        assertEq(wrap.totalLocked(), 10e18);
+
+        // 10e18 now accrues to the wrapper, generated solely by bob's locked shares.
+        vault.setClaimable(address(wrap), 10e18);
+        vault.claimFor(address(wrap));
+
+        // Bob gets ALL of it; the exited alice gets none of bob's stream.
         vm.prank(bob);
-        wrap.sweepExpired();
-        assertEq(weth.balanceOf(alice), 15e17 + 375e16); // 1.5 in-term + 3.75 swept
-        assertEq(weth.balanceOf(bob), 5e17 + 125e16);
+        wrap.claimLockedReward();
+        assertEq(weth.balanceOf(bob), 10e18);
+        vm.prank(alice);
+        wrap.claimLockedReward();
+        assertEq(weth.balanceOf(alice), 0);
+        assertEq(weth.balanceOf(address(wrap)), 0);
+    }
+
+    /// The redemption checkpoint captures a redeemer's fair share of reward that
+    /// accrued WHILE they were locked, and excludes them from reward that
+    /// accrues AFTER they exit — the two-sided property behind the fix.
+    function test_redeemerKeepsPostMaturityRewardEarnedWhileLocked() public {
+        _depositBoth(); // alice 30, bob 10
+        vm.warp(uint256(maturity) + 1);
+
+        // Reward accrues while BOTH are still locked.
+        vault.setClaimable(address(wrap), 8e18);
+        vault.claimFor(address(wrap));
+
+        // Alice redeems now; her 30/40 slice of the 8e18 is checkpointed and
+        // stays claimable after she exits.
+        vm.prank(alice);
+        wrap.redeemShares();
+        assertEq(wrap.totalLocked(), 10e18);
+
+        vm.prank(alice);
+        wrap.claimLockedReward();
+        assertEq(weth.balanceOf(alice), 6e18); // 30/40 of the 8e18 she was locked for
+        vm.prank(bob);
+        wrap.claimLockedReward();
+        assertEq(weth.balanceOf(bob), 2e18); // 10/40
+
+        // Further reward comes only from bob's still-locked shares → all bob's.
+        vault.setClaimable(address(wrap), 5e18);
+        vault.claimFor(address(wrap));
+        vm.prank(bob);
+        wrap.claimLockedReward();
+        assertEq(weth.balanceOf(bob), 2e18 + 5e18);
+        vm.prank(alice);
+        wrap.claimLockedReward();
+        assertEq(weth.balanceOf(alice), 6e18); // unchanged — exited before this accrual
+    }
+
+    function test_claimLockedRewardRevertsDuringTerm() public {
+        _depositBoth();
+        vm.prank(alice);
+        vm.expectRevert(FeeShareTermWrap.TermNotEnded.selector);
+        wrap.claimLockedReward();
     }
 
     /// Selling wrapped units in-term must not forfeit reward that accrued to
@@ -342,34 +422,41 @@ contract FeeShareTermWrapTest is Test {
         assertEq(wrap.claimableReward(carol), 0);
     }
 
-    /// ROUND-5 REGRESSION (high): a post-maturity coupon transfer must NOT
-    /// pull sweep-reserved reward into the coupon distribution.
+    /// ROUND-5 REGRESSION (high): post-maturity reward must NOT be reachable
+    /// through the coupon (wrapped-unit) path. Bucket 2 is keyed on PRINCIPAL,
+    /// so holding every coupon unit earns none of it.
     function test_postMaturityTransferCannotSiphonSweepReward() public {
         vm.prank(alice);
         wrap.deposit(30e18);
         vm.prank(bob);
         wrap.deposit(10e18);
         vm.prank(alice);
-        wrap.transfer(bob, 30e18); // bob holds all 40 units; alice is depositor
+        wrap.transfer(bob, 30e18); // bob holds all 40 coupon units; principal unchanged
 
         vm.warp(uint256(maturity) + 1);
         vault.setClaimable(address(wrap), 10e18);
-        vault.claimFor(address(wrap));
+        vault.claimFor(address(wrap)); // Bucket 2
 
-        // Bob shuffles a unit while claims are open; must not credit coupons.
+        // Bob, holding every coupon unit, shuffles one and claims coupons — the
+        // post-maturity reward must not surface through the coupon path.
         vm.prank(bob);
         wrap.transfer(carol, 1e18);
         vm.prank(bob);
         wrap.claim();
-        assertEq(weth.balanceOf(bob), 0);
+        assertEq(weth.balanceOf(bob), 0); // coupons carry no post-maturity reward
 
-        vm.warp(uint256(claimDeadline) + 1);
+        // It is distributed by PRINCIPAL via claimLockedReward: alice(30)/bob(10).
         vm.prank(alice);
-        wrap.sweepExpired();
+        wrap.claimLockedReward();
         vm.prank(bob);
-        wrap.sweepExpired();
+        wrap.claimLockedReward();
         assertEq(weth.balanceOf(alice), 75e17); // 30/40 of 10
         assertEq(weth.balanceOf(bob), 25e17); // 10/40 of 10
+
+        // Carol, a pure coupon holder with no principal, gets nothing.
+        vm.prank(carol);
+        wrap.claimLockedReward();
+        assertEq(weth.balanceOf(carol), 0);
     }
 
     /// ROUND-5 REGRESSION (high): sweeping before redemption must not brick
@@ -388,31 +475,67 @@ contract FeeShareTermWrapTest is Test {
         assertEq(vault.balanceOf(alice), 30e18);
     }
 
-    /// ROUND-4 REGRESSION (med): reward the vault pays AFTER the first sweep
-    /// must not be stranded — sweepExpired is repeatable and captures it.
-    function test_sweepCapturesRewardArrivingAfterFirstSweep() public {
+    /// ROUND-4 REGRESSION (med): post-maturity reward the vault pays across
+    /// multiple rounds must not be stranded — claimLockedReward is repeatable
+    /// and its monotonic accumulator captures each later increment.
+    function test_lockedRewardCapturesAccrualArrivingLater() public {
         _depositBoth();
         vm.warp(uint256(maturity) + 1);
         vault.setClaimable(address(wrap), 4e18);
         vault.claimFor(address(wrap));
-        vm.warp(uint256(claimDeadline) + 1);
 
         vm.prank(alice);
-        wrap.sweepExpired();
+        wrap.claimLockedReward();
         vm.prank(bob);
-        wrap.sweepExpired();
-        assertEq(weth.balanceOf(alice), 3e18);
+        wrap.claimLockedReward();
+        assertEq(weth.balanceOf(alice), 3e18); // 30/40 of 4
+        assertEq(weth.balanceOf(bob), 1e18);
 
+        // More post-maturity reward arrives; the next claim captures it.
         vault.setClaimable(address(wrap), 8e18);
         vault.claimFor(address(wrap));
 
         vm.prank(alice);
+        wrap.claimLockedReward();
+        vm.prank(bob);
+        wrap.claimLockedReward();
+        assertEq(weth.balanceOf(alice), 3e18 + 6e18); // 30/40 of 12 total
+        assertEq(weth.balanceOf(bob), 1e18 + 2e18);
+        assertEq(weth.balanceOf(address(wrap)), 0);
+    }
+
+    /// Both epochs at once: a redeemer collects her ORIGINAL-principal slice of
+    /// the forfeited in-term sweep AND her locked-principal slice of Bucket 2,
+    /// and the two pools never cross-contaminate.
+    function test_bothBucketsPayTheRightBasis() public {
+        _depositBoth(); // alice 30, bob 10
+        // In-term reward, never claimed by coupon holders → forfeited (Bucket 1).
+        vault.setClaimable(address(wrap), 4e18);
+        wrap.harvest();
+        assertEq(wrap.rewardReserve(), 4e18);
+
+        vm.warp(uint256(maturity) + 1);
+        // Post-maturity reward while both locked (Bucket 2).
+        vault.setClaimable(address(wrap), 8e18);
+        vault.claimFor(address(wrap));
+
+        // Bucket 2 by locked principal.
+        vm.prank(alice);
+        wrap.claimLockedReward();
+        vm.prank(bob);
+        wrap.claimLockedReward();
+        assertEq(weth.balanceOf(alice), 6e18); // 30/40 of 8
+        assertEq(weth.balanceOf(bob), 2e18); // 10/40 of 8
+
+        // Bucket 1 by original principal, after the claim deadline.
+        vm.warp(uint256(claimDeadline) + 1);
+        vm.prank(alice);
         wrap.sweepExpired();
         vm.prank(bob);
         wrap.sweepExpired();
-        assertEq(weth.balanceOf(alice), 3e18 + 6e18); // 30/40 of 12
-        assertEq(weth.balanceOf(bob), 1e18 + 2e18);
-        assertEq(weth.balanceOf(address(wrap)), 0);
+        assertEq(weth.balanceOf(alice), 6e18 + 3e18); // + 30/40 of the 4 forfeited
+        assertEq(weth.balanceOf(bob), 2e18 + 1e18); // + 10/40
+        assertEq(weth.balanceOf(address(wrap)), 0); // both pools fully distributed
     }
 
     /// A late depositor must not dilute reward already owed to earlier
@@ -425,5 +548,38 @@ contract FeeShareTermWrapTest is Test {
         wrap.deposit(10e18);
         assertEq(wrap.claimableReward(alice), 3e18);
         assertEq(wrap.claimableReward(bob), 0);
+    }
+
+    /// Fuzz the ROUND-6 property: post-maturity reward that arrives AFTER a
+    /// depositor redeems is never paid to her, and the two-epoch split conserves
+    /// every wei (exited depositor capped at her fair pre-exit share; the rest,
+    /// including the entire post-exit round, goes to the still-locked holder).
+    function testFuzz_postMaturitySplitExcludesExitedDepositor(uint96 r1, uint96 r2) public {
+        uint256 rA = bound(uint256(r1), 0, 1e24);
+        uint256 rB = bound(uint256(r2), 0, 1e24);
+        _depositBoth(); // alice 30, bob 10, totalLocked 40
+        vm.warp(uint256(maturity) + 1);
+
+        // Round 1: both locked.
+        vault.setClaimable(address(wrap), rA);
+        vault.claimFor(address(wrap));
+
+        // Alice redeems — her round-1 slice is checkpointed; she then exits.
+        vm.prank(alice);
+        wrap.redeemShares();
+
+        // Round 2: only bob is locked, so only bob's capital generates it.
+        vault.setClaimable(address(wrap), rB);
+        vault.claimFor(address(wrap));
+
+        vm.prank(alice);
+        wrap.claimLockedReward();
+        vm.prank(bob);
+        wrap.claimLockedReward();
+
+        // Exact conservation: every reward wei is either paid out or left as dust.
+        assertEq(weth.balanceOf(alice) + weth.balanceOf(bob) + weth.balanceOf(address(wrap)), rA + rB);
+        // Alice is capped at her fair round-1 share and gets NOTHING from round 2.
+        assertLe(weth.balanceOf(alice), rA * 30e18 / 40e18);
     }
 }
