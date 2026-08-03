@@ -679,7 +679,7 @@
    costs one row instead of a third of the screen.
    ========================================================================== */
 
-@media (max-width: 900px) {
+@media (max-width: 1180px) {
   .screen {
     grid-template-columns: minmax(0, 1fr);
     gap: 20px;
