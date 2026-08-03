@@ -35,6 +35,7 @@ import {
   projectedPrincipalShare,
   type FeeRewardsPayload,
 } from "@/lib/rewards";
+import { shareOfTotal, type FeeRewardsStakersPayload } from "@/lib/rewards-stakers";
 import {
   HOOK_FEE_LABEL,
   campaignSwapShareLabel,
@@ -46,7 +47,7 @@ import {
 } from "@/lib/robinhood";
 import styles from "./rewards.module.css";
 
-export type RewardsWorkspaceName = "earn" | "operate" | "proof";
+export type RewardsWorkspaceName = "earn" | "stakers" | "operate" | "proof";
 
 type SnapshotState =
   | { status: "loading" }
@@ -95,6 +96,7 @@ const EMPTY_ACTION: ActionEvidence = {
 
 const WORKSPACES: readonly { id: RewardsWorkspaceName; label: string; hint: string }[] = [
   { id: "earn", label: "Stake & claim", hint: "Your position" },
+  { id: "stakers", label: "Stakers", hint: "Verified positions" },
   { id: "operate", label: "Operate", hint: "Permissionless upkeep" },
   { id: "proof", label: "Proof", hint: "Contracts & terms" },
 ];
@@ -823,6 +825,10 @@ export function RewardsWorkspace({
             />
           ) : null}
 
+          {workspace === "stakers" ? (
+            <StakersWorkspace account={account} claimLifecycle={claimLifecycle} />
+          ) : null}
+
           {workspace === "operate" ? (
             <OperateWorkspace
               beneficiary={beneficiary}
@@ -1308,6 +1314,213 @@ function EarnWorkspace(props: EarnProps): React.JSX.Element {
       </div>
 
       <div className={styles.boundary}><Glyph name="shield" /><p><strong>This UI never asks for wallet WETH.</strong> Stakers supply only 0xZAPS principal and gas. The configured harvest source is the tokenized Clanker fee position; the campaign contract can also account for WETH already sent directly to it.</p></div>
+    </section>
+  );
+}
+
+type StakersState =
+  | { status: "loading" }
+  | { status: "unavailable" }
+  | { status: "ready"; list: FeeRewardsStakersPayload; staleSince: string | null };
+
+const STAKERS_REFRESH_MS = 60_000;
+
+/** Table amounts carry their unit in the column header, not per cell. */
+function formatStakerAmount(value: string, maximumFractionDigits: number): string {
+  const amount = Number(formatUnits(BigInt(value), 18));
+  if (!Number.isFinite(amount)) return "—";
+  return amount.toLocaleString("en-US", { maximumFractionDigits });
+}
+
+function formatShare(share: number | null): string {
+  if (share === null) return "—";
+  if (share > 0 && share < 0.01) return "<0.01%";
+  return `${share.toLocaleString("en-US", { maximumFractionDigits: 2 })}%`;
+}
+
+/**
+ * The verified staker register. Every row is an address enumerated from the
+ * campaign's own Staked events and read back at one pinned block; the server
+ * refuses to answer at all unless those balances sum exactly to the
+ * campaign's totalStaked, so this table is complete or absent — a failed
+ * read renders an explicit unavailable state, never a shorter list.
+ */
+function StakersWorkspace({
+  account,
+  claimLifecycle,
+}: {
+  account: Address | null;
+  claimLifecycle: RewardsClaimLifecycle;
+}): React.JSX.Element {
+  const [state, setState] = useState<StakersState>({ status: "loading" });
+  const sequence = useRef(0);
+
+  const load = useCallback(async (): Promise<void> => {
+    const mine = ++sequence.current;
+    try {
+      let response = await fetch("/api/protocol/rewards/stakers", { cache: "no-store" });
+      for (
+        let attempt = 0;
+        response.status === 202 && attempt < SNAPSHOT_REFRESH_RETRY_ATTEMPTS;
+        attempt += 1
+      ) {
+        await new Promise<void>((resolve) => {
+          window.setTimeout(resolve, SNAPSHOT_REFRESH_RETRY_DELAY_MS);
+        });
+        response = await fetch("/api/protocol/rewards/stakers", { cache: "no-store" });
+      }
+      if (response.status !== 200) throw new Error("The verified staker list is unavailable.");
+      const list = (await response.json()) as FeeRewardsStakersPayload;
+      if (mine !== sequence.current) return;
+      setState({ status: "ready", list, staleSince: null });
+    } catch {
+      if (mine !== sequence.current) return;
+      setState((current) =>
+        current.status === "ready"
+          ? { ...current, staleSince: current.staleSince ?? new Date().toISOString() }
+          : { status: "unavailable" },
+      );
+    }
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    queueMicrotask(() => {
+      if (!cancelled) void load();
+    });
+    const timer = window.setInterval(() => void load(), STAKERS_REFRESH_MS);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [load]);
+
+  const list = state.status === "ready" ? state.list : null;
+  const totalStaked = list ? BigInt(list.totalStaked) : 0n;
+  const totalRewardWeight = list ? BigInt(list.totalRewardWeight) : 0n;
+
+  return (
+    <section id="rewards-panel-stakers" aria-labelledby="rewards-tab-stakers" className={styles.workspace} role="tabpanel">
+      <header className={styles.workspaceHead}>
+        <div>
+          <span className={styles.panelEyebrow}>VERIFIED POSITIONS</span>
+          <h2>Every staker, read at one block.</h2>
+        </div>
+        <p>
+          Addresses are enumerated from the campaign&apos;s own Staked events and read back at a
+          single verified block. The list is complete or absent: when its balances cannot be
+          reconciled exactly against the campaign&apos;s total staked, nothing renders.
+        </p>
+      </header>
+
+      {state.status === "loading" ? (
+        <section className={styles.loading} aria-busy="true"><span /><span /><span /><p>Enumerating stakers at one Robinhood Chain block…</p></section>
+      ) : null}
+
+      {state.status === "unavailable" ? (
+        <section className={styles.unavailable}>
+          <Glyph name="alert" />
+          <div>
+            <h2>The staker list is unavailable.</h2>
+            <p>The enumeration could not be verified as complete at one canonical block, so no partial or zeroed list is shown.</p>
+            <button className={styles.secondaryButton} onClick={() => void load()} type="button">Retry verified read</button>
+          </div>
+        </section>
+      ) : null}
+
+      {list ? (
+        <>
+          <dl className={styles.positionGrid}>
+            <div><dt>Staking now</dt><dd>{list.activeStakerCount.toLocaleString("en-US")} {list.activeStakerCount === 1 ? "address" : "addresses"}</dd></div>
+            <div><dt>Total staked</dt><dd>{formatAmount(list.totalStaked, "0xZAPS", 0)}</dd></div>
+            <div className={styles.rewardStat}><dt>Accrued, unclaimed</dt><dd>{formatAmount(list.totalEarnedWeth, "WETH", 8)}</dd></div>
+            <div><dt>Claimed to date</dt><dd>{formatAmount(list.totalClaimedWeth, "WETH", 8)}</dd></div>
+          </dl>
+
+          {claimLifecycle !== "open" ? (
+            <p className={styles.closedNote}>
+              {claimLifecycle === "swept"
+                ? "Expired campaign rewards have been swept to the fixed sponsor; accrued figures below are no longer claimable."
+                : "The claim deadline has passed; accrued figures below are no longer claimable."}
+            </p>
+          ) : null}
+
+          {list.stakers.length === 0 ? (
+            <p className={styles.stakerEmpty}>
+              No address holds a stake at the verified block. The register fills the moment the
+              first stake lands onchain.
+            </p>
+          ) : (
+            <div className={styles.stakerTableWrap} role="region" aria-label="Staker register" tabIndex={0}>
+              <table className={styles.stakerTable}>
+                <thead>
+                  <tr>
+                    <th scope="col" aria-label="Rank">#</th>
+                    <th scope="col">Staker</th>
+                    <th scope="col">Staked · 0xZAPS</th>
+                    <th scope="col">Principal</th>
+                    <th scope="col">Weight</th>
+                    <th scope="col">Accrued · WETH</th>
+                    <th scope="col">Claimed · WETH</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {list.stakers.map((row, index) => {
+                    const isViewer = account !== null && row.account.toLowerCase() === account.toLowerCase();
+                    const exited = BigInt(row.stakedBalance) === 0n;
+                    return (
+                      <tr key={row.account} data-you={isViewer || undefined}>
+                        <td className={styles.stakerRank}>{index + 1}</td>
+                        <th scope="row">
+                          <span className={styles.stakerId}>
+                            <code title={row.account}>{short(row.account)}</code>
+                            {isViewer ? <em className={styles.youTag}>you</em> : null}
+                            {exited ? <em className={styles.stakerTag}>exited</em> : null}
+                            <a href={explorerAddress(row.account)} target="_blank" rel="noreferrer" aria-label={`Open ${short(row.account)} in explorer`}><Glyph name="external" /></a>
+                          </span>
+                        </th>
+                        <td>{formatStakerAmount(row.stakedBalance, 2)}</td>
+                        <td>{formatShare(shareOfTotal(BigInt(row.stakedBalance), totalStaked))}</td>
+                        <td>{formatShare(shareOfTotal(BigInt(row.rewardWeight), totalRewardWeight))}</td>
+                        <td>{formatStakerAmount(row.earnedWeth, 8)}</td>
+                        <td>{formatStakerAmount(row.claimedWeth, 8)}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+              <p className={styles.blockRead}>
+                Staker register verified at block {Number(list.headBlock).toLocaleString("en-US")}
+                {" · "}balances reconcile exactly with the campaign&apos;s total staked at that block.
+              </p>
+            </div>
+          )}
+
+          <p className={styles.stakerNote}>
+            <strong>Weight</strong> is time-weighted stake — the share rewards actually split by,
+            which grows the longer a stake sits through the window. <strong>Principal</strong> is
+            the share of tokens staked at this block. Exited addresses keep whatever WETH they
+            accrued while staked.
+          </p>
+
+          {list.truncated ? (
+            <p className={styles.stakerNote}>
+              Showing the {list.stakers.length.toLocaleString("en-US")} largest positions of{" "}
+              {list.allTimeStakerCount.toLocaleString("en-US")} addresses that have ever staked.
+              The totals above still cover every address.
+            </p>
+          ) : null}
+
+          {state.status === "ready" && state.staleSince ? (
+            <p className={styles.stakerStale}>
+              <Glyph name="clock" />
+              The staker register has not refreshed since{" "}
+              {new Date(state.staleSince).toLocaleTimeString("en-US")}. Figures remain the last
+              verified snapshot, not zeros.
+            </p>
+          ) : null}
+        </>
+      ) : null}
     </section>
   );
 }

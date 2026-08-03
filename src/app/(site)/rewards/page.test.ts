@@ -29,14 +29,42 @@ describe("0xZAPS fee rewards public surface", () => {
   const readme = read("README.md");
   const llms = read("public/llms.txt");
 
-  it("publishes one canonical route with earn, operate, and proof workspaces", () => {
+  it("publishes one canonical route with earn, stakers, operate, and proof workspaces", () => {
     expect(page).toContain("STATIC_PAGE_SEO.rewards");
     expect(page).toContain('breadcrumbJsonLd("/rewards"');
     expect(workspace).toContain('id: "earn"');
+    expect(workspace).toContain('id: "stakers"');
     expect(workspace).toContain('id: "operate"');
     expect(workspace).toContain('id: "proof"');
+    expect(page).toContain('candidate === "stakers"');
     expect(shell).toContain('{ href: "/rewards", label: "Fee rewards"');
     expect(seo).toContain('path: "/rewards"');
+  });
+
+  it("keeps the staker register complete-or-absent, never partial", () => {
+    const stakersLib = read("src/lib/rewards-stakers.ts");
+    const stakersServer = read("src/lib/rewards-stakers-server.ts");
+    const stakersRoute = read("src/app/api/protocol/rewards/stakers/route.ts");
+    // The two accounting invariants are the register's honesty: enumerated
+    // balances must sum exactly to the campaign's totalStaked, and a paid
+    // claim from outside the enumeration proves the scan is incomplete.
+    expect(stakersLib).toContain("balanceSum !== totalStaked");
+    expect(stakersLib).toContain("does not reconcile");
+    expect(stakersLib).toContain("missing from the staker enumeration");
+    // Enumeration past the complete-read bound fails closed, never samples.
+    expect(stakersServer).toContain("exceeds this snapshot's complete-read bound");
+    expect(stakersServer).toContain("changed during the staker-list read");
+    // The route never converts a failed enumeration into an empty list.
+    expect(stakersRoute).toContain("unavailable right now");
+    expect(stakersRoute).toContain('"cache-control": "no-store, max-age=0"');
+    // The UI names the failure state and retries; it never renders zeros.
+    expect(workspace).toContain("The staker list is unavailable.");
+    expect(workspace).toContain("no partial or zeroed list is shown");
+    expect(workspace).toContain("STAKERS_REFRESH_MS = 60_000");
+    // The share columns are state at the verified block, not a forecast, and
+    // the weight column is named as the figure rewards actually split by.
+    expect(workspace).toContain("the share rewards actually split by");
+    expect(workspace).toContain("balances reconcile exactly");
   });
 
   it("keeps the reward source and wallet boundary explicit", () => {

@@ -66,7 +66,8 @@ function rewardsRpcUrl(): string {
   return parsed.toString();
 }
 
-function rewardsClient() {
+/** Shared by the campaign snapshot and the staker-list snapshot readers. */
+export function rewardsClient() {
   return createPublicClient({
     chain: robinhoodChain,
     // Every snapshot is block-pinned and all-or-nothing, but most of its reads

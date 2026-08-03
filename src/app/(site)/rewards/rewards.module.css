@@ -762,7 +762,7 @@
 
 .tabs {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(4, 1fr);
   padding: 4px;
   border: 1px solid var(--line);
   border-radius: var(--r-card-sm);
@@ -1666,6 +1666,161 @@
 .contractList a:focus-visible {
   outline: 2px solid var(--link);
   outline-offset: 2px;
+}
+
+/* The staker register. The wrapper owns horizontal overflow so the page body
+   never scrolls sideways; every numeric cell is tabular so ranks and shares
+   align between rows. */
+.stakerTableWrap {
+  overflow-x: auto;
+  border: 1px solid var(--line);
+  border-radius: var(--r-card);
+  background: var(--panel);
+  box-shadow: var(--sh-1);
+}
+
+.stakerTable {
+  width: 100%;
+  min-width: 680px;
+  border-collapse: collapse;
+  font-variant-numeric: tabular-nums;
+}
+
+.stakerTable th,
+.stakerTable td {
+  padding: 10px 14px;
+  font-size: 12px;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.stakerTable thead th {
+  border-bottom: 1px solid var(--line);
+  color: var(--ink-3);
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-size: 10px;
+  font-weight: 650;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.stakerTable thead th:nth-child(-n + 2),
+.stakerTable tbody th {
+  text-align: left;
+}
+
+.stakerTable tbody tr {
+  border-top: 1px solid var(--line-soft);
+}
+
+.stakerTable tbody tr:first-child {
+  border-top: 0;
+}
+
+.stakerTable tbody tr[data-you] {
+  background: var(--zap-tint);
+}
+
+.stakerTable tbody td {
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-size: 11.5px;
+}
+
+.stakerRank {
+  color: var(--ink-3);
+}
+
+.stakerId {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-weight: 500;
+}
+
+.stakerId code {
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-size: 11.5px;
+}
+
+.stakerId a {
+  display: inline-flex;
+  color: var(--ink-3);
+}
+
+.stakerId a:hover {
+  color: var(--link);
+}
+
+.stakerId a svg {
+  width: 12px;
+  height: 12px;
+}
+
+.stakerTag,
+.youTag {
+  padding: 1px 7px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-pill);
+  color: var(--ink-3);
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-size: 9.5px;
+  font-style: normal;
+  font-weight: 650;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.youTag {
+  border-color: transparent;
+  background: var(--zap-tint);
+  color: var(--zap-wash-ink);
+}
+
+.stakerTableWrap .blockRead {
+  border-top: 1px solid var(--line-soft);
+}
+
+.stakerEmpty {
+  margin: 0;
+  padding: 22px 18px;
+  border: 1px dashed var(--line);
+  border-radius: var(--r-card);
+  color: var(--ink-3);
+  font-size: 12px;
+  line-height: 1.55;
+  text-align: center;
+}
+
+.stakerNote {
+  max-width: 78ch;
+  margin: 0;
+  color: var(--ink-3);
+  font-size: 11px;
+  line-height: 1.55;
+}
+
+.stakerNote strong {
+  color: var(--ink);
+  font-weight: 650;
+}
+
+.stakerStale {
+  display: flex;
+  gap: 10px;
+  margin: 0;
+  padding: 12px 14px;
+  border-radius: var(--r-card-sm);
+  background: var(--warn-wash);
+  color: var(--warn-wash-ink);
+  font-size: 11.5px;
+  line-height: 1.5;
+}
+
+.stakerStale svg {
+  width: 17px;
+  height: 17px;
+  flex: 0 0 auto;
+  margin-top: 1px;
 }
 
 @container (max-width: 940px) {

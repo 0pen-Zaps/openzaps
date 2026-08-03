@@ -29,7 +29,9 @@ type RewardsPageProps = {
 
 function workspaceFrom(value: string | string[] | undefined): RewardsWorkspaceName {
   const candidate = Array.isArray(value) ? value[0] : value;
-  return candidate === "operate" || candidate === "proof" ? candidate : "earn";
+  return candidate === "stakers" || candidate === "operate" || candidate === "proof"
+    ? candidate
+    : "earn";
 }
 
 export default async function RewardsPage({ searchParams }: RewardsPageProps): Promise<React.JSX.Element> {
