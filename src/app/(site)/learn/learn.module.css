@@ -479,7 +479,7 @@
   color: var(--ink-2);
 }
 
-@media (max-width: 900px) {
+@media (max-width: 1180px) {
   .hero,
   .conversion {
     grid-template-columns: 1fr;

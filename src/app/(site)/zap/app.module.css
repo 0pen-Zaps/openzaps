@@ -1631,7 +1631,7 @@
    token, an ARIA attribute, or a disabled expression — layout only.
    ═══════════════════════════════════════════════════════════════════════ */
 
-@media (max-width: 900px) {
+@media (max-width: 1180px) {
   .screen {
     padding: 0 0 20px;
   }

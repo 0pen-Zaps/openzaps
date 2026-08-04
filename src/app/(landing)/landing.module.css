@@ -3158,6 +3158,32 @@
   }
 }
 
+/* On a phone the hand-placed percentage coordinates pack the node pills into a
+   ~340px box where they overlap each other and their nowrap labels clip against
+   the stage's overflow:hidden. Below this width the constellation becomes a
+   flowing, tappable chip list — the same keyboard-accessible buttons — and the
+   edge/core layer, meaningless without the fixed layout, is hidden. The detail
+   panel below still fills on selection. */
+@media (max-width: 640px) {
+  .graphStage {
+    position: static;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    min-height: 0;
+    padding: 14px;
+    overflow: visible;
+  }
+  .graphSvg,
+  .graphCore {
+    display: none;
+  }
+  .graphNode {
+    position: static;
+    transform: none;
+  }
+}
+
 @media (pointer: coarse) {
   .graphNode {
     padding: 0.7rem 0.95rem;

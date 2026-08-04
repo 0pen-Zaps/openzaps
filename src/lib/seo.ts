@@ -310,14 +310,31 @@ export function webPageJsonLd({
   };
 }
 
-/** BreadcrumbList JSON-LD for a subpage; pair with a JsonLd component in the route. */
-export function breadcrumbJsonLd(path: string, name: string): object {
+/**
+ * BreadcrumbList JSON-LD for a subpage; pair with a JsonLd component in the
+ * route. `trail` inserts intermediate collection levels between Home and the
+ * current page — e.g. a capsule detail page passes `[{name: "Explore", path:
+ * "/explore"}]` so the rich result chains Home › Explore › Zap {address} and
+ * reflects the real site structure. Omitting it keeps the default two-tier
+ * Home › page breadcrumb.
+ */
+export function breadcrumbJsonLd(
+  path: string,
+  name: string,
+  trail: readonly { name: string; path: string }[] = [],
+): object {
   return {
     "@type": "BreadcrumbList",
     "@id": absoluteUrl(`${path}#breadcrumbs`),
     itemListElement: [
       { "@type": "ListItem", position: 1, name: SITE_NAME, item: SITE_URL },
-      { "@type": "ListItem", position: 2, name, item: absoluteUrl(path) },
+      ...trail.map((segment, index) => ({
+        "@type": "ListItem",
+        position: index + 2,
+        name: segment.name,
+        item: absoluteUrl(segment.path),
+      })),
+      { "@type": "ListItem", position: trail.length + 2, name, item: absoluteUrl(path) },
     ],
   };
 }

@@ -554,12 +554,14 @@
   display: none;
   position: fixed;
   z-index: 70;
-  top: 10px;
-  left: 12px;
+  top: max(8px, env(safe-area-inset-top));
+  left: max(10px, env(safe-area-inset-left));
   align-items: center;
   justify-content: center;
-  width: 36px;
-  height: 36px;
+  /* 44px comfortable tap target — this is the single most-tapped control on a
+     phone, the only way to open navigation. */
+  width: 44px;
+  height: 44px;
   border: 1px solid var(--line);
   border-radius: var(--r-ctl);
   background: var(--panel);
@@ -624,11 +626,25 @@
     padding-top: 56px;
     box-shadow: var(--sh-4);
     transform: translateX(-102%);
-    transition: transform var(--dur-3) var(--ease-emphasis);
+    /* Off-canvas AND removed from the tab order / a11y tree while closed:
+       transform alone leaves every drawer link keyboard-focusable off-screen.
+       visibility is discrete, so transitioning it holds the slide-out visible
+       until the transform finishes, then hides. */
+    visibility: hidden;
+    transition:
+      transform var(--dur-3) var(--ease-emphasis),
+      visibility var(--dur-3) var(--ease-emphasis);
   }
 
   .root[data-drawer] .sidebar {
     transform: none;
+    visibility: visible;
+  }
+
+  /* Comfortable tap targets for the drawer nav rows on phones (desktop density
+     is untouched — these are mobile-scoped). */
+  .navItem {
+    min-height: 44px;
   }
 
   /* The toggle sits where the breadcrumb would start, so the bar indents to
@@ -666,14 +682,26 @@
     display: none;
   }
 
+  /* The chip carried `margin-left:auto`, which is what pinned the trailing
+     controls right. With the chip hidden, the breadcrumb takes over the grow
+     role so Share stays anchored right instead of floating mid-bar. */
+  .crumb {
+    margin-right: auto;
+  }
+
   .barButton {
     gap: 0;
+    justify-content: center;
+    /* Icon-only here — grow the hit area to the 44px tap-target floor. */
+    min-width: 44px;
+    height: 44px;
+    padding: 0;
     font-size: 0;
   }
 
   .barIcon {
-    width: 15px;
-    height: 15px;
+    width: 16px;
+    height: 16px;
   }
 }
 

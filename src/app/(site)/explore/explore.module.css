@@ -958,7 +958,7 @@
 
 /* ----------------------------------------------------------- breakpoints */
 
-@media (max-width: 900px) {
+@media (max-width: 1180px) {
   .hero {
     grid-template-columns: 1fr;
     gap: 20px;
