@@ -3653,10 +3653,20 @@ try {
     `unexpected reviewed campaign queue privileges: ${reviewedCampaignPrivileges}`,
   );
 
+  // This proves service_role can execute the production RPC, which resolves its
+  // own clock via clock_timestamp(). Once wall-clock time passes a real queued
+  // campaign's not_before, an unwrapped call would actually claim a slot and
+  // persist a weekday_product_update row for today, polluting the whole-table
+  // claim counts every later assertion in this block relies on. Roll the probe
+  // back so it verifies execution without leaving a durable claim; the injected
+  // fixed-time claim_next_marketing_campaign_at() calls below own claim
+  // persistence coverage deterministically.
   const serviceReviewedCampaignClaim = await psqlScalarSession(`
+    begin;
     set role service_role;
     select count(*)
     from public.claim_next_marketing_campaign(array['discord']::text[]);
+    rollback;
   `);
   assert(
     serviceReviewedCampaignClaim.status === 0 &&
