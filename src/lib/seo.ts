@@ -72,6 +72,15 @@ export const STATIC_PAGE_SEO = {
     changeFrequency: "monthly",
     priority: 0.65,
   },
+  credit: {
+    title: "Agent Credit on Robinhood Chain",
+    description:
+      "Explore identity-gated Uniswap v4 pools, purpose-bound USDG borrowing, 0xZAPS collateral, liquidation controls, and interactive stress simulations.",
+    path: "/credit",
+    ogImage: "/og/roadmap.png",
+    changeFrequency: "monthly",
+    priority: 0.65,
+  },
   evals: {
     title: "OpenZaps Release Evals & Executor Scorecards",
     description:
@@ -118,6 +127,15 @@ export const STATIC_PAGE_SEO = {
     ogImage: "/og/app.png",
     changeFrequency: "monthly",
     priority: 0.55,
+  },
+  tokenization: {
+    title: "Tokenize Creator Fees on Robinhood Chain",
+    description:
+      "Fractionalize Uniswap Instant Launch creator fees into liquid ERC20 tokens. Deposit your FEEB NFT, mint shares, and earn pro-rata ETH fees on Robinhood Chain.",
+    path: "/tokenization",
+    ogImage: OG_IMAGE,
+    changeFrequency: "weekly",
+    priority: 0.7,
   },
   legal: {
     title: "Security Risks & Token Disclosures",

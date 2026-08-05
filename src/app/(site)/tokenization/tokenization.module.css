@@ -1,0 +1,487 @@
+/* ── Tokenization: fractionalize Uniswap Instant Launch creator fees ────── */
+.page {
+  width: 100%;
+  max-width: 1120px;
+  margin: 0 auto;
+}
+
+.hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1.45fr) minmax(280px, 0.75fr);
+  gap: 28px;
+  padding: clamp(28px, 4.5vw, 54px);
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: var(--r-card);
+  background:
+    linear-gradient(135deg, var(--zap-tint), transparent 55%),
+    var(--panel-2);
+  box-shadow: var(--sh-2);
+}
+
+.heroCopy {
+  min-width: 0;
+}
+
+.eyebrow,
+.kicker {
+  color: var(--ink-3);
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-size: 10.5px;
+  font-weight: 650;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+}
+
+.eyebrow {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin: 0;
+}
+
+.eyebrow > span {
+  width: 8px;
+  height: 8px;
+  border-radius: var(--r-pill);
+  background: var(--zap-deep);
+  box-shadow: 0 0 0 4px var(--zap-wash);
+}
+
+.hero h1 {
+  max-width: 760px;
+  margin: 20px 0 0;
+  color: var(--ink);
+  font-family: var(--font-serif), Georgia, serif;
+  font-size: clamp(42px, 5.3vw, 68px);
+  font-weight: 500;
+  letter-spacing: -0.045em;
+  line-height: 0.98;
+  text-wrap: balance;
+}
+
+.heroLead {
+  margin: 20px 0 0;
+  color: var(--ink-prose);
+  font-size: 16px;
+  line-height: 1.55;
+  max-width: 580px;
+}
+
+.heroMetaRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  margin-top: 24px;
+}
+
+.heroBadge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-pill);
+  background: var(--panel-2);
+  font-size: 12px;
+  font-family: var(--font-mono), ui-monospace, monospace;
+  color: var(--ink-2);
+}
+
+.heroBadgeDot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--ok);
+}
+
+.heroActions {
+  display: flex;
+  gap: 14px;
+  margin-top: 28px;
+}
+
+.primaryAction {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 24px;
+  border-radius: var(--r-ctl);
+  background: var(--btn);
+  box-shadow: var(--sh-btn);
+  color: var(--btn-ink);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background var(--dur-2) var(--ease-standard);
+}
+
+.primaryAction:hover {
+  background: var(--btn-hover);
+}
+
+.secondaryAction {
+  display: inline-flex;
+  align-items: center;
+  padding: 12px 24px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-ctl);
+  color: var(--ink-2);
+  font-size: 14px;
+  font-weight: 500;
+  transition: border-color var(--dur-2) var(--ease-standard);
+}
+
+.secondaryAction:hover {
+  border-color: var(--line-hover);
+  color: var(--ink);
+}
+
+/* ── Hero aside / posture card ─────────────────────────────────────────── */
+.heroPosture {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 20px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-card-sm);
+  background: var(--panel);
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--ink-prose);
+}
+
+.heroPostureLabel {
+  color: var(--ink-3);
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-size: 10px;
+  font-weight: 650;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+}
+
+.heroPosture strong {
+  color: var(--ink);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.heroPosture ul {
+  margin: 0;
+  padding: 0 0 0 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  color: var(--ink-3);
+  font-size: 11.5px;
+}
+
+/* ── Flow strip ────────────────────────────────────────────────────────── */
+.heroFlow {
+  display: flex;
+  grid-column: 1 / -1;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 28px;
+  padding: 16px 0 0;
+  border-top: 1px solid var(--line-soft);
+}
+
+.heroFlow > div {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  min-width: 90px;
+  text-align: center;
+}
+
+.heroFlow > div > span {
+  color: var(--ink-3);
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.heroFlow > div > strong {
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.heroFlow > i {
+  color: var(--zap-line);
+  font-size: 16px;
+  font-style: normal;
+  flex: 0 0 auto;
+}
+
+/* ── Sections ──────────────────────────────────────────────────────────── */
+.section {
+  padding: clamp(36px, 5vw, 64px) clamp(28px, 4.5vw, 54px);
+}
+
+.section + .section {
+  border-top: 1px solid var(--line-soft);
+}
+
+.sectionHead {
+  margin-bottom: 40px;
+}
+
+.sectionHead h2 {
+  max-width: 700px;
+  margin: 10px 0 0;
+  color: var(--ink);
+  font-family: var(--font-serif), Georgia, serif;
+  font-size: clamp(28px, 3.8vw, 42px);
+  font-weight: 500;
+  letter-spacing: -0.03em;
+  line-height: 1.1;
+}
+
+.sectionHead p {
+  max-width: 620px;
+  margin: 14px 0 0;
+  color: var(--ink-prose);
+  font-size: 15px;
+  line-height: 1.55;
+}
+
+/* ── Walkthrough steps ─────────────────────────────────────────────────── */
+.stepRow {
+  display: grid;
+  grid-template-columns: 140px minmax(0, 1fr);
+  gap: 32px;
+  align-items: start;
+}
+
+.stepRow + .stepRow {
+  margin-top: 48px;
+}
+
+.stepNumber {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.stepCircle {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: var(--zap-wash);
+  border: 1px solid var(--zap-line);
+  color: var(--zap-wash-ink);
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.stepNumber h3 {
+  color: var(--ink);
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.stepNumber > p {
+  color: var(--ink-3);
+  font-size: 11px;
+  font-family: var(--font-mono), ui-monospace, monospace;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.stepBody {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 24px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-card-sm);
+  background: var(--panel-2);
+}
+
+.stepBody p {
+  color: var(--ink-prose);
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.codeBlock {
+  padding: 16px 20px;
+  border-radius: var(--r-ctl-sm);
+  background: var(--sunk);
+  border: 1px solid var(--line-2);
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--ink-2);
+}
+
+.codeBlock .label {
+  color: var(--ink-3);
+  margin-bottom: 4px;
+}
+
+.codeBlock .accent {
+  color: var(--zap-wash-ink);
+}
+
+.codeBlock .ok {
+  color: var(--ok);
+}
+
+/* ── Protocol flywheel grid ────────────────────────────────────────────── */
+.flywheelGrid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+  margin-top: 32px;
+}
+
+.flywheelCard {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 20px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-card-sm);
+  background: var(--panel-2);
+  text-align: center;
+}
+
+.flywheelArrow {
+  color: var(--zap-wash-ink);
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.flywheelCard strong {
+  color: var(--ink);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.flywheelCard span {
+  color: var(--ink-3);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+/* ── Contract card ─────────────────────────────────────────────────────── */
+.contractCard {
+  max-width: 520px;
+  margin-top: 32px;
+  padding: 24px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-card-sm);
+  background: var(--panel-2);
+}
+
+.contractCard h3 {
+  color: var(--ink-3);
+  font-size: 11px;
+  font-family: var(--font-mono), ui-monospace, monospace;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  margin-bottom: 12px;
+}
+
+.contractRow {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 6px 0;
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-size: 12px;
+}
+
+.contractRow:not(:last-child) {
+  border-bottom: 1px solid var(--line-soft);
+}
+
+.contractRow dt {
+  color: var(--ink-3);
+}
+
+.contractRow dd {
+  color: var(--ink);
+}
+
+.contractActions {
+  display: flex;
+  gap: 12px;
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line-soft);
+}
+
+/* ── CTA section ───────────────────────────────────────────────────────── */
+.ctaSection {
+  padding: clamp(40px, 6vw, 72px) clamp(28px, 4.5vw, 54px);
+  text-align: center;
+  border-top: 1px solid var(--line);
+}
+
+.ctaSection h2 {
+  color: var(--ink);
+  font-family: var(--font-serif), Georgia, serif;
+  font-size: clamp(28px, 4vw, 44px);
+  font-weight: 500;
+  letter-spacing: -0.03em;
+  margin-bottom: 12px;
+}
+
+.ctaSection p {
+  color: var(--ink-prose);
+  font-size: 15px;
+  max-width: 500px;
+  margin: 0 auto 28px;
+}
+
+.ctaActions {
+  display: flex;
+  justify-content: center;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+/* ── Responsive ────────────────────────────────────────────────────────── */
+@media (max-width: 860px) {
+  .hero {
+    grid-template-columns: 1fr;
+  }
+
+  .stepRow {
+    grid-template-columns: 1fr;
+    gap: 16px;
+  }
+
+  .stepNumber {
+    flex-direction: row;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .flywheelGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .heroFlow {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .heroFlow > div {
+    flex-direction: row;
+    gap: 8px;
+  }
+
+  .heroFlow > i {
+    display: none;
+  }
+}
