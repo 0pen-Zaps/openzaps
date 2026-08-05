@@ -1,0 +1,241 @@
+/* ── Tokenization: fractionalize Uniswap Instant Launch creator fees ────── */
+.page {
+  width: 100%;
+  max-width: 1120px;
+  margin: 0 auto;
+}
+
+/* ── Hero ──────────────────────────────────────────────────────────────── */
+.hero {
+  padding: clamp(28px, 4.5vw, 54px);
+  border: 1px solid var(--line);
+  border-radius: var(--r-card);
+  background:
+    linear-gradient(135deg, var(--zap-tint), transparent 55%),
+    var(--panel-2);
+  box-shadow: var(--sh-2);
+}
+
+.eyebrow,
+.kicker {
+  color: var(--ink-3);
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-size: 10.5px;
+  font-weight: 650;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+}
+
+.eyebrow {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin: 0;
+}
+
+.eyebrow > span {
+  width: 8px;
+  height: 8px;
+  border-radius: var(--r-pill);
+  background: var(--zap-deep);
+  box-shadow: 0 0 0 4px var(--zap-wash);
+}
+
+.hero h1 {
+  max-width: 760px;
+  margin: 20px 0 0;
+  color: var(--ink);
+  font-family: var(--font-serif), Georgia, serif;
+  font-size: clamp(42px, 5.3vw, 68px);
+  font-weight: 500;
+  letter-spacing: -0.045em;
+  line-height: 0.98;
+  text-wrap: balance;
+}
+
+.heroLead {
+  margin: 20px 0 0;
+  color: var(--ink-prose);
+  font-size: 16px;
+  line-height: 1.55;
+  max-width: 580px;
+}
+
+.heroMeta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 24px;
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-pill);
+  background: var(--panel-2);
+  font-size: 12px;
+  font-family: var(--font-mono), ui-monospace, monospace;
+  color: var(--ink-2);
+}
+
+.badgeDot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--ok);
+}
+
+.heroActions {
+  display: flex;
+  gap: 14px;
+  margin-top: 28px;
+}
+
+.primaryBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 24px;
+  border-radius: var(--r-ctl);
+  background: var(--btn);
+  box-shadow: var(--sh-btn);
+  color: var(--btn-ink);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background var(--dur-2) var(--ease-standard);
+}
+
+.primaryBtn:hover {
+  background: var(--btn-hover);
+}
+
+/* ── Sections ──────────────────────────────────────────────────────────── */
+.section {
+  padding: clamp(36px, 5vw, 64px) clamp(28px, 4.5vw, 54px);
+}
+
+.section + .section {
+  border-top: 1px solid var(--line-soft);
+}
+
+.sectionHead {
+  margin-bottom: 40px;
+}
+
+.sectionHead h2 {
+  max-width: 700px;
+  margin: 10px 0 0;
+  color: var(--ink);
+  font-family: var(--font-serif), Georgia, serif;
+  font-size: clamp(28px, 3.8vw, 42px);
+  font-weight: 500;
+  letter-spacing: -0.03em;
+  line-height: 1.1;
+}
+
+/* ── Steps ─────────────────────────────────────────────────────────────── */
+.stepRow {
+  display: grid;
+  grid-template-columns: 140px minmax(0, 1fr);
+  gap: 32px;
+  align-items: start;
+}
+
+.stepRow + .stepRow {
+  margin-top: 48px;
+}
+
+.stepNum {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.stepCircle {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: var(--zap-wash);
+  border: 1px solid var(--zap-line);
+  color: var(--zap-wash-ink);
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.stepNum h3 {
+  color: var(--ink);
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.stepNum > p {
+  color: var(--ink-3);
+  font-size: 11px;
+  font-family: var(--font-mono), ui-monospace, monospace;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.stepBody {
+  padding: 24px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-card-sm);
+  background: var(--panel-2);
+}
+
+.stepBody p {
+  color: var(--ink-prose);
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+/* ── Contract card ─────────────────────────────────────────────────────── */
+.contractCard {
+  max-width: 520px;
+  padding: 24px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-card-sm);
+  background: var(--panel-2);
+}
+
+.contractRow {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 6px 0;
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-size: 12px;
+}
+
+.contractRow:not(:last-child) {
+  border-bottom: 1px solid var(--line-soft);
+}
+
+.contractRow > span:first-child {
+  color: var(--ink-3);
+}
+
+.contractRow > span:last-child,
+.contractRow > a {
+  color: var(--ink);
+}
+
+/* ── Responsive ────────────────────────────────────────────────────────── */
+@media (max-width: 860px) {
+  .stepRow {
+    grid-template-columns: 1fr;
+    gap: 16px;
+  }
+
+  .stepNum {
+    flex-direction: row;
+    align-items: center;
+    gap: 12px;
+  }
+}
