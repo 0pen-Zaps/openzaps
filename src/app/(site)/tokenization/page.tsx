@@ -126,23 +126,20 @@ const STEPS = [
       <>
         <p>
           UniFees charges a small protocol fee on vault deployments, harvests, and tokenizations.{" "}
-          <strong>100% of these fees are used to market-buy the protocol token</strong>,
+          <strong>100% of these fees are used to market-buy $0xZAPS</strong>,
           creating a self-reinforcing flywheel: more activity → more fees → more buy pressure → more
           protocol value capturing every creator&apos;s fee stream.
         </p>
         <div className={styles.codeBlock}>
           <div className={styles.label}>{/* Protocol fee flow */}</div>
           <div>
-            <span className={styles.accent}>Vault Creation:</span> 0.0001 ETH → market buy protocol
-            token
+            <span className={styles.accent}>Vault Creation:</span> 0.0001 ETH → market buy $0xZAPS
           </div>
           <div>
-            <span className={styles.accent}>Each Harvest:</span> 1% of harvested amount → market buy
-            protocol token
+            <span className={styles.accent}>Each Harvest:</span> 1% of harvested amount → market buy $0xZAPS
           </div>
           <div>
-            <span className={styles.accent}>Tokenization:</span> 1% of minted shares → market buy
-            protocol token
+            <span className={styles.accent}>Tokenization:</span> 1% of minted shares → market buy $0xZAPS
           </div>
           <div className={styles.ok}>
             ✓ More activity → more fees → more buy pressure
@@ -287,7 +284,7 @@ export default function TokenizationPage(): React.JSX.Element {
           <h2>Every action feeds back into the protocol.</h2>
           <p>
             100% of protocol fees — from vault deployments, fee harvests, and tokenizations — are
-            used to market-buy the protocol token. More creators, more vaults, more harvests all
+            used to market-buy $0xZAPS. More creators, more vaults, more harvests all
             drive the same flywheel.
           </p>
         </header>
