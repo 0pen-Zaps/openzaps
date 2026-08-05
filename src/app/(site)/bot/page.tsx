@@ -111,7 +111,7 @@ export default function BotPage(): React.JSX.Element {
   }), [launches]);
 
   return (
-    <main className={styles.page} id="main" data-screen-label="Launch Bot">
+    <main className={styles.page} id="main" data-screen-label="ZapBot">
       {/* ── Header ──────────────────────────────────────────────────────── */}
       <section className={styles.header}>
         <div>
@@ -119,7 +119,7 @@ export default function BotPage(): React.JSX.Element {
             <span aria-hidden />
             Uniswap Instant Launch Bot · {CHAIN.name}
           </p>
-          <h1>Launch Bot Dashboard</h1>
+          <h1>ZapBot Dashboard</h1>
           <p className={styles.subtitle}>
             Monitor new token launches, score them in real-time, and manage automated buys.
             {stats.buys > 0 && ` ${stats.buys} recent signals detected.`}
