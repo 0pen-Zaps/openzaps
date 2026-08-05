@@ -29,6 +29,7 @@ import {
   type BlockCategory,
   type BlockParam,
   type ChainNode,
+  type CompiledZap,
   type FlowShape,
   type LegoBlock,
   type ParamValue,
@@ -1612,6 +1613,11 @@ export function ZapBuilder({
           </div>
 
           <div className={styles.canvasBody}>
+            {/* ---- inflow bar ---- */}
+            {chain.length > 0 ? (
+              <InflowBar chain={chain} compiled={compiled} />
+            ) : null}
+
             {/* The drag target is the track itself, and it is rendered even when
                 empty: the resolver hit-tests against this box, so losing it
                 would silently disable dropping into an empty canvas. */}
@@ -2516,13 +2522,111 @@ function isTextEntry(target: EventTarget | null): boolean {
 }
 
 /**
- * What a node calls itself on the canvas.
- *
- * The ends of a chain are the two things a reader looks for first, so they are
- * named by their role rather than by their catalogue group; everything in
- * between falls back to the group the palette filed it under.
- */
-function eyebrowFor(block: LegoBlock): string {
+ /** What a node calls itself on the canvas.
+
+  * The ends of a chain are the two things a reader looks for first, so they are
+  * named by their role rather than by their catalogue group; everything in
+  * between falls back to the group the palette filed it under.
+  */
+
+ /* ── Inflow bar ──────────────────────────────────────────────────────────
+    Renders above the chain: shows the source asset, amount, and any
+    split branches so the operator can see at a glance what flows in and
+    how it divides. */
+
+ interface SourceInfo {
+   asset: string;
+   amount: string;
+   token: string;
+ }
+
+ function extractSource(chain: readonly ChainNode[]): SourceInfo | null {
+   for (const node of chain) {
+     const block = getBlock(node.blockId);
+     if (!block || block.kind !== "source") continue;
+     const asset = String(node.params.asset ?? "");
+     const amount = String(node.params.amount ?? "");
+     const token = String(node.params.token ?? asset);
+     return { asset: asset || token || "token", amount, token: token || asset };
+   }
+   return null;
+ }
+
+ interface SplitInfo {
+   legs: number;
+   primaryWeight: number;
+ }
+
+ function findSplit(chain: readonly ChainNode[]): SplitInfo | null {
+   for (const node of chain) {
+     if (node.blockId !== "split") continue;
+     const legs = Number(node.params.legs ?? 2);
+     const primary = Number(node.params.primary ?? 50);
+     return { legs, primaryWeight: primary };
+   }
+   return null;
+ }
+
+ function InflowBar({
+   chain,
+   compiled,
+ }: {
+   chain: readonly ChainNode[];
+   compiled: CompiledZap;
+ }): React.JSX.Element {
+   const source = extractSource(chain);
+   const split = findSplit(chain);
+
+   return (
+     <div className={styles.inflowBar}>
+       <span className={styles.inflowLabel}>Inflow</span>
+
+       {source ? (
+         <>
+           <span className={styles.inflowAsset}>
+             <span className={styles.inflowAssetDot} aria-hidden />
+             {source.asset}
+           </span>
+           {source.amount ? (
+             <span className={styles.inflowAmount}>{source.amount}</span>
+           ) : null}
+         </>
+       ) : (
+         <span className={styles.inflowAsset}>
+           <span className={styles.inflowAssetDot} aria-hidden />
+           from chain
+         </span>
+       )}
+
+       {split ? (
+         <>
+           <span className={styles.inflowArrow} aria-hidden>
+             ÷
+           </span>
+           <span className={styles.inflowSplitPreview}>
+             {Array.from({ length: split.legs }, (_, i) => {
+               const weight = i === 0 ? split.primaryWeight : Math.round((100 - split.primaryWeight) / (split.legs - 1));
+               return (
+                 <span className={styles.inflowSplitLeg} key={i}>
+                   <span className={styles.inflowSplitWeight}>{weight}%</span>
+                   leg {i + 1}
+                 </span>
+               );
+             })}
+           </span>
+         </>
+       ) : null}
+
+       {compiled.status !== "pass" ? (
+         <span className={styles.inflowArrow} aria-hidden>
+           →
+         </span>
+       ) : null}
+     </div>
+   );
+ }
+
+ function eyebrowFor(block: LegoBlock): string {
   if (block.kind === "source") return "TOKEN IN";
   if (block.kind === "sink") return "TOKEN OUT";
   if (block.kind === "guard") return "GUARD";

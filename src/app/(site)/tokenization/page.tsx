@@ -42,6 +42,7 @@ export default function TokenizationPage(): React.JSX.Element {
         }}
       />
 
+      {/* ── Hero with main CTA ────────────────────────────────────────────── */}
       <section className={styles.hero}>
         <p className={styles.eyebrow}>
           <span aria-hidden />
@@ -70,11 +71,122 @@ export default function TokenizationPage(): React.JSX.Element {
         </div>
         <div className={styles.heroActions}>
           <Link className={styles.primaryBtn} href="/zap?view=start">
-            Create a Zap
+            Tokenize Your Trading Fees
           </Link>
+          <a
+            className={styles.secondaryBtn}
+            href={`${CHAIN.explorer}/address/${FACTORY_ADDRESS}?tab=contract`}
+            target="_blank"
+            rel="noreferrer"
+          >
+            Read the contract ↗
+          </a>
         </div>
       </section>
 
+      {/* ── Pre / Post tokenization states ───────────────────────────────── */}
+      <section className={styles.section}>
+        <header className={styles.sectionHead}>
+          <span className={styles.kicker}>Get started</span>
+          <h2>Before and after you tokenize.</h2>
+          <p>
+            Everything you need to know — what you&apos;ll need going in, and what
+            you can do once your fee stream is tokenized.
+          </p>
+        </header>
+
+        <div className={styles.stateGrid}>
+          {/* Pre-tokenization */}
+          <div className={styles.stateCard} data-tone="pre">
+            <div className={styles.stateCardHead}>
+              <span className={styles.stateDot} data-state="pre" aria-hidden />
+              <h3>Before you tokenize</h3>
+            </div>
+            <ul className={styles.stateList}>
+              <li>
+                <strong>FEEB NFT</strong>
+                <span>You must hold a FEEB ERC721 NFT from a Uniswap Instant Launch with creator fees enabled. This is your proof of fee beneficiary rights.</span>
+              </li>
+              <li>
+                <strong>Connected wallet</strong>
+                <span>Connect the wallet that owns the FEEB NFT. The vault will custody the NFT permanently.</span>
+              </li>
+              <li>
+                <strong>LP position tokenId</strong>
+                <span>Know your LP position tokenId — it matches the FEEB NFT tokenId. You&apos;ll need it to create the vault.</span>
+              </li>
+              <li>
+                <strong>Share allocation</strong>
+                <span>Decide how to split the 1B ERC20 shares: creator, investors, treasury. Must total 100% in basis points.</span>
+              </li>
+            </ul>
+
+            <div className={styles.stateData}>
+              <div className={styles.dataRow}>
+                <span>Cost to deploy</span>
+                <strong>~0.0001 ETH + gas</strong>
+              </div>
+              <div className={styles.dataRow}>
+                <span>Shares minted</span>
+                <strong>1,000,000,000</strong>
+              </div>
+              <div className={styles.dataRow}>
+                <span>NFT status after</span>
+                <strong>Permanently locked</strong>
+              </div>
+            </div>
+          </div>
+
+          {/* Post-tokenization */}
+          <div className={styles.stateCard} data-tone="post">
+            <div className={styles.stateCardHead}>
+              <span className={styles.stateDot} data-state="post" aria-hidden />
+              <h3>After you tokenize</h3>
+            </div>
+            <ul className={styles.stateList}>
+              <li>
+                <strong>Harvest ETH fees</strong>
+                <span>Anyone can call harvest() — permissionless. Accumulated native ETH from LP fees distributes pro-rata to all shareholders.</span>
+              </li>
+              <li>
+                <strong>Sell or trade shares</strong>
+                <span>Your UFEE tokens are liquid ERC20s. List them on any DEX, sell to investors for upfront capital, or transfer to a DAO treasury.</span>
+              </li>
+              <li>
+                <strong>Borrow against shares</strong>
+                <span>Use tokenized fee shares as collateral in lending markets. Unlock credit without selling your fee stream.</span>
+              </li>
+              <li>
+                <strong>Track your vault</strong>
+                <span>Monitor total harvested ETH, your share of accrued fees, and open-market activity from your vault dashboard.</span>
+              </li>
+            </ul>
+
+            <div className={styles.stateData}>
+              <div className={styles.dataRow}>
+                <span>Harvest trigger</span>
+                <strong>Anyone, anytime</strong>
+              </div>
+              <div className={styles.dataRow}>
+                <span>Fee destination</span>
+                <strong>Pro-rata to all holders</strong>
+              </div>
+              <div className={styles.dataRow}>
+                <span>Market buy pressure</span>
+                <strong>Open-market shares earn too</strong>
+              </div>
+            </div>
+
+            <div className={styles.stateActions}>
+              <Link className={styles.primaryBtn} href="/zap?view=start">
+                Create a Vault Now
+              </Link>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* ── How it works ──────────────────────────────────────────────────── */}
       <section className={styles.section}>
         <header className={styles.sectionHead}>
           <span className={styles.kicker}>How it works</span>
@@ -120,6 +232,7 @@ export default function TokenizationPage(): React.JSX.Element {
         ))}
       </section>
 
+      {/* ── Deployed contract ─────────────────────────────────────────────── */}
       <section className={styles.section}>
         <header className={styles.sectionHead}>
           <span className={styles.kicker}>Deployed contract</span>

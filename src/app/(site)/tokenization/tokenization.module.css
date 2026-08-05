@@ -195,6 +195,135 @@
   line-height: 1.6;
 }
 
+/* ── Pre / Post state cards ─────────────────────────────────────────────── */
+.stateGrid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 24px;
+}
+
+.stateCard {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  padding: 28px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-card-sm);
+  background: var(--panel-2);
+}
+
+.stateCardHead {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.stateCardHead h3 {
+  color: var(--ink);
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.stateDot {
+  flex: 0 0 auto;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+}
+
+.stateDot[data-state="pre"] {
+  background: var(--warn);
+  box-shadow: 0 0 0 4px var(--warn-wash);
+}
+
+.stateDot[data-state="post"] {
+  background: var(--ok);
+  box-shadow: 0 0 0 4px var(--ok-wash);
+}
+
+.stateList {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.stateList li {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.stateList li strong {
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.stateList li span {
+  color: var(--ink-3);
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+
+.stateData {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 14px 16px;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--r-ctl-sm);
+  background: var(--sunk);
+}
+
+.dataRow {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 12.5px;
+}
+
+.dataRow > span {
+  color: var(--ink-3);
+}
+
+.dataRow > strong {
+  color: var(--ink);
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+.stateActions {
+  margin-top: auto;
+  padding-top: 8px;
+}
+
+.stateActions .primaryBtn {
+  width: 100%;
+  justify-content: center;
+}
+
+/* ── Secondary button ──────────────────────────────────────────────────── */
+.secondaryBtn {
+  display: inline-flex;
+  align-items: center;
+  padding: 12px 24px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-ctl);
+  color: var(--ink-2);
+  font-size: 14px;
+  font-weight: 500;
+  transition: border-color var(--dur-2) var(--ease-standard), color var(--dur-2) var(--ease-standard);
+}
+
+.secondaryBtn:hover {
+  border-color: var(--line-hover);
+  color: var(--ink);
+}
+
 /* ── Contract card ─────────────────────────────────────────────────────── */
 .contractCard {
   max-width: 520px;
@@ -237,5 +366,9 @@
     flex-direction: row;
     align-items: center;
     gap: 12px;
+  }
+
+  .stateGrid {
+    grid-template-columns: 1fr;
   }
 }
