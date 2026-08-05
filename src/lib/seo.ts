@@ -153,6 +153,15 @@ export const STATIC_PAGE_SEO = {
     changeFrequency: "weekly",
     priority: 0.7,
   },
+  bot: {
+    title: "Uniswap Instant Launch Bot — Token Launch Analytics & Auto-Buy",
+    description:
+      "Monitor Uniswap Instant Launch tokens on Robinhood Chain in real-time. Score launches by early buyer patterns, token quality, and velocity. Manage automated buys.",
+    path: "/bot",
+    ogImage: "/og/app.png",
+    changeFrequency: "daily",
+    priority: 0.75,
+  },
   pot: {
     title: "0xZAPS Automation Fee Pot",
     description:
