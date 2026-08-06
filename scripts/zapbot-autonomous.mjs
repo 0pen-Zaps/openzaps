@@ -45,8 +45,8 @@ const POOL_FEE = 3000;
 const POOL_TICK_SPACING = 60;
 
 const CONFIG = {
-  // Entry — smart money buys at block 2-4, we target block 2-5
-  minScore: 5, minBuyers: 8, maxAgeBlocks: 5, minFirstBuyerBlock: 1, maxFirstBuyerBlock: 8,
+  // Entry — smart money buys at block 2-4, we target block 2-30
+  minScore: 3, minBuyers: 1, maxAgeBlocks: 120, minFirstBuyerBlock: 0, maxFirstBuyerBlock: 20,
   // Exit — quick rotation: 2-4 min holds, tight targets
   tp1Pct: 15, tp1Fraction: 0.50,
   tp2Pct: 35, tp2Fraction: 0.50,
@@ -108,7 +108,17 @@ function getWallet() {
 
 // ─── State ─────────────────────────────────────────────────────────────────
 
-function loadState() { try { if (fs.existsSync(CONFIG.stateFile)) return JSON.parse(fs.readFileSync(CONFIG.stateFile, "utf8")); } catch {} return null; }
+function loadState() {
+  try {
+    if (fs.existsSync(CONFIG.stateFile)) {
+      const state = JSON.parse(fs.readFileSync(CONFIG.stateFile, "utf8"));
+      // Always start fresh: reset status to IDLE so the scan loop runs
+      state.status = "IDLE";
+      return state;
+    }
+  } catch {}
+  return defaultState();
+}
 function saveState(s) { const d = path.dirname(CONFIG.stateFile); if (!fs.existsSync(d)) fs.mkdirSync(d, { recursive: true }); fs.writeFileSync(CONFIG.stateFile, JSON.stringify(s, null, 2)); }
 
 function defaultState() { return { bankroll: 0, available: 0, trade: null, history: [], wins: 0, losses: 0, trades: 0, pnl: 0, volume: 0, start: Date.now(), status: "IDLE", action: "init", actionTime: Date.now() }; }
@@ -123,64 +133,180 @@ function scoreLaunch(buyers, name, symbol, firstBlk) {
   for (const p of SPAM) { if (p.test(symbol)) return { s: 0, pass: false }; }
   let ns = 1; for (const p of MEME) { if (p.test(name) || p.test(symbol)) { ns = 3; break; } }
   if (/^[A-Z][a-z]/.test(name)) ns = Math.max(ns, 2);
-  const bs = buyers >= 30 ? 3 : buyers >= 15 ? 2 : buyers >= 8 ? 1 : 0;
-  const ts = firstBlk !== null ? (firstBlk >= 1 && firstBlk <= 4 ? 3 : firstBlk <= 8 ? 2 : firstBlk <= 15 ? 1 : 0) : 0;
-  const vs = buyers / 50 >= 0.3 ? 3 : buyers / 50 >= 0.15 ? 2 : buyers / 50 >= 0.08 ? 1 : 0;
-  const ds = buyers >= 20 ? 3 : buyers >= 10 ? 2 : buyers >= 5 ? 1 : 0;
+  const bs = buyers >= 30 ? 3 : buyers >= 15 ? 2 : buyers >= 5 ? 1 : buyers >= 1 ? 0.5 : 0;
+  const ts = firstBlk !== null ? (firstBlk >= 0 && firstBlk <= 4 ? 3 : firstBlk <= 15 ? 2 : firstBlk <= 30 ? 1 : 0) : 0;
+  const vs = buyers / 50 >= 0.3 ? 3 : buyers / 50 >= 0.15 ? 2 : buyers / 50 >= 0.02 ? 1 : 0;
+  const ds = buyers >= 20 ? 3 : buyers >= 10 ? 2 : buyers >= 1 ? 1 : 0;
   const tot = (bs/3)*0.30 + (ns/3)*0.25 + (ts/3)*0.15 + (vs/3)*0.15 + (ds/3)*0.15;
   return { s: Math.round(tot*10), pass: Math.round(tot*10) >= CONFIG.minScore };
 }
 
 // ─── Price ─────────────────────────────────────────────────────────────────
 
-async function getPrice(token) {
+// Price estimation using on-chain data (fallback when DexScreener lags)
+// Uses initial tick price + swap event analysis for real-time tracking
+
+const Q96 = 2n ** 96n;
+const INITIAL_TICK = 198060;
+const WETH_ADDR = "0x4200000000000000000000000000000000000006";
+
+function tickToSqrtPriceX96(tick) {
+  const logPrice = tick * Math.log(1.0001);
+  const price = Math.exp(logPrice);
+  const sqrtPrice = Math.sqrt(price);
+  return BigInt(Math.floor(sqrtPrice * Number(Q96)));
+}
+
+function sqrtPriceX96ToPrice(sqrtPriceX96) {
+  return (Number(sqrtPriceX96) / Number(Q96)) ** 2;
+}
+
+function getInitialPrice() {
+  return sqrtPriceX96ToPrice(tickToSqrtPriceX96(INITIAL_TICK));
+}
+
+// Conservative flow-based price estimation
+// Problem: the naive model inflates PnL because "more buyers" always
+// translates to "price up". Real price depends on size, not just count.
+//
+// Calibrated: 0.5% per buyer (was 2%) — conservative enough that
+// only genuine buyer surges trigger exits.
+// Dead trade threshold: exit if no new buyers in 2 min (no momentum).
+async function estimatePriceFromFlow(client, token, launchBlock, currentBlock) {
+  const initialPrice = getInitialPrice();
+  
+  const txLogs = await client.getLogs({
+    address: token,
+    event: transferAbi[0],
+    fromBlock: currentBlock - 20n,
+    toBlock: currentBlock,
+  }).catch(() => []);
+  
+  let recentBuys = 0;
+  for (const tl of txLogs) {
+    const to = tl.args.to?.toLowerCase();
+    if (to && !SYSTEM.has(to) && to !== "0x0000000000000000000000000000000000000000") recentBuys++;
+  }
+  
+  // Conservative: 0.5% per buyer for small counts, diminishing after 20
+  const capped = Math.min(recentBuys, 40);
+  const multiplier = capped <= 20 ? 1 + (capped * 0.005) : 1 + (20 * 0.005) + ((capped - 20) * 0.002);
+  
+  return {
+    price: initialPrice / multiplier,  // tokens per WETH — more buyers = price up = fewer tokens per WETH
+    source: "flow_estimate",
+    recentBuys,
+  };
+}
+
+async function getPrice(token, launchBlock, currentBlock) {
+  // Try DexScreener first (best when available)
   try {
     const c = new AbortController(); setTimeout(() => c.abort(), 4000);
     const r = await fetch(`https://api.dexscreener.com/latest/dex/tokens/${token}`, { signal: c.signal });
     const d = await r.json();
-    if (!d.pairs?.length) return null;
-    const p = d.pairs.find(x => x.chainId === "robinhood") || d.pairs[0];
-    return { price: parseFloat(p.priceUsd||"0"), fdv: parseFloat(p.fdv||"0"), liq: parseFloat(p.liquidity?.usd||"0"), vol1h: parseFloat(p.volume?.h1||"0") };
-  } catch { return null; }
+    if (d.pairs?.length) {
+      const p = d.pairs.find(x => x.chainId === "robinhood") || d.pairs[0];
+      const priceUsd = parseFloat(p.priceUsd || "0");
+      // Convert to tokens per WETH for consistent comparison
+      // priceUsd = USD per token
+      // tokensPerWeth = ETH price / priceUsd (approximate, using $2800/ETH)
+      const ethPrice = 2800;
+      const tokensPerWeth = priceUsd > 0 ? ethPrice / priceUsd : 0;
+      return {
+        price: tokensPerWeth,  // tokens per WETH
+        priceUsd,              // USD per token
+        fdv: parseFloat(p.fdv || "0"),
+        liq: parseFloat(p.liquidity?.usd || "0"),
+        vol1h: parseFloat(p.volume?.h1 || "0"),
+        source: "dexscreener",
+      };
+    }
+  } catch {}
+
+  // Fallback: on-chain estimation (returns tokens per WETH directly)
+  if (launchBlock && currentBlock) {
+    const estimate = await estimatePriceFromFlow(publicClient, token, launchBlock, currentBlock);
+    return {
+      price: estimate.price,     // tokens per WETH
+      priceUsd: estimate.price > 0 ? 2800 / estimate.price : 0,  // approximate USD
+      fdv: estimate.price * 1e9,
+      liq: 0,
+      vol1h: 0,
+      source: estimate.source,
+      recentBuys: estimate.recentBuys,
+    };
+  }
+
+  return null;
 }
 
 // ─── Scanner ───────────────────────────────────────────────────────────────
 
 async function scan(block) {
-  const logs = await publicClient.getContractEvents({ address: STRATEGY, abi: distAbi, eventName: "DistributionInitialized", fromBlock: block - 200n, toBlock: block });
+  let logs;
+  try {
+    logs = await publicClient.getLogs({
+      address: STRATEGY,
+      fromBlock: block - 400n,
+      toBlock: block,
+    });
+  } catch (e) {
+    try {
+      logs = await publicClient.getLogs({
+        address: STRATEGY,
+        fromBlock: block - 200n,
+        toBlock: block,
+      });
+    } catch (e2) {
+      console.log("  [scan] RPC error:", e2.message?.slice(0, 60));
+      return [];
+    }
+  }
+
+  const distLogs = logs.filter(l => l.topics[0] === "0x0afd26d7f0833a451173acef122d058906aa7708ceb6f67ea7471a649d88b44b");
+  // Always log scan results
+  console.log("  [scan] " + distLogs.length + " launches | " + logs.length + " raw logs");
+
+  if (distLogs.length > 0) {
+    for (const log of distLogs.slice(-3)) {
+      const age = Number(block) - Number(log.blockNumber);
+      console.log("  [scan] launch age=" + age + " blk=" + Number(log.blockNumber));
+    }
+  }
+
   const signals = [];
-  for (const log of logs.slice(-40).reverse()) {
-    const addr = log.args.token; if (!addr) continue;
-    const token = getAddress(addr.toLowerCase());
+
+  for (const log of distLogs.slice(-40).reverse()) {
+    const tokenAddr = "0x" + log.topics[2].slice(26);
+    const token = getAddress(tokenAddr.toLowerCase());
     const blk = Number(log.blockNumber);
     const age = Number(block) - blk;
     if (age > CONFIG.maxAgeBlocks) continue;
 
-    // Only consider very fresh launches — smart money enters at block 2-4
-    // We scan every ~3s, so we're typically 1-2 blocks behind the launch
-    // Age 0-5 = potentially entering alongside smart money
     try {
-      const [name, sym, txLogs, price] = await Promise.all([
+      const [name, sym, txLogs] = await Promise.all([
         publicClient.readContract({ address: token, abi: erc20Abi, functionName: "name" }).catch(() => "?"),
         publicClient.readContract({ address: token, abi: erc20Abi, functionName: "symbol" }).catch(() => "?"),
         publicClient.getLogs({ address: token, event: transferAbi[0], fromBlock: BigInt(blk), toBlock: BigInt(blk) + 50n }).catch(() => []),
-        getPrice(token),
       ]);
+
       const buyers = new Set(); let fbb = null;
       for (const tl of txLogs) { const to = tl.args.to?.toLowerCase(); if (to && !SYSTEM.has(to)) { buyers.add(to); const b = Number(tl.blockNumber); if (fbb === null || b < fbb) fbb = b; } }
       const { s, pass } = scoreLaunch(buyers.size, name, sym, fbb !== null ? fbb - blk : null);
-      if (!pass || !price || price.price === 0) continue;
 
-      // Additional filter: first real buyer must be early (block 1-8)
-      // This is the smart money timing signal
+      if (!pass) continue;
+
       if (fbb !== null) {
         const firstBuyerDelta = fbb - blk;
-        if (firstBuyerDelta < CONFIG.minFirstBuyerBlock || firstBuyerDelta > CONFIG.maxFirstBuyerBlock) continue;
+        if (firstBuyerDelta > CONFIG.maxFirstBuyerBlock) continue;
       }
 
-      signals.push({ token, name, sym, blk, txHash: log.transactionHash, buyers: buyers.size, fbb, score: s, age, price: price.price, fdv: price.fdv, liq: price.liq, vol1h: price.vol1h });
+      const price = await getPrice(token, blk, block);
+      signals.push({ token, name, sym, blk, txHash: log.transactionHash, buyers: buyers.size, fbb, score: s, age, price: price?.price ?? 0, fdv: price?.fdv ?? 0, liq: price?.liq ?? 0, vol1h: price?.vol1h ?? 0, priceSource: price?.source ?? "none" });
     } catch {}
   }
+
   return signals;
 }
 
@@ -292,21 +418,34 @@ async function main() {
   }
   state.start = Date.now();
   saveState(state);
+  console.log("State loaded: status=" + state.status);
 
   let cycles = 0;
-  const max = isLive ? 999999 : 15;
+  const max = isLive ? 999999 : parseInt(process.env.DRY_RUN_CYCLES || "100");
 
   while (cycles < max) {
     cycles++;
     const block = await publicClient.getBlockNumber();
+    console.log("\n[" + cycles + "] Block " + block + " | Bankroll: " + state.bankroll.toFixed(4) + " ETH");
 
     if (state.status === "IDLE" || state.status === "REINVESTING") {
       state.status = "SCANNING"; saveState(state);
-      console.log(`\n🔍 [${cycles}] Scanning (bankroll: ${state.bankroll.toFixed(4)} ETH, PnL: ${state.pnl >= 0 ? "+" : ""}${state.pnl.toFixed(4)})`);
+      console.log("  [scan] starting...");
 
-      // Fast scan: only last ~100 blocks to find fresh launches
-      const signals = await scan(block);
-      if (signals.length === 0) { console.log("  No signals. Waiting..."); await new Promise(r => setTimeout(r, CONFIG.scanCooldownMs)); continue; }
+      let signals;
+      try {
+        signals = await scan(block);
+        console.log("  [scan] result: " + (signals ? signals.length : "null") + " signals");
+      } catch (e) {
+        console.log("  [scan] ERROR:", e.message?.slice(0, 60));
+        await new Promise(r => setTimeout(r, CONFIG.scanCooldownMs));
+        continue;
+      }
+
+      if (!signals || signals.length === 0) {
+        await new Promise(r => setTimeout(r, CONFIG.scanCooldownMs));
+        continue;
+      }
 
       const best = signals[0];
       const trade = await doBuy(state, best, isLive);
@@ -327,9 +466,13 @@ async function main() {
       console.log(`\n👁️  Monitoring $${t.sym} (${t.entryEth.toFixed(4)} ETH @ $${t.entryPrice})`);
 
       while (state.trade && state.status === "MONITORING") {
-        const pd = await getPrice(t.token);
+        const pd = await getPrice(t.token, t.entryBlock, await publicClient.getBlockNumber());
         const elapsed = (Date.now() - start) / 60000;
-        if (!pd || pd.price === 0) {
+
+        // Normalize: use priceUsd for display, price (tokens/WETH) for comparison
+        const currentPriceUsd = pd?.priceUsd ?? 0;
+        const currentPriceTokens = pd?.price ?? 0;
+        if (!pd || currentPriceTokens === 0) {
           if (elapsed > 2) {
             const exitEth = t.entryEth * (isLive ? 0.95 : 1); // Assume 5% loss if can't read
             const pnl = exitEth - t.entryEth;
@@ -342,7 +485,7 @@ async function main() {
           continue;
         }
 
-        const pnlPct = t.entryPrice > 0 ? ((pd.price - t.entryPrice) / t.entryPrice) * 100 : 0;
+        const pnlPct = t.entryPrice > 0 ? ((currentPriceTokens - t.entryPrice) / t.entryPrice) * 100 : 0;
         let action = null;
 
         if (elapsed >= CONFIG.maxHoldMinutes) action = { reason: `max_hold_${elapsed.toFixed(1)}m`, pnlPct };
@@ -365,7 +508,7 @@ async function main() {
           break;
         }
 
-        if (Date.now() % 10000 < CONFIG.pollMs) console.log(`  $${t.sym} | ${elapsed.toFixed(1)}m | ${pnlPct >= 0 ? "+" : ""}${pnlPct.toFixed(1)}%`);
+        if (Date.now() % 10000 < CONFIG.pollMs) console.log(`  $${t.sym} | ${elapsed.toFixed(1)}m | ${pnlPct >= 0 ? "+" : ""}${pnlPct.toFixed(1)}% | src:${pd?.source ?? "?"}`);
         await new Promise(r => setTimeout(r, CONFIG.pollMs));
       }
 
