@@ -538,8 +538,9 @@ export default function BotPage(): React.JSX.Element {
         <h3>Run the bot</h3>
         <p>Execute live buys with your wallet on Robinhood Chain using the scoring engine above.</p>
         <div className={styles.ctaActions}>
-          <code className={styles.codeBlock}>BOT_PRIVATE_KEY=0x… BOT_MAX_ETH_PER_BUY=0.02 node scripts/instant-launch-bot.mjs --live</code>
-          <a className={styles.ctaBtn} href="https://github.com/nodar/openzaps/blob/main/scripts/instant-launch-bot.mjs" target="_blank" rel="noreferrer">View Bot Source ↗</a>
+          <code className={styles.codeBlock}># Dry run first (paper trade) {"\n"}BOT_PRIVATE_KEY=0x… DRY_RUN_CYCLES=200 node scripts/zapbot-autonomous.mjs --dry-run{"\n\n"}# Live trading (requires funded wallet on Robinhood){"\n"}BOT_PRIVATE_KEY=0x… node scripts/zapbot-autonomous.mjs --live</code>
+          <span style={{ fontSize: 11, color: "var(--warn)", marginTop: 4, display: "block" }}>⚠ V4 PoolManager swap on Robinhood is unverified. Test with 0.01 ETH first.</span>
+          <a className={styles.ctaBtn} href="https://github.com/nodar/openzaps/blob/main/scripts/zapbot-autonomous.mjs" target="_blank" rel="noreferrer">View Bot Source ↗</a>
         </div>
       </section>
     </main>

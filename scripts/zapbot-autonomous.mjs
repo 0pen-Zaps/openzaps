@@ -411,6 +411,15 @@ async function main() {
       const { account } = getWallet();
       const balance = await publicClient.getBalance({ address: account.address });
       state.bankroll = parseFloat(formatEther(balance));
+      const acct = account.address;
+      console.log("  Wallet: " + acct);
+      console.log("  Balance: " + state.bankroll.toFixed(4) + " ETH");
+      if (state.bankroll < CONFIG.minEth + CONFIG.gasReserve) {
+        console.error("INSUFFICIENT BALANCE: " + state.bankroll.toFixed(4) + " < " + (CONFIG.minEth + CONFIG.gasReserve).toFixed(4));
+        process.exit(1);
+      }
+      console.log("  First trade in 5s...");
+      await new Promise(r => setTimeout(r, 5000));
     } else {
       state.bankroll = 1.0;
     }
