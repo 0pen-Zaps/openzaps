@@ -1,0 +1,15 @@
+{
+  "bankroll": 1,
+  "available": 1,
+  "trade": null,
+  "history": [],
+  "wins": 0,
+  "losses": 0,
+  "trades": 0,
+  "pnl": 0,
+  "volume": 0,
+  "start": 1785975050764,
+  "status": "SCANNING",
+  "action": "init",
+  "actionTime": 1785975050764
+}
