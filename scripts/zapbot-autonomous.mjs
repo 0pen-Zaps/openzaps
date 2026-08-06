@@ -45,19 +45,19 @@ const POOL_FEE = 3000;
 const POOL_TICK_SPACING = 60;
 
 const CONFIG = {
-  // Entry
-  minScore: 6, minBuyers: 10, maxAgeBlocks: 200,
-  // Exit
-  tp1Pct: 20, tp1Fraction: 0.50,
-  tp2Pct: 50, tp2Fraction: 0.50,
-  stopLossPct: -12, stopLossFraction: 1.0,
-  deadMinutes: 3, deadThresholdPct: 2,
-  maxHoldMinutes: 5,
+  // Entry — smart money buys at block 2-4, we target block 2-5
+  minScore: 5, minBuyers: 8, maxAgeBlocks: 5, minFirstBuyerBlock: 1, maxFirstBuyerBlock: 8,
+  // Exit — quick rotation: 2-4 min holds, tight targets
+  tp1Pct: 15, tp1Fraction: 0.50,
+  tp2Pct: 35, tp2Fraction: 0.50,
+  stopLossPct: -8, stopLossFraction: 1.0,
+  deadMinutes: 2, deadThresholdPct: 1.5,
+  maxHoldMinutes: 4,
   // Position sizing
   basePct: 0.20, maxPct: 0.35, minEth: 0.005, gasReserve: 0.01,
   cooldownMult: 0.5, streakMult: 1.25, streakThreshold: 3,
   // Timing
-  pollMs: 2000, scanCooldownMs: 5000,
+  pollMs: 1500, scanCooldownMs: 3000,
   // State
   stateFile: path.join(process.cwd(), "data", "zapbot-state.json"),
 };
@@ -123,10 +123,10 @@ function scoreLaunch(buyers, name, symbol, firstBlk) {
   for (const p of SPAM) { if (p.test(symbol)) return { s: 0, pass: false }; }
   let ns = 1; for (const p of MEME) { if (p.test(name) || p.test(symbol)) { ns = 3; break; } }
   if (/^[A-Z][a-z]/.test(name)) ns = Math.max(ns, 2);
-  const bs = buyers >= 30 ? 3 : buyers >= 15 ? 2 : 1;
-  const ts = firstBlk !== null ? (firstBlk >= 3 && firstBlk <= 10 ? 3 : firstBlk <= 25 ? 2 : 1) : 0;
-  const vs = buyers / 50 >= 0.3 ? 3 : buyers / 50 >= 0.15 ? 2 : 1;
-  const ds = buyers >= 20 ? 3 : buyers >= 10 ? 2 : 1;
+  const bs = buyers >= 30 ? 3 : buyers >= 15 ? 2 : buyers >= 8 ? 1 : 0;
+  const ts = firstBlk !== null ? (firstBlk >= 1 && firstBlk <= 4 ? 3 : firstBlk <= 8 ? 2 : firstBlk <= 15 ? 1 : 0) : 0;
+  const vs = buyers / 50 >= 0.3 ? 3 : buyers / 50 >= 0.15 ? 2 : buyers / 50 >= 0.08 ? 1 : 0;
+  const ds = buyers >= 20 ? 3 : buyers >= 10 ? 2 : buyers >= 5 ? 1 : 0;
   const tot = (bs/3)*0.30 + (ns/3)*0.25 + (ts/3)*0.15 + (vs/3)*0.15 + (ds/3)*0.15;
   return { s: Math.round(tot*10), pass: Math.round(tot*10) >= CONFIG.minScore };
 }
@@ -147,7 +147,7 @@ async function getPrice(token) {
 // ─── Scanner ───────────────────────────────────────────────────────────────
 
 async function scan(block) {
-  const logs = await publicClient.getContractEvents({ address: STRATEGY, abi: distAbi, eventName: "DistributionInitialized", fromBlock: block - 1000n, toBlock: block });
+  const logs = await publicClient.getContractEvents({ address: STRATEGY, abi: distAbi, eventName: "DistributionInitialized", fromBlock: block - 200n, toBlock: block });
   const signals = [];
   for (const log of logs.slice(-40).reverse()) {
     const addr = log.args.token; if (!addr) continue;
@@ -155,6 +155,10 @@ async function scan(block) {
     const blk = Number(log.blockNumber);
     const age = Number(block) - blk;
     if (age > CONFIG.maxAgeBlocks) continue;
+
+    // Only consider very fresh launches — smart money enters at block 2-4
+    // We scan every ~3s, so we're typically 1-2 blocks behind the launch
+    // Age 0-5 = potentially entering alongside smart money
     try {
       const [name, sym, txLogs, price] = await Promise.all([
         publicClient.readContract({ address: token, abi: erc20Abi, functionName: "name" }).catch(() => "?"),
@@ -166,6 +170,14 @@ async function scan(block) {
       for (const tl of txLogs) { const to = tl.args.to?.toLowerCase(); if (to && !SYSTEM.has(to)) { buyers.add(to); const b = Number(tl.blockNumber); if (fbb === null || b < fbb) fbb = b; } }
       const { s, pass } = scoreLaunch(buyers.size, name, sym, fbb !== null ? fbb - blk : null);
       if (!pass || !price || price.price === 0) continue;
+
+      // Additional filter: first real buyer must be early (block 1-8)
+      // This is the smart money timing signal
+      if (fbb !== null) {
+        const firstBuyerDelta = fbb - blk;
+        if (firstBuyerDelta < CONFIG.minFirstBuyerBlock || firstBuyerDelta > CONFIG.maxFirstBuyerBlock) continue;
+      }
+
       signals.push({ token, name, sym, blk, txHash: log.transactionHash, buyers: buyers.size, fbb, score: s, age, price: price.price, fdv: price.fdv, liq: price.liq, vol1h: price.vol1h });
     } catch {}
   }
@@ -261,10 +273,11 @@ async function main() {
   if (isLive && !process.env.BOT_PRIVATE_KEY) { console.error("BOT_PRIVATE_KEY required for --live"); process.exit(1); }
 
   console.log(`🤖 ZapBot Autonomous — ${isLive ? "🔴 LIVE TRADING" : "📝 DRY RUN"}`);
-  console.log(`  Chain: Robinhood (4663) | PoolManager: ${PM.slice(0, 10)}...`);
-  console.log(`  Entry: score≥${CONFIG.minScore}, buyers≥${CONFIG.minBuyers}, age<${CONFIG.maxAgeBlocks}blk`);
-  console.log(`  Exit: +${CONFIG.tp1Pct}%/+${CONFIG.tp2Pct}%, ${CONFIG.stopLossPct}%, dead>${CONFIG.deadMinutes}m, max ${CONFIG.maxHoldMinutes}m`);
-  console.log(`  Size: ${(CONFIG.basePct*100)}% base, ${(CONFIG.maxPct*100)}% max\n`);
+    console.log(`  Chain: Robinhood (4663) | PoolManager: ${PM.slice(0, 10)}...`);
+    console.log(`  Entry: score≥${CONFIG.minScore}, buyers≥${CONFIG.minBuyers}, age≤${CONFIG.maxAgeBlocks}blk, 1st buyer block ${CONFIG.minFirstBuyerBlock}-${CONFIG.maxFirstBuyerBlock}`);
+    console.log(`  Exit: +${CONFIG.tp1Pct}%/+${CONFIG.tp2Pct}%, ${CONFIG.stopLossPct}%, dead>${CONFIG.deadMinutes}m, max ${CONFIG.maxHoldMinutes}m`);
+    console.log(`  Size: ${(CONFIG.basePct*100)}% base, ${(CONFIG.maxPct*100)}% max`);
+    console.log(`  Edge: Smart money enters block 2-4, exits block 9-32. We mirror this.`);
 
   let state = loadState() || defaultState();
   if (state.bankroll === 0) {
@@ -291,6 +304,7 @@ async function main() {
       state.status = "SCANNING"; saveState(state);
       console.log(`\n🔍 [${cycles}] Scanning (bankroll: ${state.bankroll.toFixed(4)} ETH, PnL: ${state.pnl >= 0 ? "+" : ""}${state.pnl.toFixed(4)})`);
 
+      // Fast scan: only last ~100 blocks to find fresh launches
       const signals = await scan(block);
       if (signals.length === 0) { console.log("  No signals. Waiting..."); await new Promise(r => setTimeout(r, CONFIG.scanCooldownMs)); continue; }
 
