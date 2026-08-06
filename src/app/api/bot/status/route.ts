@@ -12,8 +12,12 @@ interface BotState {
   available: number;
   pnl: number;
   trades: number;
+  /** Streak counters — reset on the opposite outcome. Position sizing reads these. */
   wins: number;
   losses: number;
+  /** Cumulative counts. Only these can form a win rate. */
+  winsTotal?: number;
+  lossesTotal?: number;
   volume: number;
   status: string;
   action: string;
@@ -68,9 +72,16 @@ export async function GET() {
         available: state.available,
         pnl: state.pnl,
         trades: state.trades,
-        wins: state.wins,
-        losses: state.losses,
-        winRate: state.trades > 0 ? Math.round((state.wins / state.trades) * 100) : 0,
+        // Report cumulative wins/losses, not the streak counters. Dividing a
+        // streak by the trade count renders "0%" the moment one loss lands.
+        // Older state files predate these fields; omit the rate rather than
+        // compute a wrong one from the streaks.
+        wins: state.winsTotal ?? 0,
+        losses: state.lossesTotal ?? 0,
+        winRate:
+          state.winsTotal === undefined || state.trades === 0
+            ? null
+            : Math.round((state.winsTotal / state.trades) * 100),
         status: state.status,
         action: state.action,
         stateAgeSeconds: stateAge,

@@ -59,3 +59,9 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 /.swc
+
+# ZapBot runtime session state. Written every cycle by scripts/zapbot-autonomous.mjs
+# and read by /api/bot/status, so committing it publishes a local session's
+# trades and PnL to the public /bot page. Absent state renders as no session,
+# which is the honest result for a bot that runs on someone's machine.
+/data/zapbot-state.json

@@ -154,9 +154,11 @@ export const STATIC_PAGE_SEO = {
     priority: 0.7,
   },
   bot: {
-    title: "ZapBot — Uniswap Instant Launch Analytics & Auto-Buy",
+    // Rendered title carries a " | OpenZaps" suffix, so the base must stay ≤49
+    // to clear the 60-char search-snippet budget the SEO test enforces.
+    title: "ZapBot — Uniswap Launch Analytics & Auto-Buy",
     description:
-      "Monitor Uniswap Instant Launch tokens on Robinhood Chain in real-time. Score launches by early buyer patterns, token quality, and velocity. Manage automated buys.",
+      "Track Uniswap Instant Launch tokens on Robinhood Chain in real time. Score launches by early buyer patterns, token quality, and velocity. Manage automated buys.",
     path: "/bot",
     ogImage: "/og/app.png",
     changeFrequency: "daily",

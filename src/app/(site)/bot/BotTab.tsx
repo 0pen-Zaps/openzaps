@@ -4,7 +4,9 @@ import styles from "./bot.module.css";
 
 interface BotSession {
   bankroll: number; available: number; pnl: number;
-  trades: number; wins: number; losses: number; winRate: number;
+  trades: number; wins: number; losses: number;
+  /** null when the session predates cumulative win/loss tracking — show nothing rather than a wrong rate. */
+  winRate: number | null;
   status: string; action: string; stateAgeSeconds: number; running: boolean;
   currentTrade: { token: string; sym: string; entryBlock: number; entryPrice: number; entryEth: number } | null;
   history: { sym: string; pnlPct: number; pnl: number; reason: string; dur: number; ts: number }[];
@@ -99,7 +101,7 @@ export function BotTab({ status }: { status: BotStatus | null }) {
                 ["Bankroll", sess.bankroll.toFixed(4) + " ETH"],
                 ["PnL", (sess.pnl >= 0 ? "+" : "") + sess.pnl.toFixed(4) + " ETH"],
                 ["Trades", String(sess.trades)],
-                ["Win Rate", sess.winRate + "% (" + sess.wins + "W/" + sess.losses + "L)"],
+                ["Win Rate", sess.winRate === null ? "—" : sess.winRate + "% (" + sess.wins + "W/" + sess.losses + "L)"],
                 ["State Age", sess.stateAgeSeconds + "s ago"],
               ].map(([k, v]) => (
                 <div key={k} className={styles.detailRow}>
