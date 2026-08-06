@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { CHAIN } from "@/lib/config";
 import styles from "./bot.module.css";
+import { BotTab } from "./BotTab";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -58,6 +59,26 @@ interface ApiResponse {
   meta: { cached: boolean; stale?: boolean; fetchedAt: number };
 }
 
+interface BotSession {
+  bankroll: number; available: number; pnl: number;
+  trades: number; wins: number; losses: number; winRate: number;
+  status: string; action: string; stateAgeSeconds: number; running: boolean;
+  currentTrade: { token: string; sym: string; entryBlock: number; entryPrice: number; entryEth: number } | null;
+  history: { sym: string; pnlPct: number; pnl: number; reason: string; dur: number; ts: number }[];
+}
+
+interface BotStrategy {
+  entry: { minScore: number; minBuyers: number; maxAgeBlocks: number; maxFirstBuyerBlock: number };
+  exit: { tp1: number; tp1Fraction: number; tp2: number; tp2Fraction: number; stopLoss: number; deadMinutes: number; maxHoldMinutes: number };
+  sizing: { basePct: number; maxPct: number; gasReserve: number };
+  edge: string;
+}
+
+interface BotStatus {
+  strategy: BotStrategy;
+  session: BotSession | null;
+}
+
 // ── Constants ──────────────────────────────────────────────────────────────
 
 const REFRESH_MS = 25_000;
@@ -100,13 +121,14 @@ export default function BotPage(): React.JSX.Element {
   const [data, setData] = useState<ApiResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [tab, setTab] = useState<"monitor" | "leaderboard" | "analytics">("monitor");
+  const [tab, setTab] = useState<"monitor" | "leaderboard" | "analytics" | "bot">("monitor");
   const [filter, setFilter] = useState<"all" | "buy" | "volume">("all");
   const [selectedLaunch, setSelectedLaunch] = useState<LaunchRow | null>(null);
   const [sortKey, setSortKey] = useState<string>("ageMinutes");
   const [sortDir, setSortDir] = useState<1 | -1>(1);
   const [ping, setPing] = useState<0 | 1 | 2>(0);
   const [refreshCountdown, setRefreshCountdown] = useState(REFRESH_MS / 1000);
+  const [botStatus, setBotStatus] = useState<BotStatus | null>(null);
   const timerRef = useRef<ReturnType<typeof setInterval>>(undefined);
 
   const fetchData = useCallback(async () => {
@@ -221,10 +243,11 @@ export default function BotPage(): React.JSX.Element {
       {/* ── Tab bar ──────────────────────────────────────────────────────── */}
       <section className={styles.filterBar}>
         <div className={styles.tabs}>
-          {(["monitor", "leaderboard", "analytics"] as const).map(t => (
+          {(["monitor", "leaderboard", "analytics", "bot"] as const).map(t => (
             <button key={t} className={`${styles.tab} ${tab === t ? styles.tabActive : ""}`} onClick={() => setTab(t)}>
-              {t === "monitor" ? "🔍 Live Monitor" : t === "leaderboard" ? "🏆 Leaderboard" : "📊 Analytics"}
+              {t === "monitor" ? "🔍 Live Monitor" : t === "leaderboard" ? "🏆 Leaderboard" : t === "analytics" ? "📊 Analytics" : "⚡ Bot"}
               {t === "leaderboard" && leaderboard.length > 0 && <span className={styles.chip}>{leaderboard.length}</span>}
+              {t === "bot" && botStatus?.session?.trades !== undefined && botStatus.session.trades > 0 && <span className={styles.chip}>{botStatus.session.trades}</span>}
             </button>
           ))}
         </div>
@@ -509,6 +532,8 @@ export default function BotPage(): React.JSX.Element {
       )}
 
       {/* ── CTA footer ───────────────────────────────────────────────────── */}
+      {tab === "bot" && <BotTab status={botStatus} />}
+
       <section className={styles.cta}>
         <h3>Run the bot</h3>
         <p>Execute live buys with your wallet on Robinhood Chain using the scoring engine above.</p>
