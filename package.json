@@ -28,7 +28,7 @@
     "test:relay-pg16": "node scripts/test-relay-admission-pg16.mjs"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.115.0",
+    "@anthropic-ai/sdk": "^0.116.0",
     "@vercel/analytics": "^2.0.1",
     "ai": "^6.0.237",
     "discord-interactions": "^4.4.0",
