@@ -361,6 +361,35 @@ describe("0xZAPS fee rewards public surface", () => {
     expect(workspace).toContain("volume leaderboard");
   });
 
+  it("announces campaign 2 fail-closed off the manifest, never RPC", () => {
+    const panel = read("src/app/(site)/rewards/Campaign2Panel.tsx");
+    const manifest = read("src/lib/rewards2.ts");
+    // The page renders the panel after the live campaign-1 workspace.
+    expect(page).toContain("<Campaign2Panel />");
+    // The not-live boundary is a single unfragmented sentence, and the
+    // deployment switch is the manifest, deliberately not env or RPC.
+    expect(panel).toContain(
+      "Campaign 2 is not live yet. This panel reads nothing from the chain and asks for no signature until the campaign contracts arrive as a reviewed release with verified addresses.",
+    );
+    expect(panel).toContain("feeRewards2Deployment()");
+    expect(manifest).toContain("deployment: null");
+    // A half-released campaign is a release error, never a usable surface.
+    expect(panel).toContain("Release error: campaign 2 is partially configured.");
+    // The split states mechanism, with both legs and the permanence claim
+    // grounded in construction.
+    expect(panel).toContain("100% of fees");
+    expect(manifest).toContain('id: "stakers"');
+    expect(manifest).toContain('id: "hook-blocks"');
+    expect(manifest).toContain("no exit path in the bytecode");
+    // The no-yield and audit boundaries stay beside the announcement.
+    expect(panel).toContain("No yield or APR.");
+    expect(panel).toContain("These contracts have not been externally audited.");
+    // No return, projection, or price-support vocabulary anywhere on it.
+    expect(panel).not.toMatch(/\bAPY\s*[:=]/u);
+    expect(panel).not.toContain("deflation");
+    expect(panel).not.toContain("price support");
+  });
+
   it("keeps permanent token surfaces safe across campaign lifecycle phases", () => {
     expect(tokenPanel).toContain("Inspect the first fixed fee campaign");
     expect(tokenPanel).toContain("seven-day Aug 3–10, 2026");
