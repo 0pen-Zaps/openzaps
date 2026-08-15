@@ -125,22 +125,62 @@ or term is a different reviewed release, exactly as with campaign 1.
 
 ## 5. Operations during and after the window
 
-Everything below is permissionless; anyone may pay gas, destinations are
-fixed by the contracts:
+The operator console on `/rewards` (Campaign 2 panel) is the working
+surface for all of this: its preflight strip re-verifies the checks below
+against one pinned block, and once the release manifest is filled its
+buttons run each action as simulate → wallet review → receipt →
+runtime-hash re-check. Everything except the marked sponsor levers is
+permissionless; destinations are fixed by the contracts:
 
 - **During (both legs):** `campaign.harvest()` / `campaign.syncRewards()`
   stream fees to stakers; `hookBlocks.bond(0)` converts the other half into
   bonded HOOKR (≤0.05 ETH per crank, one crank per block, spot×0.97 floor).
   A sensible cadence is one crank of each per day or two; there is no
   penalty for missing days beyond reward smoothing.
+- **Safeguard (sponsor):** `hookBlocks.setBondingPaused(true|false)` halts
+  or restores FUTURE bond calls only — use it if the pool breaks or every
+  bond is getting ground against the floor. It cannot move assets and never
+  gates funding, finalize, or the sweep.
 - **After `endAt`:** call `finalize()` on BOTH contracts. Each returns its
   50 shares to the sponsor. Then keep calling `hookBlocks.bond(0)` until
   residual WETH is below `MIN_BOND_WEI`.
+- **Safeguard (sponsor):** from `endAt` the SPONSOR may call
+  `hookBlocks.sweepUnbonded()` at once if bonding is impossible — no need
+  to wait out `sweepAfter`, which remains the permissionless backstop.
 - **After `claimDeadline` (leg A):** `sweepExpiredRewards()` returns
   unclaimed staker WETH to the sponsor.
-- **After `sweepAfter` (leg B):** `sweepUnbonded()` recovers any residual
-  WETH/ETH to the sponsor. Bonded HOOKR has no exit path — nothing to
-  operate, ever.
+- **After `sweepAfter` (leg B):** `sweepUnbonded()` opens to everyone.
+  Bonded HOOKR has no exit path — nothing to operate, ever.
+
+## 5b. Pipeline verification record (2026-08-14)
+
+The claim → convert → bond pipeline and every safeguard were dress-rehearsed
+against LIVE chain state on a fork before any broadcast — real vault, real
+Clanker fees, real HOOKR pool, real PoolManager bytecode:
+
+```bash
+RUN_ROBINHOOD_FORK=true forge test \
+  --match-contract "HookBlocksRehearsalForkTest|HookBlocksRobinhoodForkTest" -vv
+```
+
+All three rehearsals pass:
+
+- `test_liveBondLegEndToEnd` — fund 50 real shares → harvest real locker
+  fees → market-buy real HOOKR → bond → rate-limit check → finalize returns
+  the shares.
+- `test_rehearsal_fullCampaignLifecycle` — 14 simulated days with ongoing
+  fee flow (WETH into the real vault + permissionless `sync()`), multiple
+  cranks all under the per-call cap, finalize, residual drain, and the
+  closing invariant: the ledger sums exactly to the totals and the totals
+  exactly to the contract's HOOKR balance.
+- `test_rehearsal_failureModesAndSafeguards` — a failed floor retains WETH
+  and bonds nothing; pause halts the crank and unpause restores it
+  unchanged; the sweep is closed to everyone mid-window, opens to the
+  sponsor at `endAt` and to everyone at `sweepAfter`; no step can touch a
+  bonded token.
+
+Re-run the block above after ANY contract change and before broadcast; a
+fix is new code and re-verifies from zero.
 
 ## 6. Hard rails
 

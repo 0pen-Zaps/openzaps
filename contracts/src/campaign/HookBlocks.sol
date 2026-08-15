@@ -66,9 +66,22 @@ interface IV4PoolManager {
 ///         deposited shares to the sponsor, which mechanically ends this
 ///         contract's claim on future fees; residual WETH keeps bonding until
 ///         dry. If bonding ever becomes impossible (the pinned pool's
-///         liquidity is not locked), `sweepUnbonded()` after `SWEEP_AFTER`
-///         recovers un-bonded WETH and native ETH to the sponsor so value is
-///         never trapped — bonded HOOKR stays where it is, forever.
+///         liquidity is not locked), `sweepUnbonded()` recovers un-bonded
+///         WETH and native ETH to the sponsor so value is never trapped —
+///         bonded HOOKR stays where it is, forever.
+///
+///         Two narrow admin safeguards exist, both sponsor-only and both
+///         structurally unable to touch bonded HOOKR or divert the leg's
+///         WETH anywhere but its fixed destinations:
+///           1. `setBondingPaused` halts FUTURE `bond()` calls (for a broken
+///              or manipulated pool). It gates nothing else: funding,
+///              `finalize`, and the sweep run pause-or-not, so principal and
+///              recovery paths are never behind the switch.
+///           2. `sweepUnbonded` opens to the SPONSOR at `END_AT` (recover a
+///              stuck leg as soon as the term is over) and to EVERYONE at
+///              `SWEEP_AFTER` (the sponsor-less backstop). Payout is fixed
+///              to the sponsor on both paths; during the window nobody, the
+///              sponsor included, can move the leg's WETH.
 /// @dev The swap is a pooled, permissionless conversion floored on same-block
 ///      spot, which is sandwichable in principle (see FeeShareAutoCompounder
 ///      for the full argument). The exposure per event is bounded the same
@@ -103,6 +116,7 @@ contract HookBlocks {
     error InvalidAmount();
     error FeeShareTransferMismatch();
     error BondRateLimited();
+    error BondingPaused();
     error BelowMinBond();
     error FloorTooLow();
     error FloorNotMet(uint256 floor, uint256 actual);
@@ -123,6 +137,7 @@ contract HookBlocks {
     event Bonded(
         address indexed caller, uint256 indexed blockIndex, uint256 ethIn, uint256 hookrBonded, uint256 floor
     );
+    event BondingPauseSet(bool paused);
     event Finalized(uint256 feeSharesReturned);
     event UnbondedSwept(address indexed caller, uint256 wethAmount, uint256 nativeAmount);
 
@@ -183,6 +198,9 @@ contract HookBlocks {
 
     bool public feeSharesFunded;
     bool public finalized;
+    /// @notice Sponsor-set circuit breaker for FUTURE bond() calls only.
+    ///         Funding, finalize, and the sweep are never behind it.
+    bool public bondingPaused;
     uint256 public feeSharePrincipal;
     /// @notice Last block a bond fired; at most one bond per block.
     uint256 public lastBondBlock;
@@ -300,6 +318,7 @@ contract HookBlocks {
     ///        keeps the spot floor alone.
     function bond(uint256 minHookrOut) external nonReentrant returns (uint256 hookrBonded) {
         require(feeSharesFunded, NotFunded());
+        require(!bondingPaused, BondingPaused());
         require(lastBondBlock != block.number, BondRateLimited());
         lastBondBlock = block.number;
 
@@ -403,6 +422,19 @@ contract HookBlocks {
         return abi.encode(uint256(amount1), owed);
     }
 
+    /// @notice Sponsor circuit breaker for the conversion leg: pausing stops
+    ///         FUTURE `bond()` calls while a pool is broken or being ground
+    ///         against the floor, and nothing else. It cannot move an asset,
+    ///         cannot touch bonded HOOKR, and cannot reach principal or
+    ///         recovery paths: funding, `finalize`, and `sweepUnbonded` all
+    ///         run pause-or-not, and the sweep's payout stays fixed to the
+    ///         sponsor either way.
+    function setBondingPaused(bool paused) external {
+        require(msg.sender == SPONSOR, OnlySponsor());
+        bondingPaused = paused;
+        emit BondingPauseSet(paused);
+    }
+
     // ------------------------------------------------------------ settlement
 
     /// @notice Returns exactly the deposited fee shares to the sponsor after
@@ -428,12 +460,16 @@ contract HookBlocks {
         emit Finalized(shares);
     }
 
-    /// @notice Recovers un-bonded WETH and native ETH to the sponsor once the
-    ///         sweep window opens — the value-never-trapped escape hatch for
-    ///         a pool whose liquidity walked away. Permissionless, payout
-    ///         fixed to the sponsor, and structurally unable to touch HOOKR.
+    /// @notice Recovers un-bonded WETH and native ETH to the sponsor — the
+    ///         value-never-trapped escape hatch for a pool whose liquidity
+    ///         walked away. The SPONSOR may sweep as soon as the term ends
+    ///         (`END_AT`); everyone else from `SWEEP_AFTER`, the backstop
+    ///         that needs no sponsor at all. Payout is fixed to the sponsor
+    ///         on both paths, the window itself is untouchable (no sweep
+    ///         before `END_AT` for anyone), and no path reaches HOOKR.
     function sweepUnbonded() external nonReentrant {
-        require(block.timestamp > SWEEP_AFTER, SweepNotOpen());
+        uint256 opensAt = msg.sender == SPONSOR ? END_AT : SWEEP_AFTER;
+        require(block.timestamp > opensAt, SweepNotOpen());
         uint256 wethAmount = IERC20(WETH).balanceOf(address(this));
         uint256 nativeAmount = address(this).balance;
         require(wethAmount != 0 || nativeAmount != 0, NothingToSweep());

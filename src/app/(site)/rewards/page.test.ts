@@ -390,6 +390,33 @@ describe("0xZAPS fee rewards public surface", () => {
     expect(panel).not.toContain("price support");
   });
 
+  it("gates the campaign-2 operator console on the release, with honest writes", () => {
+    const operator = read("src/app/(site)/rewards/Campaign2Operator.tsx");
+    const server = read("src/lib/rewards2-server.ts");
+    const route = read("src/app/api/protocol/rewards2/route.ts");
+    // The console mounts inside the panel and reads only the block-pinned
+    // preflight; a failed snapshot is named, never zeroed.
+    const panel = read("src/app/(site)/rewards/Campaign2Panel.tsx");
+    expect(panel).toContain("<Campaign2Operator />");
+    expect(operator).toContain('fetch("/api/protocol/rewards2"');
+    expect(operator).toContain("The preflight snapshot is unavailable.");
+    expect(route).toContain("unavailable right now");
+    expect(route).toContain('"cache-control": "no-store, max-age=0"');
+    // All-or-nothing snapshot: one pinned block, throws on any failed read.
+    expect(server).toContain("all-or-nothing");
+    expect(server).toContain("blockNumber");
+    // Writes exist only behind the filled manifest, simulate first, verify
+    // the runtime hash after the receipt, and label sponsor levers.
+    expect(operator).toContain("writes arrive with the release");
+    expect(operator).toContain("simulateContract");
+    expect(operator).toContain("runtime hash no longer matches the release");
+    expect(operator).toContain("sponsorOnly");
+    expect(operator).toContain("setBondingPaused");
+    // The wallet stage never claims success from a hash alone.
+    expect(operator).toContain("Nothing has been submitted yet.");
+    expect(operator).toContain("A hash exists, but receipt verification was interrupted.");
+  });
+
   it("keeps permanent token surfaces safe across campaign lifecycle phases", () => {
     expect(tokenPanel).toContain("Inspect the first fixed fee campaign");
     expect(tokenPanel).toContain("seven-day Aug 3–10, 2026");

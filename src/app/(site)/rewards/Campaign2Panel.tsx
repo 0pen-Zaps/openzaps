@@ -3,6 +3,7 @@ import {
   FEE_REWARDS_2_MANIFEST,
   feeRewards2Deployment,
 } from "@/lib/rewards2";
+import { Campaign2Operator } from "./Campaign2Operator";
 import styles from "./campaign2.module.css";
 
 const MANIFEST = FEE_REWARDS_2_MANIFEST;
@@ -125,6 +126,8 @@ export function Campaign2Panel(): React.JSX.Element {
 
       <p className={styles.boundary}>{NO_YIELD}</p>
       <p className={styles.boundary}>{AUDIT_STATUS}</p>
+
+      <Campaign2Operator />
     </section>
   );
 }

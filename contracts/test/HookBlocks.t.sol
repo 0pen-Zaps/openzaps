@@ -762,6 +762,103 @@ contract HookBlocksTest is Test {
         hb.bond(0);
     }
 
+    // ------------------------------------------------------- admin safeguards
+
+    function test_pause_onlySponsor() public {
+        vm.expectRevert(HookBlocks.OnlySponsor.selector);
+        hb.setBondingPaused(true);
+        assertFalse(hb.bondingPaused());
+    }
+
+    function test_pause_gatesBondOnlyAndUnpauses() public {
+        _fund();
+        vault.setClaimable(address(hb), 0.01 ether);
+
+        vm.prank(sponsor);
+        hb.setBondingPaused(true);
+        vm.expectRevert(HookBlocks.BondingPaused.selector);
+        hb.bond(0);
+
+        // Unpause restores the permissionless crank unchanged.
+        vm.prank(sponsor);
+        hb.setBondingPaused(false);
+        uint256 bonded = hb.bond(0);
+        assertEq(bonded, (0.01 ether * 3_500_000e18) / 1e18);
+    }
+
+    function test_pause_emitsEvent() public {
+        vm.expectEmit(false, false, false, true, address(hb));
+        emit HookBlocks.BondingPauseSet(true);
+        vm.prank(sponsor);
+        hb.setBondingPaused(true);
+    }
+
+    function test_pause_neverBlocksFinalizeOrSweep() public {
+        _fund();
+        vault.setClaimable(address(hb), 0.01 ether);
+        vm.prank(sponsor);
+        hb.setBondingPaused(true);
+
+        // Finalize runs paused: principal is never behind the switch.
+        vm.warp(endAt + 1);
+        hb.finalize();
+        assertEq(vault.balanceOf(sponsor), 50e18);
+
+        // The final defensive claim inside finalize pulled the reward as
+        // WETH; with bonding paused, the sponsor's early sweep recovers it.
+        assertEq(weth.balanceOf(address(hb)), 0.01 ether);
+        vm.prank(sponsor);
+        hb.sweepUnbonded();
+        assertEq(weth.balanceOf(sponsor), 0.01 ether);
+    }
+
+    function test_sweep_sponsorMayRecoverFromEndAt() public {
+        _fund();
+        weth.mint(address(hb), 0.02 ether);
+        vm.warp(endAt + 1);
+
+        // Before SWEEP_AFTER a non-sponsor is still gated...
+        vm.prank(keeper);
+        vm.expectRevert(HookBlocks.SweepNotOpen.selector);
+        hb.sweepUnbonded();
+
+        // ...but the sponsor recovers the stuck leg immediately.
+        vm.prank(sponsor);
+        hb.sweepUnbonded();
+        assertEq(weth.balanceOf(sponsor), 0.02 ether);
+    }
+
+    function test_sweep_nobodyBeforeEndAt_sponsorIncluded() public {
+        _fund();
+        weth.mint(address(hb), 0.02 ether);
+        vm.warp(endAt); // the window's last second is still inside the term
+        vm.prank(sponsor);
+        vm.expectRevert(HookBlocks.SweepNotOpen.selector);
+        hb.sweepUnbonded();
+    }
+
+    function test_safeguards_canNeverTouchHookr() public {
+        _fund();
+        vault.setClaimable(address(hb), 0.01 ether);
+        hb.bond(0);
+        uint256 bonded = hookr.balanceOf(address(hb));
+        assertGt(bonded, 0);
+
+        // Pause, finalize, early-sweep with residue: the ledger and the
+        // HOOKR balance are byte-identical afterward.
+        vm.prank(sponsor);
+        hb.setBondingPaused(true);
+        weth.mint(address(hb), 0.01 ether);
+        vm.warp(endAt + 1);
+        hb.finalize();
+        vm.prank(sponsor);
+        hb.sweepUnbonded();
+
+        assertEq(hookr.balanceOf(address(hb)), bonded);
+        assertEq(hb.totalHookrBonded(), bonded);
+        assertEq(hookr.balanceOf(sponsor), 0);
+    }
+
     // ------------------------------------------------------------ settlement
 
     function test_finalize_gatesAndReturnsExactPrincipal() public {

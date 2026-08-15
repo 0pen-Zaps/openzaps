@@ -80,8 +80,10 @@ export const FEE_REWARDS_2_MANIFEST = {
  * deliberate not-live state); anything else = `partial`, a release error the
  * surface must never present as usable.
  */
-export function feeRewards2Deployment(): "absent" | "partial" | "configured" {
-  const deployment = FEE_REWARDS_2_MANIFEST.deployment as {
+export function feeRewards2Deployment(
+  manifest: { deployment: unknown } = FEE_REWARDS_2_MANIFEST,
+): "absent" | "partial" | "configured" {
+  const deployment = manifest.deployment as {
     campaign?: unknown;
     hookBlocks?: unknown;
   } | null;
@@ -130,6 +132,7 @@ export const hookBlocksAbi = parseAbi([
   "function MIN_BOND_WEI() view returns (uint256)",
   "function feeSharesFunded() view returns (bool)",
   "function finalized() view returns (bool)",
+  "function bondingPaused() view returns (bool)",
   "function feeSharePrincipal() view returns (uint256)",
   "function totalEthBonded() view returns (uint256)",
   "function totalHookrBonded() view returns (uint256)",
@@ -139,10 +142,12 @@ export const hookBlocksAbi = parseAbi([
   "function lastBondBlock() view returns (uint256)",
   "function fundFeeShares(uint256 amount)",
   "function bond(uint256 minHookrOut) returns (uint256 hookrBonded)",
+  "function setBondingPaused(bool paused)",
   "function finalize()",
   "function sweepUnbonded()",
   "event FeeSharesFunded(address indexed sponsor, uint256 amount)",
   "event Bonded(address indexed caller, uint256 indexed blockIndex, uint256 ethIn, uint256 hookrBonded, uint256 floor)",
+  "event BondingPauseSet(bool paused)",
   "event Finalized(uint256 feeSharesReturned)",
   "event UnbondedSwept(address indexed caller, uint256 wethAmount, uint256 nativeAmount)",
 ]);
@@ -184,6 +189,7 @@ export const CAMPAIGN_2_LEGS: readonly Campaign2Leg[] = [
     points: [
       "A permissionless crank converts the leg's WETH into $HOOKR through one constructor-pinned pool — no router, no path arrays.",
       "Every buy is floored against same-block spot and capped per call, and lands as one immutable Hook Block in an append-only ledger.",
+      "If a step fails, the crank reverts and the WETH simply waits: the sponsor can pause future bonds and recover un-bonded WETH once the term ends.",
       "Bonded HOOKR has no exit path in the bytecode: not for the sponsor, not for anyone. Permanence is construction, not policy.",
     ],
   },

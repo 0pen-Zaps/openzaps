@@ -108,14 +108,27 @@ protocol flow (never user principal) and the per-event exposure is capped:
 
 A TWAP floor remains the follow-up it already was for the compounder.
 
-### Value-can-never-be-trapped
+### Value-can-never-be-trapped, and two admin safeguards
 
 If the HOOKR pool ever empties (its LP is NOT locked — project-token rule),
-`bond()` fails closed and WETH accumulates. After `SWEEP_AFTER`
-(= `claimDeadline` spacing), `sweepUnbonded()` — permissionless, payout
-fixed to the sponsor — recovers residual WETH and native ETH. It can never
-touch HOOKR: bonded HOOKR has no exit on any path, which keeps "permanently
-bonded" a statement of construction rather than of intent.
+`bond()` fails closed and WETH accumulates. Two sponsor-scoped safeguards
+bound the blast radius of a broken or manipulated pipeline, and both are
+structurally unable to touch bonded HOOKR or divert the leg's WETH:
+
+- **`setBondingPaused` (sponsor only)** halts FUTURE `bond()` calls while a
+  pool is broken or being ground against the floor. It gates nothing else:
+  funding, `finalize`, and the sweep run pause-or-not, so principal and
+  recovery paths are never behind the switch, and pausing moves no asset.
+- **`sweepUnbonded` opens early for the sponsor.** The sponsor may recover
+  residual WETH/native from `END_AT` (a stuck leg is recoverable the moment
+  the term ends); everyone may from `SWEEP_AFTER` (the sponsor-less
+  backstop). Payout is fixed to the sponsor on both paths, and during the
+  14-day window nobody — the sponsor included — can move the leg's WETH,
+  which is what keeps "100% of fees committed" verifiable.
+
+Neither lever can reach HOOKR: bonded HOOKR has no exit on any path, which
+keeps "permanently bonded" a statement of construction rather than of
+intent.
 
 ## Parameters (seeded at deploy, all constructor-immutable)
 

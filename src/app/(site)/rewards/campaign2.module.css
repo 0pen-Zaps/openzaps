@@ -240,3 +240,190 @@
 .boundary:last-child {
   margin-bottom: 0;
 }
+
+/* ------------------------------------------------------- operator console */
+
+.operator {
+  margin-top: 14px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-card-sm);
+  background: var(--sunk);
+}
+
+.operatorHead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 4px 12px;
+  margin-bottom: 10px;
+}
+
+.operatorHead strong {
+  font-size: 13.5px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.operatorHead span {
+  color: var(--ink-3);
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.operatorNote {
+  margin: 0 0 10px;
+  color: var(--ink-3);
+  font-size: 11.5px;
+  line-height: 1.55;
+}
+
+.checks {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0 0 10px;
+  padding: 0;
+  list-style: none;
+}
+
+.checks li {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.checks li i {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  margin-top: 4px;
+  border-radius: var(--r-pill);
+  background: var(--warn);
+}
+
+.checks li[data-ok] i {
+  background: var(--ok);
+}
+
+.checks li strong {
+  display: block;
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+.checks li span {
+  color: var(--ink-3);
+  font-size: 11.5px;
+  line-height: 1.5;
+}
+
+.figures {
+  margin: 0 0 10px;
+  color: var(--ink-2);
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-size: 11px;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+
+.walletRow {
+  margin: 0 0 10px;
+  font-size: 12px;
+  color: var(--ink-2);
+}
+
+.walletRow button,
+.opsList button {
+  padding: 6px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-pill);
+  background: var(--panel);
+  color: var(--ink);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.walletRow button:disabled,
+.opsList button:disabled {
+  color: var(--ink-3);
+  cursor: not-allowed;
+  opacity: 0.7;
+}
+
+.opsList {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 0 0 10px;
+  padding: 0;
+  list-style: none;
+}
+
+.opsList li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-card-sm);
+  background: var(--panel);
+}
+
+.opsList li > div {
+  min-width: 0;
+}
+
+.opsList li strong {
+  display: block;
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+.opsList li strong em {
+  margin-left: 6px;
+  color: var(--warn);
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-size: 9.5px;
+  font-style: normal;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.opsList li span {
+  display: block;
+  color: var(--ink-3);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.opsList li button {
+  flex: none;
+}
+
+.actionState {
+  margin: 0 0 10px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-card-sm);
+  background: var(--panel);
+  color: var(--ink-2);
+  font-size: 11.5px;
+  line-height: 1.55;
+}
+
+.actionState[data-stage="reverted"],
+.actionState[data-stage="unknown"] {
+  background: var(--warn-wash);
+  color: var(--ink);
+}
+
+.actionState a {
+  color: var(--ink);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
