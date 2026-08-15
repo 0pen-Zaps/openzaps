@@ -478,9 +478,7 @@ contract HookBlocksTest is Test {
 
     function test_constructor_rejectsPoolIdMismatch() public {
         bytes32 wrong = keccak256("wrong pool");
-        vm.expectRevert(
-            abi.encodeWithSelector(HookBlocks.PoolIdMismatch.selector, wrong, _poolId(address(hookr)))
-        );
+        vm.expectRevert(abi.encodeWithSelector(HookBlocks.PoolIdMismatch.selector, wrong, _poolId(address(hookr))));
         new HookBlocks(
             address(vault),
             address(weth),
@@ -988,8 +986,7 @@ contract HookBlocksTest is Test {
         uint256 rounds;
         while (rounds < 120) {
             uint256 before = hb.totalEthBonded();
-            (bool ok, bytes memory ret) =
-                address(hb).call(abi.encodeWithSelector(HookBlocks.bond.selector, uint256(0)));
+            (bool ok, bytes memory ret) = address(hb).call(abi.encodeWithSelector(HookBlocks.bond.selector, uint256(0)));
             if (!ok) break;
             uint256 bonded = abi.decode(ret, (uint256));
             assertLe(hb.totalEthBonded() - before, MAX_BOND); // per-call cap holds

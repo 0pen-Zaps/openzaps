@@ -134,9 +134,7 @@ contract HookBlocks {
 
     // ---------------------------------------------------------------- events
     event FeeSharesFunded(address indexed sponsor, uint256 amount);
-    event Bonded(
-        address indexed caller, uint256 indexed blockIndex, uint256 ethIn, uint256 hookrBonded, uint256 floor
-    );
+    event Bonded(address indexed caller, uint256 indexed blockIndex, uint256 ethIn, uint256 hookrBonded, uint256 floor);
     event BondingPauseSet(bool paused);
     event Finalized(uint256 feeSharesReturned);
     event UnbondedSwept(address indexed caller, uint256 wethAmount, uint256 nativeAmount);
@@ -508,11 +506,7 @@ contract HookBlocks {
     /// @notice The pinned pool key, reconstructable for offchain proof.
     function poolKey() external view returns (PoolKey memory) {
         return PoolKey({
-            currency0: address(0),
-            currency1: HOOKR,
-            fee: POOL_FEE,
-            tickSpacing: POOL_TICK_SPACING,
-            hooks: address(0)
+            currency0: address(0), currency1: HOOKR, fee: POOL_FEE, tickSpacing: POOL_TICK_SPACING, hooks: address(0)
         });
     }
 

@@ -108,12 +108,9 @@ contract DeployHookBlocksRobinhood is Script {
         uint256 sponsorShares = vault.balanceOf(SPONSOR);
         if (sponsorShares < FEE_SHARE_ALLOCATION) revert SponsorCannotFund(sponsorShares);
 
-        bytes32 derivedPoolId =
-            keccak256(abi.encode(address(0), HOOKR, POOL_FEE, POOL_TICK_SPACING, address(0)));
+        bytes32 derivedPoolId = keccak256(abi.encode(address(0), HOOKR, POOL_FEE, POOL_TICK_SPACING, address(0)));
         if (derivedPoolId != POOL_ID) revert PoolIdDerivationMismatch(POOL_ID, derivedPoolId);
-        bytes32 slot0 = IPoolManagerPreflight(POOL_MANAGER).extsload(
-            keccak256(abi.encode(POOL_ID, POOLS_SLOT))
-        );
+        bytes32 slot0 = IPoolManagerPreflight(POOL_MANAGER).extsload(keccak256(abi.encode(POOL_ID, POOLS_SLOT)));
         uint160 sqrtPriceX96 = uint160(uint256(slot0));
         if (sqrtPriceX96 == 0) revert PoolNotInitialized();
 
@@ -147,12 +144,12 @@ contract DeployHookBlocksRobinhood is Script {
 
         // ----------------------------------------------------------- readback
         if (
-            hookBlocks.FEE_SHARES() != FEE_SHARE_VAULT || hookBlocks.WETH() != AEWETH
-                || hookBlocks.HOOKR() != HOOKR || address(hookBlocks.POOL_MANAGER()) != POOL_MANAGER
-                || hookBlocks.POOL_ID() != POOL_ID || hookBlocks.SPONSOR() != SPONSOR
-                || hookBlocks.START_AT() != uint64(startAt) || hookBlocks.END_AT() != endAt
-                || hookBlocks.SWEEP_AFTER() != sweepAfter || hookBlocks.MIN_OUT_BPS() != MIN_OUT_BPS
-                || hookBlocks.MAX_BOND_WEI() != MAX_BOND_WEI || hookBlocks.MIN_BOND_WEI() != MIN_BOND_WEI
+            hookBlocks.FEE_SHARES() != FEE_SHARE_VAULT || hookBlocks.WETH() != AEWETH || hookBlocks.HOOKR() != HOOKR
+                || address(hookBlocks.POOL_MANAGER()) != POOL_MANAGER || hookBlocks.POOL_ID() != POOL_ID
+                || hookBlocks.SPONSOR() != SPONSOR || hookBlocks.START_AT() != uint64(startAt)
+                || hookBlocks.END_AT() != endAt || hookBlocks.SWEEP_AFTER() != sweepAfter
+                || hookBlocks.MIN_OUT_BPS() != MIN_OUT_BPS || hookBlocks.MAX_BOND_WEI() != MAX_BOND_WEI
+                || hookBlocks.MIN_BOND_WEI() != MIN_BOND_WEI
         ) revert DeployedIdentityMismatch();
 
         console2.log("== HookBlocks deployed ==");
