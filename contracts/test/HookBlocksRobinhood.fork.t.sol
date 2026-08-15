@@ -21,9 +21,10 @@ interface IVaultLive is IERC20Live {
 
 /// @dev Opt-in fork test against the LIVE Robinhood Chain state: the real fee
 ///      vault, the real HOOKR token, and the real native-ETH/HOOKR pool on
-///      hookr's PoolManager. Proves the full campaign-2 bond leg end to end:
-///      fund 50 real shares -> harvest real Clanker fees -> market-buy real
-///      HOOKR through the real pool -> bond -> finalize back to the sponsor.
+///      the canonical v4 PoolManager. Proves the campaign-2 buy-and-burn leg
+///      end to end: fund 50 real shares -> harvest real Clanker fees ->
+///      market-buy real HOOKR through the real pool -> burn it to the dead
+///      address -> finalize the shares back to the sponsor.
 ///      Run with RUN_ROBINHOOD_FORK=true forge test --match-contract
 ///      HookBlocksRobinhoodForkTest -vv.
 contract HookBlocksRobinhoodForkTest is Test {
@@ -36,7 +37,7 @@ contract HookBlocksRobinhoodForkTest is Test {
     uint24 internal constant FEE = 2500;
     int24 internal constant SPACING = 25;
 
-    function test_liveBondLegEndToEnd() public {
+    function test_liveBuyAndBurnLegEndToEnd() public {
         // Report a SKIP, never a PASS: an opt-in test that returns early looks
         // identical to one that ran, which is how a suite goes green on
         // coverage it never had.
@@ -79,8 +80,8 @@ contract HookBlocksRobinhoodForkTest is Test {
         assertEq(IERC20Live(VAULT).balanceOf(address(hb)), 50e18);
 
         // Pull whatever the live Clanker locker has pending so the shares
-        // accrue real WETH; top up from a funded account so the bond clears
-        // MIN_BOND_WEI regardless of the accrual level at fork time.
+        // accrue real WETH; top up from a funded account so the buy clears
+        // MIN_BUY_WEI regardless of the accrual level at fork time.
         IVaultLive(VAULT).harvest();
         address whale = makeAddr("fork-weth-source");
         vm.deal(whale, 1 ether);
@@ -89,41 +90,44 @@ contract HookBlocksRobinhoodForkTest is Test {
         IERC20Live(WETH).transfer(address(hb), 0.02 ether);
         vm.stopPrank();
 
-        uint256 hookrBefore = IERC20Live(HOOKR).balanceOf(address(hb));
-        assertEq(hookrBefore, 0);
+        assertEq(IERC20Live(HOOKR).balanceOf(address(hb)), 0);
+        uint256 deadBefore = IERC20Live(HOOKR).balanceOf(hb.DEAD());
 
-        // The real swap: unwrap aeWETH, buy HOOKR on the live pool, bond it.
-        uint256 bonded = hb.bond(0);
-        assertGt(bonded, 0);
-        assertEq(IERC20Live(HOOKR).balanceOf(address(hb)), bonded);
-        assertEq(hb.totalHookrBonded(), bonded);
+        // The real swap: unwrap aeWETH, buy HOOKR on the live pool, and burn
+        // it to the dead address inside the same transaction.
+        uint256 burned = hb.buyAndBurn(0);
+        assertGt(burned, 0);
+        assertEq(IERC20Live(HOOKR).balanceOf(hb.DEAD()) - deadBefore, burned);
+        assertEq(IERC20Live(HOOKR).balanceOf(address(hb)), 0);
+        assertEq(hb.totalHookrBurned(), burned);
         assertEq(hb.blockCount(), 1);
         HookBlocks.HookBlock memory blk = hb.hookBlock(0);
         assertGt(blk.ethIn, 0);
         assertLe(blk.ethIn, 0.05 ether);
-        assertEq(blk.hookrBonded, bonded);
+        assertEq(blk.hookrBought, burned);
 
         // A second crank in the same block is refused.
-        vm.expectRevert(HookBlocks.BondRateLimited.selector);
-        hb.bond(0);
+        vm.expectRevert(HookBlocks.BuybackRateLimited.selector);
+        hb.buyAndBurn(0);
 
         // Keep cranking on later blocks until the reward is fully converted.
         uint256 rounds;
         while (rounds < 10) {
             vm.roll(block.number + 1);
-            (bool ok,) = address(hb).call(abi.encodeWithSelector(HookBlocks.bond.selector, uint256(0)));
+            (bool ok,) = address(hb).call(abi.encodeWithSelector(HookBlocks.buyAndBurn.selector, uint256(0)));
             if (!ok) break;
             rounds++;
         }
         assertLt(IERC20Live(WETH).balanceOf(address(hb)), 0.0005 ether);
 
-        // Term ends: the shares go home, the HOOKR does not.
+        // Term ends: the shares go home; the burned HOOKR is already gone.
         vm.warp(endAt + 1);
-        uint256 hookrAtFinalize = IERC20Live(HOOKR).balanceOf(address(hb));
+        uint256 burnedAtFinalize = IERC20Live(HOOKR).balanceOf(hb.DEAD()) - deadBefore;
         hb.finalize();
         assertEq(IERC20Live(VAULT).balanceOf(SPONSOR), 100e18);
         assertEq(IERC20Live(VAULT).balanceOf(address(hb)), 0);
-        assertEq(IERC20Live(HOOKR).balanceOf(address(hb)), hookrAtFinalize);
-        assertEq(hb.totalHookrBonded(), hookrAtFinalize);
+        assertEq(IERC20Live(HOOKR).balanceOf(hb.DEAD()) - deadBefore, burnedAtFinalize);
+        assertEq(hb.totalHookrBurned(), burnedAtFinalize);
+        assertEq(IERC20Live(HOOKR).balanceOf(address(hb)), 0);
     }
 }

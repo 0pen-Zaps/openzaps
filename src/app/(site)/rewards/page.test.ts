@@ -375,12 +375,12 @@ describe("0xZAPS fee rewards public surface", () => {
     expect(manifest).toContain("deployment: null");
     // A half-released campaign is a release error, never a usable surface.
     expect(panel).toContain("Release error: campaign 2 is partially configured.");
-    // The split states mechanism, with both legs and the permanence claim
-    // grounded in construction.
+    // The split states mechanism, with both legs and the burn claim grounded
+    // in what the transaction does rather than what the contract promises.
     expect(panel).toContain("100% of fees");
     expect(manifest).toContain('id: "stakers"');
     expect(manifest).toContain('id: "hook-blocks"');
-    expect(manifest).toContain("no exit path in the bytecode");
+    expect(manifest).toContain("sent to the dead address in the same transaction");
     // The no-yield and audit boundaries stay beside the announcement.
     expect(panel).toContain("No yield or APR.");
     expect(panel).toContain("These contracts have not been externally audited.");
@@ -388,6 +388,14 @@ describe("0xZAPS fee rewards public surface", () => {
     expect(panel).not.toMatch(/\bAPY\s*[:=]/u);
     expect(panel).not.toContain("deflation");
     expect(panel).not.toContain("price support");
+    // The burn is described honestly: HOOKR has no burn function, so this
+    // removes supply from circulation without reducing totalSupply. Any
+    // "supply reduced"/"deflationary" phrasing here would be false.
+    expect(manifest).toContain("without reducing totalSupply");
+    for (const source of [manifest, panel]) {
+      expect(source).not.toMatch(/reduces? (the )?(total )?supply/iu);
+      expect(source).not.toMatch(/\bdeflationary\b/iu);
+    }
   });
 
   it("gates the campaign-2 operator console on the release, with honest writes", () => {
@@ -411,7 +419,7 @@ describe("0xZAPS fee rewards public surface", () => {
     expect(operator).toContain("simulateContract");
     expect(operator).toContain("runtime hash no longer matches the release");
     expect(operator).toContain("sponsorOnly");
-    expect(operator).toContain("setBondingPaused");
+    expect(operator).toContain("setBuybackPaused");
     // The wallet stage never claims success from a hash alone.
     expect(operator).toContain("Nothing has been submitted yet.");
     expect(operator).toContain("A hash exists, but receipt verification was interrupted.");

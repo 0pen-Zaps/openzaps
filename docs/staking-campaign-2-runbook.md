@@ -133,28 +133,28 @@ runtime-hash re-check. Everything except the marked sponsor levers is
 permissionless; destinations are fixed by the contracts:
 
 - **During (both legs):** `campaign.harvest()` / `campaign.syncRewards()`
-  stream fees to stakers; `hookBlocks.bond(0)` converts the other half into
-  bonded HOOKR (≤0.05 ETH per crank, one crank per block, spot×0.97 floor).
+  stream fees to stakers; `hookBlocks.buyAndBurn(0)` converts the other half into
+  burned HOOKR (≤0.05 ETH per crank, one crank per block, spot×0.97 floor).
   A sensible cadence is one crank of each per day or two; there is no
   penalty for missing days beyond reward smoothing.
-- **Safeguard (sponsor):** `hookBlocks.setBondingPaused(true|false)` halts
-  or restores FUTURE bond calls only — use it if the pool breaks or every
-  bond is getting ground against the floor. It cannot move assets and never
+- **Safeguard (sponsor):** `hookBlocks.setBuybackPaused(true|false)` halts
+  or restores FUTURE buy-and-burn calls only — use it if the pool breaks or every
+  buy is getting ground against the floor. It cannot move assets and never
   gates funding, finalize, or the sweep.
 - **After `endAt`:** call `finalize()` on BOTH contracts. Each returns its
-  50 shares to the sponsor. Then keep calling `hookBlocks.bond(0)` until
-  residual WETH is below `MIN_BOND_WEI`.
+  50 shares to the sponsor. Then keep calling `hookBlocks.buyAndBurn(0)` until
+  residual WETH is below `MIN_BUY_WEI`.
 - **Safeguard (sponsor):** from `endAt` the SPONSOR may call
-  `hookBlocks.sweepUnbonded()` at once if bonding is impossible — no need
+  `hookBlocks.sweepUnspent()` at once if conversion is impossible — no need
   to wait out `sweepAfter`, which remains the permissionless backstop.
 - **After `claimDeadline` (leg A):** `sweepExpiredRewards()` returns
   unclaimed staker WETH to the sponsor.
-- **After `sweepAfter` (leg B):** `sweepUnbonded()` opens to everyone.
-  Bonded HOOKR has no exit path — nothing to operate, ever.
+- **After `sweepAfter` (leg B):** `sweepUnspent()` opens to everyone.
+  Burned HOOKR is already at the dead address — nothing to operate, ever.
 
 ## 5b. Pipeline verification record (2026-08-14)
 
-The claim → convert → bond pipeline and every safeguard were dress-rehearsed
+The claim → convert → burn pipeline and every safeguard were dress-rehearsed
 against LIVE chain state on a fork before any broadcast — real vault, real
 Clanker fees, real HOOKR pool, real PoolManager bytecode:
 
@@ -166,7 +166,7 @@ RUN_ROBINHOOD_FORK=true forge test \
 All three rehearsals pass:
 
 - `test_liveBondLegEndToEnd` — fund 50 real shares → harvest real locker
-  fees → market-buy real HOOKR → bond → rate-limit check → finalize returns
+  fees → market-buy real HOOKR → burn → rate-limit check → finalize returns
   the shares.
 - `test_rehearsal_fullCampaignLifecycle` — 14 simulated days with ongoing
   fee flow (WETH into the real vault + permissionless `sync()`), multiple
@@ -174,13 +174,31 @@ All three rehearsals pass:
   closing invariant: the ledger sums exactly to the totals and the totals
   exactly to the contract's HOOKR balance.
 - `test_rehearsal_failureModesAndSafeguards` — a failed floor retains WETH
-  and bonds nothing; pause halts the crank and unpause restores it
+  and burns nothing; pause halts the crank and unpause restores it
   unchanged; the sweep is closed to everyone mid-window, opens to the
-  sponsor at `endAt` and to everyone at `sweepAfter`; no step can touch a
-  bonded token.
+  sponsor at `endAt` and to everyone at `sweepAfter`; no step can retrieve a
+  burned token.
 
 Re-run the block above after ANY contract change and before broadcast; a
 fix is new code and re-verifies from zero.
+
+**Round 2 (2026-08-14, after the bond→burn conversion).** A four-lens
+adversarial audit of the new burn path found and fixed, before deploy:
+the ledger crediting donated HOOKR as purchased (published rate was
+griefable — now the ledger records `hookrBought` and the event publishes
+bought and burned separately); `balanceOf(DEAD)` being documented as the
+proof (it is a shared sink — now verified by event/delta, and the unit
+suite pre-seeds DEAD so a wrong assertion fails); stranded HOOKR having no
+recovery once conversion dies (`sweepUnspent` now burns it to DEAD); a
+stale unlock sentinel (now asserted zero after `unlock` returns); and
+three tests that asserted nothing. All three fork rehearsals re-passed
+against live state afterward.
+
+**Verifying the campaign's burn total, correctly:** sum the `hookrBurned`
+field of this contract's `BoughtAndBurned` and `UnspentSwept` events, or
+take the `balanceOf(0x…dEaD)` delta across the campaign's own transactions.
+Do NOT read the dead address's absolute balance — anyone may send HOOKR
+there, and other senders' burns are not this campaign's.
 
 ## 6. Hard rails
 

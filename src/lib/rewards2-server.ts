@@ -45,13 +45,14 @@ export type Campaign2Preflight = {
     hookBlocks: {
       address: string;
       feeSharesFunded: boolean;
-      bondingPaused: boolean;
+      buybackPaused: boolean;
       finalized: boolean;
       feeSharePrincipal: string;
-      totalEthBonded: string;
-      totalHookrBonded: string;
+      totalEthSpent: string;
+      totalHookrBought: string;
+      totalHookrBurned: string;
       blockCount: string;
-      bondableWeth: string;
+      pendingWeth: string;
     };
     campaign: {
       address: string;
@@ -176,7 +177,7 @@ export async function fetchCampaign2Preflight(
       ok: poolInitialized,
       detail: poolInitialized
         ? "slot0 carries a live price for the pinned pool."
-        : "The pinned pool reports no price; bonds would fail closed.",
+        : "The pinned pool reports no price; buys would fail closed.",
     },
   ];
 
@@ -224,21 +225,23 @@ export async function fetchCampaign2Preflight(
       hbFinalized,
       hbPrincipal,
       hbTotalEth,
+      hbTotalBought,
       hbTotalHookr,
       hbBlockCount,
-      hbBondable,
+      hbPending,
       cFunded,
       cFinalized,
       cTotalStaked,
     ] = await Promise.all([
       client.readContract({ address: released.hookBlocks.address, abi: hookBlocksAbi, functionName: "feeSharesFunded", blockNumber }),
-      client.readContract({ address: released.hookBlocks.address, abi: hookBlocksAbi, functionName: "bondingPaused", blockNumber }),
+      client.readContract({ address: released.hookBlocks.address, abi: hookBlocksAbi, functionName: "buybackPaused", blockNumber }),
       client.readContract({ address: released.hookBlocks.address, abi: hookBlocksAbi, functionName: "finalized", blockNumber }),
       client.readContract({ address: released.hookBlocks.address, abi: hookBlocksAbi, functionName: "feeSharePrincipal", blockNumber }),
-      client.readContract({ address: released.hookBlocks.address, abi: hookBlocksAbi, functionName: "totalEthBonded", blockNumber }),
-      client.readContract({ address: released.hookBlocks.address, abi: hookBlocksAbi, functionName: "totalHookrBonded", blockNumber }),
+      client.readContract({ address: released.hookBlocks.address, abi: hookBlocksAbi, functionName: "totalEthSpent", blockNumber }),
+      client.readContract({ address: released.hookBlocks.address, abi: hookBlocksAbi, functionName: "totalHookrBought", blockNumber }),
+      client.readContract({ address: released.hookBlocks.address, abi: hookBlocksAbi, functionName: "totalHookrBurned", blockNumber }),
       client.readContract({ address: released.hookBlocks.address, abi: hookBlocksAbi, functionName: "blockCount", blockNumber }),
-      client.readContract({ address: released.hookBlocks.address, abi: hookBlocksAbi, functionName: "bondableWeth", blockNumber }),
+      client.readContract({ address: released.hookBlocks.address, abi: hookBlocksAbi, functionName: "pendingWeth", blockNumber }),
       client.readContract({ address: released.campaign.address, abi: feeRewardsCampaignAbi, functionName: "feeSharesFunded", blockNumber }),
       client.readContract({ address: released.campaign.address, abi: feeRewardsCampaignAbi, functionName: "finalized", blockNumber }),
       client.readContract({ address: released.campaign.address, abi: feeRewardsCampaignAbi, functionName: "totalStaked", blockNumber }),
@@ -261,13 +264,14 @@ export async function fetchCampaign2Preflight(
       hookBlocks: {
         address: released.hookBlocks.address,
         feeSharesFunded: hbFunded,
-        bondingPaused: hbPaused,
+        buybackPaused: hbPaused,
         finalized: hbFinalized,
         feeSharePrincipal: hbPrincipal.toString(),
-        totalEthBonded: hbTotalEth.toString(),
-        totalHookrBonded: hbTotalHookr.toString(),
+        totalEthSpent: hbTotalEth.toString(),
+        totalHookrBought: hbTotalBought.toString(),
+        totalHookrBurned: hbTotalHookr.toString(),
         blockCount: hbBlockCount.toString(),
-        bondableWeth: hbBondable.toString(),
+        pendingWeth: hbPending.toString(),
       },
       campaign: {
         address: released.campaign.address,

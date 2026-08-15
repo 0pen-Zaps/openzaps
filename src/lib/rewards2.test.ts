@@ -36,13 +36,13 @@ describe("campaign-2 manifest", () => {
     );
   });
 
-  it("keeps a 14-day window and sane bond bounds", () => {
+  it("keeps a 14-day window and sane buy bounds", () => {
     const terms = FEE_REWARDS_2_MANIFEST.terms;
     expect(terms.durationSeconds).toBe(14n * 86_400n);
     expect(terms.minOutBps).toBeGreaterThan(0);
     expect(terms.minOutBps).toBeLessThanOrEqual(10_000);
-    expect(terms.minBondWei).toBeLessThanOrEqual(terms.maxBondWei);
-    expect(terms.maxBondWei).toBeLessThanOrEqual(2n ** 128n - 1n);
+    expect(terms.minBuyWei).toBeLessThanOrEqual(terms.maxBuyWei);
+    expect(terms.maxBuyWei).toBeLessThanOrEqual(2n ** 128n - 1n);
   });
 
   it("shares the campaign-1 stack's live identities", () => {
@@ -65,7 +65,10 @@ describe("campaign-2 manifest", () => {
       expect(copy).not.toContain(banned);
     }
     // The permanence claim must be stated as construction.
-    expect(copy).toContain("no exit path");
+    expect(copy).toContain("dead address");
     expect(copy).toContain("append-only");
+    // The burn must never be sold as supply reduction: the token has no burn
+    // function, so totalSupply is unchanged and saying otherwise is false.
+    expect(copy).toContain("without reducing totalsupply");
   });
 });

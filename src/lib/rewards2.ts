@@ -7,8 +7,8 @@ const E18 = 10n ** 18n;
  * window that puts 100% of the tokenized fee stream to work in two legs —
  * 50 of the vault's 100 shares stream WETH to 0xZAPS stakers (the proven
  * campaign mechanics), and 50 shares feed HookBlocks, which market-buys
- * $HOOKR through one pinned pool and bonds every bought token into an
- * append-only ledger with no exit path.
+ * $HOOKR through one pinned pool and burns every bought token to the dead
+ * address in the same transaction, recording each one in a permanent ledger.
  *
  * `deployment` is `null` until the two campaign-2 contracts arrive as a
  * reviewed release — an address plus verified `runtimeCodeHash` in a source
@@ -24,7 +24,7 @@ export const FEE_REWARDS_2_MANIFEST = {
   token: getAddress("0xDd90bFa4adC7F4401E611AbaC692D939F9F4CB07"),
   /** aeWETH — the only reward asset the fee vault pays. */
   weth: getAddress("0x0Bd7D308f8E1639FAb988df18A8011f41EAcAD73"),
-  /** $HOOKR — the token leg B buys and bonds. */
+  /** $HOOKR — the token leg B buys and burns. */
   hookr: getAddress("0x18E674231A58c239Dc7DaeDcffE15Ec3A24cff5c"),
   /** The live tokenized fee-share vault both legs draw from. */
   vault: {
@@ -56,8 +56,8 @@ export const FEE_REWARDS_2_MANIFEST = {
     stakerFeeShares: 50n * E18,
     hookBlocksFeeShares: 50n * E18,
     minOutBps: 9_700,
-    maxBondWei: 50_000_000_000_000_000n, // 0.05 ETH
-    minBondWei: 500_000_000_000_000n, // 0.0005 ETH
+    maxBuyWei: 50_000_000_000_000_000n, // 0.05 ETH
+    minBuyWei: 500_000_000_000_000n, // 0.0005 ETH
   },
   /**
    * Deployed campaign-2 contracts land here as a reviewed release. Shape
@@ -118,6 +118,7 @@ export function deriveHookrPoolId(): Hex {
 
 /** The HookBlocks read/write surface, mirrored from the Solidity source. */
 export const hookBlocksAbi = parseAbi([
+  "function DEAD() view returns (address)",
   "function FEE_SHARES() view returns (address)",
   "function WETH() view returns (address)",
   "function HOOKR() view returns (address)",
@@ -128,28 +129,29 @@ export const hookBlocksAbi = parseAbi([
   "function END_AT() view returns (uint64)",
   "function SWEEP_AFTER() view returns (uint64)",
   "function MIN_OUT_BPS() view returns (uint16)",
-  "function MAX_BOND_WEI() view returns (uint256)",
-  "function MIN_BOND_WEI() view returns (uint256)",
+  "function MAX_BUY_WEI() view returns (uint256)",
+  "function MIN_BUY_WEI() view returns (uint256)",
   "function feeSharesFunded() view returns (bool)",
   "function finalized() view returns (bool)",
-  "function bondingPaused() view returns (bool)",
+  "function buybackPaused() view returns (bool)",
   "function feeSharePrincipal() view returns (uint256)",
-  "function totalEthBonded() view returns (uint256)",
-  "function totalHookrBonded() view returns (uint256)",
+  "function totalEthSpent() view returns (uint256)",
+  "function totalHookrBought() view returns (uint256)",
+  "function totalHookrBurned() view returns (uint256)",
   "function blockCount() view returns (uint256)",
-  "function hookBlock(uint256 index) view returns ((uint128 ethIn, uint128 hookrBonded, uint64 bondedAt))",
-  "function bondableWeth() view returns (uint256)",
-  "function lastBondBlock() view returns (uint256)",
+  "function hookBlock(uint256 index) view returns ((uint128 ethIn, uint128 hookrBought, uint64 burnedAt))",
+  "function pendingWeth() view returns (uint256)",
+  "function lastBuyBlock() view returns (uint256)",
   "function fundFeeShares(uint256 amount)",
-  "function bond(uint256 minHookrOut) returns (uint256 hookrBonded)",
-  "function setBondingPaused(bool paused)",
+  "function buyAndBurn(uint256 minHookrOut) returns (uint256 hookrBurned)",
+  "function setBuybackPaused(bool paused)",
   "function finalize()",
-  "function sweepUnbonded()",
+  "function sweepUnspent()",
   "event FeeSharesFunded(address indexed sponsor, uint256 amount)",
-  "event Bonded(address indexed caller, uint256 indexed blockIndex, uint256 ethIn, uint256 hookrBonded, uint256 floor)",
-  "event BondingPauseSet(bool paused)",
+  "event BoughtAndBurned(address indexed caller, uint256 indexed blockIndex, uint256 ethIn, uint256 hookrBought, uint256 hookrBurned, uint256 floor)",
+  "event BuybackPauseSet(bool paused)",
   "event Finalized(uint256 feeSharesReturned)",
-  "event UnbondedSwept(address indexed caller, uint256 wethAmount, uint256 nativeAmount)",
+  "event UnspentSwept(address indexed caller, uint256 wethAmount, uint256 nativeAmount, uint256 hookrBurned)",
 ]);
 
 export type Campaign2Leg = {
@@ -185,12 +187,13 @@ export const CAMPAIGN_2_LEGS: readonly Campaign2Leg[] = [
     name: "Hook Blocks",
     share: "50% of fees",
     contract: "HookBlocks",
-    tagline: "The other half market-buys $HOOKR and bonds it permanently.",
+    tagline: "The other half market-buys $HOOKR and burns it on the spot.",
     points: [
       "A permissionless crank converts the leg's WETH into $HOOKR through one constructor-pinned pool — no router, no path arrays.",
       "Every buy is floored against same-block spot and capped per call, and lands as one immutable Hook Block in an append-only ledger.",
-      "If a step fails, the crank reverts and the WETH simply waits: the sponsor can pause future bonds and recover un-bonded WETH once the term ends.",
-      "Bonded HOOKR has no exit path in the bytecode: not for the sponsor, not for anyone. Permanence is construction, not policy.",
+      "The HOOKR is sent to the dead address in the same transaction that buys it, so the contract never holds any and there is nothing for anyone to reach.",
+      "If a step fails, the crank reverts and the WETH simply waits: the sponsor can pause future buys and recover unconverted WETH once the term ends.",
+      "The token has no burn function, so this removes HOOKR from circulation without reducing totalSupply.",
     ],
   },
 ];

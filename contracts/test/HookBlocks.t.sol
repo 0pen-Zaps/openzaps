@@ -54,6 +54,32 @@ contract MockToken {
     }
 }
 
+/// @dev A HOOKR double that re-enters HookBlocks from inside `transfer`,
+///      i.e. from the burn call the buy-and-burn change introduced.
+contract MockReentrantHookr is MockToken {
+    address public target;
+    uint8 public mode; // 1 = buyAndBurn, 2 = sweepUnspent, 3 = unlockCallback
+
+    constructor() MockToken("HOOKR") {}
+
+    function arm(address target_, uint8 mode_) external {
+        target = target_;
+        mode = mode_;
+    }
+
+    function transfer(address to, uint256 value) public override returns (bool) {
+        if (target != address(0)) {
+            address t = target;
+            uint8 m = mode;
+            target = address(0); // one shot, so the mock cannot loop forever
+            if (m == 1) HookBlocks(payable(t)).buyAndBurn(0);
+            else if (m == 2) HookBlocks(payable(t)).sweepUnspent();
+            else if (m == 3) HookBlocks(payable(t)).unlockCallback(abi.encode(uint256(1)));
+        }
+        return super.transfer(to, value);
+    }
+}
+
 contract MockWeth is MockToken {
     constructor() MockToken("WETH") {}
 
@@ -109,7 +135,7 @@ contract MockVault is MockToken {
     function claimFor(address account) external {
         require(!reverts, "vault paused");
         if (reenterTarget != address(0)) {
-            HookBlocks(payable(reenterTarget)).bond(0);
+            HookBlocks(payable(reenterTarget)).buyAndBurn(0);
         }
         uint256 amount = pendingClaim[account];
         pendingClaim[account] = 0;
@@ -235,7 +261,7 @@ contract MockPoolManager {
         require(amount <= _pendingOut, "over-take");
         _pendingOut -= amount;
         if (reenterTarget != address(0)) {
-            HookBlocks(payable(reenterTarget)).bond(0);
+            HookBlocks(payable(reenterTarget)).buyAndBurn(0);
         }
         hookr.mint(to, shortPayTake ? amount / 2 : amount + overMintWei);
     }
@@ -261,8 +287,8 @@ contract MockPoolManager {
 contract HookBlocksTest is Test {
     uint256 internal constant CHAIN = 4663;
     uint16 internal constant MIN_OUT_BPS = 9_700;
-    uint256 internal constant MAX_BOND = 0.05 ether;
-    uint256 internal constant MIN_BOND = 0.0005 ether;
+    uint256 internal constant MAX_BUY = 0.05 ether;
+    uint256 internal constant MIN_BUY = 0.0005 ether;
     uint24 internal constant FEE = 2500;
     int24 internal constant SPACING = 25;
 
@@ -279,10 +305,17 @@ contract HookBlocksTest is Test {
     uint64 internal endAt;
     uint64 internal sweepAfter;
 
+    /// @dev HOOKR already at DEAD before this campaign starts. On chain 4663
+    ///      0x…dEaD is a shared sink anyone may send to, so every assertion
+    ///      here must use the DELTA over the campaign's own transactions —
+    ///      seeding this non-zero is what makes a wrong assertion fail.
+    uint256 internal constant DEAD_PRESEED = 12_345e18;
+
     function setUp() public {
         vm.chainId(CHAIN);
         weth = new MockWeth();
         hookr = new MockToken("HOOKR");
+        hookr.mint(0x000000000000000000000000000000000000dEaD, DEAD_PRESEED);
         vault = new MockVault(weth);
         pm = new MockPoolManager(hookr);
         pm.setRate(3_500_000e18); // ~ the live pool's magnitude
@@ -313,8 +346,8 @@ contract HookBlocksTest is Test {
             endAt,
             sweepAfter,
             MIN_OUT_BPS,
-            MAX_BOND,
-            MIN_BOND
+            MAX_BUY,
+            MIN_BUY
         );
     }
 
@@ -383,8 +416,8 @@ contract HookBlocksTest is Test {
             endAt,
             sweepAfter,
             MIN_OUT_BPS,
-            MAX_BOND,
-            MIN_BOND
+            MAX_BUY,
+            MIN_BUY
         );
         vm.expectRevert(HookBlocks.InvalidSchedule.selector);
         new HookBlocks(
@@ -400,8 +433,8 @@ contract HookBlocksTest is Test {
             startAt, // end == start
             sweepAfter,
             MIN_OUT_BPS,
-            MAX_BOND,
-            MIN_BOND
+            MAX_BUY,
+            MIN_BUY
         );
         vm.expectRevert(HookBlocks.InvalidSchedule.selector);
         new HookBlocks(
@@ -417,8 +450,8 @@ contract HookBlocksTest is Test {
             endAt,
             endAt, // sweep == end
             MIN_OUT_BPS,
-            MAX_BOND,
-            MIN_BOND
+            MAX_BUY,
+            MIN_BUY
         );
     }
 
@@ -437,8 +470,8 @@ contract HookBlocksTest is Test {
             endAt,
             sweepAfter,
             0, // minOutBps zero
-            MAX_BOND,
-            MIN_BOND
+            MAX_BUY,
+            MIN_BUY
         );
         vm.expectRevert(HookBlocks.InvalidBounds.selector);
         new HookBlocks(
@@ -454,8 +487,8 @@ contract HookBlocksTest is Test {
             endAt,
             sweepAfter,
             MIN_OUT_BPS,
-            MIN_BOND, // max < min
-            MAX_BOND
+            MIN_BUY, // max < min
+            MAX_BUY
         );
         vm.expectRevert(HookBlocks.InvalidBounds.selector);
         new HookBlocks(
@@ -472,7 +505,7 @@ contract HookBlocksTest is Test {
             sweepAfter,
             MIN_OUT_BPS,
             uint256(type(uint128).max) + 1, // cap beyond the ledger's uint128
-            MIN_BOND
+            MIN_BUY
         );
     }
 
@@ -492,8 +525,8 @@ contract HookBlocksTest is Test {
             endAt,
             sweepAfter,
             MIN_OUT_BPS,
-            MAX_BOND,
-            MIN_BOND
+            MAX_BUY,
+            MIN_BUY
         );
     }
 
@@ -546,12 +579,12 @@ contract HookBlocksTest is Test {
 
     // ---------------------------------------------------------------- bonding
 
-    function test_bond_revertsUnfunded() public {
+    function test_buyAndBurn_revertsUnfunded() public {
         vm.expectRevert(HookBlocks.NotFunded.selector);
-        hb.bond(0);
+        hb.buyAndBurn(0);
     }
 
-    function test_bond_happyPath_claimsSwapsAndRecords() public {
+    function test_buyAndBurn_happyPath_claimsSwapsAndRecords() public {
         _fund();
         vault.setClaimable(address(hb), 0.01 ether);
 
@@ -559,173 +592,207 @@ contract HookBlocksTest is Test {
         uint256 expectedOut = (0.01 ether * 3_500_000e18) / 1e18;
 
         vm.prank(keeper);
-        uint256 bonded = hb.bond(0);
+        uint256 burned = hb.buyAndBurn(0);
 
-        assertEq(bonded, expectedOut);
-        assertGe(bonded, expectedFloor);
-        assertEq(hookr.balanceOf(address(hb)), expectedOut);
-        assertEq(hb.totalHookrBonded(), expectedOut);
-        assertEq(hb.totalEthBonded(), 0.01 ether);
+        assertEq(burned, expectedOut);
+        assertGe(burned, expectedFloor);
+        // The contract keeps NO HOOKR: it all went to DEAD in this same tx.
+        assertEq(hookr.balanceOf(address(hb)), 0);
+        assertEq(hookr.balanceOf(hb.DEAD()) - DEAD_PRESEED, expectedOut);
+        assertEq(hb.totalHookrBurned(), expectedOut);
+        assertEq(hb.totalEthSpent(), 0.01 ether);
         assertEq(hb.blockCount(), 1);
         HookBlocks.HookBlock memory blk = hb.hookBlock(0);
         assertEq(blk.ethIn, 0.01 ether);
-        assertEq(blk.hookrBonded, expectedOut);
-        assertEq(blk.bondedAt, block.timestamp);
+        assertEq(blk.hookrBought, expectedOut);
+        assertEq(blk.burnedAt, block.timestamp);
         // Nothing left behind: WETH fully drawn, native fully consumed.
         assertEq(weth.balanceOf(address(hb)), 0);
         assertEq(address(hb).balance, 0);
     }
 
-    function test_bond_emitsEvent() public {
+    function test_buyAndBurn_emitsEvent() public {
         _fund();
         vault.setClaimable(address(hb), 0.01 ether);
         uint256 expectedOut = (0.01 ether * 3_500_000e18) / 1e18;
         vm.expectEmit(true, true, false, true, address(hb));
-        emit HookBlocks.Bonded(keeper, 0, 0.01 ether, expectedOut, _floor(0.01 ether));
+        emit HookBlocks.BoughtAndBurned(keeper, 0, 0.01 ether, expectedOut, expectedOut, _floor(0.01 ether));
         vm.prank(keeper);
-        hb.bond(0);
+        hb.buyAndBurn(0);
     }
 
-    function test_bond_rateLimitedPerBlock() public {
+    function test_buyAndBurn_rateLimitedPerBlock() public {
         _fund();
         vault.setClaimable(address(hb), 0.01 ether);
-        hb.bond(0);
+        hb.buyAndBurn(0);
         vault.setClaimable(address(hb), 0.01 ether);
-        vm.expectRevert(HookBlocks.BondRateLimited.selector);
-        hb.bond(0);
+        vm.expectRevert(HookBlocks.BuybackRateLimited.selector);
+        hb.buyAndBurn(0);
         vm.roll(block.number + 1);
-        hb.bond(0); // next block is fine
+        hb.buyAndBurn(0); // next block is fine
     }
 
-    function test_bond_belowMinReverts() public {
+    function test_buyAndBurn_belowMinReverts() public {
         _fund();
-        vault.setClaimable(address(hb), MIN_BOND - 1);
-        vm.expectRevert(HookBlocks.BelowMinBond.selector);
-        hb.bond(0);
+        vault.setClaimable(address(hb), MIN_BUY - 1);
+        vm.expectRevert(HookBlocks.BelowMinBuy.selector);
+        hb.buyAndBurn(0);
     }
 
-    function test_bond_capsAtMaxPerCall() public {
+    function test_buyAndBurn_capsAtMaxPerCall() public {
         _fund();
         vault.setClaimable(address(hb), 0.2 ether); // 4x the cap
 
-        hb.bond(0);
-        assertEq(hb.totalEthBonded(), MAX_BOND);
+        hb.buyAndBurn(0);
+        assertEq(hb.totalEthSpent(), MAX_BUY);
         // The residue stays as WETH for the next crank.
         assertEq(weth.balanceOf(address(hb)), 0.15 ether);
 
         vm.roll(block.number + 1);
-        hb.bond(0);
-        assertEq(hb.totalEthBonded(), 2 * MAX_BOND);
+        hb.buyAndBurn(0);
+        assertEq(hb.totalEthSpent(), 2 * MAX_BUY);
         assertEq(hb.blockCount(), 2);
     }
 
-    function test_bond_floorNotMet_revertsAndKeepsWeth() public {
+    function test_buyAndBurn_floorNotMet_revertsAndLosesNothing() public {
         _fund();
         vault.setClaimable(address(hb), 0.01 ether);
-        // Execution pays 5% under the quoted spot; 9700 bps floor catches it.
+        uint256 convertibleBefore = hb.pendingWeth();
+        // Execution pays 5% under the quoted spot; the 9700 bps floor catches
+        // it and the WHOLE call unwinds — including the vault claim, which is
+        // why the reward is still pending afterward rather than held here.
         pm.setExecRate(3_325_000e18);
-        vm.expectRevert();
-        hb.bond(0);
-        // The WETH was claimed from the vault but never left as a bond.
-        assertEq(hb.totalHookrBonded(), 0);
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                HookBlocks.FloorNotMet.selector, _floor(0.01 ether), (0.01 ether * 3_325_000e18) / 1e18
+            )
+        );
+        hb.buyAndBurn(0);
+
+        assertEq(hb.totalHookrBurned(), 0);
+        assertEq(hb.blockCount(), 0);
+        assertEq(vault.pendingClaim(address(hb)), 0.01 ether); // claim un-consumed
+        assertEq(hb.pendingWeth(), convertibleBefore); // nothing lost
     }
 
-    function test_bond_tolerableSlippagePasses() public {
+    function test_buyAndBurn_tolerableSlippagePasses() public {
         _fund();
         vault.setClaimable(address(hb), 0.01 ether);
         // 2% under spot clears a 9700 bps floor.
         pm.setExecRate(3_430_000e18);
-        uint256 bonded = hb.bond(0);
-        assertEq(bonded, (0.01 ether * 3_430_000e18) / 1e18);
+        uint256 burned = hb.buyAndBurn(0);
+        assertEq(burned, (0.01 ether * 3_430_000e18) / 1e18);
     }
 
-    function test_bond_callerFloorTightens() public {
+    function test_buyAndBurn_callerFloorTightens() public {
         _fund();
         vault.setClaimable(address(hb), 0.01 ether);
         uint256 out = (0.01 ether * 3_500_000e18) / 1e18;
         vm.expectRevert(abi.encodeWithSelector(HookBlocks.FloorNotMet.selector, out + 1, out));
-        hb.bond(out + 1);
+        hb.buyAndBurn(out + 1);
     }
 
-    function test_bond_zeroFloorRefused() public {
+    function test_buyAndBurn_zeroFloorRefused() public {
         _fund();
         vault.setClaimable(address(hb), 0.01 ether);
         pm.setSpotRate(0); // quoted spot collapses to zero
         pm.setRawSqrtPrice(1); // still "initialized", but floors to nothing
         vm.expectRevert(HookBlocks.FloorTooLow.selector);
-        hb.bond(0);
+        hb.buyAndBurn(0);
     }
 
-    function test_bond_vaultRevertDegradesToHeldWeth() public {
+    function test_buyAndBurn_vaultRevertDegradesToHeldWeth() public {
         _fund();
         vault.setClaimable(address(hb), 0.01 ether);
-        hb.bond(0); // consume the pending claim
+        hb.buyAndBurn(0); // consume the pending claim
         vm.roll(block.number + 1);
 
         weth.mint(address(hb), 0.02 ether); // reward already held
         vault.setReverts(true);
-        uint256 bonded = hb.bond(0);
-        assertEq(bonded, (0.02 ether * 3_500_000e18) / 1e18);
+        uint256 burned = hb.buyAndBurn(0);
+        assertEq(burned, (0.02 ether * 3_500_000e18) / 1e18);
     }
 
-    function test_bond_reentrancyThroughVaultBlocked() public {
+    function test_buyAndBurn_reentrancyThroughVaultBlocked() public {
         _fund();
         weth.mint(address(hb), 0.01 ether);
         vault.setReenter(address(hb));
         // The reentrant inner bond() reverts, the outer claimFor try/catch
         // swallows it, and the crank still completes on held WETH.
-        uint256 bonded = hb.bond(0);
-        assertEq(bonded, (0.01 ether * 3_500_000e18) / 1e18);
+        uint256 burned = hb.buyAndBurn(0);
+        assertEq(burned, (0.01 ether * 3_500_000e18) / 1e18);
         assertEq(hb.blockCount(), 1);
     }
 
-    function test_bond_reentrancyThroughPoolManagerBlocked() public {
+    function test_buyAndBurn_reentrancyThroughPoolManagerBlocked() public {
         _fund();
         vault.setClaimable(address(hb), 0.01 ether);
         pm.setReenterOnTake(address(hb));
         vm.expectRevert(); // inner bond() hits the mutex and unwinds the swap
-        hb.bond(0);
+        hb.buyAndBurn(0);
     }
 
-    function test_bond_partialConsumptionRecordsActualSpend() public {
+    function test_buyAndBurn_partialFillRecordsActualSpendAndCarriesResidue() public {
+        _fund();
+        vault.setClaimable(address(hb), 0.01 ether);
+        // A 90% fill that still clears the floor quoted on the full input:
+        // the ledger must record what was ACTUALLY spent, and the unspent
+        // native must carry into the next call's cap arithmetic.
+        pm.setConsumeCap(0.009 ether);
+        pm.setExecRate(4_200_000e18);
+
+        hb.buyAndBurn(0);
+        assertEq(hb.totalEthSpent(), 0.009 ether);
+        assertEq(hb.hookBlock(0).ethIn, 0.009 ether);
+        assertEq(address(hb).balance, 0.001 ether); // residue, not lost
+
+        // The residue counts toward the next call's MAX_BUY_WEI room.
+        vm.roll(block.number + 1);
+        pm.setConsumeCap(type(uint256).max);
+        pm.setRate(3_500_000e18);
+        vault.setClaimable(address(hb), 0.2 ether);
+        hb.buyAndBurn(0);
+        assertEq(hb.hookBlock(1).ethIn, MAX_BUY);
+    }
+
+    function test_buyAndBurn_partialFillBelowFloorStillReverts() public {
         _fund();
         vault.setClaimable(address(hb), 0.01 ether);
         pm.setConsumeCap(0.004 ether);
-        // Executed output (on 0.004) cannot clear a floor quoted on 0.01, so
-        // the caller must accept it explicitly with a stricter-truth floor of
-        // their own; the spot floor correctly rejects the partial fill.
+        // Output on 0.004 cannot clear a floor quoted on 0.01, so the spot
+        // floor correctly rejects this partial fill.
         vm.expectRevert();
-        hb.bond(0);
+        hb.buyAndBurn(0);
     }
 
-    function test_bond_nativeDonationJoinsNextBondWithinCap() public {
+    function test_buyAndBurn_nativeDonationJoinsNextBuyWithinCap() public {
         _fund();
         vm.deal(address(hb), 0.03 ether); // force-set native balance
         vault.setClaimable(address(hb), 0.04 ether);
-        hb.bond(0);
+        hb.buyAndBurn(0);
         // Cap still binds the total converted input.
-        assertEq(hb.totalEthBonded(), MAX_BOND);
+        assertEq(hb.totalEthSpent(), MAX_BUY);
         // room was 0.02, so 0.02 of WETH stayed wrapped.
         assertEq(weth.balanceOf(address(hb)), 0.02 ether);
     }
 
-    function test_bond_worksAfterFinalizeForResidual() public {
+    function test_buyAndBurn_worksAfterFinalizeForResidual() public {
         _fund();
         vault.setClaimable(address(hb), 0.01 ether);
         vm.warp(endAt + 1);
         hb.finalize();
         // The final claim inside finalize() pulled the reward as WETH.
         assertEq(weth.balanceOf(address(hb)), 0.01 ether);
-        uint256 bonded = hb.bond(0);
-        assertEq(bonded, (0.01 ether * 3_500_000e18) / 1e18);
+        uint256 burned = hb.buyAndBurn(0);
+        assertEq(burned, (0.01 ether * 3_500_000e18) / 1e18);
     }
 
-    function test_bond_outputOverUint128Refused() public {
+    function test_buyAndBurn_outputOverUint128Refused() public {
         _fund();
         vault.setClaimable(address(hb), 0.01 ether);
         pm.setOverMintWei(uint256(type(uint128).max));
         vm.expectRevert(HookBlocks.AmountTooLarge.selector);
-        hb.bond(0);
+        hb.buyAndBurn(0);
     }
 
     // ------------------------------------------------------ unlock callback
@@ -735,67 +802,256 @@ contract HookBlocksTest is Test {
         hb.unlockCallback(abi.encode(uint256(1)));
     }
 
-    function test_unlockCallback_requiresOpenBond() public {
+    function test_unlockCallback_requiresOpenBuy() public {
         vm.prank(address(pm));
         vm.expectRevert(HookBlocks.UnexpectedUnlock.selector);
         hb.unlockCallback(abi.encode(uint256(1)));
     }
 
-    function test_bond_skippedCallbackFailsClosed() public {
+    function test_buyAndBurn_skippedCallbackFailsClosed() public {
         _fund();
         vault.setClaimable(address(hb), 0.01 ether);
         pm.setSkipCallback(true);
         // No callback means no output; the floor check refuses the empty fill.
         vm.expectRevert();
-        hb.bond(0);
+        hb.buyAndBurn(0);
     }
 
-    function test_bond_shortPaidTakeFailsFloor() public {
+    function test_buyAndBurn_shortPaidTakeFailsFloor() public {
         _fund();
         vault.setClaimable(address(hb), 0.01 ether);
         pm.setShortPayTake(true);
         // The PM's reported delta claims full output but pays half; the
         // measured-balance floor catches the lie.
         vm.expectRevert();
-        hb.bond(0);
+        hb.buyAndBurn(0);
+    }
+
+    // ------------------------------------------------------------ burn proofs
+
+    function test_burn_sendsEverythingToDeadSameTransaction() public {
+        _fund();
+        vault.setClaimable(address(hb), 0.01 ether);
+        uint256 expectedOut = (0.01 ether * 3_500_000e18) / 1e18;
+
+        hb.buyAndBurn(0);
+
+        // The destination is the canonical dead address, and the amount there
+        // is exactly what the ledger claims — the published number is
+        // verifiable without trusting this contract at all.
+        assertEq(hb.DEAD(), 0x000000000000000000000000000000000000dEaD);
+        assertEq(hookr.balanceOf(hb.DEAD()) - DEAD_PRESEED, expectedOut);
+        assertEq(hb.totalHookrBurned(), expectedOut);
+        assertEq(hookr.balanceOf(address(hb)), 0);
+    }
+
+    function test_burn_sweepsDonatedHookrToDeadToo() public {
+        _fund();
+        // Someone dumps HOOKR on the contract. It must not sit here forever.
+        hookr.mint(address(hb), 5e18);
+        vault.setClaimable(address(hb), 0.01 ether);
+        uint256 bought = (0.01 ether * 3_500_000e18) / 1e18;
+
+        uint256 burned = hb.buyAndBurn(0);
+
+        // The donation is burned alongside the purchase, and the ledger says
+        // so: nothing lingers in the contract.
+        assertEq(burned, bought + 5e18);
+        assertEq(hookr.balanceOf(hb.DEAD()) - DEAD_PRESEED, bought + 5e18);
+        assertEq(hookr.balanceOf(address(hb)), 0);
+    }
+
+    function test_burn_floorIsCheckedOnPurchaseNotOnDonation() public {
+        _fund();
+        // A donation must NOT be able to satisfy the slippage floor on behalf
+        // of a bad execution — the floor is measured on the swap output only.
+        hookr.mint(address(hb), 1_000_000e18);
+        vault.setClaimable(address(hb), 0.01 ether);
+        pm.setExecRate(1e18); // catastrophic execution
+        // Selector-exact: if the floor were ever moved onto the full balance,
+        // the donation would satisfy it and this would stop reverting.
+        vm.expectRevert(abi.encodeWithSelector(HookBlocks.FloorNotMet.selector, _floor(0.01 ether), 0.01 ether));
+        hb.buyAndBurn(0);
+    }
+
+    function test_burn_rejectsFeeOnTransferShortfall() public {
+        _fund();
+        vault.setClaimable(address(hb), 0.01 ether);
+        // A token that shaves the transfer would make the published burn total
+        // a lie; the destination-measured check refuses it.
+        hookr.setFeeOnTransfer(true);
+        vm.expectRevert(HookBlocks.BurnTransferMismatch.selector);
+        hb.buyAndBurn(0);
+    }
+
+    function testFuzz_burn_contractNeverRetainsHookr(uint256 claimWei, uint256 donation) public {
+        claimWei = bound(claimWei, MIN_BUY, 1 ether);
+        donation = bound(donation, 0, 1_000e18);
+        _fund();
+        if (donation != 0) hookr.mint(address(hb), donation);
+        vault.setClaimable(address(hb), claimWei);
+
+        uint256 rounds;
+        while (rounds < 40) {
+            (bool ok,) = address(hb).call(abi.encodeWithSelector(HookBlocks.buyAndBurn.selector, uint256(0)));
+            if (!ok) break;
+            // The invariant holds after EVERY crank, not just at the end.
+            assertEq(hookr.balanceOf(address(hb)), 0);
+            assertEq(hookr.balanceOf(hb.DEAD()) - DEAD_PRESEED, hb.totalHookrBurned());
+            vm.roll(block.number + 1);
+            rounds++;
+        }
+        assertGt(rounds, 0);
+    }
+
+    function test_burn_ledgerRecordsPurchaseNotDonation() public {
+        _fund();
+        // The griefing vector the ledger must resist: donate HOOKR, then let
+        // a crank run. The donation IS burned (nothing stranded), but it must
+        // never be credited as something this block's ETH bought, or anyone
+        // could inflate the campaign's published execution rate forever.
+        hookr.mint(address(hb), 900_000e18);
+        vault.setClaimable(address(hb), 0.01 ether);
+        uint256 bought = (0.01 ether * 3_500_000e18) / 1e18;
+
+        uint256 burned = hb.buyAndBurn(0);
+
+        assertEq(burned, bought + 900_000e18); // everything reached DEAD
+        assertEq(hb.totalHookrBurned(), bought + 900_000e18);
+        // ...but the ledger and the buy total record only the purchase.
+        assertEq(hb.hookBlock(0).hookrBought, bought);
+        assertEq(hb.totalHookrBought(), bought);
+        // The published execution rate is therefore un-inflatable.
+        assertEq(hb.totalHookrBought() / (hb.totalEthSpent() / 1e18 == 0 ? 1 : 1), bought);
+    }
+
+    function test_burn_eventPublishesBoughtAndBurnedSeparately() public {
+        _fund();
+        hookr.mint(address(hb), 1_000e18);
+        vault.setClaimable(address(hb), 0.01 ether);
+        uint256 bought = (0.01 ether * 3_500_000e18) / 1e18;
+        // An observer must be able to check `hookrBought >= floor` from the
+        // event alone, so both figures are emitted.
+        vm.expectEmit(true, true, false, true, address(hb));
+        emit HookBlocks.BoughtAndBurned(address(this), 0, 0.01 ether, bought, bought + 1_000e18, _floor(0.01 ether));
+        hb.buyAndBurn(0);
+    }
+
+    function test_burn_hugeDonationCannotBrickTheCrank() public {
+        _fund();
+        // A donation larger than uint128 must not be able to permanently
+        // brick conversion: the ledger bound applies to the pool-bounded
+        // purchase, and the burn total is a uint256.
+        hookr.mint(address(hb), uint256(type(uint128).max) + 1);
+        vault.setClaimable(address(hb), 0.01 ether);
+        uint256 burned = hb.buyAndBurn(0);
+        assertGt(burned, uint256(type(uint128).max));
+        assertEq(hookr.balanceOf(address(hb)), 0);
+    }
+
+    function test_burn_reentrancyThroughHookrTransferBlocked() public {
+        // The burn added an outbound call to the HOOKR token. A token that
+        // re-enters from it must not be able to drive a second conversion.
+        MockReentrantHookr evil = new MockReentrantHookr();
+        MockPoolManager evilPm = new MockPoolManager(evil);
+        evilPm.setRate(3_500_000e18);
+        HookBlocks target = _deploy(address(vault), address(weth), address(evil), address(evilPm));
+        vault.mint(sponsor, 50e18);
+        vm.startPrank(sponsor);
+        vault.approve(address(target), type(uint256).max);
+        target.fundFeeShares(50e18);
+        vm.stopPrank();
+        vault.setClaimable(address(target), 0.01 ether);
+
+        evil.arm(address(target), 1); // re-enter buyAndBurn from transfer
+        vm.expectRevert();
+        target.buyAndBurn(0);
+    }
+
+    function test_burn_reentrancyThroughSweepBlocked() public {
+        MockReentrantHookr evil = new MockReentrantHookr();
+        MockPoolManager evilPm = new MockPoolManager(evil);
+        evilPm.setRate(3_500_000e18);
+        HookBlocks target = _deploy(address(vault), address(weth), address(evil), address(evilPm));
+        vault.mint(sponsor, 50e18);
+        vm.startPrank(sponsor);
+        vault.approve(address(target), type(uint256).max);
+        target.fundFeeShares(50e18);
+        vm.stopPrank();
+
+        evil.mint(address(target), 5e18);
+        weth.mint(address(target), 1e18);
+        vm.warp(endAt + 1);
+        evil.arm(address(target), 2); // re-enter sweepUnspent from transfer
+        vm.prank(sponsor);
+        vm.expectRevert();
+        target.sweepUnspent();
+    }
+
+    function test_sweep_burnsStrandedHookrRatherThanTrappingIt() public {
+        _fund();
+        // The pool dies, so conversion is impossible and a donation would
+        // otherwise sit here forever. The sweep must burn it, not pay it out.
+        hookr.mint(address(hb), 5e18);
+        weth.mint(address(hb), 0.02 ether);
+        vm.prank(sponsor);
+        hb.setBuybackPaused(true);
+        vm.warp(sweepAfter + 1);
+
+        uint256 deadBefore = hookr.balanceOf(hb.DEAD());
+        hb.sweepUnspent();
+
+        assertEq(weth.balanceOf(sponsor), 0.02 ether); // WETH recovered
+        assertEq(hookr.balanceOf(hb.DEAD()) - deadBefore, 5e18); // HOOKR burned
+        assertEq(hookr.balanceOf(address(hb)), 0); // nothing trapped
+        assertEq(hookr.balanceOf(sponsor), 0); // and never diverted
+        assertEq(hb.totalHookrBurned(), 5e18);
+    }
+
+    function test_sweep_hookrAloneIsEnoughToSweep() public {
+        _fund();
+        hookr.mint(address(hb), 3e18);
+        vm.warp(sweepAfter + 1);
+        hb.sweepUnspent(); // must not revert NothingToSweep
+        assertEq(hookr.balanceOf(address(hb)), 0);
     }
 
     // ------------------------------------------------------- admin safeguards
 
     function test_pause_onlySponsor() public {
         vm.expectRevert(HookBlocks.OnlySponsor.selector);
-        hb.setBondingPaused(true);
-        assertFalse(hb.bondingPaused());
+        hb.setBuybackPaused(true);
+        assertFalse(hb.buybackPaused());
     }
 
-    function test_pause_gatesBondOnlyAndUnpauses() public {
+    function test_pause_gatesBuysOnlyAndUnpauses() public {
         _fund();
         vault.setClaimable(address(hb), 0.01 ether);
 
         vm.prank(sponsor);
-        hb.setBondingPaused(true);
-        vm.expectRevert(HookBlocks.BondingPaused.selector);
-        hb.bond(0);
+        hb.setBuybackPaused(true);
+        vm.expectRevert(HookBlocks.BuybackPaused.selector);
+        hb.buyAndBurn(0);
 
         // Unpause restores the permissionless crank unchanged.
         vm.prank(sponsor);
-        hb.setBondingPaused(false);
-        uint256 bonded = hb.bond(0);
-        assertEq(bonded, (0.01 ether * 3_500_000e18) / 1e18);
+        hb.setBuybackPaused(false);
+        uint256 burned = hb.buyAndBurn(0);
+        assertEq(burned, (0.01 ether * 3_500_000e18) / 1e18);
     }
 
     function test_pause_emitsEvent() public {
         vm.expectEmit(false, false, false, true, address(hb));
-        emit HookBlocks.BondingPauseSet(true);
+        emit HookBlocks.BuybackPauseSet(true);
         vm.prank(sponsor);
-        hb.setBondingPaused(true);
+        hb.setBuybackPaused(true);
     }
 
     function test_pause_neverBlocksFinalizeOrSweep() public {
         _fund();
         vault.setClaimable(address(hb), 0.01 ether);
         vm.prank(sponsor);
-        hb.setBondingPaused(true);
+        hb.setBuybackPaused(true);
 
         // Finalize runs paused: principal is never behind the switch.
         vm.warp(endAt + 1);
@@ -806,7 +1062,7 @@ contract HookBlocksTest is Test {
         // WETH; with bonding paused, the sponsor's early sweep recovers it.
         assertEq(weth.balanceOf(address(hb)), 0.01 ether);
         vm.prank(sponsor);
-        hb.sweepUnbonded();
+        hb.sweepUnspent();
         assertEq(weth.balanceOf(sponsor), 0.01 ether);
     }
 
@@ -818,11 +1074,11 @@ contract HookBlocksTest is Test {
         // Before SWEEP_AFTER a non-sponsor is still gated...
         vm.prank(keeper);
         vm.expectRevert(HookBlocks.SweepNotOpen.selector);
-        hb.sweepUnbonded();
+        hb.sweepUnspent();
 
         // ...but the sponsor recovers the stuck leg immediately.
         vm.prank(sponsor);
-        hb.sweepUnbonded();
+        hb.sweepUnspent();
         assertEq(weth.balanceOf(sponsor), 0.02 ether);
     }
 
@@ -832,28 +1088,30 @@ contract HookBlocksTest is Test {
         vm.warp(endAt); // the window's last second is still inside the term
         vm.prank(sponsor);
         vm.expectRevert(HookBlocks.SweepNotOpen.selector);
-        hb.sweepUnbonded();
+        hb.sweepUnspent();
     }
 
     function test_safeguards_canNeverTouchHookr() public {
         _fund();
         vault.setClaimable(address(hb), 0.01 ether);
-        hb.bond(0);
-        uint256 bonded = hookr.balanceOf(address(hb));
-        assertGt(bonded, 0);
+        hb.buyAndBurn(0);
+        uint256 burned = hookr.balanceOf(hb.DEAD()) - DEAD_PRESEED;
+        assertGt(burned, 0);
+        assertEq(hookr.balanceOf(address(hb)), 0);
 
         // Pause, finalize, early-sweep with residue: the ledger and the
         // HOOKR balance are byte-identical afterward.
         vm.prank(sponsor);
-        hb.setBondingPaused(true);
+        hb.setBuybackPaused(true);
         weth.mint(address(hb), 0.01 ether);
         vm.warp(endAt + 1);
         hb.finalize();
         vm.prank(sponsor);
-        hb.sweepUnbonded();
+        hb.sweepUnspent();
 
-        assertEq(hookr.balanceOf(address(hb)), bonded);
-        assertEq(hb.totalHookrBonded(), bonded);
+        assertEq(hookr.balanceOf(hb.DEAD()) - DEAD_PRESEED, burned);
+        assertEq(hb.totalHookrBurned(), burned);
+        assertEq(hookr.balanceOf(address(hb)), 0);
         assertEq(hookr.balanceOf(sponsor), 0);
     }
 
@@ -902,31 +1160,34 @@ contract HookBlocksTest is Test {
     function test_sweep_gatedUntilWindow() public {
         weth.mint(address(hb), 1 ether);
         vm.expectRevert(HookBlocks.SweepNotOpen.selector);
-        hb.sweepUnbonded();
+        hb.sweepUnspent();
     }
 
     function test_sweep_nothingToSweepReverts() public {
         vm.warp(sweepAfter + 1);
         vm.expectRevert(HookBlocks.NothingToSweep.selector);
-        hb.sweepUnbonded();
+        hb.sweepUnspent();
     }
 
     function test_sweep_recoversResidueNeverHookr() public {
         _fund();
         vault.setClaimable(address(hb), 0.01 ether);
-        hb.bond(0);
-        uint256 bondedHookr = hb.totalHookrBonded();
+        hb.buyAndBurn(0);
+        uint256 burnedHookr = hb.totalHookrBurned();
 
         weth.mint(address(hb), 0.03 ether);
         vm.deal(address(hb), 0.002 ether);
         vm.warp(sweepAfter + 1);
-        hb.sweepUnbonded();
+        hb.sweepUnspent();
 
         assertEq(weth.balanceOf(sponsor), 0.03 ether);
         assertEq(sponsor.balance, 0.002 ether);
         // The bonded ledger and balance are untouched, permanently.
-        assertEq(hookr.balanceOf(address(hb)), bondedHookr);
-        assertEq(hb.totalHookrBonded(), bondedHookr);
+        // Burned HOOKR is at DEAD and the contract holds none, so the sweep
+        // has nothing of it to touch even in principle.
+        assertEq(hookr.balanceOf(hb.DEAD()) - DEAD_PRESEED, burnedHookr);
+        assertEq(hb.totalHookrBurned(), burnedHookr);
+        assertEq(hookr.balanceOf(address(hb)), 0);
     }
 
     // ------------------------------------------------------------ permanence
@@ -934,22 +1195,23 @@ contract HookBlocksTest is Test {
     function test_permanence_noPathMovesHookr() public {
         _fund();
         vault.setClaimable(address(hb), 0.01 ether);
-        hb.bond(0);
-        uint256 bonded = hookr.balanceOf(address(hb));
-        assertGt(bonded, 0);
+        hb.buyAndBurn(0);
+        uint256 burned = hookr.balanceOf(hb.DEAD()) - DEAD_PRESEED;
+        assertGt(burned, 0);
 
-        // Walk the entire lifecycle: nothing moves HOOKR.
+        // Walk the entire lifecycle: nothing retrieves burned HOOKR.
         vm.warp(endAt + 1);
         hb.finalize();
         vm.roll(block.number + 1);
         weth.mint(address(hb), 0.01 ether);
-        hb.bond(0); // residual bond only adds
+        hb.buyAndBurn(0); // residual bond only adds
         vm.warp(sweepAfter + 1);
         weth.mint(address(hb), 1);
-        hb.sweepUnbonded();
+        hb.sweepUnspent();
 
-        assertGe(hookr.balanceOf(address(hb)), bonded);
-        assertEq(hookr.balanceOf(address(hb)), hb.totalHookrBonded());
+        assertGe(hookr.balanceOf(hb.DEAD()) - DEAD_PRESEED, burned);
+        assertEq(hookr.balanceOf(hb.DEAD()) - DEAD_PRESEED, hb.totalHookrBurned());
+        assertEq(hookr.balanceOf(address(hb)), 0);
         assertEq(hookr.balanceOf(sponsor), 0);
     }
 
@@ -964,20 +1226,20 @@ contract HookBlocksTest is Test {
 
     // ----------------------------------------------------------------- views
 
-    function test_bondableWeth_aggregatesAndDegrades() public {
+    function test_pendingWeth_aggregatesAndDegrades() public {
         _fund();
         vault.setClaimable(address(hb), 0.01 ether);
         weth.mint(address(hb), 0.02 ether);
         vm.deal(address(hb), 0.003 ether);
-        assertEq(hb.bondableWeth(), 0.033 ether);
+        assertEq(hb.pendingWeth(), 0.033 ether);
         vault.setReverts(true);
-        assertEq(hb.bondableWeth(), 0.023 ether); // view revert degrades to held
+        assertEq(hb.pendingWeth(), 0.023 ether); // view revert degrades to held
     }
 
     // ------------------------------------------------------------------ fuzz
 
-    function testFuzz_bond_ledgerMatchesBalances(uint256 claimWei, uint256 rate) public {
-        claimWei = bound(claimWei, MIN_BOND, 5 ether);
+    function testFuzz_buyAndBurn_ledgerMatchesBalances(uint256 claimWei, uint256 rate) public {
+        claimWei = bound(claimWei, MIN_BUY, 5 ether);
         rate = bound(rate, 1e18, 1e26);
         pm.setRate(rate);
         _fund();
@@ -985,33 +1247,35 @@ contract HookBlocksTest is Test {
 
         uint256 rounds;
         while (rounds < 120) {
-            uint256 before = hb.totalEthBonded();
-            (bool ok, bytes memory ret) = address(hb).call(abi.encodeWithSelector(HookBlocks.bond.selector, uint256(0)));
+            uint256 before = hb.totalEthSpent();
+            (bool ok, bytes memory ret) =
+                address(hb).call(abi.encodeWithSelector(HookBlocks.buyAndBurn.selector, uint256(0)));
             if (!ok) break;
-            uint256 bonded = abi.decode(ret, (uint256));
-            assertLe(hb.totalEthBonded() - before, MAX_BOND); // per-call cap holds
-            assertGt(bonded, 0);
+            uint256 burned = abi.decode(ret, (uint256));
+            assertLe(hb.totalEthSpent() - before, MAX_BUY); // per-call cap holds
+            assertGt(burned, 0);
             vm.roll(block.number + 1);
             rounds++;
         }
 
         // The ledger IS the balance: every bonded token is still here, and
         // block entries sum exactly to the totals.
-        assertEq(hookr.balanceOf(address(hb)), hb.totalHookrBonded());
+        assertEq(hookr.balanceOf(hb.DEAD()) - DEAD_PRESEED, hb.totalHookrBurned());
+        assertEq(hookr.balanceOf(address(hb)), 0);
         uint256 sumEth;
         uint256 sumHookr;
         for (uint256 i; i < hb.blockCount(); i++) {
             HookBlocks.HookBlock memory blk = hb.hookBlock(i);
             sumEth += blk.ethIn;
-            sumHookr += blk.hookrBonded;
+            sumHookr += blk.hookrBought;
         }
-        assertEq(sumEth, hb.totalEthBonded());
-        assertEq(sumHookr, hb.totalHookrBonded());
+        assertEq(sumEth, hb.totalEthSpent());
+        assertEq(sumHookr, hb.totalHookrBought());
         // Nothing was lost: whatever was not bonded is still WETH or native.
-        assertEq(weth.balanceOf(address(hb)) + address(hb).balance + hb.totalEthBonded(), claimWei);
+        assertEq(weth.balanceOf(address(hb)) + address(hb).balance + hb.totalEthSpent(), claimWei);
     }
 
-    function testFuzz_bond_floorRejectsUnderpricedExecution(uint256 execBps) public {
+    function testFuzz_buyAndBurn_floorRejectsUnderpricedExecution(uint256 execBps) public {
         execBps = bound(execBps, 1, 12_000);
         uint256 spotRate = 3_500_000e18;
         pm.setSpotRate(spotRate);
@@ -1022,10 +1286,10 @@ contract HookBlocksTest is Test {
         uint256 floor = _floor(0.01 ether);
         uint256 out = (0.01 ether * ((spotRate * execBps) / 10_000)) / 1e18;
         if (out >= floor) {
-            assertEq(hb.bond(0), out);
+            assertEq(hb.buyAndBurn(0), out);
         } else {
             vm.expectRevert(abi.encodeWithSelector(HookBlocks.FloorNotMet.selector, floor, out));
-            hb.bond(0);
+            hb.buyAndBurn(0);
         }
     }
 

@@ -33,7 +33,7 @@ function shortAddress(address: string): string {
 const REFERENCES = [
   { label: "Fee-share vault", value: "100 fixed shares", address: MANIFEST.vault.address },
   { label: "Staking token", value: "0xZAPS", address: MANIFEST.token },
-  { label: "Bond target", value: "$HOOKR", address: MANIFEST.hookr },
+  { label: "Burn target", value: "$HOOKR", address: MANIFEST.hookr },
   { label: "Pool manager", value: "ETH/HOOKR pool host", address: MANIFEST.hookrPool.poolManager },
 ] as const;
 
@@ -58,13 +58,13 @@ export function Campaign2Panel(): React.JSX.Element {
       </header>
 
       <h2 id="campaign2-title" className={styles.title}>
-        Every trade pays stakers and bonds $HOOKR.
+        Every trade pays stakers and burns $HOOKR.
       </h2>
       <p className={styles.lede}>
         The second staking campaign commits the whole tokenized fee stream for a fixed
         14-day window: all 100 vault shares work, 50 to each leg, so 50% of the WETH
         trading fees stream to 0xZAPS stakers while the other 50% market-buys $HOOKR and
-        bonds it permanently into Hook Blocks.
+        burns it on the spot.
       </p>
 
       {deployment === "partial" ? (
@@ -103,12 +103,12 @@ export function Campaign2Panel(): React.JSX.Element {
           <dd>50 + 50 of the vault&apos;s 100 fee shares</dd>
         </div>
         <div>
-          <dt>Bond floor</dt>
-          <dd>97% of same-block spot, ≤0.05 ETH per bond, one bond per block</dd>
+          <dt>Buy floor</dt>
+          <dd>97% of same-block spot, ≤0.05 ETH per buy, one buy per block</dd>
         </div>
         <div>
           <dt>After the window</dt>
-          <dd>Both legs return their shares to the sponsor; bonded HOOKR stays</dd>
+          <dd>Both legs return their shares to the sponsor; burned HOOKR is already gone</dd>
         </div>
       </dl>
 

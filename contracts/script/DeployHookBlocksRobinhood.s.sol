@@ -19,11 +19,11 @@ interface IPoolManagerPreflight {
 }
 
 /// @title DeployHookBlocksRobinhood
-/// @notice UNAUDITED. Deploys the HookBlocks bond leg of the second 0xZAPS
+/// @notice UNAUDITED. Deploys the HookBlocks buy-and-burn leg of the second 0xZAPS
 ///         fee campaign on Robinhood Chain (4663): 50 of the vault's 100 fee
 ///         shares fund it, and its permissionless crank converts the WETH
 ///         they earn into $HOOKR through the live native-ETH/HOOKR pool,
-///         bonding every bought token forever.
+///         burning every bought token to the dead address in the same transaction.
 ///
 ///         This script deploys ONE new contract and mutates nothing live: the
 ///         vault, locker wiring, campaign 1, and every OpenZaps lineage stay
@@ -68,13 +68,13 @@ contract DeployHookBlocksRobinhood is Script {
     /// @dev v4-core `StateLibrary.POOLS_SLOT`.
     uint256 internal constant POOLS_SLOT = 6;
 
-    // Campaign-2 terms. The window is the product ask; the bond bounds are
+    // Campaign-2 terms. The window is the product ask; the buy bounds are
     // sized in docs/staking-campaign-2-hook-blocks.md.
     uint64 internal constant CAMPAIGN_DURATION = 14 days;
     uint64 internal constant SWEEP_TAIL = 30 days;
     uint16 internal constant MIN_OUT_BPS = 9_700;
-    uint256 internal constant MAX_BOND_WEI = 0.05 ether;
-    uint256 internal constant MIN_BOND_WEI = 0.0005 ether;
+    uint256 internal constant MAX_BUY_WEI = 0.05 ether;
+    uint256 internal constant MIN_BUY_WEI = 0.0005 ether;
     uint256 internal constant FEE_SHARE_ALLOCATION = 50e18;
 
     error WrongChain(uint256 actual);
@@ -137,8 +137,8 @@ contract DeployHookBlocksRobinhood is Script {
             endAt,
             sweepAfter,
             MIN_OUT_BPS,
-            MAX_BOND_WEI,
-            MIN_BOND_WEI
+            MAX_BUY_WEI,
+            MIN_BUY_WEI
         );
         vm.stopBroadcast();
 
@@ -148,8 +148,8 @@ contract DeployHookBlocksRobinhood is Script {
                 || address(hookBlocks.POOL_MANAGER()) != POOL_MANAGER || hookBlocks.POOL_ID() != POOL_ID
                 || hookBlocks.SPONSOR() != SPONSOR || hookBlocks.START_AT() != uint64(startAt)
                 || hookBlocks.END_AT() != endAt || hookBlocks.SWEEP_AFTER() != sweepAfter
-                || hookBlocks.MIN_OUT_BPS() != MIN_OUT_BPS || hookBlocks.MAX_BOND_WEI() != MAX_BOND_WEI
-                || hookBlocks.MIN_BOND_WEI() != MIN_BOND_WEI
+                || hookBlocks.MIN_OUT_BPS() != MIN_OUT_BPS || hookBlocks.MAX_BUY_WEI() != MAX_BUY_WEI
+                || hookBlocks.MIN_BUY_WEI() != MIN_BUY_WEI
         ) revert DeployedIdentityMismatch();
 
         console2.log("== HookBlocks deployed ==");

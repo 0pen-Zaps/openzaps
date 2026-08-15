@@ -154,13 +154,14 @@ describe("campaign-2 preflight snapshot", () => {
       if (target === address(hookBlocksAddress)) {
         switch (call.functionName) {
           case "feeSharesFunded": return Promise.resolve(true);
-          case "bondingPaused": return Promise.resolve(false);
+          case "buybackPaused": return Promise.resolve(false);
           case "finalized": return Promise.resolve(false);
           case "feeSharePrincipal": return Promise.resolve(50n * 10n ** 18n);
-          case "totalEthBonded": return Promise.resolve(30_000_000_000_000_000n);
-          case "totalHookrBonded": return Promise.resolve(105_000n * 10n ** 18n);
+          case "totalEthSpent": return Promise.resolve(30_000_000_000_000_000n);
+          case "totalHookrBought": return Promise.resolve(100_000n * 10n ** 18n);
+          case "totalHookrBurned": return Promise.resolve(105_000n * 10n ** 18n);
           case "blockCount": return Promise.resolve(3n);
-          case "bondableWeth": return Promise.resolve(1_000_000_000_000_000n);
+          case "pendingWeth": return Promise.resolve(1_000_000_000_000_000n);
         }
       }
       if (target === address(campaignAddress)) {
@@ -179,7 +180,11 @@ describe("campaign-2 preflight snapshot", () => {
     expect(byId["runtime-hashes-verified"]?.ok).toBe(true);
     expect(byId["both-legs-funded"]?.ok).toBe(true);
     expect(payload.live?.hookBlocks.blockCount).toBe("3");
-    expect(payload.live?.hookBlocks.bondingPaused).toBe(false);
+    expect(payload.live?.hookBlocks.buybackPaused).toBe(false);
+    // Bought and burned are published separately: the burn total includes
+    // donated HOOKR, so only the bought figure is an honest rate numerator.
+    expect(payload.live?.hookBlocks.totalHookrBought).toBe((100_000n * 10n ** 18n).toString());
+    expect(payload.live?.hookBlocks.totalHookrBurned).toBe((105_000n * 10n ** 18n).toString());
     expect(payload.live?.campaign.totalStaked).toBe((2n * 10n ** 27n).toString());
   });
 
@@ -206,7 +211,7 @@ describe("campaign-2 preflight snapshot", () => {
       const target = address(call.address);
       if (target.startsWith("0x1111") || target.startsWith("0x2222")) {
         if (call.functionName === "feeSharesFunded") return Promise.resolve(false);
-        if (call.functionName === "bondingPaused") return Promise.resolve(false);
+        if (call.functionName === "buybackPaused") return Promise.resolve(false);
         if (call.functionName === "finalized") return Promise.resolve(false);
         if (call.functionName === "totalStaked") return Promise.resolve(0n);
         return Promise.resolve(0n);

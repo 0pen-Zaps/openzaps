@@ -21,7 +21,7 @@ interface IVaultLive is IERC20Live {
 }
 
 /// @dev Opt-in DRESS REHEARSAL against live Robinhood Chain state: the exact
-///      production sequence of campaign 2's bond leg, plus every failure mode
+///      production sequence of campaign 2's buy-and-burn leg, every failure mode
 ///      and admin safeguard, executed end to end on a fork before any real
 ///      broadcast. Ongoing fee flow is simulated faithfully by sending WETH
 ///      into the real vault and calling its permissionless `sync()`, which
@@ -91,7 +91,7 @@ contract HookBlocksRehearsalForkTest is Test {
             return;
         }
 
-        // --- window opens; first real locker fees arrive and get bonded ---
+        // --- window opens; first real locker fees arrive and get burned ---
         vm.warp(startAt + 1);
         IVaultLive(VAULT).harvest();
         _simulateFeeFlow(0.06 ether); // ~a day of pool fees, vault-credited
@@ -99,10 +99,13 @@ contract HookBlocksRehearsalForkTest is Test {
         uint256 claimableNow = IVaultLive(VAULT).claimable(address(hb), WETH);
         assertGt(claimableNow, 0.02 ether); // our 50/100 of the simulated flow
 
+        uint256 deadBefore = IERC20Live(HOOKR).balanceOf(hb.DEAD());
         vm.prank(keeper);
-        uint256 firstBond = hb.bond(0);
-        assertGt(firstBond, 0);
+        uint256 firstBurn = hb.buyAndBurn(0);
+        assertGt(firstBurn, 0);
         assertEq(hb.blockCount(), 1);
+        assertEq(IERC20Live(HOOKR).balanceOf(hb.DEAD()) - deadBefore, firstBurn);
+        assertEq(IERC20Live(HOOKR).balanceOf(address(hb)), 0);
 
         // --- mid-campaign: more flow, multiple cranks across blocks ---
         vm.warp(startAt + 7 days);
@@ -110,7 +113,7 @@ contract HookBlocksRehearsalForkTest is Test {
         uint256 rounds;
         while (rounds < 12) {
             vm.roll(block.number + 1);
-            (bool ok,) = address(hb).call(abi.encodeWithSelector(HookBlocks.bond.selector, uint256(0)));
+            (bool ok,) = address(hb).call(abi.encodeWithSelector(HookBlocks.buyAndBurn.selector, uint256(0)));
             if (!ok) break;
             rounds++;
         }
@@ -128,11 +131,11 @@ contract HookBlocksRehearsalForkTest is Test {
         // With the shares gone, the vault owes this contract nothing more.
         assertEq(IVaultLive(VAULT).claimable(address(hb), WETH), 0);
 
-        // --- residual drain, then the ledger IS the balance, forever ---
+        // --- residual drain, then the ledger IS the dead-address delta ---
         uint256 drainRounds;
         while (drainRounds < 12) {
             vm.roll(block.number + 1);
-            (bool ok,) = address(hb).call(abi.encodeWithSelector(HookBlocks.bond.selector, uint256(0)));
+            (bool ok,) = address(hb).call(abi.encodeWithSelector(HookBlocks.buyAndBurn.selector, uint256(0)));
             if (!ok) break;
             drainRounds++;
         }
@@ -143,11 +146,13 @@ contract HookBlocksRehearsalForkTest is Test {
         for (uint256 i; i < hb.blockCount(); i++) {
             HookBlocks.HookBlock memory blk = hb.hookBlock(i);
             sumEth += blk.ethIn;
-            sumHookr += blk.hookrBonded;
+            sumHookr += blk.hookrBought;
         }
-        assertEq(sumEth, hb.totalEthBonded());
-        assertEq(sumHookr, hb.totalHookrBonded());
-        assertEq(IERC20Live(HOOKR).balanceOf(address(hb)), hb.totalHookrBonded());
+        assertEq(sumEth, hb.totalEthSpent());
+        assertEq(sumHookr, hb.totalHookrBought());
+        // Every burned token is at DEAD and none of it is here.
+        assertEq(IERC20Live(HOOKR).balanceOf(hb.DEAD()) - deadBefore, hb.totalHookrBurned());
+        assertEq(IERC20Live(HOOKR).balanceOf(address(hb)), 0);
     }
 
     function test_rehearsal_failureModesAndSafeguards() public {
@@ -162,36 +167,36 @@ contract HookBlocksRehearsalForkTest is Test {
 
         // --- failure mode: floor not met (a keeper demanding the impossible
         //     stands in for a sandwiched or broken price) — WETH is retained,
-        //     nothing is bonded, nothing is lost ---
-        uint256 wethBefore = hb.bondableWeth();
+        //     nothing is burned, nothing is lost ---
+        uint256 wethBefore = hb.pendingWeth();
         vm.prank(keeper);
         vm.expectRevert();
-        hb.bond(type(uint128).max);
+        hb.buyAndBurn(type(uint128).max);
         assertEq(hb.blockCount(), 0);
-        assertEq(hb.bondableWeth(), wethBefore);
+        assertEq(hb.pendingWeth(), wethBefore);
 
         // --- safeguard: sponsor pauses the conversion leg; the crank halts
         //     but nothing else does ---
         vm.prank(SPONSOR);
-        hb.setBondingPaused(true);
+        hb.setBuybackPaused(true);
         vm.roll(block.number + 1);
         vm.prank(keeper);
-        vm.expectRevert(HookBlocks.BondingPaused.selector);
-        hb.bond(0);
+        vm.expectRevert(HookBlocks.BuybackPaused.selector);
+        hb.buyAndBurn(0);
 
         // --- safeguard: unpause restores the identical permissionless path ---
         vm.prank(SPONSOR);
-        hb.setBondingPaused(false);
+        hb.setBuybackPaused(false);
         vm.roll(block.number + 1);
         vm.prank(keeper);
-        uint256 bonded = hb.bond(0);
-        assertGt(bonded, 0);
+        uint256 burned = hb.buyAndBurn(0);
+        assertGt(burned, 0);
 
         // --- sweep gating: nobody mid-window, sponsor from END_AT, everyone
         //     from SWEEP_AFTER ---
         vm.prank(SPONSOR);
         vm.expectRevert(HookBlocks.SweepNotOpen.selector);
-        hb.sweepUnbonded();
+        hb.sweepUnspent();
 
         vm.warp(endAt + 1);
         hb.finalize();
@@ -199,16 +204,20 @@ contract HookBlocksRehearsalForkTest is Test {
 
         vm.prank(keeper);
         vm.expectRevert(HookBlocks.SweepNotOpen.selector);
-        hb.sweepUnbonded();
+        hb.sweepUnspent();
 
         uint256 sponsorWethBefore = IERC20Live(WETH).balanceOf(SPONSOR);
-        uint256 hookrBonded = IERC20Live(HOOKR).balanceOf(address(hb));
+        uint256 sponsorHookrBefore = IERC20Live(HOOKR).balanceOf(SPONSOR);
+        uint256 burnedTotal = hb.totalHookrBurned();
         vm.prank(SPONSOR);
-        hb.sweepUnbonded();
+        hb.sweepUnspent();
         assertGt(IERC20Live(WETH).balanceOf(SPONSOR), sponsorWethBefore);
-        // The safeguards never touched a bonded token.
-        assertEq(IERC20Live(HOOKR).balanceOf(address(hb)), hookrBonded);
-        assertEq(hookrBonded, hb.totalHookrBonded());
+        // The safeguards recovered WETH and nothing else: burned HOOKR sits at
+        // DEAD, the contract holds none, and the sponsor gained none.
+        assertGt(burnedTotal, 0);
+        assertEq(IERC20Live(HOOKR).balanceOf(address(hb)), 0);
+        assertEq(IERC20Live(HOOKR).balanceOf(SPONSOR), sponsorHookrBefore);
+        assertEq(hb.totalHookrBurned(), burnedTotal);
     }
 
     /// @dev Leaves a sub-minimum WETH residue in the contract so the sweep
@@ -217,7 +226,7 @@ contract HookBlocksRehearsalForkTest is Test {
         uint256 rounds;
         while (rounds < 12) {
             vm.roll(block.number + 1);
-            (bool ok,) = address(hb).call(abi.encodeWithSelector(HookBlocks.bond.selector, uint256(0)));
+            (bool ok,) = address(hb).call(abi.encodeWithSelector(HookBlocks.buyAndBurn.selector, uint256(0)));
             if (!ok) break;
             rounds++;
         }

@@ -49,7 +49,7 @@ type OpAction = {
 };
 
 type OperatorOpId =
-  | "bond"
+  | "buyAndBurn"
   | "pause"
   | "hb-finalize"
   | "sweep"
@@ -198,7 +198,7 @@ export function Campaign2Operator(): React.JSX.Element {
   const released = data?.deployment === "configured" && data.live ? data.live : null;
   const releasedManifest = manifest.deployment as unknown as ReleasedManifest | null;
   const sponsorConnected = !!account && account.toLowerCase() === manifest.sponsor.toLowerCase();
-  const bondingPaused = released?.hookBlocks.bondingPaused ?? false;
+  const buybackPaused = released?.hookBlocks.buybackPaused ?? false;
 
   const fundLeg = useCallback(
     async (legLabel: string, spender: Address, spenderAbi: Abi, expectedRuntimeHash: string): Promise<void> => {
@@ -230,21 +230,21 @@ export function Campaign2Operator(): React.JSX.Element {
       const hb = releasedManifest.hookBlocks;
       const campaign = releasedManifest.campaign;
       switch (id) {
-        case "bond":
+        case "buyAndBurn":
           await runContract(
-            "bond(0)",
-            { address: hb.address, abi: hookBlocksAbi as unknown as Abi, functionName: "bond", args: [0n] },
+            "buyAndBurn(0)",
+            { address: hb.address, abi: hookBlocksAbi as unknown as Abi, functionName: "buyAndBurn", args: [0n] },
             hb.runtimeCodeHash,
           );
           return;
         case "pause":
           await runContract(
-            bondingPaused ? "setBondingPaused(false)" : "setBondingPaused(true)",
+            buybackPaused ? "setBuybackPaused(false)" : "setBuybackPaused(true)",
             {
               address: hb.address,
               abi: hookBlocksAbi as unknown as Abi,
-              functionName: "setBondingPaused",
-              args: [!bondingPaused],
+              functionName: "setBuybackPaused",
+              args: [!buybackPaused],
             },
             hb.runtimeCodeHash,
           );
@@ -258,8 +258,8 @@ export function Campaign2Operator(): React.JSX.Element {
           return;
         case "sweep":
           await runContract(
-            "sweepUnbonded()",
-            { address: hb.address, abi: hookBlocksAbi as unknown as Abi, functionName: "sweepUnbonded" },
+            "sweepUnspent()",
+            { address: hb.address, abi: hookBlocksAbi as unknown as Abi, functionName: "sweepUnspent" },
             hb.runtimeCodeHash,
           );
           return;
@@ -290,37 +290,37 @@ export function Campaign2Operator(): React.JSX.Element {
           return;
       }
     },
-    [bondingPaused, fundLeg, releasedManifest, runContract],
+    [buybackPaused, fundLeg, releasedManifest, runContract],
   );
 
   const ops: OperatorOp[] = [
     {
-      id: "bond",
-      label: "Bond: buy + lock HOOKR",
+      id: "buyAndBurn",
+      label: "Buy + burn HOOKR",
       sponsorOnly: false,
       description:
-        "Claims the leg's vault WETH, market-buys HOOKR on the pinned pool (spot×0.97 floor, ≤0.05 ETH, one per block), and appends a Hook Block.",
+        "Claims the leg's vault WETH, market-buys HOOKR on the pinned pool (spot×0.97 floor, ≤0.05 ETH, one per block), and burns it to the dead address in the same transaction.",
     },
     {
       id: "pause",
-      label: bondingPaused ? "Unpause bonding" : "Pause bonding",
+      label: buybackPaused ? "Unpause buybacks" : "Pause buybacks",
       sponsorOnly: true,
       description:
-        "Circuit breaker for future bond() calls only — funding, finalize, and the sweep are never behind it, and it cannot move any asset.",
+        "Circuit breaker for future buyAndBurn() calls only — funding, finalize, and the sweep are never behind it, and it cannot move any asset.",
     },
     {
       id: "hb-finalize",
       label: "Finalize Hook Blocks leg",
       sponsorOnly: false,
       description:
-        "After the window: one final reward pull, then the 50 shares return to the sponsor. Residual WETH stays bondable.",
+        "After the window: one final reward pull, then the 50 shares return to the sponsor. Residual WETH stays convertible.",
     },
     {
       id: "sweep",
-      label: "Sweep un-bonded residue",
+      label: "Sweep unconverted residue",
       sponsorOnly: false,
       description:
-        "Recovers residual WETH/ETH to the sponsor — the sponsor from the term's end, anyone from thirty days later. Structurally unable to touch HOOKR.",
+        "Recovers residual WETH/ETH to the sponsor — the sponsor from the term's end, anyone from thirty days later. Burned HOOKR is already at the dead address and out of reach.",
     },
     {
       id: "harvest",
@@ -397,9 +397,10 @@ export function Campaign2Operator(): React.JSX.Element {
           {released ? (
             <p className={styles.figures}>
               Hook Blocks: {released.hookBlocks.blockCount} blocks ·{" "}
-              {formatUnits(BigInt(released.hookBlocks.totalHookrBonded), 18)} HOOKR bonded ·{" "}
-              {formatUnits(BigInt(released.hookBlocks.bondableWeth), 18)} WETH bondable ·{" "}
-              {released.hookBlocks.bondingPaused ? "bonding PAUSED" : "bonding open"} · staker leg{" "}
+              {formatUnits(BigInt(released.hookBlocks.totalHookrBought), 18)} HOOKR bought /{" "}
+              {formatUnits(BigInt(released.hookBlocks.totalHookrBurned), 18)} burned ·{" "}
+              {formatUnits(BigInt(released.hookBlocks.pendingWeth), 18)} WETH pending ·{" "}
+              {released.hookBlocks.buybackPaused ? "buybacks PAUSED" : "buybacks open"} · staker leg{" "}
               {formatUnits(BigInt(released.campaign.totalStaked), 18)} 0xZAPS staked
             </p>
           ) : null}
