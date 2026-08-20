@@ -4,6 +4,7 @@ import {
   feeRewards2Deployment,
 } from "@/lib/rewards2";
 import { Campaign2Operator } from "./Campaign2Operator";
+import { Campaign2Stake } from "./Campaign2Stake";
 import styles from "./campaign2.module.css";
 
 const MANIFEST = FEE_REWARDS_2_MANIFEST;
@@ -111,6 +112,11 @@ export function Campaign2Panel(): React.JSX.Element {
           <dd>Both legs return their shares to the sponsor; burned HOOKR is already gone</dd>
         </div>
       </dl>
+
+      {/* User staking renders only once the release manifest is configured;
+          before that the component returns null and the panel stays a
+          read-only announcement. */}
+      <Campaign2Stake />
 
       {/* The two boundary sentences stay permanently visible; only the
           verification detail (addresses) and the sponsor console fold away. */}

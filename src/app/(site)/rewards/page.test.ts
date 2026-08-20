@@ -389,6 +389,35 @@ describe("0xZAPS fee rewards public surface", () => {
     expect(panel.indexOf("{AUDIT_STATUS}")).toBeLessThan(firstDisclosure);
   });
 
+  it("gates user staking for campaign 2 on the release manifest", () => {
+    const stake = read("src/app/(site)/rewards/Campaign2Stake.tsx");
+    const panel = read("src/app/(site)/rewards/Campaign2Panel.tsx");
+    // The panel mounts the stake surface, and the surface renders NOTHING
+    // until the reviewed release fills the manifest.
+    expect(panel).toContain("<Campaign2Stake />");
+    expect(stake).toContain('feeRewards2Deployment() === "configured"');
+    expect(stake).toContain("if (!released || !campaignAddress) return null;");
+    // Every write runs simulate -> wallet review -> receipt -> runtime-hash
+    // re-check, the same machine as the operator console.
+    expect(stake).toContain("simulateContract");
+    expect(stake).toContain("waitForTransactionReceipt");
+    expect(stake).toContain("runtime hash no longer matches the release");
+    // Phase never comes from the local clock: it derives from the preflight
+    // snapshot's verified block time against the immutable schedule.
+    expect(stake).toContain("BigInt(preflight.blockTimestamp)");
+    expect(stake).not.toContain("Date.now()");
+    // Pre-staking is stated honestly: earlier deposits never earn more.
+    expect(stake).toContain(
+      "Pre-staking is open. Reward weight starts accruing at the fixed start, not on deposit — staking earlier than the start does not earn more.",
+    );
+    // The no-yield and audit boundaries sit on the staking surface itself.
+    expect(stake).toContain("Staking earns no yield by itself");
+    expect(stake).toContain("These contracts have not been externally audited.");
+    // A failed viewer read stays absent, never a zeroed wallet.
+    expect(stake).toContain("not render as an empty wallet");
+    expect(stake).not.toMatch(/\bAPY\b/u);
+  });
+
   it("announces campaign 2 fail-closed off the manifest, never RPC", () => {
     const panel = read("src/app/(site)/rewards/Campaign2Panel.tsx");
     const manifest = read("src/lib/rewards2.ts");
