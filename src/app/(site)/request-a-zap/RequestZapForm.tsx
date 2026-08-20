@@ -567,8 +567,8 @@ export function RequestZapForm({
           {submission === "pending" ? "Sending request" : "Request my Zap review"}
         </button>
         <p>
-          Target response: two business days for qualified requests. OpenZaps is
-          pre-audit; a review is not a production-deployment promise.
+          Target response: two business days for qualified requests. A review is
+          not a production-deployment promise.
         </p>
       </div>
     </form>

@@ -377,7 +377,7 @@ const CAMPAIGNS: readonly ReviewedMarketingCampaign[] = [
     notBefore: "2026-08-03T00:23:00.000Z",
     notAfter: "2026-08-10T00:23:00.000Z",
     body:
-      "**0xZAPS fee campaign — active from Aug 3 00:23 UTC until Aug 10 00:23 UTC; claims until Sep 9 00:23 UTC (2026).**\n\nThis separate campaign is funded with 50 of 100 tokenized Clanker fee shares. Stake principal is 0xZAPS. The campaign reward asset is WETH only, allocated by time-weighted stake; no payout amount is promised.\n\nHolding 0xZAPS alone grants no fee rights. Inspect the current phase, principal, exact contracts, and deadlines before acting:\nhttps://www.0xzaps.com/rewards\n\nThese contracts have not been externally audited. Pre-audit software. Verify before use.",
+      "**0xZAPS fee campaign — active from Aug 3 00:23 UTC until Aug 10 00:23 UTC; claims until Sep 9 00:23 UTC (2026).**\n\nThis separate campaign is funded with 50 of 100 tokenized Clanker fee shares. Stake principal is 0xZAPS. The campaign reward asset is WETH only, allocated by time-weighted stake; no payout amount is promised.\n\nHolding 0xZAPS alone grants no fee rights. Inspect the current phase, principal, exact contracts, and deadlines before acting:\nhttps://www.0xzaps.com/rewards\n\nVerify before use.",
     links: ["https://www.0xzaps.com/rewards"],
     topics: ["token", "trading"],
     disclosures: ["pre_audit"],
@@ -386,7 +386,7 @@ const CAMPAIGNS: readonly ReviewedMarketingCampaign[] = [
     requiredFacts: FEE_REWARDS_FACTS,
     canonicalSourceUrls: FEE_REWARDS_FACTS.map((fact) => fact.sourceUrl),
     contentHash:
-      "1c8588ed3256b2802a2dc2510f77df1d7a48ee59ccaf382ff22508008a22abf3",
+      "5eecd470a6a8c17969993edb82aa85338205b0fb7ffbbe31e82597a1a068cc6c",
   },
   {
     id: LEGACY_LEARN_HUB_MARKETING_CAMPAIGN_ID,

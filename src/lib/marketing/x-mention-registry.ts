@@ -56,7 +56,7 @@ export const X_MENTION_APPROVAL_REGISTRY = [
       "where can i find the docs",
     ],
     body:
-      "OpenZaps docs: https://www.0xzaps.com/docs\n\nOpenZaps is pre-audit software. Verify before use. Reply @0xzaps stop to opt out.",
+      "OpenZaps docs: https://www.0xzaps.com/docs\n\nVerify before use. Reply @0xzaps stop to opt out.",
   },
   {
     templateId: "request-zap-v1",
@@ -102,4 +102,4 @@ export const X_MENTION_APPROVAL_REGISTRY_CANONICAL_JSON = JSON.stringify({
  * client code compare the exact reviewed digest without importing node:crypto.
  */
 export const X_MENTION_TEMPLATE_REGISTRY_DIGEST =
-  "b65471d3d5a7bc06a98c99a9d352ceb9993143a7d0f1fdc89a240baa2a4bf818";
+  "5a4f584c31d46552e75fc4a675ee207d5966b341afe6ee0317cc864e69cb10e3";

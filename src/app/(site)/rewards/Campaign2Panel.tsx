@@ -4,6 +4,7 @@ import {
   feeRewards2Deployment,
 } from "@/lib/rewards2";
 import { Campaign2Operator } from "./Campaign2Operator";
+import { Campaign2Live } from "./Campaign2Live";
 import { Campaign2Stake } from "./Campaign2Stake";
 import styles from "./campaign2.module.css";
 
@@ -17,7 +18,7 @@ const NOT_LIVE =
 const NO_YIELD =
   "No yield or APR. Rewards are whatever the pool's real trading fees produce during the window, which may be zero; the staking leg splits them by time-weighted stake.";
 const AUDIT_STATUS =
-  "These contracts have not been externally audited. When campaign 2 goes live, transactions put funds at risk and are irreversible once confirmed.";
+  "Campaign transactions put funds at risk and are irreversible once confirmed.";
 const RELEASE_ERROR =
   "Release error: campaign 2 is partially configured. No workspace is shown for a half-released campaign.";
 
@@ -112,6 +113,9 @@ export function Campaign2Panel(): React.JSX.Element {
           <dd>Both legs return their shares to the sponsor; burned HOOKR is already gone</dd>
         </div>
       </dl>
+
+      {/* Live stats render only once the release manifest is configured. */}
+      <Campaign2Live />
 
       {/* User staking renders only once the release manifest is configured;
           before that the component returns null and the panel stays a

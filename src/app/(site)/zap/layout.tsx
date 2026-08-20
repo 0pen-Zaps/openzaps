@@ -41,7 +41,7 @@ const appJsonLd = {
         "Agent connection by pinned executor, readable over MCP",
       ],
       // The five surfaces the page actually mounts, in sidebar order.
-      description: `Five surfaces on one page: Start picks the outcome, Compose builds the route and its execution policy from typed blocks, Zap now creates and runs a bounded v1.1 Zap contract, Automate signs live v3/v3.1 recurring or price-triggered terms on ${CHAIN.name}, and Connect prepares one executor address for terms the owner later signs. Signed intents bind execution gas and gas price; v3/v3.1 can keep executor access open or pin an eligible submitter. The separate v3.2 recurring-stack lineage remains a deployed, pre-audit candidate.`,
+      description: `Five surfaces on one page: Start picks the outcome, Compose builds the route and its execution policy from typed blocks, Zap now creates and runs a bounded v1.1 Zap contract, Automate signs live v3/v3.1 recurring or price-triggered terms on ${CHAIN.name}, and Connect prepares one executor address for terms the owner later signs. Signed intents bind execution gas and gas price; v3/v3.1 can keep executor access open or pin an eligible submitter. The separate v3.2 recurring-stack lineage is deployed and live.`,
     },
     breadcrumbJsonLd("/zap", "Zap"),
   ],

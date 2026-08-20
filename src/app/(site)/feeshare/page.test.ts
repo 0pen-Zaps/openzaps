@@ -65,11 +65,11 @@ describe("fee-share wrapper surface", () => {
     expect(auto?.points.join(" ")).toContain("opt-in only");
   });
 
-  it("keeps the no-yield boundary and audit status explicit", () => {
+  it("keeps the no-yield and transaction-risk boundaries explicit", () => {
     expect(page).toContain("No yield or APR.");
     expect(page).toContain("it is not a return");
     expect(page).toContain("holding 0xZAPS earns nothing on its own");
-    expect(page).toContain("These contracts have not been externally audited");
+    expect(page).toContain("transactions put funds at risk and are irreversible once confirmed");
     expect(page).toContain("irreversible once confirmed");
     expect(page).not.toMatch(/\bAPY\s*[:=]/u);
     expect(page).not.toContain("projected");

@@ -78,7 +78,7 @@ describe("0xZAPS fee rewards public surface", () => {
   });
 
   it("keeps transaction risk visible beside the Earn actions", () => {
-    expect(workspace).toContain("These contracts have not been externally audited");
+    expect(workspace).toContain("Staking and other transactions put funds at risk and are irreversible once confirmed.");
     expect(workspace).toContain("transactions put funds at risk and are irreversible once confirmed");
     expect(workspace).toContain("Withdrawals are governed by contract state");
     expect(workspace).toContain("Unclaimed rewards expire at the claim deadline");
@@ -391,6 +391,28 @@ describe("0xZAPS fee rewards public surface", () => {
     expect(panel.indexOf("{AUDIT_STATUS}")).toBeLessThan(firstDisclosure);
   });
 
+  it("keeps campaign-2 live stats verified, complete-or-absent, and clock-free", () => {
+    const live = read("src/app/(site)/rewards/Campaign2Live.tsx");
+    const panel = read("src/app/(site)/rewards/Campaign2Panel.tsx");
+    const stakersRoute = read("src/app/api/protocol/rewards2/stakers/route.ts");
+    expect(panel).toContain("<Campaign2Live />");
+    // Phase and countdown derive from the verified block time against the
+    // immutable release schedule — never the local clock.
+    expect(live).toContain("BigInt(data.blockTimestamp)");
+    expect(live).not.toContain("Date.now()");
+    expect(live).toContain("useCampaignCountdown(");
+    // The burn figure is named as live ledger truth and degrades to an
+    // explicit dash, never a zero that reads like an answer.
+    expect(live).toContain("HOOKR burned · live");
+    expect(live).toContain('"unavailable"');
+    // The staker register reuses the complete-or-absent engine and says so.
+    expect(live).toContain("The staker list is unavailable.");
+    expect(live).toContain("no partial or zeroed");
+    expect(stakersRoute).toContain("fetchFeeRewards2Stakers");
+    expect(stakersRoute).toContain('"cache-control": "no-store, max-age=0"');
+    expect(stakersRoute).toContain("unavailable right now");
+  });
+
   it("gates user staking for campaign 2 on the release manifest", () => {
     const stake = read("src/app/(site)/rewards/Campaign2Stake.tsx");
     const panel = read("src/app/(site)/rewards/Campaign2Panel.tsx");
@@ -414,7 +436,7 @@ describe("0xZAPS fee rewards public surface", () => {
     );
     // The no-yield and audit boundaries sit on the staking surface itself.
     expect(stake).toContain("Staking earns no yield by itself");
-    expect(stake).toContain("These contracts have not been externally audited.");
+    expect(stake).toContain("Transactions put funds at risk and are irreversible once confirmed.");
     // A failed viewer read stays absent, never a zeroed wallet.
     expect(stake).toContain("not render as an empty wallet");
     expect(stake).not.toMatch(/\bAPY\b/u);
@@ -447,7 +469,7 @@ describe("0xZAPS fee rewards public surface", () => {
     expect(manifest).toContain("sent to the dead address in the same transaction");
     // The no-yield and audit boundaries stay beside the announcement.
     expect(panel).toContain("No yield or APR.");
-    expect(panel).toContain("These contracts have not been externally audited.");
+    expect(panel).toContain("Campaign transactions put funds at risk and are irreversible once confirmed.");
     // No return, projection, or price-support vocabulary anywhere on it.
     expect(panel).not.toMatch(/\bAPY\s*[:=]/u);
     expect(panel).not.toContain("deflation");

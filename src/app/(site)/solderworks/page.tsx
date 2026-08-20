@@ -243,7 +243,7 @@ export default function SolderworksPage(): React.JSX.Element {
           assets; the first fixed campaign was configured to allocate WETH under its Aug 3–10, 2026 terms. Its harvest
           path was configured for Clanker fees, while direct WETH transfers can also be synchronized; /rewards shows
           the current phase and claim deadline. Onchain actions are
-          irreversible, and the OpenZap contracts have not been externally audited.
+          irreversible.
         </p>
         <div className={styles.actions}>
           <Link className="btn btnGhost btnLg" href="/zap">

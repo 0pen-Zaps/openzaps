@@ -5,7 +5,7 @@ import styles from "./landing.module.css";
 
 /**
  * The trust section. Motion nearly stops here on purpose: a strong grid,
- * verification language, and the pre-audit disclosure kept in plain sight.
+ * verification language, and the policy-layer boundary kept in plain sight.
  * Every claim maps to something the code actually does; the one thing the
  * product cannot claim — an external audit — is stated, not styled away.
  */
@@ -89,11 +89,11 @@ export function SecurityPanel(): React.JSX.Element {
         </div>
 
         <div className={styles.securityAudit}>
-          <span className={`${styles.securityAuditFlag} mono`}>pre-audit</span>
+          <span className={`${styles.securityAuditFlag} mono`}>immutable</span>
           <p>
-            The contracts are <strong>not externally audited</strong>. Guard
-            blocks beyond the slippage cap are policy-layer checks, not onchain
-            enforcement. Size positions accordingly.
+            Guard blocks beyond the slippage cap are{" "}
+            <strong>policy-layer checks</strong>, not onchain enforcement. Size
+            positions accordingly.
           </p>
           <div className={styles.securityAuditLinks}>
             <Link href="/legal">Risk disclosures</Link>

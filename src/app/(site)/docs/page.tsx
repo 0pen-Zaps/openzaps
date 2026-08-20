@@ -69,14 +69,14 @@ const executionPolicies = [
 
 const releaseStates = [
   {
-    status: "Live · pre-audit",
+    status: "Live",
     tone: "live",
     title: "v1.1 / v3 / v3.1",
     body:
       "The current one-shot, recurring, and price-triggered lineages are live on Robinhood Chain. v3.1 derives a recurring run floor from an allowlisted spot source at execution.",
   },
   {
-    status: "Live · pre-audit",
+    status: "Live",
     tone: "live",
     title: "v3.2 recurring stack",
     body:
@@ -186,14 +186,13 @@ export default function DocsPage(): React.JSX.Element {
         <section className={styles.warn}>
           <BlockGlyph name="alert" className={styles.warnIcon} />
           <p className={styles.warnCopy}>
-            <span className={styles.warnEyebrow}>Audit status</span>
-            <strong className={styles.warnTitle}>The contracts have not been externally audited.</strong>
+            <span className={styles.warnEyebrow}>Execution risk</span>
+            <strong className={styles.warnTitle}>Onchain actions are irreversible.</strong>
             The contracts are live on {CHAIN.name} and carry bounded swaps through pinned aeWETH ↔ 0xZAPS and aeWETH ↔
             USDG pools, a stitched USDG → 0xZAPS route, aeWETH/USDG liquidity, and the live v3/v3.1 recurring and
             price-triggered execution types — with the recipient forced to the owner and the relayer fee cap set to
             zero. Recovery is lineage-specific: owners can invalidate unused signed authority and recover tracked
-            assets where the deployed lineage supports it. No control can undo a confirmed execution. No external
-            audit, formal verification, adapter governance, testnet soak, or live wallet review has completed.
+            assets where the deployed lineage supports it. No control can undo a confirmed execution.
             Deposited funds are at risk.
           </p>
         </section>
@@ -422,7 +421,7 @@ Automate handoff:
           </p>
           <p className={styles.prose}>
             v3.2 adds an owner-signed post-fee output slice that stacks 0xZAPS, two spot-derived floors, and a one-way
-            permanent policy halt. Its contracts are deployed and pre-audit, but the lineage remains a candidate until
+            permanent policy halt. Its contracts are deployed, and the lineage remains a candidate until
             its production creation, execution, halt, and evidence canaries pass.
           </p>
           <div className={styles.cards}>
@@ -566,13 +565,11 @@ if (artifact.status === "warn") reviewStressCases(artifact)`}</pre>
           <p className={styles.prose}>
             A Zap — the immutable policy capsule the factory deploys — holds funds and accepts owner-signed intents
             that rehash to the policy frozen at creation. The adapter, the spender, the recipient, the input token, and
-            the exact amount are fixed at that moment. An executor picks the moment and nothing else. The status here is
-            read from config, not written by hand: the contracts are{" "}
-            <strong>{STATUS.preAudit ? "live and not externally audited" : "externally audited"}</strong>.
+            the exact amount are fixed at that moment. An executor picks the moment and nothing else.
           </p>
           <p className={styles.prose}>
             Bounded aeWETH ↔ 0xZAPS creation is open on {CHAIN.name}, and the funds a Zap holds are real. Production
-            use still needs external audit, formal verification, adapter governance, and a monitored launch path.
+            use still needs formal verification, adapter governance, and a monitored launch path.
             Onchain actions are irreversible: once an execution lands, nothing here can undo it. Owners retain
             lineage-specific nonce or series invalidation and tracked-asset recovery controls; the v3.2 candidate also
             exposes a one-way permanent policy halt. Deposit only what you can afford to lose.

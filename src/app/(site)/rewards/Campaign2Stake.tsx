@@ -36,7 +36,7 @@ const REFRESH_MS = 60_000;
 
 // Boundary copy as single-line constants, pinned verbatim by the page test.
 const STAKE_RISK =
-  "These contracts have not been externally audited. Transactions put funds at risk and are irreversible once confirmed.";
+  "Transactions put funds at risk and are irreversible once confirmed.";
 const STAKE_BOUNDARY =
   "Staking earns no yield by itself: rewards are whatever WETH the fee stream actually produces during the window, split by time-weighted stake, and may be zero.";
 const PRESTAKE_NOTE =

@@ -575,3 +575,153 @@
   text-decoration: underline;
   text-underline-offset: 2px;
 }
+
+/* ------------------------------------------------------------- live stats */
+
+.live {
+  margin-top: 12px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-card-sm);
+  background: var(--sunk);
+}
+
+.liveHead {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 26px;
+  margin-bottom: 8px;
+}
+
+.liveHead > div {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.liveHead strong {
+  font-size: 15px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+}
+
+.liveEyebrow {
+  color: var(--ink-3);
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.liveCountdown strong {
+  color: var(--acc, var(--ink));
+}
+
+.burnRow {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 10px;
+  margin: 10px 0;
+}
+
+@container (min-width: 640px) {
+  .burnRow {
+    grid-template-columns: 1.4fr 1fr 1fr;
+  }
+}
+
+.burnStat {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 3px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-card-sm);
+  background: var(--panel);
+}
+
+.burnStat strong {
+  font-size: 20px;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+}
+
+.burnStat[data-hero] strong {
+  font-size: 27px;
+  color: var(--ink);
+}
+
+.burnSub {
+  color: var(--ink-3);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.blocksList {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  margin: 0 0 10px;
+  padding: 0;
+  list-style: none;
+}
+
+.blocksList li {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  padding: 6px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-card-sm);
+  background: var(--panel);
+  color: var(--ink-2);
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-size: 11px;
+}
+
+.blocksList li span:first-child { color: var(--ink-3); }
+.blocksList li span:nth-child(2) { color: var(--ink); }
+.blocksList li span:last-child { margin-left: auto; color: var(--ink-3); }
+
+.stakersBlock {
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
+}
+
+.stakersTable {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.stakersTable th {
+  padding: 6px 8px;
+  text-align: left;
+  color: var(--ink-3);
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  border-bottom: 1px solid var(--line);
+}
+
+.stakersTable td {
+  padding: 6px 8px;
+  color: var(--ink-2);
+  font-variant-numeric: tabular-nums;
+  border-bottom: 1px solid var(--line);
+  overflow-wrap: anywhere;
+}
+
+.stakersTable td:first-child {
+  font-family: var(--font-mono), ui-monospace, monospace;
+  color: var(--ink);
+}
+
+.stakersTable tr:last-child td { border-bottom: none; }

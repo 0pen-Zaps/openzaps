@@ -106,7 +106,7 @@ describe("review-only marketing campaign route", () => {
         id: "fee-rewards-campaign-v1",
         channel: "discord",
         contentHash:
-          "1c8588ed3256b2802a2dc2510f77df1d7a48ee59ccaf382ff22508008a22abf3",
+          "5eecd470a6a8c17969993edb82aa85338205b0fb7ffbbe31e82597a1a068cc6c",
         notBefore: "2026-08-03T00:23:00.000Z",
         notAfter: "2026-08-10T00:23:00.000Z",
         canonicalSourceUrls: [
@@ -141,7 +141,7 @@ describe("review-only marketing campaign route", () => {
         },
       });
       expect(typeof campaign.body).toBe("string");
-      expect(campaign.body).toContain("Pre-audit software. Verify before use.");
+      expect(campaign.body).toContain("Verify before use.");
       expect(Array.isArray(campaign.claims)).toBe(true);
     }
     expect(raw).not.toContain("operator-secret");

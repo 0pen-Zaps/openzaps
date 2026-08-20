@@ -364,7 +364,7 @@ export default function TokenPage(): React.JSX.Element {
         <div className={styles.warn}>
           <Glyph name="alert" className={styles.warnGlyph} />
           <p className={styles.warnBody}>
-            Live on {TOKEN_LAUNCH.network} mainnet with real funds, and not externally audited. Onchain actions are
+            Live on {TOKEN_LAUNCH.network} mainnet with real funds. Onchain actions are
             irreversible — deposit only what you can afford to lose.
           </p>
         </div>

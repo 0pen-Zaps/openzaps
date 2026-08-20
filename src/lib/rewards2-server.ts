@@ -53,6 +53,7 @@ export type Campaign2Preflight = {
       totalHookrBurned: string;
       blockCount: string;
       pendingWeth: string;
+      recentBlocks: { ethIn: string; hookrBought: string; burnedAt: string }[];
     };
     campaign: {
       address: string;
@@ -260,6 +261,29 @@ export async function fetchCampaign2Preflight(
           : "One or both legs still await their exact 50-share funding.",
     });
 
+    // The newest Hook Blocks, read at the same pinned block: the public
+    // burn ledger's tail, most recent first. Complete-or-absent like every
+    // figure here — a failed read throws and the route reports UNAVAILABLE.
+    const recentCount = hbBlockCount > 5n ? 5n : hbBlockCount;
+    const recentIndexes = Array.from({ length: Number(recentCount) }, (_, i) => hbBlockCount - 1n - BigInt(i));
+    const recentBlocks = (
+      await Promise.all(
+        recentIndexes.map((index) =>
+          client.readContract({
+            address: released.hookBlocks.address,
+            abi: hookBlocksAbi,
+            functionName: "hookBlock",
+            args: [index],
+            blockNumber,
+          }),
+        ),
+      )
+    ).map((blockEntry) => ({
+      ethIn: blockEntry.ethIn.toString(),
+      hookrBought: blockEntry.hookrBought.toString(),
+      burnedAt: blockEntry.burnedAt.toString(),
+    }));
+
     live = {
       hookBlocks: {
         address: released.hookBlocks.address,
@@ -272,6 +296,7 @@ export async function fetchCampaign2Preflight(
         totalHookrBurned: hbTotalHookr.toString(),
         blockCount: hbBlockCount.toString(),
         pendingWeth: hbPending.toString(),
+        recentBlocks,
       },
       campaign: {
         address: released.campaign.address,

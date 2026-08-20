@@ -792,7 +792,7 @@ export function VirtualTradingDesk(): React.JSX.Element {
             >
               Request the authority map
             </Link>
-            <small>Human reviewed · pre-audit · no automatic deployment</small>
+            <small>Human reviewed · no automatic deployment</small>
           </div>
         </section>
       ) : null}

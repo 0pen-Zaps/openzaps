@@ -162,6 +162,14 @@ describe("campaign-2 preflight snapshot", () => {
           case "totalHookrBurned": return Promise.resolve(105_000n * 10n ** 18n);
           case "blockCount": return Promise.resolve(3n);
           case "pendingWeth": return Promise.resolve(1_000_000_000_000_000n);
+          case "hookBlock": {
+            const index = (call.args?.[0] ?? 0n) as bigint;
+            return Promise.resolve({
+              ethIn: 10_000_000_000_000_000n + index,
+              hookrBought: 35_000n * 10n ** 18n + index,
+              burnedAt: 1_787_260_000n + index,
+            });
+          }
         }
       }
       if (target === address(campaignAddress)) {
@@ -185,6 +193,9 @@ describe("campaign-2 preflight snapshot", () => {
     // donated HOOKR, so only the bought figure is an honest rate numerator.
     expect(payload.live?.hookBlocks.totalHookrBought).toBe((100_000n * 10n ** 18n).toString());
     expect(payload.live?.hookBlocks.totalHookrBurned).toBe((105_000n * 10n ** 18n).toString());
+    // The ledger tail is read at the same pinned block, most recent first.
+    expect(payload.live?.hookBlocks.recentBlocks).toHaveLength(3);
+    expect(payload.live?.hookBlocks.recentBlocks[0]?.burnedAt).toBe((1_787_260_000n + 2n).toString());
     expect(payload.live?.campaign.totalStaked).toBe((2n * 10n ** 27n).toString());
   });
 

@@ -125,7 +125,7 @@ const RECENT_PATHS = [
   },
   {
     glyph: "repeat",
-    status: "Live · pre-audit",
+    status: "Live",
     tone: "live",
     title: "Recurring 0xZAPS stack",
     detail:
@@ -436,8 +436,8 @@ export default function LandingPage(): React.JSX.Element {
 
             <p className={styles.executionPolicyCaveat}>
               Gas limit and gas price cap bind Zap now and Automate intents. Owner-only
-              executor access is live in v3/v3.1/v3.2 automation; all lineages remain
-              pre-audit. The v1.1 one-shot handoff discloses that it cannot restrict
+              executor access is live in v3/v3.1/v3.2 automation. The v1.1
+              one-shot handoff discloses that it cannot restrict
               the submitter.
             </p>
           </div>
