@@ -112,22 +112,30 @@ export function Campaign2Panel(): React.JSX.Element {
         </div>
       </dl>
 
-      <ul className={styles.references}>
-        {REFERENCES.map((reference) => (
-          <li key={reference.label}>
-            <span>{reference.label}</span>
-            <span>{reference.value}</span>
-            <a href={explorer(reference.address)} target="_blank" rel="noreferrer">
-              {shortAddress(reference.address)}
-            </a>
-          </li>
-        ))}
-      </ul>
-
+      {/* The two boundary sentences stay permanently visible; only the
+          verification detail (addresses) and the sponsor console fold away. */}
       <p className={styles.boundary}>{NO_YIELD}</p>
       <p className={styles.boundary}>{AUDIT_STATUS}</p>
 
-      <Campaign2Operator />
+      <details className={styles.disclosure}>
+        <summary>Contract references</summary>
+        <ul className={styles.references}>
+          {REFERENCES.map((reference) => (
+            <li key={reference.label}>
+              <span>{reference.label}</span>
+              <span>{reference.value}</span>
+              <a href={explorer(reference.address)} target="_blank" rel="noreferrer">
+                {shortAddress(reference.address)}
+              </a>
+            </li>
+          ))}
+        </ul>
+      </details>
+
+      <details className={styles.disclosure}>
+        <summary>Operator console</summary>
+        <Campaign2Operator />
+      </details>
     </section>
   );
 }

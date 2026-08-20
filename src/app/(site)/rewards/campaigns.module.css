@@ -1,0 +1,69 @@
+/* The campaigns index: two cards, one per campaign, above the selected
+   campaign's detail. Container query so the pair stacks on a narrow column
+   rather than the viewport. */
+.switcher {
+  container-type: inline-size;
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 10px;
+}
+
+@container (min-width: 640px) {
+  .switcher {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+.card {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 4px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-card);
+  background: var(--panel);
+  color: var(--ink);
+  text-decoration: none;
+  box-shadow: var(--sh-2);
+}
+
+.card[data-selected] {
+  border-color: var(--ink-3);
+  background: var(--sunk);
+}
+
+.cardEyebrow {
+  color: var(--ink-3);
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-size: 10px;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+
+.cardTitle {
+  font-size: 14.5px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.cardMeta {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--ink-2);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.cardMeta i {
+  flex: none;
+  width: 7px;
+  height: 7px;
+  border-radius: var(--r-pill);
+  background: var(--warn);
+}
+
+.cardMeta i[data-live] {
+  background: var(--ok);
+}
