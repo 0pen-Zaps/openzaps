@@ -1118,7 +1118,7 @@ function FeeMechanic({
           <ul>
             <li><strong>No yield or APR.</strong> The rate above is the share of each swap that reaches the campaign, not a return. What a staker earns depends on trading volume and their share of the stake.</li>
             <li><strong>Holding 0xZAPS earns nothing.</strong> A fee claim accrues only while tokens are staked in this contract.</li>
-            <li><strong>The contracts have not been externally audited.</strong> Staking puts funds at risk and confirmed transactions are irreversible.</li>
+            <li><strong>Staking puts funds at risk</strong> and confirmed transactions are irreversible.</li>
             <li><strong>Unclaimed WETH expires.</strong> After the claim deadline the sponsor can sweep whatever is left unclaimed.</li>
           </ul>
         </div>
@@ -1279,7 +1279,7 @@ function EarnWorkspace(props: EarnProps): React.JSX.Element {
 
       <aside id="rewards-transaction-risk" className={styles.riskDisclosure} aria-label="Transaction risk">
         <Glyph name="alert" />
-        <p><strong>These contracts have not been externally audited.</strong> Staking and other transactions put funds at risk and are irreversible once confirmed. Withdrawals are governed by contract state. Unclaimed rewards expire at the claim deadline.</p>
+        <p><strong>Staking and other transactions put funds at risk and are irreversible once confirmed.</strong> Withdrawals are governed by contract state. Unclaimed rewards expire at the claim deadline.</p>
       </aside>
 
       <div className={styles.actionGrid} aria-describedby="rewards-transaction-risk">

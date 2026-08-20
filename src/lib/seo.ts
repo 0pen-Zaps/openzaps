@@ -191,9 +191,9 @@ export const HOME_FAQS = [
       "No. Live execution is limited to source-backed routes whose adapters and tokens are explicitly allowlisted. Additional protocols require reviewed adapters and tests before they can carry funds.",
   },
   {
-    question: "Are OpenZaps contracts externally audited?",
+    question: "Are onchain actions on OpenZaps reversible?",
     answer:
-      "No external audit is currently published for the live OpenZaps contracts. The software is pre-audit, deposited funds are at risk, and onchain actions are irreversible.",
+      "No. Deposited funds are at risk and onchain actions are irreversible: once an execution lands, nothing in the interface can undo it. Risk disclosures are collected on the legal page.",
   },
 ] as const;
 

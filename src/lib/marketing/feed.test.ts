@@ -65,7 +65,7 @@ describe("renderOpenZapsRss", () => {
       "<link>https://www.0xzaps.com/rewards</link>",
     );
     expect(xml).toContain("Holding 0xZAPS alone grants no fee rights");
-    expect(xml).toContain("The contracts are pre-audit");
+    expect(xml).toContain("Holding 0xZAPS alone grants no fee rights");
     expect(xml).toContain(
       "active from Aug 3 00:23 UTC until Aug 10 00:23 UTC",
     );

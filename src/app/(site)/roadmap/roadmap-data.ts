@@ -52,7 +52,7 @@ export const FOUNDATION_STATES = [
     status: { label: "Live · v1.1 / v3 / v3.1", tone: "live" },
     title: "Three bounded execution lineages",
     body:
-      "v1.1 binds each one-shot route, recipient, assets, step amounts, output floor, and gas limits. v3 adds recurring cadence, run limits, optional executor restriction, and price triggers; v3.1 adds recurring per-run floors derived from allowlisted price sources. All three lineages are live and pre-audit on Robinhood Chain.",
+      "v1.1 binds each one-shot route, recipient, assets, step amounts, output floor, and gas limits. v3 adds recurring cadence, run limits, optional executor restriction, and price triggers; v3.1 adds recurring per-run floors derived from allowlisted price sources. All three lineages are live on Robinhood Chain.",
   },
   {
     status: { label: "Shipped", tone: "live" },

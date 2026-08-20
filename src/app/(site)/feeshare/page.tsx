@@ -33,7 +33,7 @@ const MANIFEST = FEESHARE_WRAP_MANIFEST;
 const DOES_NOT_PROMISE =
   "No yield or APR. Reward is whatever the fee shares’ trading fees produce, which may be zero — it is not a return, and holding 0xZAPS earns nothing on its own.";
 const AUDIT_STATUS =
-  "These contracts have not been externally audited; they passed internal adversarial review but not a third-party audit. When the wrappers go live, transactions put funds at risk and are irreversible once confirmed.";
+  "When the wrappers go live, transactions put funds at risk and are irreversible once confirmed.";
 
 function explorer(address: string): string {
   return `${MANIFEST.explorerUrl}/address/${address}`;

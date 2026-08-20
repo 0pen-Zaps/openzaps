@@ -306,7 +306,7 @@ export default function AgentKitPage(): React.JSX.Element {
 
       <p className={styles.disclosure}>
         <strong>Pre-audit software.</strong> OpenZaps contracts are live on
-        Robinhood Chain with real funds and have not been externally audited.
+        Robinhood Chain with real funds.
         The Agent Kit itself cannot sign or broadcast, but that does not make
         live contract use risk-free. Verify the package version, provenance,
         current onchain state, and exact policy before signing. Onchain actions

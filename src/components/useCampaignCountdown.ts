@@ -30,13 +30,22 @@ export type CampaignCountdownState = {
  * moves. `onResync` also fires when the tab becomes visible again, so a
  * resumed machine re-verifies instead of trusting a clock that slept.
  */
+export type CampaignCountdownTerm = {
+  startAt: bigint;
+  endAt: bigint;
+  claimDeadline: bigint;
+};
+
 export function useCampaignCountdown(
-  data: FeeRewardsPayload | null,
+  data: Pick<FeeRewardsPayload, "phase" | "blockHash" | "blockTimestamp"> | null,
   onResync: () => void,
   boundaryPollMs: number,
+  term?: CampaignCountdownTerm,
 ): CampaignCountdownState {
   const reduced = useReducedMotionPreference();
-  const countdown = data ? campaignCountdown(data.phase) : null;
+  const countdown = data
+    ? campaignCountdown(data.phase, term?.startAt, term?.endAt, term?.claimDeadline)
+    : null;
   const blockHash = data?.blockHash ?? null;
   const hasCountdown = countdown !== null && blockHash !== null;
 

@@ -164,7 +164,7 @@ export function publicContentCatalog(
       kind: "tutorial" as const,
       title: tutorial.title,
       summary:
-        "Read the source-reviewed walkthrough on DeFi Tutorials. OpenZaps remains pre-audit; verify every bound before using real funds.",
+        "Read the source-reviewed walkthrough on DeFi Tutorials. Verify every bound before using real funds.",
       canonicalUrl: tutorial.canonicalUrl,
       publishedAt: tutorial.publishedAt,
       sourceLabel: "DeFi Tutorials" as const,

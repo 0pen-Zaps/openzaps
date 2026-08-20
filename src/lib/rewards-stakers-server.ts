@@ -2,6 +2,7 @@ import { keccak256 } from "viem";
 import { unstable_cache } from "next/cache";
 
 import { FEE_REWARDS_MANIFEST, feeRewardsCampaignAbi } from "@/lib/rewards";
+import { FEE_REWARDS_2_MANIFEST, feeRewards2Deployment } from "@/lib/rewards2";
 import {
   STAKER_ENUMERATION_LIMIT,
   buildStakerRows,
@@ -42,7 +43,15 @@ function sameHash(left: string, right: string): boolean {
  *
  * Exported uncached for focused safety tests and explicit release checks.
  */
-export async function fetchFeeRewardsStakersUncached(): Promise<FeeRewardsStakersPayload> {
+export type StakersCampaignBinding = {
+  address: `0x${string}`;
+  deploymentBlock: bigint;
+  runtimeCodeHash: `0x${string}`;
+};
+
+export async function fetchFeeRewardsStakersUncached(
+  campaign: StakersCampaignBinding = FEE_REWARDS_MANIFEST.campaign,
+): Promise<FeeRewardsStakersPayload> {
   const manifest = FEE_REWARDS_MANIFEST;
   const client = rewardsClient();
 
@@ -56,37 +65,37 @@ export async function fetchFeeRewardsStakersUncached(): Promise<FeeRewardsStaker
   if (head.number === null || !head.hash) {
     throw new Error("Rewards RPC head is missing its canonical identity.");
   }
-  if (head.number < manifest.campaign.deploymentBlock) {
+  if (head.number < campaign.deploymentBlock) {
     throw new Error("Rewards RPC head predates the reviewed release.");
   }
   const blockNumber = head.number;
 
   const [campaignCode, totalStaked, totalRewardWeight, stakedLogs, rewardPaidLogs] =
     await Promise.all([
-      client.getBytecode({ address: manifest.campaign.address, blockNumber }),
+      client.getBytecode({ address: campaign.address, blockNumber }),
       client.readContract({
-        address: manifest.campaign.address,
+        address: campaign.address,
         abi: feeRewardsCampaignAbi,
         functionName: "totalStaked",
         blockNumber,
       }),
       client.readContract({
-        address: manifest.campaign.address,
+        address: campaign.address,
         abi: feeRewardsCampaignAbi,
         functionName: "totalRewardWeight",
         blockNumber,
       }),
       client.getLogs({
-        address: manifest.campaign.address,
+        address: campaign.address,
         event: stakedEvent,
-        fromBlock: manifest.campaign.deploymentBlock,
+        fromBlock: campaign.deploymentBlock,
         toBlock: blockNumber,
         strict: true,
       }),
       client.getLogs({
-        address: manifest.campaign.address,
+        address: campaign.address,
         event: rewardPaidEvent,
-        fromBlock: manifest.campaign.deploymentBlock,
+        fromBlock: campaign.deploymentBlock,
         toBlock: blockNumber,
         strict: true,
       }),
@@ -96,7 +105,7 @@ export async function fetchFeeRewardsStakersUncached(): Promise<FeeRewardsStaker
     throw new Error("The reviewed campaign contract has no runtime bytecode.");
   }
   const campaignCodeHash = keccak256(campaignCode);
-  if (!sameHash(campaignCodeHash, manifest.campaign.runtimeCodeHash)) {
+  if (!sameHash(campaignCodeHash, campaign.runtimeCodeHash)) {
     throw new Error("Campaign runtime identity does not match the reviewed release.");
   }
 
@@ -109,21 +118,21 @@ export async function fetchFeeRewardsStakersUncached(): Promise<FeeRewardsStaker
     accounts.map(async (account): Promise<StakerAccountState> => {
       const [stakedBalance, rewardWeight, earnedWeth] = await Promise.all([
         client.readContract({
-          address: manifest.campaign.address,
+          address: campaign.address,
           abi: feeRewardsCampaignAbi,
           functionName: "balanceOf",
           args: [account],
           blockNumber,
         }),
         client.readContract({
-          address: manifest.campaign.address,
+          address: campaign.address,
           abi: feeRewardsCampaignAbi,
           functionName: "rewardWeight",
           args: [account],
           blockNumber,
         }),
         client.readContract({
-          address: manifest.campaign.address,
+          address: campaign.address,
           abi: feeRewardsCampaignAbi,
           functionName: "earned",
           args: [account, manifest.weth],
@@ -164,7 +173,7 @@ export async function fetchFeeRewardsStakersUncached(): Promise<FeeRewardsStaker
 }
 
 const cachedStakers = unstable_cache(
-  fetchFeeRewardsStakersUncached,
+  () => fetchFeeRewardsStakersUncached(),
   [
     "0xzaps-fee-rewards-stakers-v1",
     // Same release binding as the campaign snapshot: a verifier change or a
@@ -213,3 +222,53 @@ export async function fetchFeeRewardsStakers(): Promise<FeeRewardsStakersPayload
 }
 
 export type { FeeRewardsStakersPayload };
+
+
+/**
+ * Campaign-2 staker list: the same complete-or-absent engine bound to the
+ * campaign-2 release. Throws when the release manifest is not configured, so
+ * the route fails closed rather than enumerating a null campaign.
+ */
+function campaign2Binding(): StakersCampaignBinding {
+  const deployment = FEE_REWARDS_2_MANIFEST.deployment as unknown as {
+    campaign?: { address: `0x${string}`; deploymentBlock: bigint; runtimeCodeHash: `0x${string}` };
+  } | null;
+  if (feeRewards2Deployment() !== "configured" || !deployment?.campaign) {
+    throw new Error("Campaign 2 is not configured in the release manifest.");
+  }
+  return {
+    address: deployment.campaign.address,
+    deploymentBlock: deployment.campaign.deploymentBlock,
+    runtimeCodeHash: deployment.campaign.runtimeCodeHash,
+  };
+}
+
+const cachedStakers2 = unstable_cache(
+  () => fetchFeeRewardsStakersUncached(campaign2Binding()),
+  [
+    "0xzaps-fee-rewards2-stakers-v1",
+    process.env.VERCEL_GIT_COMMIT_SHA?.trim() || "local",
+    JSON.stringify(FEE_REWARDS_2_MANIFEST, (_key, value: unknown) =>
+      typeof value === "bigint" ? value.toString() : value,
+    ),
+  ],
+  { revalidate: 30, tags: ["0xzaps-fee-rewards2-stakers"] },
+);
+
+let inflightStakers2: Promise<FeeRewardsStakersPayload> | null = null;
+
+function coalescedStakers2(): Promise<FeeRewardsStakersPayload> {
+  if (inflightStakers2 === null) {
+    inflightStakers2 = cachedStakers2().finally(() => {
+      inflightStakers2 = null;
+    });
+  }
+  return inflightStakers2;
+}
+
+/** Production read path for the campaign-2 public staker list. */
+export async function fetchFeeRewards2Stakers(): Promise<FeeRewardsStakersPayload> {
+  const snapshot = await coalescedStakers2();
+  assertStakersSnapshotFresh(snapshot);
+  return snapshot;
+}
