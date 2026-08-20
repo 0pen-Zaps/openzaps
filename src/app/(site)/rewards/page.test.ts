@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { FEE_REWARDS_MANIFEST, campaignPhaseNote, type FeeRewardsPayload } from "@/lib/rewards";
+import { selectedCampaign } from "./CampaignSwitcher";
 import {
   rewardsBalanceLabel,
   rewardsClaimLifecycle,
@@ -361,6 +362,64 @@ describe("0xZAPS fee rewards public surface", () => {
     expect(workspace).toContain("volume leaderboard");
   });
 
+  it("separates the two campaigns behind a switcher, one detail at a time", () => {
+    const switcher = read("src/app/(site)/rewards/CampaignSwitcher.tsx");
+    const panel = read("src/app/(site)/rewards/Campaign2Panel.tsx");
+    // The index names both campaigns and the page renders exactly one detail.
+    expect(page).toContain("<CampaignSwitcher selected={selected} initial={initial} />");
+    expect(page).toContain('{selected === "1" ? (');
+    expect(switcher).toContain("Campaign 1 · Aug 3 – 10, 2026");
+    expect(switcher).toContain("Campaign 2 · 14 days");
+    // Selection rules are a pure function: explicit param wins, workspace
+    // deep links stay on campaign 1, and the default is manifest-driven
+    // (campaign 1 until the campaign-2 release is configured).
+    expect(selectedCampaign("2", undefined)).toBe("2");
+    expect(selectedCampaign("1", undefined)).toBe("1");
+    expect(selectedCampaign(undefined, "stakers")).toBe("1");
+    // With the campaign-2 release configured, the manifest-driven default
+    // now lands on campaign 2 — the flip is the release, not a clock.
+    expect(selectedCampaign(undefined, undefined)).toBe("2");
+    // The switcher never invents a campaign-1 phase when the snapshot is
+    // missing, and the campaign-2 chip is manifest state, not a clock.
+    expect(switcher).toContain('"Unavailable"');
+    expect(switcher).toContain('feeRewards2Deployment() === "configured"');
+    // Declutter must never hide the boundaries: both boundary sentences
+    // render before the first disclosure in the panel source.
+    const firstDisclosure = panel.indexOf("<details");
+    expect(firstDisclosure).toBeGreaterThan(0);
+    expect(panel.indexOf("{NO_YIELD}")).toBeLessThan(firstDisclosure);
+    expect(panel.indexOf("{AUDIT_STATUS}")).toBeLessThan(firstDisclosure);
+  });
+
+  it("gates user staking for campaign 2 on the release manifest", () => {
+    const stake = read("src/app/(site)/rewards/Campaign2Stake.tsx");
+    const panel = read("src/app/(site)/rewards/Campaign2Panel.tsx");
+    // The panel mounts the stake surface, and the surface renders NOTHING
+    // until the reviewed release fills the manifest.
+    expect(panel).toContain("<Campaign2Stake />");
+    expect(stake).toContain('feeRewards2Deployment() === "configured"');
+    expect(stake).toContain("if (!released || !campaignAddress) return null;");
+    // Every write runs simulate -> wallet review -> receipt -> runtime-hash
+    // re-check, the same machine as the operator console.
+    expect(stake).toContain("simulateContract");
+    expect(stake).toContain("waitForTransactionReceipt");
+    expect(stake).toContain("runtime hash no longer matches the release");
+    // Phase never comes from the local clock: it derives from the preflight
+    // snapshot's verified block time against the immutable schedule.
+    expect(stake).toContain("BigInt(preflight.blockTimestamp)");
+    expect(stake).not.toContain("Date.now()");
+    // Pre-staking is stated honestly: earlier deposits never earn more.
+    expect(stake).toContain(
+      "Pre-staking is open. Reward weight starts accruing at the fixed start, not on deposit — staking earlier than the start does not earn more.",
+    );
+    // The no-yield and audit boundaries sit on the staking surface itself.
+    expect(stake).toContain("Staking earns no yield by itself");
+    expect(stake).toContain("These contracts have not been externally audited.");
+    // A failed viewer read stays absent, never a zeroed wallet.
+    expect(stake).toContain("not render as an empty wallet");
+    expect(stake).not.toMatch(/\bAPY\b/u);
+  });
+
   it("announces campaign 2 fail-closed off the manifest, never RPC", () => {
     const panel = read("src/app/(site)/rewards/Campaign2Panel.tsx");
     const manifest = read("src/lib/rewards2.ts");
@@ -371,8 +430,13 @@ describe("0xZAPS fee rewards public surface", () => {
     expect(panel).toContain(
       "Campaign 2 is not live yet. This panel reads nothing from the chain and asks for no signature until the campaign contracts arrive as a reviewed release with verified addresses.",
     );
+    // The not-live notice renders ONLY in the absent state; the live release
+    // must never claim it is not live.
+    expect(panel).toContain('deployment === "absent" ? (');
     expect(panel).toContain("feeRewards2Deployment()");
-    expect(manifest).toContain("deployment: null");
+    // The release is a source change with pinned identities, never env/RPC.
+    expect(manifest).toContain('0x7F57F7B760614e67D3B3887433fA124B4c9A09F9');
+    expect(manifest).toContain('0xB5F7D9D4269c897Df70Df26F7bA48c0d933Be8Db');
     // A half-released campaign is a release error, never a usable surface.
     expect(panel).toContain("Release error: campaign 2 is partially configured.");
     // The split states mechanism, with both legs and the burn claim grounded

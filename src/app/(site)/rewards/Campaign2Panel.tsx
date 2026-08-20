@@ -4,6 +4,7 @@ import {
   feeRewards2Deployment,
 } from "@/lib/rewards2";
 import { Campaign2Operator } from "./Campaign2Operator";
+import { Campaign2Stake } from "./Campaign2Stake";
 import styles from "./campaign2.module.css";
 
 const MANIFEST = FEE_REWARDS_2_MANIFEST;
@@ -52,7 +53,7 @@ export function Campaign2Panel(): React.JSX.Element {
       <header className={styles.head}>
         <span className={styles.eyebrow}>
           <i aria-hidden data-live={deployment === "configured" ? "" : undefined} />
-          Campaign 2 · announced
+          {deployment === "configured" ? "Campaign 2 · live" : "Campaign 2 · announced"}
         </span>
         <span className={styles.window}>14 days · 100% of fees</span>
       </header>
@@ -71,9 +72,9 @@ export function Campaign2Panel(): React.JSX.Element {
         <p className={styles.notice} role="alert">
           {RELEASE_ERROR}
         </p>
-      ) : (
+      ) : deployment === "absent" ? (
         <p className={styles.notice}>{NOT_LIVE}</p>
-      )}
+      ) : null}
 
       <div className={styles.legs}>
         {CAMPAIGN_2_LEGS.map((leg) => (
@@ -112,22 +113,35 @@ export function Campaign2Panel(): React.JSX.Element {
         </div>
       </dl>
 
-      <ul className={styles.references}>
-        {REFERENCES.map((reference) => (
-          <li key={reference.label}>
-            <span>{reference.label}</span>
-            <span>{reference.value}</span>
-            <a href={explorer(reference.address)} target="_blank" rel="noreferrer">
-              {shortAddress(reference.address)}
-            </a>
-          </li>
-        ))}
-      </ul>
+      {/* User staking renders only once the release manifest is configured;
+          before that the component returns null and the panel stays a
+          read-only announcement. */}
+      <Campaign2Stake />
 
+      {/* The two boundary sentences stay permanently visible; only the
+          verification detail (addresses) and the sponsor console fold away. */}
       <p className={styles.boundary}>{NO_YIELD}</p>
       <p className={styles.boundary}>{AUDIT_STATUS}</p>
 
-      <Campaign2Operator />
+      <details className={styles.disclosure}>
+        <summary>Contract references</summary>
+        <ul className={styles.references}>
+          {REFERENCES.map((reference) => (
+            <li key={reference.label}>
+              <span>{reference.label}</span>
+              <span>{reference.value}</span>
+              <a href={explorer(reference.address)} target="_blank" rel="noreferrer">
+                {shortAddress(reference.address)}
+              </a>
+            </li>
+          ))}
+        </ul>
+      </details>
+
+      <details className={styles.disclosure}>
+        <summary>Operator console</summary>
+        <Campaign2Operator />
+      </details>
     </section>
   );
 }
