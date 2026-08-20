@@ -1,5 +1,5 @@
-import { BOUNDED_SWAP_IDS } from "@/lib/chains";
 import { getBlock, makeNode, type ChainNode } from "@/lib/blocks";
+import { automationRouteIds } from "@/lib/automate";
 import { reduceChainToLiveRoute } from "@/lib/deployable";
 import { parseRouterAmount } from "@/lib/openzap";
 import { resolveRouteById } from "@/lib/routes";
@@ -29,7 +29,6 @@ export type AutomationDesign =
     }
   | { deployable: false; reasons: string[] };
 
-const LIVE_AUTOMATION_ROUTES = new Set<string>(BOUNDED_SWAP_IDS);
 const CADENCES = new Map<string, bigint>([
   ["daily", 86_400n],
   ["weekly", 604_800n],
@@ -44,9 +43,10 @@ const THRESHOLD_IDS = new Set(["up5", "up10", "up25", "down5", "down10", "down25
 
 /**
  * Reduce the visual builder's automation vocabulary into the live v3/v3.1
- * execution modes. This is deliberately narrower than compilation: only the
- * pinned aeWETH <-> 0xZAPS routes have the onchain price sources and executor
- * path the Automate console can honestly sign today.
+ * execution modes. This is deliberately narrower than compilation: only routes
+ * whose pool has allowlisted onchain price sources — the aeWETH <-> 0xZAPS
+ * pair today, plus the HOOKR pair once its sources are configured — have the
+ * oracle and executor path the Automate console can honestly sign.
  */
 export function reduceChainToAutomation(chain: readonly ChainNode[]): AutomationDesign {
   const recurring = chain.filter((node) => node.blockId === "recurring-stream");
@@ -82,11 +82,11 @@ export function reduceChainToAutomation(chain: readonly ChainNode[]): Automation
   if (!route.deployable) return { deployable: false, reasons: route.reasons };
   const resolvedRoute = resolveRouteById(route.routeId);
   if (!resolvedRoute) return { deployable: false, reasons: ["The reduced route is not available in this build."] };
-  if (!LIVE_AUTOMATION_ROUTES.has(route.routeId)) {
+  if (!automationRouteIds().includes(route.routeId)) {
     return {
       deployable: false,
       reasons: [
-        "Automation is live only for the pinned aeWETH <-> 0xZAPS pool; this route can still Zap now.",
+        "Automation is live only for routes whose pool has an allowlisted onchain price source; this route can still Zap now.",
       ],
     };
   }

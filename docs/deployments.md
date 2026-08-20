@@ -470,6 +470,60 @@ aeWETH→0xZAPS adapter with a caller-reviewed minimum output, and credits a sep
   independently read back. It held zero ETH, aeWETH, 0xZAPS, and zero adapter allowance after deployment.
 - The existing automated execution fee remains separate: 1% per run, split 80% executor / 20% to
   the original v3 or v3.1 automation pot.
+
+### The HOOKR expansion — built, NOT deployed
+
+UNAUDITED CANDIDATE. Makes HOOKR (`Hookr.fun`,
+[`0x18E674231A58c239Dc7DaeDcffE15Ec3A24cff5c`](https://robinhoodchain.blockscout.com/address/0x18E674231A58c239Dc7DaeDcffE15Ec3A24cff5c),
+18 decimals) buy, DCA, and price-triggered zaps executable through the token's ONLY real market: the
+hookless native-ETH/HOOKR v4 pool
+`0x590dcb6a87828bf688b48089a62239b693378f1fb64d2286e6a399ed8c005fdf` (fee 2500, tickSpacing 25) on
+the canonical PoolManager. The pool's `currency0` is native ETH, which every existing swap adapter
+refuses and the capsule cannot settle, so the expansion ships three contracts:
+
+1. [`RobinhoodV4NativePoolAdapter`](../contracts/src/adapters/RobinhoodV4NativePoolAdapter.sol) —
+   welds the wrap boundary into the step (aeWETH in → unwrap → direct PoolManager unlock swap →
+   HOOKR out, and the reverse), refuses partial fills, hooked pools, and any calldata beyond a
+   bounded minimum-out. One deployment serves both directions of exactly this pool; `poolId` is
+   recomputed and proven at construction.
+2. `V4PoolPriceSource(PoolManager, hookrPoolId)` — the v3 trigger oracle for the pool.
+3. `V4PoolPriceSourceOriented(PoolManager, hookrPoolId, aeWETH, HOOKR)` — the v3.1 relative-floor
+   source. `currency0` is DECLARED as aeWETH on purpose: `executeRecurringRelative` derives the
+   run's input asset from the source's currencies and measures that ERC-20's balance, and aeWETH
+   wraps native 1:1, so HOOKR-per-ETH is exactly HOOKR-per-aeWETH. A literal `address(0)` would
+   brick every run on a `balanceOf` call against the zero address.
+
+The guarded deployment path is
+[`DeployRobinhoodHookr.s.sol`](../contracts/script/DeployRobinhoodHookr.s.sol): preflights chain,
+factory→registry wiring for v1.1/v3/v3.1, the pinned pool id, and live pool liquidity; deploys the
+three contracts; performs the four governance writes only when the broadcaster IS the live owner
+(`AdapterRegistry.setAdapter(adapter)`, `TokenAllowlist.setToken(HOOKR)` — without which every HOOKR
+policy is refused at `createZap` — and `setAdapter(source)` on the v3 and v3.1 price-source
+registries), and prints exact calldata for whatever remains. The v3.2 stack lineage is deliberately
+NOT wired: its stack leg converts output through the welded aeWETH→0xZAPS adapter, which cannot
+take HOOKR, so HOOKR recurring signs the v3.1 relative-floor path.
+
+Evidence so far (no broadcast has happened):
+
+- 31 unit/fuzz tests (`RobinhoodV4NativePoolAdapter.t.sol`) green.
+- The fork dress rehearsal
+  ([`RobinhoodV4NativePoolAdapter.fork.t.sol`](../contracts/test/RobinhoodV4NativePoolAdapter.fork.t.sol))
+  passed against live 4663 state on 2026-08-20: adapter round trip byte-equal to the live quoter in
+  both directions, and full end-to-end runs through the LIVE v1.1 (one-shot), v3 (trigger), and
+  v3.1 (relative recurring) factories with the governance writes pranked exactly as the script
+  broadcasts them. Rerun with `RUN_ROBINHOOD_FORK=true` before any broadcast after ANY change.
+- A no-broadcast script simulation against live state passed the same day (preflight, deploys,
+  post-assertions; ~0.000085 ETH estimated).
+
+After a verified broadcast, in this order: record addresses + transactions here with independent
+explorer/RPC readback; set `NEXT_PUBLIC_OPENZAP_ROBINHOOD_V4_HOOKR_ADAPTER`,
+`NEXT_PUBLIC_OPENZAP_HOOKR_POOL_PRICE_SOURCE`, and
+`NEXT_PUBLIC_OPENZAP_HOOKR_ORIENTED_PRICE_SOURCE` (all-or-nothing — the app fails closed on a
+partial set); bake the addresses into `src/lib/robinhood.ts` / `src/lib/chains.ts` in a reviewed PR
+that also moves the `hookr-buy` blueprint into the deployable prefix; and add the adapter's address
++ runtime hash to the executor operators' adapter manifest so standing HOOKR intents are
+executable. Until then every HOOKR surface in the app reports the honest not-deployed state.
+
 ### ZapDraw (`ZapOverdraw`) — **CONTRACT LIVE ON 4663; WEB SURFACE RETIRED**
 
 | | |

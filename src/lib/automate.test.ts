@@ -14,7 +14,7 @@ import {
   draftRecurringRelativeIntent,
   draftRecurringStackIntent,
   draftTriggerIntent,
-  feedConditionForZapsMove,
+  feedConditionForTokenMove,
   fundingReadiness,
   intentFileName,
   isRecurringIntentKind,
@@ -217,7 +217,7 @@ describe("presets", () => {
 
   it("threshold presets convert to conditions inside the capsule's validity bounds", () => {
     for (const p of THRESHOLD_PRESETS) {
-      const cond = feedConditionForZapsMove(p.moveBps, p.rises);
+      const cond = feedConditionForTokenMove(p.moveBps, p.rises);
       expect(cond.thresholdBps).toBeGreaterThan(0);
       if (!cond.above) expect(cond.thresholdBps).toBeLessThan(10_000);
       expect(cond.thresholdBps).toBeLessThanOrEqual(1_000_000);
@@ -225,26 +225,26 @@ describe("presets", () => {
   });
 });
 
-describe("feedConditionForZapsMove — the direction inversion", () => {
+describe("feedConditionForTokenMove — the direction inversion", () => {
   // The feed is 0xZAPS-per-aeWETH: it FALLS when 0xZAPS gains value. A signed condition in the
   // token's own direction executes the trade on the OPPOSITE market move, so these values are
   // pinned exactly — any drift here is a critical bug, not a rounding nit.
   it("token RISES map to feed FALLS (above=false) with reciprocal magnitude", () => {
-    expect(feedConditionForZapsMove(500, true)).toEqual({ above: false, thresholdBps: 476 }); // +5% ⇒ −4.76%
-    expect(feedConditionForZapsMove(1_000, true)).toEqual({ above: false, thresholdBps: 909 }); // +10% ⇒ −9.09%
-    expect(feedConditionForZapsMove(2_500, true)).toEqual({ above: false, thresholdBps: 2_000 }); // +25% ⇒ −20%
+    expect(feedConditionForTokenMove(500, true)).toEqual({ above: false, thresholdBps: 476 }); // +5% ⇒ −4.76%
+    expect(feedConditionForTokenMove(1_000, true)).toEqual({ above: false, thresholdBps: 909 }); // +10% ⇒ −9.09%
+    expect(feedConditionForTokenMove(2_500, true)).toEqual({ above: false, thresholdBps: 2_000 }); // +25% ⇒ −20%
   });
 
   it("token FALLS map to feed RISES (above=true) with reciprocal magnitude", () => {
-    expect(feedConditionForZapsMove(500, false)).toEqual({ above: true, thresholdBps: 526 }); // −5% ⇒ +5.26%
-    expect(feedConditionForZapsMove(1_000, false)).toEqual({ above: true, thresholdBps: 1_111 }); // −10% ⇒ +11.11%
-    expect(feedConditionForZapsMove(2_500, false)).toEqual({ above: true, thresholdBps: 3_333 }); // −25% ⇒ +33.33%
+    expect(feedConditionForTokenMove(500, false)).toEqual({ above: true, thresholdBps: 526 }); // −5% ⇒ +5.26%
+    expect(feedConditionForTokenMove(1_000, false)).toEqual({ above: true, thresholdBps: 1_111 }); // −10% ⇒ +11.11%
+    expect(feedConditionForTokenMove(2_500, false)).toEqual({ above: true, thresholdBps: 3_333 }); // −25% ⇒ +33.33%
   });
 
   it("rejects meaningless moves", () => {
-    expect(() => feedConditionForZapsMove(0, true)).toThrow();
-    expect(() => feedConditionForZapsMove(-100, true)).toThrow();
-    expect(() => feedConditionForZapsMove(10_000, false)).toThrow();
+    expect(() => feedConditionForTokenMove(0, true)).toThrow();
+    expect(() => feedConditionForTokenMove(-100, true)).toThrow();
+    expect(() => feedConditionForTokenMove(10_000, false)).toThrow();
   });
 });
 

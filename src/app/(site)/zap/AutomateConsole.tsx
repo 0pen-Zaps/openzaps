@@ -22,14 +22,15 @@ import { trackEvent } from "@/lib/analytics";
 import {
   INTERVAL_PRESETS,
   STACK_PRESETS,
-  THRESHOLD_PRESETS,
+  automationMarketForRoute,
   automationModeForIntentKind,
+  automationRouteIds,
   defaultSlippageBps,
   describeSeries,
   draftRecurringRelativeIntent,
   draftRecurringStackIntent,
   draftTriggerIntent,
-  feedConditionForZapsMove,
+  feedConditionForTokenMove,
   fundingReadiness,
   intentFileName,
   isRecurringIntentKind,
@@ -38,6 +39,7 @@ import {
   projectedRelativeFloor,
   projectedStackRecipientFloor,
   readAutomationHandoff,
+  thresholdPresetsFor,
   verifyFundingConfirmation,
   type AutomationIntentKind,
   type AutomationMode,
@@ -334,7 +336,6 @@ export default function AutomateConsole(): React.JSX.Element {
 
   const route: Route | null = useMemo(() => resolveRouteById(routeId), [routeId]);
   const interval = INTERVAL_PRESETS.find((p) => p.id === intervalId) ?? INTERVAL_PRESETS[2];
-  const threshold = THRESHOLD_PRESETS.find((p) => p.id === thresholdId) ?? THRESHOLD_PRESETS[1];
 
   const record = useMemo(
     () =>
@@ -358,6 +359,14 @@ export default function AutomateConsole(): React.JSX.Element {
   // whose controls were never rendered.
   const activeIntentKind: AutomationIntentKind = record?.intentKind ?? intentKind;
   const activeMode: AutomationMode = automationModeForIntentKind(activeIntentKind);
+  // The MARKET pricing the active route: its onchain sources are what every intent signs, and its
+  // token names the trigger copy. Follows the record's route once one is selected, exactly like
+  // activeIntentKind, so a saved HOOKR zap can never render or sign the 0xZAPS oracle. Memoized so
+  // the market object stays referentially stable for the manually-memoized create/quote callbacks.
+  const activeRouteId = record?.routeId ?? routeId;
+  const activeMarket = useMemo(() => automationMarketForRoute(activeRouteId), [activeRouteId]);
+  const marketThresholds = thresholdPresetsFor(activeMarket?.tokenLabel ?? "0xZAPS");
+  const threshold = marketThresholds.find((p) => p.id === thresholdId) ?? marketThresholds[1];
   const activeContracts =
     activeIntentKind === "recurring-stack"
       ? OPENZAP_V3_2_CONTRACTS
@@ -365,14 +374,26 @@ export default function AutomateConsole(): React.JSX.Element {
         ? OPENZAP_V3_1_CONTRACTS
         : OPENZAP_V3_CONTRACTS;
 
-  // Each lineage gates only on the immutable stack it actually uses. v3.2 includes its dedicated
-  // stack-only creation gateway and creation pot in the same seven-address fail-closed set.
-  const configured =
+  // The price source THIS market's intents sign for the active execution type, or null when the
+  // market lacks one (a HOOKR trigger before its sources are configured, or stacking on a market
+  // that cannot stack). Null must refuse creation — signing another market's oracle would execute
+  // the owner's trade on someone else's market move.
+  const marketPriceSource =
     activeIntentKind === "recurring-stack"
+      ? activeMarket?.stackPriceSource ?? null
+      : activeIntentKind === "recurring-relative"
+        ? activeMarket?.relativePriceSource ?? null
+        : activeMarket?.triggerPriceSource ?? null;
+  // Each lineage gates only on the immutable stack it actually uses. v3.2 includes its dedicated
+  // stack-only creation gateway and creation pot in the same seven-address fail-closed set. Every
+  // kind additionally requires the active market's own price source to exist.
+  const configured =
+    marketPriceSource !== null
+    && (activeIntentKind === "recurring-stack"
       ? openZapV3_2Configured()
       : activeIntentKind === "recurring-relative"
         ? openZapV3Configured() && openZapV3_1Configured()
-        : openZapV3Configured();
+        : openZapV3Configured());
   const activeCreationFeeContracts =
     activeIntentKind === "recurring-stack"
       ? {
@@ -380,12 +401,10 @@ export default function AutomateConsole(): React.JSX.Element {
           pot: OPENZAP_V3_2_CONTRACTS.creationFeePot,
         }
       : OPENZAP_CREATION_FEE_CONTRACTS;
-  const activePriceSource =
-    activeIntentKind === "recurring-stack"
-      ? OPENZAP_V3_2_CONTRACTS.orientedPriceSource
-      : activeIntentKind === "recurring-relative"
-        ? OPENZAP_V3_1_CONTRACTS.orientedPriceSource
-        : OPENZAP_V3_CONTRACTS.poolPriceSource;
+  // zeroAddress when the market lacks the source: the provenance readback then never verifies
+  // (no bytecode, not allowlisted), so `feeGatewayReady` stays false — fail closed, never
+  // another market's oracle.
+  const activePriceSource = marketPriceSource ?? zeroAddress;
   // Bind every asynchronous readiness/quote result to the exact lineage it proved. A render that
   // switches lineages computes a different key immediately, so a previously verified gateway can
   // never transiently enable creation while the replacement lineage is still being read.
@@ -973,11 +992,12 @@ export default function AutomateConsole(): React.JSX.Element {
   // is honest as long as it is labelled indicative. Fails closed to null → the UI renders "—".
   const orientedSource =
     activeIntentKind === "recurring-stack"
-      ? OPENZAP_V3_2_CONTRACTS.orientedPriceSource
-      : OPENZAP_V3_1_CONTRACTS.orientedPriceSource;
+      ? activeMarket?.stackPriceSource ?? null
+      : activeMarket?.relativePriceSource ?? null;
   useEffect(() => {
     let cancelled = false;
     const load = async () => {
+      if (orientedSource === null) return;
       try {
         const [priceX96, currency0, currency1] = await Promise.all([
           publicClient.readContract({ address: orientedSource, abi: orientedPriceSourceAbi, functionName: "priceX96" }),
@@ -989,7 +1009,7 @@ export default function AutomateConsole(): React.JSX.Element {
         if (!cancelled) setSpot(null); // explicit unavailable, never a fake price
       }
     };
-    if (isRecurringIntentKind(activeIntentKind) && configured) {
+    if (isRecurringIntentKind(activeIntentKind) && configured && orientedSource !== null) {
       void load();
     } else {
       void Promise.resolve().then(() => {
@@ -1363,7 +1383,11 @@ export default function AutomateConsole(): React.JSX.Element {
       if (!record || !recordRoute) throw new Error("Create a Zap first.");
       const fresh = await loadAutomationStatus(record, recordRoute);
       requirePolicyExecutionAvailable(fresh.policyHalt, record.intentKind);
-      if (recordRoute.quote.source !== "v4") throw new Error("Automation supports the bounded pool routes only.");
+      if (recordRoute.quote.source !== "v4") throw new Error("Automation supports single-pool swap routes only.");
+      // The record's own market decides which oracle the intent signs. Refuse to sign without one:
+      // a fallback to another pool's source would arm this trade on the wrong market's move.
+      const recordMarket = automationMarketForRoute(record.routeId);
+      if (!recordMarket) throw new Error("No automation market prices this route's pool.");
       const wallet = await requireWallet(owner);
       const nowSec = BigInt(Math.floor(Date.now() / 1000));
       let file: string;
@@ -1371,6 +1395,10 @@ export default function AutomateConsole(): React.JSX.Element {
       if (record.intentKind === "recurring-stack") {
         if (!slippageClearsFee(slippageBps)) {
           throw new Error("Stacking slippage must be above the 1% protocol fee.");
+        }
+        const stackSource = recordMarket.stackPriceSource;
+        if (stackSource === null) {
+          throw new Error("This route's market has no 0xZAPS stacking source; sign a Recurring intent instead.");
         }
         const intent = draftRecurringStackIntent({
           executor: executorForIntent,
@@ -1386,11 +1414,11 @@ export default function AutomateConsole(): React.JSX.Element {
           recipient: owner,
           policyHash: record.policyHash,
           outAsset: recordRoute.tokenOut.address,
-          priceSource: OPENZAP_V3_2_CONTRACTS.orientedPriceSource,
+          priceSource: stackSource,
           maxSlippageBps: slippageBps,
           stackPriceSource: isAddressEqual(recordRoute.tokenOut.address, ROBINHOOD_ASSETS.zaps)
             ? null
-            : OPENZAP_V3_2_CONTRACTS.orientedPriceSource,
+            : stackSource,
           zaps: ROBINHOOD_ASSETS.zaps,
           stackBps: activeStackBps,
         });
@@ -1401,6 +1429,10 @@ export default function AutomateConsole(): React.JSX.Element {
         // Relative floor — NO quote. The v3.1 capsule reads the oriented price source's spot on
         // every run and floors the output maxSlippageBps below it, so the floor is always current
         // and a multi-run series can never go stale. The user's slippage % IS the signed tolerance.
+        const relativeSource = recordMarket.relativePriceSource;
+        if (relativeSource === null) {
+          throw new Error("This route's market has no relative-floor price source configured yet.");
+        }
         const intent = draftRecurringRelativeIntent({
           executor: executorForIntent,
           maxGas: BigInt(maxExecutionGas),
@@ -1415,7 +1447,7 @@ export default function AutomateConsole(): React.JSX.Element {
           recipient: owner,
           policyHash: record.policyHash,
           outAsset: recordRoute.tokenOut.address,
-          priceSource: OPENZAP_V3_1_CONTRACTS.orientedPriceSource,
+          priceSource: relativeSource,
           maxSlippageBps: slippageBps,
         });
         const signature = await wallet.signTypedData({ account: owner, ...buildRecurringRelativeTypedData(intent) });
@@ -1435,16 +1467,22 @@ export default function AutomateConsole(): React.JSX.Element {
         const minOut = netFloorFromQuote(result[0], slippageBps);
         if (minOut <= 0n) throw new Error("The route quotes to zero output. Try a larger per-Zap amount.");
 
+        const triggerSource = recordMarket.triggerPriceSource;
+        if (triggerSource === null) {
+          throw new Error("This route's market has no trigger price source configured yet.");
+        }
         // The baseline is read AT SIGNING TIME — the signed condition anchors to the price the
-        // user sees now, not one fetched when the page loaded.
+        // user sees now, not one fetched when the page loaded. It is read from the ROUTE'S OWN
+        // market source, the same address the signed intent names.
         const baseline = await publicClient.readContract({
-          address: OPENZAP_V3_CONTRACTS.poolPriceSource,
+          address: triggerSource,
           abi: priceSourceAbi,
           functionName: "priceX96",
         });
-        // The feed is 0xZAPS-per-aeWETH and FALLS when 0xZAPS rises; this converts the
-        // user-facing move into the feed-side condition (see feedConditionForZapsMove).
-        const condition = feedConditionForZapsMove(threshold.moveBps, threshold.rises);
+        // The feed is token-per-base (0xZAPS per aeWETH, HOOKR per ETH) and FALLS when the token
+        // rises; this converts the user-facing move into the feed-side condition (see
+        // feedConditionForTokenMove).
+        const condition = feedConditionForTokenMove(threshold.moveBps, threshold.rises);
         const intent = draftTriggerIntent({
           executor: executorForIntent,
           maxGas: BigInt(maxExecutionGas),
@@ -1454,7 +1492,7 @@ export default function AutomateConsole(): React.JSX.Element {
           nonce: randomNonce(),
           nowSec,
           validDays,
-          priceSource: OPENZAP_V3_CONTRACTS.poolPriceSource,
+          priceSource: triggerSource,
           baselinePriceX96: baseline,
           thresholdBps: condition.thresholdBps,
           above: condition.above,
@@ -1969,12 +2007,18 @@ export default function AutomateConsole(): React.JSX.Element {
                 <BlockGlyph name="repeat" className={styles.modeGlyph} />
                 Recurring
               </button>
-              {openZapV3_2Configured() || activeIntentKind === "recurring-stack" ? (
+              {(openZapV3_2Configured() && activeMarket?.stackPriceSource !== null)
+                || activeIntentKind === "recurring-stack" ? (
                 <button
                   type="button"
                   className={activeIntentKind === "recurring-stack" ? styles.modeOn : styles.mode}
                   onClick={() => selectIntentKind("recurring-stack")}
-                  disabled={busy !== null || record !== null || !openZapV3_2Configured()}
+                  disabled={
+                    busy !== null
+                    || record !== null
+                    || !openZapV3_2Configured()
+                    || activeMarket?.stackPriceSource === null
+                  }
                 >
                   <BlockGlyph name="coins" className={styles.modeGlyph} />
                   Stack 0xZAPS
@@ -2043,7 +2087,7 @@ export default function AutomateConsole(): React.JSX.Element {
               </p>
 
               <div className={styles.routeSeg} role="group" aria-label="Direction">
-                {BOUNDED_SWAP_IDS.map((id) => {
+                {automationRouteIds().map((id) => {
                   const r = resolveRouteById(id);
                   if (!r) return null;
                   return (
@@ -2051,7 +2095,17 @@ export default function AutomateConsole(): React.JSX.Element {
                       key={id}
                       type="button"
                       className={routeId === id ? styles.routeSegOn : styles.routeSegBtn}
-                      onClick={() => setRouteId(id)}
+                      onClick={() => {
+                        setRouteId(id);
+                        // A market that cannot stack must not keep the stack tab armed: coerce to
+                        // the relative-floor kind rather than render a form no intent can sign.
+                        if (
+                          intentKind === "recurring-stack"
+                          && automationMarketForRoute(id)?.stackPriceSource == null
+                        ) {
+                          selectIntentKind("recurring-relative");
+                        }
+                      }}
                       disabled={busy !== null || record !== null}
                     >
                       {r.tokenIn.symbol} → {r.tokenOut.symbol}
@@ -2131,14 +2185,14 @@ export default function AutomateConsole(): React.JSX.Element {
                   </>
                 ) : (
                   <>
-                    <Field label="Condition (0xZAPS price move)">
+                    <Field label={`Condition (${activeMarket?.tokenLabel ?? "0xZAPS"} price move)`}>
                       <select
                         className={styles.input}
                         value={thresholdId}
                         onChange={(event) => setThresholdId(event.target.value)}
                         disabled={busy !== null || signed}
                       >
-                        {THRESHOLD_PRESETS.map((p) => (
+                        {marketThresholds.map((p) => (
                           <option key={p.id} value={p.id}>{p.label}</option>
                         ))}
                       </select>
