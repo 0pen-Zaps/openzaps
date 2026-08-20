@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { FEE_REWARDS_MANIFEST, campaignPhaseNote, type FeeRewardsPayload } from "@/lib/rewards";
+import { selectedCampaign } from "./CampaignSwitcher";
 import {
   rewardsBalanceLabel,
   rewardsClaimLifecycle,
@@ -359,6 +360,33 @@ describe("0xZAPS fee rewards public surface", () => {
     expect(workspace).toContain("No APY projection");
     expect(workspace).toContain("top-holder bonus");
     expect(workspace).toContain("volume leaderboard");
+  });
+
+  it("separates the two campaigns behind a switcher, one detail at a time", () => {
+    const switcher = read("src/app/(site)/rewards/CampaignSwitcher.tsx");
+    const panel = read("src/app/(site)/rewards/Campaign2Panel.tsx");
+    // The index names both campaigns and the page renders exactly one detail.
+    expect(page).toContain("<CampaignSwitcher selected={selected} initial={initial} />");
+    expect(page).toContain('{selected === "1" ? (');
+    expect(switcher).toContain("Campaign 1 · Aug 3 – 10, 2026");
+    expect(switcher).toContain("Campaign 2 · 14 days");
+    // Selection rules are a pure function: explicit param wins, workspace
+    // deep links stay on campaign 1, and the default is manifest-driven
+    // (campaign 1 until the campaign-2 release is configured).
+    expect(selectedCampaign("2", undefined)).toBe("2");
+    expect(selectedCampaign("1", undefined)).toBe("1");
+    expect(selectedCampaign(undefined, "stakers")).toBe("1");
+    expect(selectedCampaign(undefined, undefined)).toBe("1");
+    // The switcher never invents a campaign-1 phase when the snapshot is
+    // missing, and the campaign-2 chip is manifest state, not a clock.
+    expect(switcher).toContain('"Unavailable"');
+    expect(switcher).toContain('feeRewards2Deployment() === "configured"');
+    // Declutter must never hide the boundaries: both boundary sentences
+    // render before the first disclosure in the panel source.
+    const firstDisclosure = panel.indexOf("<details");
+    expect(firstDisclosure).toBeGreaterThan(0);
+    expect(panel.indexOf("{NO_YIELD}")).toBeLessThan(firstDisclosure);
+    expect(panel.indexOf("{AUDIT_STATUS}")).toBeLessThan(firstDisclosure);
   });
 
   it("announces campaign 2 fail-closed off the manifest, never RPC", () => {

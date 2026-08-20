@@ -427,3 +427,29 @@
   text-decoration: underline;
   text-underline-offset: 2px;
 }
+
+/* ------------------------------------------------------------- disclosures */
+
+.disclosure {
+  margin-top: 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-card-sm);
+  background: var(--sunk);
+}
+
+.disclosure summary {
+  padding: 10px 12px;
+  color: var(--ink-2);
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+  user-select: none;
+}
+
+.disclosure[open] summary {
+  border-bottom: 1px solid var(--line);
+}
+
+.disclosure > *:not(summary) {
+  margin: 10px 12px;
+}

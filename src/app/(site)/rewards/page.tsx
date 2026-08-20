@@ -8,6 +8,7 @@ import {
 import { fetchFeeRewards } from "@/lib/rewards-server";
 import type { FeeRewardsPayload } from "@/lib/rewards";
 import { Campaign2Panel } from "./Campaign2Panel";
+import { CampaignSwitcher, selectedCampaign } from "./CampaignSwitcher";
 import { RewardsWorkspace, type RewardsWorkspaceName } from "./RewardsWorkspace";
 import styles from "./rewards.module.css";
 
@@ -27,7 +28,7 @@ export const metadata = pageMetadata({
 export const dynamic = "force-dynamic";
 
 type RewardsPageProps = {
-  searchParams: Promise<{ workspace?: string | string[] }>;
+  searchParams: Promise<{ workspace?: string | string[]; campaign?: string | string[] }>;
 };
 
 function workspaceFrom(value: string | string[] | undefined): RewardsWorkspaceName {
@@ -38,7 +39,8 @@ function workspaceFrom(value: string | string[] | undefined): RewardsWorkspaceNa
 }
 
 export default async function RewardsPage({ searchParams }: RewardsPageProps): Promise<React.JSX.Element> {
-  const { workspace } = await searchParams;
+  const { workspace, campaign } = await searchParams;
+  const selected = selectedCampaign(campaign, workspace);
   let initial: FeeRewardsPayload | null = null;
   try {
     initial = await fetchFeeRewards(null);
@@ -60,9 +62,13 @@ export default async function RewardsPage({ searchParams }: RewardsPageProps): P
         }}
       />
 
-      <RewardsWorkspace initial={initial} initialWorkspace={workspaceFrom(workspace)} />
+      <CampaignSwitcher selected={selected} initial={initial} />
 
-      <Campaign2Panel />
+      {selected === "1" ? (
+        <RewardsWorkspace initial={initial} initialWorkspace={workspaceFrom(workspace)} />
+      ) : (
+        <Campaign2Panel />
+      )}
     </main>
   );
 }
