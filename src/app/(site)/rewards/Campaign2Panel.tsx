@@ -53,7 +53,7 @@ export function Campaign2Panel(): React.JSX.Element {
       <header className={styles.head}>
         <span className={styles.eyebrow}>
           <i aria-hidden data-live={deployment === "configured" ? "" : undefined} />
-          Campaign 2 · announced
+          {deployment === "configured" ? "Campaign 2 · live" : "Campaign 2 · announced"}
         </span>
         <span className={styles.window}>14 days · 100% of fees</span>
       </header>
@@ -72,9 +72,9 @@ export function Campaign2Panel(): React.JSX.Element {
         <p className={styles.notice} role="alert">
           {RELEASE_ERROR}
         </p>
-      ) : (
+      ) : deployment === "absent" ? (
         <p className={styles.notice}>{NOT_LIVE}</p>
-      )}
+      ) : null}
 
       <div className={styles.legs}>
         {CAMPAIGN_2_LEGS.map((leg) => (

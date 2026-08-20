@@ -60,18 +60,35 @@ export const FEE_REWARDS_2_MANIFEST = {
     minBuyWei: 500_000_000_000_000n, // 0.0005 ETH
   },
   /**
-   * Deployed campaign-2 contracts land here as a reviewed release. Shape
-   * when set:
-   * {
-   *   campaign: { address: Address; runtimeCodeHash: Hex;
-   *     deploymentBlock: bigint; startAt: bigint; endAt: bigint;
-   *     claimDeadline: bigint },
-   *   hookBlocks: { address: Address; runtimeCodeHash: Hex;
-   *     deploymentBlock: bigint; startAt: bigint; endAt: bigint;
-   *     sweepAfter: bigint },
-   * }
+   * The released campaign-2 contracts, verified on chain 4663 on 2026-08-20
+   * before this manifest was written: runtime hashes re-read from deployed
+   * code (leg A's is byte-exact to the pre-derived constructor simulation of
+   * the unchanged campaign-1 artifact), immutable read-backs exact, and the
+   * schedule identical across both legs. A different address or term is a
+   * different reviewed release. Source: main @ campaign2-source tag lineage;
+   * deploy receipts 0xb10ac1a1…9780 (HookBlocks) and 0x73504fcc…37a1
+   * (campaign).
    */
-  deployment: null,
+  deployment: {
+    campaign: {
+      address: getAddress("0x7F57F7B760614e67D3B3887433fA124B4c9A09F9"),
+      runtimeCodeHash:
+        "0xfa2c508f6b75979fd9a88626526565397a9c10ea93d98f2b817a76fddb9b76df" as Hex,
+      deploymentBlock: 41_581_207n,
+      startAt: 1_787_259_600n,
+      endAt: 1_788_469_200n,
+      claimDeadline: 1_791_061_200n,
+    },
+    hookBlocks: {
+      address: getAddress("0xB5F7D9D4269c897Df70Df26F7bA48c0d933Be8Db"),
+      runtimeCodeHash:
+        "0x8b9fc3ae1a3ad1475d038f09d3945ec8bbe9954ca15956221639e6cc186f3526" as Hex,
+      deploymentBlock: 41_579_883n,
+      startAt: 1_787_259_600n,
+      endAt: 1_788_469_200n,
+      sweepAfter: 1_791_061_200n,
+    },
+  },
 } as const;
 
 /**

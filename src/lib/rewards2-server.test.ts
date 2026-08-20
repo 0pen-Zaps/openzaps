@@ -68,7 +68,7 @@ beforeEach(() => {
 
 describe("campaign-2 preflight snapshot", () => {
   it("pins every read to one block and passes the runbook preconditions", async () => {
-    const payload = await fetchCampaign2Preflight();
+    const payload = await fetchCampaign2Preflight({ ...FEE_REWARDS_2_MANIFEST, deployment: null });
 
     expect(payload.deployment).toBe("absent");
     expect(payload.headBlock).toBe(BLOCK_NUMBER.toString());
@@ -97,7 +97,7 @@ describe("campaign-2 preflight snapshot", () => {
       if (call.functionName === "balanceOf") return Promise.resolve(50n * 10n ** 18n);
       return Promise.resolve(happyReadContract(call));
     });
-    const payload = await fetchCampaign2Preflight();
+    const payload = await fetchCampaign2Preflight({ ...FEE_REWARDS_2_MANIFEST, deployment: null });
     const check = payload.checks.find((entry) => entry.id === "sponsor-can-fund");
     expect(check?.ok).toBe(false);
     expect(check?.detail).toContain("cannot fund");
@@ -108,7 +108,7 @@ describe("campaign-2 preflight snapshot", () => {
       if (call.functionName === "extsload") return Promise.resolve(`0x${"0".repeat(64)}`);
       return Promise.resolve(happyReadContract(call));
     });
-    const payload = await fetchCampaign2Preflight();
+    const payload = await fetchCampaign2Preflight({ ...FEE_REWARDS_2_MANIFEST, deployment: null });
     const check = payload.checks.find((entry) => entry.id === "pool-initialized");
     expect(check?.ok).toBe(false);
     expect(payload.figures.hookrPerEthMilli).toBe("0");
