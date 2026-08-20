@@ -83,7 +83,17 @@ contract RobinhoodV4NativePoolAdapterForkTest is Test {
             vm.skip(true);
             return false;
         }
-        vm.createSelectFork(vm.envOr("ROBINHOOD_RPC_URL", string("https://rpc.mainnet.chain.robinhood.com")));
+        string memory rpc = vm.envOr("ROBINHOOD_RPC_URL", string("https://rpc.mainnet.chain.robinhood.com"));
+        // Optional block pin (same opt-in the v1.2 gate uses) so a review cannot silently move
+        // underneath a rerun. It matters more now that Campaign 2's HookBlocks cranks trade this
+        // exact pool one-directionally: an unpinned rerun measures a pool the campaign has been
+        // ratcheting since the last one.
+        uint256 forkBlock = vm.envOr("ROBINHOOD_FORK_BLOCK", uint256(0));
+        if (forkBlock == 0) {
+            vm.createSelectFork(rpc);
+        } else {
+            vm.createSelectFork(rpc, forkBlock);
+        }
         return true;
     }
 
@@ -136,8 +146,9 @@ contract RobinhoodV4NativePoolAdapterForkTest is Test {
         vm.stopPrank();
         assertEq(tokenBack, AEWETH);
         assertEq(sold, quotedBack);
-        // Two 0.25% pool fees plus the price impact of our own buy: the round trip must come back
-        // slightly short of the input, and nowhere near zero.
+        // Two swaps' worth of fees (0.25% LP + the pool's protocol fee, ~0.29% per swap) plus the
+        // price impact of our own buy: the round trip must come back slightly short of the input,
+        // and nowhere near zero.
         assertLt(sold, amountIn);
         assertGt(sold, (uint256(amountIn) * 98) / 100);
 

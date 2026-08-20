@@ -312,6 +312,7 @@ export function assetSymbolFor(asset: Address): string {
   if (isAddressEqual(asset, ROBINHOOD_ASSETS.zaps)) return "0xZAPS";
   if (isAddressEqual(asset, ROBINHOOD_ASSETS.usdg)) return "USDG";
   if (isAddressEqual(asset, ROBINHOOD_ASSETS.ozusdg)) return "ozUSDG";
+  if (isAddressEqual(asset, ROBINHOOD_ASSETS.hookr)) return "HOOKR";
   return `${asset.slice(0, 6)}…${asset.slice(-4)}`;
 }
 
