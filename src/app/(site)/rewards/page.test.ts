@@ -361,6 +361,70 @@ describe("0xZAPS fee rewards public surface", () => {
     expect(workspace).toContain("volume leaderboard");
   });
 
+  it("announces campaign 2 fail-closed off the manifest, never RPC", () => {
+    const panel = read("src/app/(site)/rewards/Campaign2Panel.tsx");
+    const manifest = read("src/lib/rewards2.ts");
+    // The page renders the panel after the live campaign-1 workspace.
+    expect(page).toContain("<Campaign2Panel />");
+    // The not-live boundary is a single unfragmented sentence, and the
+    // deployment switch is the manifest, deliberately not env or RPC.
+    expect(panel).toContain(
+      "Campaign 2 is not live yet. This panel reads nothing from the chain and asks for no signature until the campaign contracts arrive as a reviewed release with verified addresses.",
+    );
+    expect(panel).toContain("feeRewards2Deployment()");
+    expect(manifest).toContain("deployment: null");
+    // A half-released campaign is a release error, never a usable surface.
+    expect(panel).toContain("Release error: campaign 2 is partially configured.");
+    // The split states mechanism, with both legs and the burn claim grounded
+    // in what the transaction does rather than what the contract promises.
+    expect(panel).toContain("100% of fees");
+    expect(manifest).toContain('id: "stakers"');
+    expect(manifest).toContain('id: "hook-blocks"');
+    expect(manifest).toContain("sent to the dead address in the same transaction");
+    // The no-yield and audit boundaries stay beside the announcement.
+    expect(panel).toContain("No yield or APR.");
+    expect(panel).toContain("These contracts have not been externally audited.");
+    // No return, projection, or price-support vocabulary anywhere on it.
+    expect(panel).not.toMatch(/\bAPY\s*[:=]/u);
+    expect(panel).not.toContain("deflation");
+    expect(panel).not.toContain("price support");
+    // The burn is described honestly: HOOKR has no burn function, so this
+    // removes supply from circulation without reducing totalSupply. Any
+    // "supply reduced"/"deflationary" phrasing here would be false.
+    expect(manifest).toContain("without reducing totalSupply");
+    for (const source of [manifest, panel]) {
+      expect(source).not.toMatch(/reduces? (the )?(total )?supply/iu);
+      expect(source).not.toMatch(/\bdeflationary\b/iu);
+    }
+  });
+
+  it("gates the campaign-2 operator console on the release, with honest writes", () => {
+    const operator = read("src/app/(site)/rewards/Campaign2Operator.tsx");
+    const server = read("src/lib/rewards2-server.ts");
+    const route = read("src/app/api/protocol/rewards2/route.ts");
+    // The console mounts inside the panel and reads only the block-pinned
+    // preflight; a failed snapshot is named, never zeroed.
+    const panel = read("src/app/(site)/rewards/Campaign2Panel.tsx");
+    expect(panel).toContain("<Campaign2Operator />");
+    expect(operator).toContain('fetch("/api/protocol/rewards2"');
+    expect(operator).toContain("The preflight snapshot is unavailable.");
+    expect(route).toContain("unavailable right now");
+    expect(route).toContain('"cache-control": "no-store, max-age=0"');
+    // All-or-nothing snapshot: one pinned block, throws on any failed read.
+    expect(server).toContain("all-or-nothing");
+    expect(server).toContain("blockNumber");
+    // Writes exist only behind the filled manifest, simulate first, verify
+    // the runtime hash after the receipt, and label sponsor levers.
+    expect(operator).toContain("writes arrive with the release");
+    expect(operator).toContain("simulateContract");
+    expect(operator).toContain("runtime hash no longer matches the release");
+    expect(operator).toContain("sponsorOnly");
+    expect(operator).toContain("setBuybackPaused");
+    // The wallet stage never claims success from a hash alone.
+    expect(operator).toContain("Nothing has been submitted yet.");
+    expect(operator).toContain("A hash exists, but receipt verification was interrupted.");
+  });
+
   it("keeps permanent token surfaces safe across campaign lifecycle phases", () => {
     expect(tokenPanel).toContain("Inspect the first fixed fee campaign");
     expect(tokenPanel).toContain("seven-day Aug 3–10, 2026");

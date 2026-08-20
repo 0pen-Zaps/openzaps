@@ -7,6 +7,7 @@ import {
 } from "@/lib/seo";
 import { fetchFeeRewards } from "@/lib/rewards-server";
 import type { FeeRewardsPayload } from "@/lib/rewards";
+import { Campaign2Panel } from "./Campaign2Panel";
 import { RewardsWorkspace, type RewardsWorkspaceName } from "./RewardsWorkspace";
 import styles from "./rewards.module.css";
 
@@ -18,6 +19,8 @@ export const metadata = pageMetadata({
     "Clanker trading fees",
     "tokenized fee shares",
     "Robinhood Chain rewards",
+    "HOOKR Hook Blocks",
+    "0xZAPS campaign 2",
   ],
 });
 
@@ -58,6 +61,8 @@ export default async function RewardsPage({ searchParams }: RewardsPageProps): P
       />
 
       <RewardsWorkspace initial={initial} initialWorkspace={workspaceFrom(workspace)} />
+
+      <Campaign2Panel />
     </main>
   );
 }
