@@ -376,7 +376,9 @@ describe("0xZAPS fee rewards public surface", () => {
     expect(selectedCampaign("2", undefined)).toBe("2");
     expect(selectedCampaign("1", undefined)).toBe("1");
     expect(selectedCampaign(undefined, "stakers")).toBe("1");
-    expect(selectedCampaign(undefined, undefined)).toBe("1");
+    // With the campaign-2 release configured, the manifest-driven default
+    // now lands on campaign 2 — the flip is the release, not a clock.
+    expect(selectedCampaign(undefined, undefined)).toBe("2");
     // The switcher never invents a campaign-1 phase when the snapshot is
     // missing, and the campaign-2 chip is manifest state, not a clock.
     expect(switcher).toContain('"Unavailable"');
@@ -428,8 +430,13 @@ describe("0xZAPS fee rewards public surface", () => {
     expect(panel).toContain(
       "Campaign 2 is not live yet. This panel reads nothing from the chain and asks for no signature until the campaign contracts arrive as a reviewed release with verified addresses.",
     );
+    // The not-live notice renders ONLY in the absent state; the live release
+    // must never claim it is not live.
+    expect(panel).toContain('deployment === "absent" ? (');
     expect(panel).toContain("feeRewards2Deployment()");
-    expect(manifest).toContain("deployment: null");
+    // The release is a source change with pinned identities, never env/RPC.
+    expect(manifest).toContain('0x7F57F7B760614e67D3B3887433fA124B4c9A09F9');
+    expect(manifest).toContain('0xB5F7D9D4269c897Df70Df26F7bA48c0d933Be8Db');
     // A half-released campaign is a release error, never a usable surface.
     expect(panel).toContain("Release error: campaign 2 is partially configured.");
     // The split states mechanism, with both legs and the burn claim grounded
