@@ -13,7 +13,13 @@ export async function GET(): Promise<NextResponse> {
   } catch {
     return NextResponse.json(
       { error: "The canonical 0xZAPS market pulse is unavailable right now." },
-      { status: 503, headers: { "cache-control": "public, s-maxage=10" } },
+      {
+        status: 503,
+        headers: {
+          "cache-control": "public, s-maxage=10",
+          "retry-after": "10",
+        },
+      },
     );
   }
 }

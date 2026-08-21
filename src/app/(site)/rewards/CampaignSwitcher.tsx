@@ -38,7 +38,9 @@ export function CampaignSwitcher({
 }): React.JSX.Element {
   // Fail closed on the live chip: a missing snapshot renders "Unavailable",
   // never a guessed phase.
-  const phase1 = initial ? formatCampaignPhase(initial.phase) : "Unavailable";
+  const phase1 = initial
+    ? formatCampaignPhase(initial.phase)
+    : selected === "1" ? "Unavailable" : "Past staking window";
   // Green only while stakers can still act (staking open or claims open).
   const actionable1 = initial?.phase === "active" || initial?.phase === "claim-only";
   const live2 = feeRewards2Deployment() === "configured";
@@ -47,6 +49,7 @@ export function CampaignSwitcher({
     <nav className={styles.switcher} aria-label="Campaigns">
       <Link
         href="/rewards?campaign=1"
+        prefetch={false}
         className={styles.card}
         data-selected={selected === "1" ? "" : undefined}
         aria-current={selected === "1" ? "page" : undefined}
@@ -61,6 +64,7 @@ export function CampaignSwitcher({
 
       <Link
         href="/rewards?campaign=2"
+        prefetch={false}
         className={styles.card}
         data-selected={selected === "2" ? "" : undefined}
         aria-current={selected === "2" ? "page" : undefined}

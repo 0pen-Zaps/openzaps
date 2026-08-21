@@ -289,7 +289,7 @@ export function AppShell({ children }: { children: React.ReactNode }): React.JSX
         className={styles.sidebar}
         inert={isDrawerMode && !drawerOpen}
       >
-        <Link href="/" className={styles.brand}>
+        <Link href="/" prefetch={false} className={styles.brand}>
           <span className={styles.brandTile}>
             <OpenZapMark className={styles.brandMark} />
           </span>
@@ -299,7 +299,7 @@ export function AppShell({ children }: { children: React.ReactNode }): React.JSX
           </span>
         </Link>
 
-        <Link href="/zap?view=start" className={styles.newZap}>
+        <Link href="/zap?view=start" prefetch={false} className={styles.newZap}>
           <Glyph name="boltFill" className={styles.newZapBolt} />
           New zap
           <span className={styles.newZapHint} aria-hidden>
@@ -366,6 +366,9 @@ function SidebarNavLive(): React.JSX.Element {
 function SidebarNav({ view }: { view: ZapView | null }): React.JSX.Element {
   const pathname = usePathname();
 
+  // This whole rail is in the viewport at once. Automatic Link prefetch would
+  // fan out across every app route on every screen, including dynamic routes
+  // backed by public RPCs. Keep navigation client-side but user-initiated.
   return (
     <nav className={styles.nav} aria-label="Primary">
       {GROUPS.map((group) => (
@@ -390,6 +393,7 @@ function SidebarNav({ view }: { view: ZapView | null }): React.JSX.Element {
               <Link
                 key={item.href}
                 href={item.href}
+                prefetch={false}
                 className={styles.navItem}
                 data-active={active || undefined}
                 data-analytics-event={analytics?.event}
@@ -440,7 +444,7 @@ function RecentZaps(): React.JSX.Element {
       <div className={styles.reuseHead}>
         <span className={styles.groupLabel}>Pick up again</span>
         {recents.length > 0 ? (
-          <Link href="/zap?view=design" className={styles.reuseAll}>
+          <Link href="/zap?view=design" prefetch={false} className={styles.reuseAll}>
             All
           </Link>
         ) : null}
@@ -452,6 +456,7 @@ function RecentZaps(): React.JSX.Element {
           <Link
             key={design.id}
             href={`/zap?view=design&d=${encodeURIComponent(design.token)}`}
+            prefetch={false}
             className={styles.reuseRow}
           >
             <strong>{design.name}</strong>
@@ -502,7 +507,7 @@ function WalletChip(): React.JSX.Element {
 
   if (account && isRobinhoodChain) {
     return (
-      <Link className={styles.wallet} href="/profile" aria-label={`Open My zaps for ${account}`}>
+      <Link className={styles.wallet} href="/profile" prefetch={false} aria-label={`Open My zaps for ${account}`}>
         <span className={styles.walletAvatar} aria-hidden />
         <span className={styles.walletText}>
           <strong>{shortAddress(account)}</strong>

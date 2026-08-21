@@ -95,7 +95,7 @@ export function parseTokenMarketPulse(payload: unknown, readAt = new Date().toIS
 async function fetchTokenMarketPulseUncached(): Promise<TokenMarketPulse> {
   const response = await fetch(DEX_SCREENER_PAIR_URL, {
     headers: { accept: "application/json" },
-    signal: AbortSignal.timeout(8_000),
+    signal: AbortSignal.timeout(5_000),
   });
   if (!response.ok) throw new Error(`DEX Screener returned ${response.status}`);
   return parseTokenMarketPulse(await response.json());
