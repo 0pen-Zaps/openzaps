@@ -1,7 +1,12 @@
 import { keccak256 } from "viem";
 import { unstable_cache } from "next/cache";
 
-import { FEE_REWARDS_MANIFEST, feeRewardsCampaignAbi } from "@/lib/rewards";
+import {
+  FEE_REWARDS_MANIFEST,
+  feeRewardsCampaignAbi,
+  feeRewardsVaultAbi,
+  permitTokenAbi,
+} from "@/lib/rewards";
 import { FEE_REWARDS_2_MANIFEST, feeRewards2Deployment } from "@/lib/rewards2";
 import {
   STAKER_ENUMERATION_LIMIT,
@@ -70,7 +75,20 @@ export async function fetchFeeRewardsStakersUncached(
   }
   const blockNumber = head.number;
 
-  const [campaignCode, totalStaked, totalRewardWeight, stakedLogs, rewardPaidLogs] =
+  const [
+    campaignCode,
+    totalStaked,
+    totalRewardWeight,
+    rewardState,
+    rewardsSwept,
+    feeShareToken,
+    rewardAssetCount,
+    rewardAsset,
+    campaignHeldWeth,
+    awaitingHarvestWeth,
+    stakedLogs,
+    rewardPaidLogs,
+  ] =
     await Promise.all([
       client.getBytecode({ address: campaign.address, blockNumber }),
       client.readContract({
@@ -83,6 +101,52 @@ export async function fetchFeeRewardsStakersUncached(
         address: campaign.address,
         abi: feeRewardsCampaignAbi,
         functionName: "totalRewardWeight",
+        blockNumber,
+      }),
+      client.readContract({
+        address: campaign.address,
+        abi: feeRewardsCampaignAbi,
+        functionName: "rewardState",
+        args: [manifest.weth],
+        blockNumber,
+      }),
+      client.readContract({
+        address: campaign.address,
+        abi: feeRewardsCampaignAbi,
+        functionName: "rewardsSwept",
+        blockNumber,
+      }),
+      client.readContract({
+        address: campaign.address,
+        abi: feeRewardsCampaignAbi,
+        functionName: "FEE_SHARE_TOKEN",
+        blockNumber,
+      }),
+      client.readContract({
+        address: campaign.address,
+        abi: feeRewardsCampaignAbi,
+        functionName: "rewardAssetCount",
+        blockNumber,
+      }),
+      client.readContract({
+        address: campaign.address,
+        abi: feeRewardsCampaignAbi,
+        functionName: "rewardAssets",
+        args: [0n],
+        blockNumber,
+      }),
+      client.readContract({
+        address: manifest.weth,
+        abi: permitTokenAbi,
+        functionName: "balanceOf",
+        args: [campaign.address],
+        blockNumber,
+      }),
+      client.readContract({
+        address: manifest.vault.address,
+        abi: feeRewardsVaultAbi,
+        functionName: "claimable",
+        args: [campaign.address, manifest.weth],
         blockNumber,
       }),
       client.getLogs({
@@ -107,6 +171,13 @@ export async function fetchFeeRewardsStakersUncached(
   const campaignCodeHash = keccak256(campaignCode);
   if (!sameHash(campaignCodeHash, campaign.runtimeCodeHash)) {
     throw new Error("Campaign runtime identity does not match the reviewed release.");
+  }
+  if (
+    feeShareToken.toLowerCase() !== manifest.vault.address.toLowerCase()
+    || rewardAssetCount !== 1n
+    || rewardAsset.toLowerCase() !== manifest.weth.toLowerCase()
+  ) {
+    throw new Error("Campaign reward assets do not match the reviewed release.");
   }
 
   const accounts = uniqueStakerAccounts(stakedLogs.map((log) => log.args.account));
@@ -149,6 +220,15 @@ export async function fetchFeeRewardsStakersUncached(
     amount: log.args.amount,
   }));
   const built = buildStakerRows(states, sumClaimedByAccount(claims, manifest.weth), totalStaked);
+  const [, , accountedRewardBalance] = rewardState;
+  if (!rewardsSwept && campaignHeldWeth < accountedRewardBalance) {
+    throw new Error("Campaign reward accounting is not backed by its WETH balance.");
+  }
+  if (built.totalEarnedWeth > campaignHeldWeth) {
+    throw new Error("Campaign WETH cannot cover every staker's current earned balance.");
+  }
+  const stillAccruingWeth = campaignHeldWeth - built.totalEarnedWeth;
+  const totalAllocatedWeth = campaignHeldWeth + awaitingHarvestWeth;
 
   const canonicalBlock = await client.getBlock({ blockNumber });
   if (!canonicalBlock.hash || !sameHash(canonicalBlock.hash, head.hash)) {
@@ -167,6 +247,13 @@ export async function fetchFeeRewardsStakersUncached(
     allTimeStakerCount: built.allTimeStakerCount,
     totalEarnedWeth: built.totalEarnedWeth.toString(),
     totalClaimedWeth: built.totalClaimedWeth.toString(),
+    rewardPool: {
+      claimableNowWeth: built.totalEarnedWeth.toString(),
+      campaignHeldWeth: campaignHeldWeth.toString(),
+      stillAccruingWeth: stillAccruingWeth.toString(),
+      awaitingHarvestWeth: awaitingHarvestWeth.toString(),
+      totalAllocatedWeth: totalAllocatedWeth.toString(),
+    },
     truncated: built.truncated,
     stakers: built.rows,
   };
@@ -175,7 +262,7 @@ export async function fetchFeeRewardsStakersUncached(
 const cachedStakers = unstable_cache(
   () => fetchFeeRewardsStakersUncached(),
   [
-    "0xzaps-fee-rewards-stakers-v1",
+    "0xzaps-fee-rewards-stakers-v2",
     // Same release binding as the campaign snapshot: a verifier change or a
     // manifest change must never reuse a previous release's cached list.
     process.env.VERCEL_GIT_COMMIT_SHA?.trim() || "local",
@@ -246,7 +333,7 @@ function campaign2Binding(): StakersCampaignBinding {
 const cachedStakers2 = unstable_cache(
   () => fetchFeeRewardsStakersUncached(campaign2Binding()),
   [
-    "0xzaps-fee-rewards2-stakers-v1",
+    "0xzaps-fee-rewards2-stakers-v2",
     process.env.VERCEL_GIT_COMMIT_SHA?.trim() || "local",
     JSON.stringify(FEE_REWARDS_2_MANIFEST, (_key, value: unknown) =>
       typeof value === "bigint" ? value.toString() : value,

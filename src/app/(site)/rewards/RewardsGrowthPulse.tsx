@@ -4,12 +4,14 @@ import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { LINKS } from "@/lib/config";
+import {
+  fetchTokenMarketPulseClient,
+  MARKET_REFRESH_MS,
+  marketReadIsExpired,
+} from "@/lib/market-client";
 import type { TokenMarketPulse } from "@/lib/market-server";
 import styles from "./growth.module.css";
 
-const REFRESH_MS = 60_000;
-const REQUEST_TIMEOUT_MS = 6_000;
-const MAX_MARKET_AGE_MS = 5 * 60_000;
 const VOLUME_MILESTONES = [10_000, 25_000, 50_000, 100_000, 250_000, 500_000, 1_000_000] as const;
 
 type PulseState =
@@ -20,11 +22,6 @@ type PulseState =
 export function nextVolumeMilestone(volumeUsd: number): number {
   return VOLUME_MILESTONES.find((milestone) => volumeUsd < milestone)
     ?? (Math.floor(volumeUsd / 1_000_000) + 1) * 1_000_000;
-}
-
-function marketReadIsExpired(market: TokenMarketPulse, nowMs: number): boolean {
-  const readMs = Date.parse(market.readAt);
-  return !Number.isFinite(readMs) || readMs > nowMs + REFRESH_MS || nowMs - readMs > MAX_MARKET_AGE_MS;
 }
 
 function marketAge(readAt: string, nowMs: number | null): string | null {
@@ -54,13 +51,8 @@ export function RewardsGrowthPulse({ initial }: { initial: TokenMarketPulse | nu
 
   const load = useCallback(async (): Promise<void> => {
     const mine = ++sequence.current;
-    const controller = new AbortController();
-    const timeout = window.setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
     try {
-      const response = await fetch("/api/protocol/market", { signal: controller.signal });
-      if (!response.ok) throw new Error(String(response.status));
-      const data = (await response.json()) as TokenMarketPulse;
-      if (marketReadIsExpired(data, Date.now())) throw new Error("stale market read");
+      const data = await fetchTokenMarketPulseClient();
       if (mine === sequence.current) setState({ status: "ready", data, stale: false });
     } catch {
       if (mine !== sequence.current) return;
@@ -68,8 +60,6 @@ export function RewardsGrowthPulse({ initial }: { initial: TokenMarketPulse | nu
       setState((current) => current.status === "ready" && !marketReadIsExpired(current.data, nowMs)
         ? { ...current, stale: true }
         : { status: "unavailable" });
-    } finally {
-      window.clearTimeout(timeout);
     }
   }, []);
 
@@ -88,7 +78,7 @@ export function RewardsGrowthPulse({ initial }: { initial: TokenMarketPulse | nu
     const timer = window.setInterval(() => {
       tick();
       if (document.visibilityState === "visible") void load();
-    }, REFRESH_MS);
+    }, MARKET_REFRESH_MS);
     return () => window.clearInterval(timer);
   }, [initial, load]);
 

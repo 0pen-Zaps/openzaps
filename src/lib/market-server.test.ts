@@ -17,13 +17,15 @@ function fixture(): unknown {
       txns: { h24: { buys: 121, sells: 279 } },
       liquidity: { usd: 76_908.36 },
       priceUsd: "0.000001092",
+      priceNative: "0.000000000546",
     }],
   };
 }
 
 describe("0xZAPS market pulse", () => {
   it("accepts only the canonical pair and preserves the rolling market figures", () => {
-    expect(parseTokenMarketPulse(fixture(), "2026-08-20T23:00:00.000Z")).toMatchObject({
+    const pulse = parseTokenMarketPulse(fixture(), "2026-08-20T23:00:00.000Z");
+    expect(pulse).toMatchObject({
       pair: TOKEN_LAUNCH.primaryPair,
       source: "DEX Screener",
       window: "rolling-24h",
@@ -33,6 +35,13 @@ describe("0xZAPS market pulse", () => {
       liquidityUsd: 76_908.36,
       priceUsd: "0.000001092",
     });
+    expect(pulse.wethPriceUsd).toBeCloseTo(2_000, 8);
+  });
+
+  it("keeps the optional WETH/USD estimate unavailable when pair pricing is incomplete", () => {
+    const missingNative = fixture() as { pairs: Array<Record<string, unknown>> };
+    delete missingNative.pairs[0].priceNative;
+    expect(parseTokenMarketPulse(missingNative).wethPriceUsd).toBeNull();
   });
 
   it("rejects a substituted pair, token, or malformed market number", () => {

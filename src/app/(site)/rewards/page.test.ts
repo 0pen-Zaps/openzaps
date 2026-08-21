@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 
 import { FEE_REWARDS_MANIFEST, campaignPhaseNote, type FeeRewardsPayload } from "@/lib/rewards";
 import { selectedCampaign } from "./CampaignSwitcher";
+import { formatApproxUsd, wethUsdValue } from "./Campaign2Live";
 import { nextVolumeMilestone } from "./RewardsGrowthPulse";
 import {
   rewardsBalanceLabel,
@@ -26,6 +27,13 @@ describe("0xZAPS fee rewards public surface", () => {
   const seo = read("src/lib/seo.ts");
   const tokenPage = read("src/app/(site)/token/page.tsx");
   const tokenPanel = read("src/components/TokenUtilityPanel.tsx");
+
+  it("formats approximate WETH values without collapsing tiny nonzero amounts to zero", () => {
+    expect(wethUsdValue("100000000000000000", 2_400)).toBe(240);
+    expect(formatApproxUsd(240, true)).toBe("$240");
+    expect(formatApproxUsd(0.00001)).toBe("<$0.01");
+    expect(formatApproxUsd(null)).toBeNull();
+  });
   const potPage = read("src/app/(site)/pot/page.tsx");
   const solderworksPage = read("src/app/(site)/solderworks/page.tsx");
   const readme = read("README.md");
@@ -46,6 +54,7 @@ describe("0xZAPS fee rewards public surface", () => {
   it("adds a live, source-labelled volume prompt without inventing referral rewards", () => {
     const growth = read("src/app/(site)/rewards/RewardsGrowthPulse.tsx");
     const market = read("src/lib/market-server.ts");
+    const marketClient = read("src/lib/market-client.ts");
     const route = read("src/app/api/protocol/market/route.ts");
     const switcher = read("src/app/(site)/rewards/CampaignSwitcher.tsx");
     const footer = read("src/components/SiteFooter.tsx");
@@ -63,9 +72,10 @@ describe("0xZAPS fee rewards public surface", () => {
     expect(nextVolumeMilestone(44_718.81)).toBe(50_000);
     expect(nextVolumeMilestone(1_000_000)).toBe(2_000_000);
     expect(nextVolumeMilestone(1_000_001)).toBe(2_000_000);
-    expect(growth).toContain("MAX_MARKET_AGE_MS = 5 * 60_000");
-    expect(growth).toContain("REQUEST_TIMEOUT_MS = 6_000");
-    expect(growth).toContain("controller.abort()");
+    expect(marketClient).toContain("MARKET_MAX_AGE_MS = 5 * 60_000");
+    expect(marketClient).toContain("MARKET_REQUEST_TIMEOUT_MS = 6_000");
+    expect(marketClient).toContain("AbortSignal.timeout(MARKET_REQUEST_TIMEOUT_MS)");
+    expect(marketClient).toContain("inflightMarketPulse");
     expect(growth).not.toContain('cache: "no-store"');
     expect(growth).toContain('data-status={marketStatus}');
     expect(growth).toContain('data-analytics-cta="invite_trader"');
@@ -453,6 +463,19 @@ describe("0xZAPS fee rewards public surface", () => {
     expect(stakersRoute).toContain("fetchFeeRewards2Stakers");
     expect(stakersRoute).toContain('"cache-control": "no-store, max-age=0"');
     expect(stakersRoute).toContain("unavailable right now");
+    expect(live).toContain("WETH reward pool · live");
+    expect(live).toContain("Claimable now");
+    expect(live).toContain("Still accruing");
+    expect(live).toContain("Awaiting harvest");
+    expect(live).toContain("Already-claimed rewards are excluded.");
+    expect(live).toContain("USD values are approximate");
+    expect(live).toContain("stakerRewardValue");
+    expect(live).toContain("weightColumn");
+    expect(live).toContain("wethUsdValue(row.earnedWeth, wethPriceUsd)");
+    expect(live).toContain("formatWeth(row.earnedWeth)");
+    expect(live).toContain("USD unavailable");
+    expect(live).toContain("response.status !== 200");
+    expect(live).toContain("`202 Accepted` means the verified snapshot is refreshing");
   });
 
   it("gates user staking for campaign 2 on the release manifest", () => {

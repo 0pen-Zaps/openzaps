@@ -26,6 +26,13 @@ const fixture: FeeRewardsStakersPayload = {
   allTimeStakerCount: 1,
   totalEarnedWeth: "3",
   totalClaimedWeth: "0",
+  rewardPool: {
+    claimableNowWeth: "3",
+    campaignHeldWeth: "8",
+    stillAccruingWeth: "5",
+    awaitingHarvestWeth: "2",
+    totalAllocatedWeth: "10",
+  },
   truncated: false,
   stakers: [
     {
