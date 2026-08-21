@@ -7,6 +7,7 @@ import {
   deriveHookrPoolId,
   feeRewards2Deployment,
 } from "./rewards2";
+import { ROBINHOOD_ASSETS, ROBINHOOD_HOOKR_POOL, hookrPoolKey } from "./robinhood";
 
 describe("campaign-2 manifest", () => {
   it("carries the verified release and both legs share one schedule", () => {
@@ -57,6 +58,20 @@ describe("campaign-2 manifest", () => {
     expect(key.currency0).toBe("0x0000000000000000000000000000000000000000");
     expect(key.currency1).toBe(FEE_REWARDS_2_MANIFEST.hookr);
     expect(key.hooks).toBe("0x0000000000000000000000000000000000000000");
+  });
+
+  it("agrees with the shared HOOKR market identity in robinhood.ts", () => {
+    // The manifest stays a self-contained immutable release record (the
+    // campaign-1 precedent), and the HOOKR zap slice derives its routes from
+    // robinhood.ts — two deliberate copies of ONE market. This cross-pin is
+    // what turns silent drift between them into a red build: if the pool
+    // identity ever changes, whichever side is edited alone fails here.
+    expect(FEE_REWARDS_2_MANIFEST.hookr).toBe(ROBINHOOD_ASSETS.hookr);
+    expect(FEE_REWARDS_2_MANIFEST.hookrPool.poolId).toBe(ROBINHOOD_HOOKR_POOL.poolId);
+    expect(FEE_REWARDS_2_MANIFEST.hookrPool.key.fee).toBe(ROBINHOOD_HOOKR_POOL.fee);
+    expect(FEE_REWARDS_2_MANIFEST.hookrPool.key.tickSpacing).toBe(ROBINHOOD_HOOKR_POOL.tickSpacing);
+    expect(FEE_REWARDS_2_MANIFEST.hookrPool.key).toEqual(hookrPoolKey);
+    expect(FEE_REWARDS_2_MANIFEST.weth).toBe(ROBINHOOD_ASSETS.weth);
   });
 
   it("commits 100% of the tokenized stream, half to each leg", () => {

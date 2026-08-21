@@ -127,7 +127,26 @@ describe("reduceChainToAutomation", () => {
     );
     expect(result.deployable).toBe(false);
     if (result.deployable) throw new Error("expected refusal");
-    expect(result.reasons.join(" ")).toContain("pinned aeWETH <-> 0xZAPS pool");
+    expect(result.reasons.join(" ")).toContain("allowlisted onchain price source");
+  });
+
+  it("refuses a HOOKR automation while its price sources are unconfigured", () => {
+    // The HOOKR pair is registered as an automation MARKET, but its adapter and price sources are
+    // not deployed/configured in this build, so the reducer must fail closed to the same refusal —
+    // never hand off a route whose intent would name an unallowlisted oracle.
+    const result = reduceChainToAutomation(
+      chain(
+        ["recurring-stream", { asset: "WETH", amount: "0.001", cadence: "weekly", runs: 10 }],
+        ["guard-slippage", { bps: 200 }],
+        ["swap", { into: "HOOKR", venue: "Uniswap v4" }],
+        ["send", { recipient: "owner wallet" }],
+      ),
+    );
+    expect(result.deployable).toBe(false);
+    if (result.deployable) throw new Error("expected refusal");
+    // The route itself does not resolve while the adapter is undeployed, so the live-route reducer
+    // rejects it first with the not-deployed rejection naming the env var.
+    expect(result.reasons.join(" ")).toContain("NEXT_PUBLIC_OPENZAP_ROBINHOOD_V4_HOOKR_ADAPTER");
   });
 
   it("does not pretend cadence and price trigger can share one standing intent", () => {

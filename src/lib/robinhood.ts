@@ -40,6 +40,10 @@ export const ROBINHOOD_ASSETS = {
   // ozUSDG ERC-20 and the ERC-4626 vault previewDeposit/previewRedeem/totalSupply
   // are read from.
   ozusdg: getAddress("0xeAD10C998c59745a030FfAc9209b294C14C7D325"),
+  // HOOKR ("Hookr.fun", 18 decimals) — verified onchain 2026-08-20. Its only
+  // real market is the native-ETH/HOOKR v4 pool pinned below, NOT an
+  // aeWETH-paired pool: see `hookrPoolKey`.
+  hookr: getAddress("0x18E674231A58c239Dc7DaeDcffE15Ec3A24cff5c"),
 } as const;
 
 export type TokenInfo = { readonly symbol: string; readonly address: Address; readonly decimals: number };
@@ -84,6 +88,7 @@ export const ROBINHOOD_TOKENS: Record<string, TokenInfo> = {
   "0xZAPS": { symbol: "0xZAPS", address: ROBINHOOD_ASSETS.zaps, decimals: 18 },
   USDG: { symbol: "USDG", address: ROBINHOOD_ASSETS.usdg, decimals: 6 },
   ozUSDG: { symbol: "ozUSDG", address: ROBINHOOD_ASSETS.ozusdg, decimals: 9 },
+  HOOKR: { symbol: "HOOKR", address: ROBINHOOD_ASSETS.hookr, decimals: 18 },
   // ozRANGE exists only once its vault is deployed and configured; an unset or
   // malformed env var means the symbol is unknown and every route naming it
   // resolves to null (fail closed).
@@ -164,6 +169,22 @@ export const ROBINHOOD_USDG_POOL = {
   poolId: "0x6ba18d461bfe3df70a80b50a4700e330e49efdaf597901b931f210554a5035d2" as Hex,
   fee: 450,
   tickSpacing: 9,
+} as const;
+
+/**
+ * The native-ETH/HOOKR pool — HOOKR's ONLY real market, and the only pool any
+ * HOOKR swap is allowed to route through. `currency0` is NATIVE ETH
+ * (`address(0)`), not aeWETH: this pool key hashes to the pinned `poolId`
+ * (verified against the live PoolManager 2026-08-20), and quoting or signing
+ * against an imagined aeWETH-paired pool would quote a pool that does not
+ * exist. The `RobinhoodV4NativePoolAdapter` welds this exact key into its
+ * constructor and presents the pair to the capsule as [aeWETH, HOOKR] by
+ * wrapping/unwrapping at par — see `contracts/src/adapters/`.
+ */
+export const ROBINHOOD_HOOKR_POOL = {
+  poolId: "0x590dcb6a87828bf688b48089a62239b693378f1fb64d2286e6a399ed8c005fdf" as Hex,
+  fee: 2500,
+  tickSpacing: 25,
 } as const;
 
 export const OPENZAP_CONTRACTS = {
@@ -326,6 +347,36 @@ export const OPENZAP_V3_2_CONTRACTS = resolveOptionalAddressSet(
 
 export function openZapV3_2Configured(): boolean {
   return optionalContractSetState(OPENZAP_V3_2_CONTRACTS) === "configured";
+}
+
+/**
+ * The HOOKR automation price sources — the onchain oracles a HOOKR trigger or
+ * relative-floor DCA signs against, both pinned to the native-ETH/HOOKR pool.
+ *
+ * NOT YET DEPLOYED. `DeployRobinhoodHookr.s.sol` deploys both instances and
+ * registers them in the v3 and v3.1 price-source registries; until a verified
+ * broadcast sets these env vars, the set stays absent and every HOOKR
+ * automation surface fails closed to "not offered". All-or-nothing like every
+ * optional lineage: a partial override is a release error, never a half-live
+ * trigger. The v3.2 stack lineage is deliberately excluded — its stack leg
+ * converts output through the welded aeWETH→0xZAPS adapter, which cannot take
+ * HOOKR, so HOOKR recurring signs the v3.1 relative-floor path.
+ */
+export const OPENZAP_HOOKR_AUTOMATION_CONTRACTS = {
+  /** IPriceSource for v3 triggers, pinned to the HOOKR pool. */
+  poolPriceSource: optionalAddress(process.env.NEXT_PUBLIC_OPENZAP_HOOKR_POOL_PRICE_SOURCE, zeroAddress),
+  /**
+   * IOrientedPriceSource for v3.1 relative DCA. Deployed with `currency0`
+   * DECLARED as aeWETH (not the pool key's literal native zero): the capsule
+   * derives the run's input asset from the source's currencies and measures
+   * that ERC-20's balance, and aeWETH wraps native 1:1 so HOOKR-per-ETH is
+   * exactly HOOKR-per-aeWETH.
+   */
+  orientedPriceSource: optionalAddress(process.env.NEXT_PUBLIC_OPENZAP_HOOKR_ORIENTED_PRICE_SOURCE, zeroAddress),
+} as const;
+
+export function openZapHookrAutomationConfigured(): boolean {
+  return optionalContractSetState(OPENZAP_HOOKR_AUTOMATION_CONTRACTS) === "configured";
 }
 
 export type ConfiguredCapsuleLineage = {
@@ -560,6 +611,22 @@ export const robinhoodPoolKey = {
   fee: ROBINHOOD_LIQUIDITY.dynamicFeeFlag,
   tickSpacing: ROBINHOOD_LIQUIDITY.tickSpacing,
   hooks: ROBINHOOD_LIQUIDITY.hook,
+} as const;
+
+/**
+ * The PoolKey for the native-ETH/HOOKR pool. `currency0` is the ZERO ADDRESS —
+ * v4's spelling of native ETH — which is why this pair needs its own adapter:
+ * the capsule settles ERC-20s only, so aeWETH stands in for currency0 on the
+ * app side while the ADAPTER owns the wrap boundary. Every quote for a HOOKR
+ * route MUST use this key verbatim; swapping the zero address for aeWETH here
+ * would quote a nonexistent pool.
+ */
+export const hookrPoolKey = {
+  currency0: zeroAddress,
+  currency1: ROBINHOOD_ASSETS.hookr,
+  fee: ROBINHOOD_HOOKR_POOL.fee,
+  tickSpacing: ROBINHOOD_HOOKR_POOL.tickSpacing,
+  hooks: zeroAddress,
 } as const;
 
 /**

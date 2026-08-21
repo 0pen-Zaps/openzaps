@@ -1,7 +1,7 @@
 // Pure logic behind the Automate surface (/zap?view=automate): schedule presets, funding math,
 // fee-aware floors, and intent drafting for the v3/v3.1/v3.2 standing-authorization lineages. Everything here is
 // deterministic and unit-tested; the console component only wires these to the wallet and RPC.
-import type { Address, Hex } from "viem";
+import { zeroAddress, type Address, type Hex } from "viem";
 
 import {
   BPS,
@@ -16,6 +16,17 @@ import {
 import { BOUNDED_SWAP_IDS } from "@/lib/chains";
 import { MAX_EXECUTION_FEE_PER_GAS, MAX_EXECUTION_GAS } from "@/lib/openzap";
 import { readExecutionPolicyParams, type ExecutionPolicy } from "@/lib/execution-policy";
+import { resolveRouteById } from "@/lib/routes";
+import {
+  OPENZAP_HOOKR_AUTOMATION_CONTRACTS,
+  OPENZAP_V3_1_CONTRACTS,
+  OPENZAP_V3_2_CONTRACTS,
+  OPENZAP_V3_CONTRACTS,
+  openZapHookrAutomationConfigured,
+  openZapV3Configured,
+  openZapV3_1Configured,
+  openZapV3_2Configured,
+} from "@/lib/robinhood";
 
 export type AutomationMode = "recurring" | "trigger";
 /** Exact signed lineage. Recurring-relative and recurring-stack share schedule/funding semantics. */
@@ -49,21 +60,109 @@ export const INTERVAL_PRESETS: readonly IntervalPreset[] = [
 export interface ThresholdPreset {
   id: string;
   label: string;
-  /** The user-facing move of the 0xZAPS price, in bps. NOT the feed-side threshold. */
+  /** The user-facing move of the market token's price, in bps. NOT the feed-side threshold. */
   moveBps: number;
-  /** True when the preset means "0xZAPS gains value". */
+  /** True when the preset means "the market token gains value". */
   rises: boolean;
 }
 
-/** Trigger presets, phrased as moves of the 0xZAPS price — the frame users think in. */
-export const THRESHOLD_PRESETS: readonly ThresholdPreset[] = [
-  { id: "up5", label: "0xZAPS rises +5%", moveBps: 500, rises: true },
-  { id: "up10", label: "0xZAPS rises +10%", moveBps: 1_000, rises: true },
-  { id: "up25", label: "0xZAPS rises +25%", moveBps: 2_500, rises: true },
-  { id: "down5", label: "0xZAPS falls −5%", moveBps: 500, rises: false },
-  { id: "down10", label: "0xZAPS falls −10%", moveBps: 1_000, rises: false },
-  { id: "down25", label: "0xZAPS falls −25%", moveBps: 2_500, rises: false },
-] as const;
+/**
+ * Trigger presets for one market, phrased as moves of that market's TOKEN price — the frame users
+ * think in. The ids are market-independent (a shared link or handoff carries "down10" whatever the
+ * route); only the labels name the token.
+ */
+export function thresholdPresetsFor(tokenLabel: string): readonly ThresholdPreset[] {
+  return [
+    { id: "up5", label: `${tokenLabel} rises +5%`, moveBps: 500, rises: true },
+    { id: "up10", label: `${tokenLabel} rises +10%`, moveBps: 1_000, rises: true },
+    { id: "up25", label: `${tokenLabel} rises +25%`, moveBps: 2_500, rises: true },
+    { id: "down5", label: `${tokenLabel} falls −5%`, moveBps: 500, rises: false },
+    { id: "down10", label: `${tokenLabel} falls −10%`, moveBps: 1_000, rises: false },
+    { id: "down25", label: `${tokenLabel} falls −25%`, moveBps: 2_500, rises: false },
+  ] as const;
+}
+
+/** The original bounded market's presets, kept for the surfaces that predate a route choice. */
+export const THRESHOLD_PRESETS: readonly ThresholdPreset[] = thresholdPresetsFor("0xZAPS");
+
+/**
+ * One automatable MARKET: a pool with deployed swap routes and the onchain price sources the
+ * standing-authorization lineages sign against. The market — not the lineage — decides which
+ * oracle a HOOKR trigger reads, because a trigger signed against the wrong pool's source would
+ * execute the owner's trade on someone else's market move.
+ */
+export interface AutomationMarket {
+  /** The `chains.ts` route ids automation may sign against this pool, buy side first. */
+  routeIds: readonly string[];
+  /** The market token the trigger copy names — the pool's token side (currency1). */
+  tokenLabel: string;
+  /** IPriceSource the v3 TRIGGER lineage signs, or null while undeployed. */
+  triggerPriceSource: Address | null;
+  /** IOrientedPriceSource the v3.1 RELATIVE-floor lineage signs, or null while undeployed. */
+  relativePriceSource: Address | null;
+  /**
+   * IOrientedPriceSource the v3.2 STACK lineage signs, or null when this market cannot stack.
+   * Only the bounded 0xZAPS market can: the stack leg converts output through the welded
+   * aeWETH→0xZAPS adapter, which no other market's output token fits.
+   */
+  stackPriceSource: Address | null;
+}
+
+const HOOKR_SWAP_IDS: readonly string[] = ["robinhood-v4-weth-hookr", "robinhood-v4-hookr-weth"];
+
+function configuredOrNull(address: Address, configured: boolean): Address | null {
+  return configured && address !== zeroAddress ? address : null;
+}
+
+/**
+ * Every automation market this build knows, read per call — never cached — so an env change (a
+ * newly configured HOOKR stack) is believed without a reload, matching the adapter registry.
+ */
+export function automationMarkets(): readonly AutomationMarket[] {
+  return [
+    {
+      routeIds: BOUNDED_SWAP_IDS,
+      tokenLabel: "0xZAPS",
+      triggerPriceSource: configuredOrNull(OPENZAP_V3_CONTRACTS.poolPriceSource, openZapV3Configured()),
+      relativePriceSource: configuredOrNull(
+        OPENZAP_V3_1_CONTRACTS.orientedPriceSource,
+        openZapV3_1Configured(),
+      ),
+      stackPriceSource: configuredOrNull(OPENZAP_V3_2_CONTRACTS.orientedPriceSource, openZapV3_2Configured()),
+    },
+    {
+      routeIds: HOOKR_SWAP_IDS,
+      tokenLabel: "HOOKR",
+      triggerPriceSource: configuredOrNull(
+        OPENZAP_HOOKR_AUTOMATION_CONTRACTS.poolPriceSource,
+        openZapHookrAutomationConfigured(),
+      ),
+      relativePriceSource: configuredOrNull(
+        OPENZAP_HOOKR_AUTOMATION_CONTRACTS.orientedPriceSource,
+        openZapHookrAutomationConfigured(),
+      ),
+      stackPriceSource: null,
+    },
+  ];
+}
+
+/** The market a route belongs to, or null for a route no automation lineage can price. */
+export function automationMarketForRoute(routeId: string): AutomationMarket | null {
+  return automationMarkets().find((market) => market.routeIds.includes(routeId)) ?? null;
+}
+
+/**
+ * The route ids the Automate surface may OFFER, fail closed twice over: the route's adapter must
+ * be deployed (it resolves through the shipped manifest) AND the market must hold BOTH the trigger
+ * and relative price sources — a market missing either could sign an intent that names a source
+ * the factory's registry has never allowlisted, which the capsule would refuse on every run.
+ */
+export function automationRouteIds(): readonly string[] {
+  return automationMarkets()
+    .filter((market) => market.triggerPriceSource !== null && market.relativePriceSource !== null)
+    .flatMap((market) => market.routeIds)
+    .filter((routeId) => resolveRouteById(routeId) !== null);
+}
 
 export interface AutomationHandoffPreset {
   mode: AutomationMode;
@@ -92,7 +191,7 @@ export function readAutomationHandoff(params: URLSearchParams): AutomationHandof
   const executionPolicy = readExecutionPolicyParams(params);
 
   if (mode !== "recurring" && mode !== "trigger") return null;
-  if (!BOUNDED_SWAP_IDS.includes(routeId as (typeof BOUNDED_SWAP_IDS)[number])) return null;
+  if (!automationRouteIds().includes(routeId)) return null;
   if (!/^\d+(?:\.\d{0,18})?$/.test(amount) || Number(amount) <= 0) return null;
   if (!Number.isInteger(slippageBps) || slippageBps < 5 || slippageBps > 500) return null;
   if (!INTERVAL_PRESETS.some((preset) => preset.id === intervalId)) return null;
@@ -106,18 +205,19 @@ export function readAutomationHandoff(params: URLSearchParams): AutomationHandof
 }
 
 /**
- * Convert a user-facing 0xZAPS price move into the condition the capsule actually checks.
+ * Convert a user-facing move of a market's TOKEN price into the condition the capsule checks.
  *
- * THE DIRECTION INVERSION LIVES HERE, ON PURPOSE, IN ONE PLACE. The live trigger feed
- * (`V4PoolPriceSource.priceX96`) is the Uniswap orientation: currency1 per currency0 =
- * 0xZAPS per aeWETH. When 0xZAPS GAINS value, one aeWETH buys FEWER 0xZAPS — the feed FALLS.
- * So "0xZAPS rises +x" must be signed as `above = false`, and the magnitude is reciprocal,
- * not mirrored: a +x move of the token is a x/(1+x) drop of the feed, and a −x move is a
- * x/(1−x) rise. (+10% ⇒ feed −9.09%; −10% ⇒ feed +11.11%.) Signing the naive direction
- * executes the OWNER'S TRADE ON THE OPPOSITE MARKET MOVE — the bug class this function and
- * its exact-value tests exist to make impossible.
+ * THE DIRECTION INVERSION LIVES HERE, ON PURPOSE, IN ONE PLACE. Every live trigger feed
+ * (`V4PoolPriceSource.priceX96`) is the Uniswap orientation: currency1 per currency0 — 0xZAPS
+ * per aeWETH on the bounded pool, HOOKR per ETH on the HOOKR pool. On BOTH markets the token
+ * is currency1, so when the token GAINS value, one unit of currency0 buys FEWER of it — the
+ * feed FALLS. So "token rises +x" must be signed as `above = false`, and the magnitude is
+ * reciprocal, not mirrored: a +x move of the token is a x/(1+x) drop of the feed, and a −x
+ * move is a x/(1−x) rise. (+10% ⇒ feed −9.09%; −10% ⇒ feed +11.11%.) Signing the naive
+ * direction executes the OWNER'S TRADE ON THE OPPOSITE MARKET MOVE — the bug class this
+ * function and its exact-value tests exist to make impossible.
  */
-export function feedConditionForZapsMove(moveBps: number, rises: boolean): { above: boolean; thresholdBps: number } {
+export function feedConditionForTokenMove(moveBps: number, rises: boolean): { above: boolean; thresholdBps: number } {
   const m = Math.trunc(moveBps);
   if (m <= 0) throw new Error("A trigger move must be a positive number of basis points.");
   if (!rises && m >= 10_000) throw new Error("A fall of 100% or more is not a price.");
