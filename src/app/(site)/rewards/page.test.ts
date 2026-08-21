@@ -575,6 +575,17 @@ describe("0xZAPS fee rewards public surface", () => {
     expect(operator).toContain("runtime hash no longer matches the release");
     expect(operator).toContain("sponsorOnly");
     expect(operator).toContain("setBuybackPaused");
+    // The current vault recovery is a separate permissionless transaction:
+    // its fixed recipient is HookBlocks, never the connected caller, and the
+    // buy + burn remains an independently reviewed wallet confirmation.
+    expect(operator).toContain('id: "release-checkpointed-weth"');
+    expect(operator).toContain('functionName: "claimCheckpointedFor"');
+    expect(operator).toContain("args: [hb.address]");
+    expect(operator).toContain("manifest.vault.runtimeCodeHash");
+    expect(operator).toContain("WETH can only go to HookBlocks");
+    expect(operator.indexOf("Release checkpointed WETH")).toBeLessThan(
+      operator.indexOf("Buy + burn HOOKR"),
+    );
     // The wallet stage never claims success from a hash alone.
     expect(operator).toContain("Nothing has been submitted yet.");
     expect(operator).toContain("A hash exists, but receipt verification was interrupted.");
