@@ -53,6 +53,8 @@ export const FEE_REWARDS_2_MANIFEST = {
   /** The live tokenized fee-share vault both legs draw from. */
   vault: {
     address: getAddress("0x31D6787B7C2c347Ffb5B58171e33E9c5132A7338"),
+    runtimeCodeHash:
+      "0x4d62bd109d8fed9a04c02343cf6357dbf6d6789ef5ed9940b11add836c3caac4" as Hex,
     totalShares: 100n * E18,
   },
   sponsor: getAddress("0x5a52D4B820Ae7F02880d270562950918ACb14aA2"),

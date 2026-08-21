@@ -1,6 +1,7 @@
+import { encodeFunctionData } from "viem";
 import { describe, expect, it } from "vitest";
 
-import { FEE_REWARDS_MANIFEST } from "./rewards";
+import { FEE_REWARDS_MANIFEST, feeRewardsVaultAbi } from "./rewards";
 import {
   CAMPAIGN_2_LEGS,
   FEE_REWARDS_2_MANIFEST,
@@ -85,6 +86,22 @@ describe("campaign-2 manifest", () => {
     expect(FEE_REWARDS_2_MANIFEST.sponsor).toBe(FEE_REWARDS_MANIFEST.campaign.sponsor);
     expect(FEE_REWARDS_2_MANIFEST.vault.totalShares).toBe(
       FEE_REWARDS_MANIFEST.vault.totalShares,
+    );
+    expect(FEE_REWARDS_2_MANIFEST.vault.runtimeCodeHash).toBe(
+      FEE_REWARDS_MANIFEST.vault.runtimeCodeHash,
+    );
+  });
+
+  it("pins checkpoint recovery to the shared vault and HookBlocks recipient", () => {
+    const hookBlocks = FEE_REWARDS_2_MANIFEST.deployment.hookBlocks.address;
+    expect(
+      encodeFunctionData({
+        abi: feeRewardsVaultAbi,
+        functionName: "claimCheckpointedFor",
+        args: [hookBlocks],
+      }),
+    ).toBe(
+      "0x709ce5d4000000000000000000000000b5f7d9d4269c897df70df26f7ba48c0d933be8db",
     );
   });
 

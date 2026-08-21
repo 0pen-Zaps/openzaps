@@ -49,6 +49,7 @@ type OpAction = {
 };
 
 type OperatorOpId =
+  | "release-checkpointed-weth"
   | "buyAndBurn"
   | "pause"
   | "hb-finalize"
@@ -230,6 +231,18 @@ export function Campaign2Operator(): React.JSX.Element {
       const hb = releasedManifest.hookBlocks;
       const campaign = releasedManifest.campaign;
       switch (id) {
+        case "release-checkpointed-weth":
+          await runContract(
+            "Release checkpointed WETH",
+            {
+              address: manifest.vault.address,
+              abi: feeRewardsVaultAbi as unknown as Abi,
+              functionName: "claimCheckpointedFor",
+              args: [hb.address],
+            },
+            manifest.vault.runtimeCodeHash,
+          );
+          return;
         case "buyAndBurn":
           await runContract(
             "buyAndBurn(0)",
@@ -290,10 +303,24 @@ export function Campaign2Operator(): React.JSX.Element {
           return;
       }
     },
-    [buybackPaused, fundLeg, releasedManifest, runContract],
+    [
+      buybackPaused,
+      fundLeg,
+      manifest.vault.address,
+      manifest.vault.runtimeCodeHash,
+      releasedManifest,
+      runContract,
+    ],
   );
 
   const ops: OperatorOp[] = [
+    {
+      id: "release-checkpointed-weth",
+      label: "Release checkpointed WETH",
+      sponsorOnly: false,
+      description:
+        "Recovery path: pays only WETH already checkpointed in the vault to HookBlocks, without attempting a new upstream fee conversion. Anyone may pay gas; WETH can only go to HookBlocks. Confirm this first, then prepare Buy + burn HOOKR as a separate transaction.",
+    },
     {
       id: "buyAndBurn",
       label: "Buy + burn HOOKR",
