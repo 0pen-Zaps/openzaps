@@ -118,9 +118,9 @@ export const STATIC_PAGE_SEO = {
     priority: 0.8,
   },
   rewards: {
-    title: "First 0xZAPS Fee Rewards Campaign",
+    title: "0xZAPS Fee Rewards Campaigns",
     description:
-      "Inspect the first 0xZAPS fee campaign: seven-day Aug 3–10, 2026 staking, 50 of 100 tokenized Clanker fee shares, current phase, and WETH claim deadline.",
+      "Inspect both 0xZAPS fee campaigns: tokenized Clanker fee shares, live staking state, WETH rewards, HOOKR market buys and burns, and claim deadlines.",
     path: "/rewards",
     ogImage: "/og/token.png",
     changeFrequency: "daily",

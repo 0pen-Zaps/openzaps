@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.openzaps.campaign2-keeper</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>__LAUNCHER__</string>
+        <string>__NODE__</string>
+        <string>__PROGRAM__</string>
+        <string>__BUNDLE_SHA256__</string>
+        <string>__CHUNK_SHA256__</string>
+        <string>__LICENSE_SHA256__</string>
+        <string>__NODE_SHA256__</string>
+        <string>start</string>
+    </array>
+    <key>WorkingDirectory</key>
+    <string>__RELEASE_DIR__</string>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <dict>
+        <key>SuccessfulExit</key>
+        <false/>
+    </dict>
+    <key>ThrottleInterval</key>
+    <integer>30</integer>
+    <key>StandardOutPath</key>
+    <string>__HOME__/Library/Logs/openzaps-campaign2-keeper.log</string>
+    <key>StandardErrorPath</key>
+    <string>__HOME__/Library/Logs/openzaps-campaign2-keeper.log</string>
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/usr/local/bin:/usr/bin:/bin</string>
+        <key>OPENZAPS_CAMPAIGN2_ENABLED</key>
+        <string>__ENABLED__</string>
+        <key>OPENZAPS_CAMPAIGN2_KEYSTORE_FILE</key>
+        <string>__KEYSTORE_FILE__</string>
+        <key>OPENZAPS_CAMPAIGN2_PASSWORD_FILE</key>
+        <string>__PASSWORD_FILE__</string>
+        <key>OPENZAPS_CAMPAIGN2_CAST_BIN</key>
+        <string>__CAST_BIN__</string>
+        <key>OPENZAPS_CAMPAIGN2_APPROVED_COMMIT</key>
+        <string>__APPROVED_COMMIT__</string>
+        <key>OPENZAPS_CAMPAIGN2_BUNDLE_SHA256</key>
+        <string>__BUNDLE_SHA256__</string>
+        <key>OPENZAPS_CAMPAIGN2_CHUNK_SHA256</key>
+        <string>__CHUNK_SHA256__</string>
+        <key>OPENZAPS_CAMPAIGN2_NODE_SHA256</key>
+        <string>__NODE_SHA256__</string>
+        <key>OPENZAPS_CAMPAIGN2_CAST_SHA256</key>
+        <string>__CAST_SHA256__</string>
+        <key>OPENZAPS_CAMPAIGN2_AUTOMATE_BURNS</key>
+        <string>__AUTOMATE_BURNS__</string>
+        <key>OPENZAPS_CAMPAIGN2_ARCHIVE_RPC_FILE</key>
+        <string>__ARCHIVE_RPC_FILE__</string>
+    </dict>
+</dict>
+</plist>

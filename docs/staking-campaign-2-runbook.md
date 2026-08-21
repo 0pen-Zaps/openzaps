@@ -137,6 +137,11 @@ permissionless; destinations are fixed by the contracts:
   burned HOOKR (≤0.05 ETH per crank, one crank per block, spot×0.97 floor).
   A sensible cadence is one crank of each per day or two; there is no
   penalty for missing days beyond reward smoothing.
+  `buyAndBurn(0)` is deliberately permissionless and relies only on the
+  same-block spot floor, which can be manipulated. Do not use that zero-floor
+  form for predictable public automation; pause or use manual/private ordering
+  if the campaign funds themselves need global protection from third-party
+  cranks. A keeper policy can constrain only the transactions it sends.
 - **Safeguard (sponsor):** `hookBlocks.setBuybackPaused(true|false)` halts
   or restores FUTURE buy-and-burn calls only — use it if the pool breaks or every
   buy is getting ground against the floor. It cannot move assets and never
@@ -199,6 +204,123 @@ field of this contract's `BoughtAndBurned` and `UnspentSwept` events, or
 take the `balanceOf(0x…dEaD)` delta across the campaign's own transactions.
 Do NOT read the dead address's absolute balance — anyone may send HOOKR
 there, and other senders' burns are not this campaign's.
+
+## 5c. Bounded keeper automation
+
+`executor/campaign2-daemon.mjs` automates the permissionless upkeep without
+giving the general OpenZaps executor a signer. Its release manifest hardcodes
+chain 4663, both released addresses and runtime hashes, the shared schedule,
+and both `MIN_BUY_WEI` / `MAX_BUY_WEI`; none can be replaced through config.
+
+The live-window policy is:
+
+1. Once per 24-hour window, simulate and submit `campaign.harvest()` so the
+   staker leg pulls new vault rewards and updates the claimable WETH index.
+   This accrues rewards for stakers; it does not push a transaction to every
+   staker wallet.
+2. On a later pass, submit `hookBlocks.buyAndBurn(minHookrOut)` only when the
+   pinned `pendingWeth()` read contains a full immutable `MAX_BUY_WEI` batch
+   (`0.05 ETH`). The caller floor covers that full cap and is 97% of a 30–60
+   minute pool-price median. Seven unique five-minute samples spanning at
+   least 30 minutes are required. Before signing, a separate owner-only
+   archive RPC re-reads the exact PoolManager `slot0` at every canonical
+   sample block and must reproduce the journal; header checks alone are not
+   accepted. The contract independently takes the greater of the caller floor
+   and same-block spot × 97%.
+3. Allow only one unresolved transaction and no more than four broadcasts per
+   UTC day. Every call carries zero value, a fixed gas limit, and a fee cap.
+   Warn below `0.0003 ETH` of keeper gas, refuse any action whose full gas cap
+   is not funded, and never automate a top-up.
+4. Re-simulate against the latest mined state immediately before signing,
+   then sign through the dedicated encrypted keystore with Cast `--password-file`,
+   recover and decode the signed payload, and durably persist that exact raw
+   transaction before broadcasting it.
+5. After 12 confirmations, decode the target/selector/arguments, verify the
+   canonical block and required event, then bind the receipt, transaction,
+   block, and readback to the same block hash before advancing local state.
+
+A signed burn may be published only for 10 minutes of canonical chain time
+after its signing block. Both public and archive providers must report timely
+heads, agree on their shared canonical block, and remain within two minutes of
+the keeper's wall clock. Once that retry lifetime expires the daemon retains
+the journal but refuses to republish the deadline-free raw transaction; the
+operator must inspect the nonce and deliberately replace it. Bytes already
+submitted to a public mempool remain independently mineable because the
+deployed entry point has no deadline.
+
+After `endAt`, the keeper calls each permissionless `finalize()` in order and
+continues burning only full `MAX_BUY_WEI` batches. Smaller residual WETH is
+left for manual/private handling or the documented sweep path.
+It never calls `setBuybackPaused`, either sweep, or a staker claim.
+
+Install read-only first:
+
+```bash
+npm run campaign2:status
+export OPENZAPS_CAMPAIGN2_EXPECTED_COMMIT=<reviewed-40-character-git-sha>
+./executor/install-campaign2-launchd.sh watch-only
+```
+
+This uses the committed keeper-plus-dependencies ncc artifact, copies it into
+an owner-only directory named by the exact Git commit, and pins
+the bundle chunk and Node hashes. CI and the installer independently rebuild
+the ncc artifact and require byte-for-byte equality with the committed bundle.
+An owner-only pre-execution launcher verifies the copied Node, entry, chunk,
+and license hashes before JavaScript evaluation. The running service no longer
+follows a mutable checkout. Preserve the Node SHA printed by watch-only for
+independent review before live activation.
+
+Enabling broadcasts is a separate approval over the exact gas wallet and
+policy: invoking `enable` is the broadcast authorization itself. The daemon
+refuses raw or inline keys. It uses Claude's dedicated
+encrypted Web3 keystore and adjacent password file, both owner-only, and pins
+the recovered signer to `0xA2b7…9bEC`. The operator must approve the Cast
+SHA-256 before the installer invokes Cast at all; the daemon hashes it again
+immediately before each `mktx`:
+
+```bash
+export OPENZAPS_CAMPAIGN2_EXPECTED_COMMIT=<reviewed-40-character-git-sha>
+export OPENZAPS_CAMPAIGN2_EXPECTED_NODE_SHA256=<reviewed-lowercase-sha256>
+export OPENZAPS_CAMPAIGN2_EXPECTED_CAST_SHA256=<reviewed-lowercase-sha256>
+# Harvest + finalization only (the default):
+export OPENZAPS_CAMPAIGN2_AUTOMATE_BURNS=false
+./executor/install-campaign2-launchd.sh enable
+```
+
+Burn signing is a second explicit policy switch and requires a credentialed
+archive endpoint kept out of the plist and repository. Put exactly one HTTPS
+URL in an owner-only regular file, then authorize the switch at enable time:
+
+```bash
+umask 077
+${EDITOR:-vi} "$HOME/.openzaps/keeper/robinhood-archive-rpc.url"
+chmod 600 "$HOME/.openzaps/keeper/robinhood-archive-rpc.url"
+export OPENZAPS_CAMPAIGN2_EXPECTED_COMMIT=<reviewed-40-character-git-sha>
+export OPENZAPS_CAMPAIGN2_EXPECTED_NODE_SHA256=<reviewed-lowercase-sha256>
+export OPENZAPS_CAMPAIGN2_EXPECTED_CAST_SHA256=<reviewed-lowercase-sha256>
+export OPENZAPS_CAMPAIGN2_AUTOMATE_BURNS=true
+export OPENZAPS_CAMPAIGN2_ARCHIVE_RPC_FILE="$HOME/.openzaps/keeper/robinhood-archive-rpc.url"
+./executor/install-campaign2-launchd.sh enable
+```
+
+The installer defaults to the handoff under `~/.openzaps/keeper`; alternate
+absolute paths may be supplied with `OPENZAPS_CAMPAIGN2_KEYSTORE_FILE`,
+`OPENZAPS_CAMPAIGN2_PASSWORD_FILE`, `OPENZAPS_CAMPAIGN2_CAST_BIN`, and
+`OPENZAPS_CAMPAIGN2_NODE_BIN`. Approved Node and Cast bytes are copied into
+owner-only hash-addressed runtime directories before launch or keystore access.
+
+Do not configure that key in the general executor at the same time. Keeper
+state and receipts live in `~/.openzaps/campaign2-keeper/state.json`; logs are
+in `~/Library/Logs/openzaps-campaign2-keeper.log`. Disable the local policy by
+reinstalling `watch-only`, or remove the service with
+`./executor/install-campaign2-launchd.sh remove`. Watch-only/status never
+rebroadcast retained bytes. If a signed burn is pending, pass its existing
+owner-only `OPENZAPS_CAMPAIGN2_ARCHIVE_RPC_FILE` when reinstalling watch-only
+so the receipt can still be authenticated; this does not enable burn signing
+or rebroadcast. The burn-off switch also holds an unresolved signed burn.
+Neither disabling nor removal revokes or deletes previously signed bytes;
+preserve their state and archive-RPC file until canonical reconciliation. The sponsor's onchain
+`setBuybackPaused(true)` remains the independent burn-side circuit breaker.
 
 ## 6. Hard rails
 
