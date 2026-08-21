@@ -8,6 +8,7 @@ import type { TokenMarketPulse } from "@/lib/market-server";
 import styles from "./growth.module.css";
 
 const REFRESH_MS = 60_000;
+const REQUEST_TIMEOUT_MS = 6_000;
 const MAX_MARKET_AGE_MS = 5 * 60_000;
 const VOLUME_MILESTONES = [10_000, 25_000, 50_000, 100_000, 250_000, 500_000, 1_000_000] as const;
 
@@ -53,8 +54,10 @@ export function RewardsGrowthPulse({ initial }: { initial: TokenMarketPulse | nu
 
   const load = useCallback(async (): Promise<void> => {
     const mine = ++sequence.current;
+    const controller = new AbortController();
+    const timeout = window.setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
     try {
-      const response = await fetch("/api/protocol/market", { cache: "no-store" });
+      const response = await fetch("/api/protocol/market", { signal: controller.signal });
       if (!response.ok) throw new Error(String(response.status));
       const data = (await response.json()) as TokenMarketPulse;
       if (marketReadIsExpired(data, Date.now())) throw new Error("stale market read");
@@ -65,6 +68,8 @@ export function RewardsGrowthPulse({ initial }: { initial: TokenMarketPulse | nu
       setState((current) => current.status === "ready" && !marketReadIsExpired(current.data, nowMs)
         ? { ...current, stale: true }
         : { status: "unavailable" });
+    } finally {
+      window.clearTimeout(timeout);
     }
   }, []);
 
@@ -161,7 +166,7 @@ export function RewardsGrowthPulse({ initial }: { initial: TokenMarketPulse | nu
       ) : null}
 
       <div className={styles.actions}>
-        <Link href={LINKS.buyWithOpenZaps} className={styles.primary}>Buy with a Zap <span aria-hidden>→</span></Link>
+        <Link href={LINKS.buyWithOpenZaps} prefetch={false} className={styles.primary}>Buy with a Zap <span aria-hidden>→</span></Link>
         <a href={LINKS.clanker} target="_blank" rel="noreferrer" className={styles.secondary}>Trade on Clanker <span aria-hidden>↗</span></a>
         <button
           type="button"

@@ -43,11 +43,13 @@ export default async function RewardsPage({ searchParams }: RewardsPageProps): P
   const { workspace, campaign } = await searchParams;
   const selected = selectedCampaign(campaign, workspace);
   let initial: FeeRewardsPayload | null = null;
-  try {
-    initial = await fetchFeeRewards(null);
-  } catch {
-    // The client renders an explicit unavailable state. Zeroed campaign data
-    // would be an unverified economic claim, so no fallback figures are made.
+  if (selected === "1") {
+    try {
+      initial = await fetchFeeRewards(null);
+    } catch {
+      // The client renders an explicit unavailable state. Zeroed campaign data
+      // would be an unverified economic claim, so no fallback figures are made.
+    }
   }
 
   return (

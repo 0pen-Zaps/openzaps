@@ -42,9 +42,10 @@ export function SiteFooter(): React.JSX.Element {
         <nav className={styles.cols} aria-label="Footer">
           <div className={styles.col}>
             <h2>Product</h2>
-            <Link href="/zap">Zap</Link>
+            <Link href="/zap" prefetch={false}>Zap</Link>
             <Link
               href="/request-a-zap"
+              prefetch={false}
               data-analytics-event="request_zap_clicked"
               data-analytics-cta="request_zap"
               data-analytics-content="site_footer"
@@ -53,16 +54,17 @@ export function SiteFooter(): React.JSX.Element {
             </Link>
             <Link
               href="/agent-kit"
+              prefetch={false}
               data-analytics-event="builder_cta_clicked"
               data-analytics-cta="agent_kit"
               data-analytics-content="site_footer"
             >
               Agent Kit
             </Link>
-            <Link href="/explore">Explore</Link>
-            <Link href="/learn">Updates &amp; tutorials</Link>
-            <Link href="/docs">Developer docs</Link>
-            <Link href="/roadmap">Roadmap</Link>
+            <Link href="/explore" prefetch={false}>Explore</Link>
+            <Link href="/learn" prefetch={false}>Updates &amp; tutorials</Link>
+            <Link href="/docs" prefetch={false}>Developer docs</Link>
+            <Link href="/roadmap" prefetch={false}>Roadmap</Link>
           </div>
           <div className={styles.col}>
             <h2>Build</h2>
@@ -106,14 +108,14 @@ export function SiteFooter(): React.JSX.Element {
             >
               DeFi Tutorials
             </a>
-            <Link href="/docs#security">Security</Link>
-            <Link href="/zap">Visual builder</Link>
+            <Link href="/docs#security" prefetch={false}>Security</Link>
+            <Link href="/zap" prefetch={false}>Visual builder</Link>
           </div>
           <div className={styles.col}>
             <h2>Token</h2>
-            <Link href="/token">{TOKEN.symbol} token</Link>
-            <Link href="/rewards">Fee rewards campaign</Link>
-            <Link href={LINKS.buyWithOpenZaps}>Zap in with OpenZaps</Link>
+            <Link href="/token" prefetch={false}>{TOKEN.symbol} token</Link>
+            <Link href="/rewards" prefetch={false}>Fee rewards campaign</Link>
+            <Link href={LINKS.buyWithOpenZaps} prefetch={false}>Zap in with OpenZaps</Link>
             <a href={LINKS.buy} target="_blank" rel="noreferrer">
               Buy on Clanker
             </a>
@@ -123,7 +125,7 @@ export function SiteFooter(): React.JSX.Element {
             <a href={LINKS.tokenExplorer} target="_blank" rel="noreferrer">
               View token contract
             </a>
-            <Link href="/legal">Risk disclosures</Link>
+            <Link href="/legal" prefetch={false}>Risk disclosures</Link>
           </div>
         </nav>
       </div>

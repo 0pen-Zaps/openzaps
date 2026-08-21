@@ -47,8 +47,12 @@ describe("0xZAPS fee rewards public surface", () => {
     const growth = read("src/app/(site)/rewards/RewardsGrowthPulse.tsx");
     const market = read("src/lib/market-server.ts");
     const route = read("src/app/api/protocol/market/route.ts");
+    const switcher = read("src/app/(site)/rewards/CampaignSwitcher.tsx");
+    const footer = read("src/components/SiteFooter.tsx");
     expect(page).not.toContain("fetchTokenMarketPulse()");
     expect(page).toContain("<RewardsGrowthPulse initial={null} />");
+    expect(page).toContain('if (selected === "1")');
+    expect(page.indexOf('if (selected === "1")')).toBeLessThan(page.indexOf("fetchFeeRewards(null)"));
     expect(growth).toContain("0xZAPS daily volume");
     expect(growth).toContain("Use the pool. Bring the next trader.");
     expect(growth).toContain("Invite a trader");
@@ -60,8 +64,15 @@ describe("0xZAPS fee rewards public surface", () => {
     expect(nextVolumeMilestone(1_000_000)).toBe(2_000_000);
     expect(nextVolumeMilestone(1_000_001)).toBe(2_000_000);
     expect(growth).toContain("MAX_MARKET_AGE_MS = 5 * 60_000");
+    expect(growth).toContain("REQUEST_TIMEOUT_MS = 6_000");
+    expect(growth).toContain("controller.abort()");
+    expect(growth).not.toContain('cache: "no-store"');
     expect(growth).toContain('data-status={marketStatus}');
     expect(growth).toContain('data-analytics-cta="invite_trader"');
+    expect(route).toContain('"retry-after": "10"');
+    expect(switcher.match(/prefetch=\{false\}/gu)).toHaveLength(2);
+    expect(shell.match(/<Link\b/gu)?.length).toBe(shell.match(/prefetch=\{false\}/gu)?.length);
+    expect(footer.match(/<Link\b/gu)?.length).toBe(footer.match(/prefetch=\{false\}/gu)?.length);
   });
 
   it("keeps the staker register complete-or-absent, never partial", () => {
