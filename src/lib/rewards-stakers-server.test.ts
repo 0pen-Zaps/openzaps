@@ -54,6 +54,14 @@ function mockReadContract(call: {
   functionName: string;
   args?: readonly unknown[];
 }): unknown {
+  if (call.address.toLowerCase() === FEE_REWARDS_MANIFEST.weth.toLowerCase()) {
+    if (call.functionName === "balanceOf") return 10n;
+    throw new Error(`Unexpected WETH read: ${call.functionName}`);
+  }
+  if (call.address.toLowerCase() === FEE_REWARDS_MANIFEST.vault.address.toLowerCase()) {
+    if (call.functionName === "claimable") return 2n;
+    throw new Error(`Unexpected vault read: ${call.functionName}`);
+  }
   if (call.address.toLowerCase() !== FEE_REWARDS_MANIFEST.campaign.address.toLowerCase()) {
     throw new Error(`Unexpected read target: ${call.address}`);
   }
@@ -63,6 +71,16 @@ function mockReadContract(call: {
       return 11n;
     case "totalRewardWeight":
       return 24n;
+    case "rewardState":
+      return [1n, 2n, 10n, 0n];
+    case "rewardsSwept":
+      return false;
+    case "FEE_SHARE_TOKEN":
+      return FEE_REWARDS_MANIFEST.vault.address;
+    case "rewardAssetCount":
+      return 1n;
+    case "rewardAssets":
+      return FEE_REWARDS_MANIFEST.weth;
     case "balanceOf":
       return balances.get(account ?? "")?.balance ?? 0n;
     case "rewardWeight":
@@ -132,6 +150,13 @@ describe("fetchFeeRewardsStakersUncached", () => {
     expect(payload.allTimeStakerCount).toBe(2);
     expect(payload.totalEarnedWeth).toBe("5");
     expect(payload.totalClaimedWeth).toBe("5");
+    expect(payload.rewardPool).toEqual({
+      claimableNowWeth: "5",
+      campaignHeldWeth: "10",
+      stillAccruingWeth: "5",
+      awaitingHarvestWeth: "2",
+      totalAllocatedWeth: "12",
+    });
     expect(payload.truncated).toBe(false);
     expect(payload.stakers).toEqual([
       { account: STAKER_A, stakedBalance: "7", rewardWeight: "14", earnedWeth: "3", claimedWeth: "0" },

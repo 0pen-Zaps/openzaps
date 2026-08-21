@@ -20,6 +20,7 @@ const PULSE = {
   h24Sells: 359,
   liquidityUsd: 105_505.96,
   priceUsd: "0.000001793",
+  wethPriceUsd: 2_360.14,
   readAt: "2026-08-21T04:09:29.494Z",
 };
 

@@ -19,6 +19,8 @@ export type TokenMarketPulse = {
   h24Sells: number;
   liquidityUsd: number | null;
   priceUsd: string | null;
+  /** Approximate aeWETH/USD derived from this exact pair's base USD/native quote. */
+  wethPriceUsd: number | null;
   readAt: string;
 };
 
@@ -78,6 +80,12 @@ export function parseTokenMarketPulse(payload: unknown, readAt = new Date().toIS
   const priceUsd = typeof pair.priceUsd === "string" && /^(?:0|[1-9][0-9]*)(?:\.[0-9]+)?$/.test(pair.priceUsd)
     ? pair.priceUsd
     : null;
+  const priceNative = typeof pair.priceNative === "string" && /^(?:0|[1-9][0-9]*)(?:\.[0-9]+)?$/.test(pair.priceNative)
+    ? pair.priceNative
+    : null;
+  const wethPriceUsd = priceUsd !== null && priceNative !== null && Number(priceNative) > 0
+    ? boundedNumber(Number(priceUsd) / Number(priceNative))
+    : null;
   return {
     pair: TOKEN_LAUNCH.primaryPair,
     source: "DEX Screener",
@@ -88,6 +96,7 @@ export function parseTokenMarketPulse(payload: unknown, readAt = new Date().toIS
     h24Sells,
     liquidityUsd,
     priceUsd,
+    wethPriceUsd,
     readAt,
   };
 }

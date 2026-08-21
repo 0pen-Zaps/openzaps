@@ -57,6 +57,18 @@ export type FeeRewardsStakersPayload = {
   allTimeStakerCount: number;
   totalEarnedWeth: string;
   totalClaimedWeth: string;
+  rewardPool: {
+    /** WETH already vested across every staker's current `earned(...)` balance. */
+    claimableNowWeth: string;
+    /** WETH physically held by the campaign, including vested and still-streaming rewards. */
+    campaignHeldWeth: string;
+    /** Campaign-held WETH that has not vested to stakers yet. */
+    stillAccruingWeth: string;
+    /** WETH assigned to the campaign's fee shares but not harvested into it yet. */
+    awaitingHarvestWeth: string;
+    /** Campaign-held plus vault-claimable WETH; excludes rewards already claimed. */
+    totalAllocatedWeth: string;
+  };
   truncated: boolean;
   stakers: FeeRewardsStakerRow[];
 };
