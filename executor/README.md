@@ -381,3 +381,92 @@ itself a bigger fee (constants in the contract), or bypass the owner's net-of-fe
 (`MinOutNotMet`). It also cannot send a price-sensitive write through the public RPC: local raw
 signing is wired only to the qualifying private-relay set. Losing the executor key loses gas money
 and fee income, nothing else.
+
+## Campaign 2 harvest and Hook Blocks keeper
+
+Campaign 2 uses a separate keeper process so enabling its gas wallet does not silently enable the
+general intent executor. The keeper is release-specific and cannot accept target addresses,
+selectors, calldata, or value from config. Its complete write allowlist is:
+
+- `0x7F57…09F9.harvest()` once per 24-hour campaign window;
+- `0xB5F7…e8Db.buyAndBurn(minHookrOut)` only for a full `MAX_BUY_WEI()` batch;
+- each contract's permissionless `finalize()` once the immutable term has ended.
+
+The automated caller floor is nonzero and sized for the full 0.05 ETH cap: 97% of a 30–60 minute
+median from the pinned HOOKR pool. Before signing, a separately configured owner-only archive RPC
+must reproduce the PoolManager `slot0` value at every canonical sample block; matching headers
+alone are not price evidence. The contract independently enforces the greater of that floor and
+its same-block spot × 97% floor. Watch-only collects at least seven unique five-minute samples and
+never backfills through the shallow public RPC. Burn automation is disabled by default. The
+service never calls either sweep, never claims for a
+staker, never changes the sponsor pause, never sends native value, and admits at most four
+transactions per UTC day. Before every decision it verifies chain 4663, both runtime hashes, the
+shared schedule, funding, pause/finalization state, and all decision inputs at one pinned block.
+Every write is simulated at the decision block and again against latest state immediately before
+signing, gas-price capped, signed locally, decoded and recovered against the
+pinned keeper before publication, persisted before broadcast, receipt-confirmed, and read back.
+Burn publication retries expire after 10 minutes of canonical chain time. The public and archive
+providers must also agree on their shared canonical chain, and both heads must be within two
+minutes of the keeper's wall clock. An unresolved deadline-free burn then requires deliberate
+nonce replacement, although bytes already accepted by a public mempool may still be mined. Settlement binds the receipt, transaction, canonical block,
+and postcondition readback to one block hash before clearing the journal.
+The service warns below `0.0003 ETH` of keeper gas and refuses a write unless the current balance
+can cover that action's full fixed-gas × max-fee cap; it never tops itself up.
+
+Safe inspection is the default:
+
+```bash
+npm run campaign2:status
+export OPENZAPS_CAMPAIGN2_EXPECTED_COMMIT=<reviewed-40-character-git-sha>
+./executor/install-campaign2-launchd.sh watch-only
+```
+
+`watch-only` also creates an immutable, commit-addressed ncc bundle copy and starts gathering the
+price journal. CI and the installer rebuild from source and require byte-for-byte equality with the
+committed bundle. A small owner-only launcher verifies the copied Node, entry, chunk, and license
+hashes before Node evaluates JavaScript. Watch-only prints the Node digest for independent review.
+
+Live activation is an explicit signer boundary. Running `enable` is the broadcast authorization,
+not a preparation command. It accepts only the dedicated encrypted Web3
+keystore plus its separate 0600 password file through Foundry Cast's `--password-file`; raw and
+inline private keys are refused. The installer requires an operator-approved Cast SHA-256 and
+checks it before the first keystore command; the daemon checks it again before every signature:
+
+```bash
+export OPENZAPS_CAMPAIGN2_EXPECTED_COMMIT=<reviewed-40-character-git-sha>
+export OPENZAPS_CAMPAIGN2_EXPECTED_NODE_SHA256=<reviewed-lowercase-sha256>
+export OPENZAPS_CAMPAIGN2_EXPECTED_CAST_SHA256=<reviewed-lowercase-sha256>
+export OPENZAPS_CAMPAIGN2_AUTOMATE_BURNS=false
+./executor/install-campaign2-launchd.sh enable
+```
+
+To authorize burns as well, provide an owner-only file containing one archive RPC HTTPS URL and
+set both `OPENZAPS_CAMPAIGN2_AUTOMATE_BURNS=true` and
+`OPENZAPS_CAMPAIGN2_ARCHIVE_RPC_FILE=/absolute/path/to/that/file` on the `enable` command. The URL
+itself never enters the plist or process arguments.
+
+The installer defaults to the Campaign 2 keystore handoff under `~/.openzaps/keeper`, verifies
+both secret files are owner-only and non-symlinked, and decrypts only to confirm that the public
+address is the pinned keeper `0xA2b7…9bEC`. Override those absolute paths only with
+`OPENZAPS_CAMPAIGN2_KEYSTORE_FILE`, `OPENZAPS_CAMPAIGN2_PASSWORD_FILE`, and
+`OPENZAPS_CAMPAIGN2_CAST_BIN`. `OPENZAPS_CAMPAIGN2_NODE_BIN` may select an alternate absolute Node
+binary. The approved Node and Cast bytes are copied into owner-only hash-addressed runtime
+directories; the original Cast path never receives the keystore password arguments.
+
+Do not enable the general executor with the same key at the same time. The campaign service keeps
+its state in `~/.openzaps/campaign2-keeper/state.json` and logs to
+`~/Library/Logs/openzaps-campaign2-keeper.log`. `remove` verifies the job is unloaded before
+removing its plist. Watch-only/status do not rebroadcast retained signed bytes, but neither
+watch-only nor `remove` revokes or deletes them. If a signed burn is pending, pass its existing
+owner-only `OPENZAPS_CAMPAIGN2_ARCHIVE_RPC_FILE` to the watch-only installer so it can authenticate
+the receipt without signing or rebroadcasting; disabling burns independently prevents the live
+daemon from republishing that burn. Preserve the state and archive-RPC file through canonical
+reconciliation. The
+first automatic harvest is due one full cadence after the fixed start because the release already
+performed the launch-day harvest. At term end it finalizes both legs and converts only full
+`MAX_BUY_WEI` batches; smaller residual WETH and all sponsor/unclaimed-reward sweeps remain manual.
+
+The deployed HookBlocks entry point remains permissionless and accepts `buyAndBurn(0)`. A third
+party can therefore rely only on the manipulable same-block floor. This keeper protects only its
+own transactions; use the sponsor pause, manual/private ordering, or a future contract change if
+global enforcement is required.

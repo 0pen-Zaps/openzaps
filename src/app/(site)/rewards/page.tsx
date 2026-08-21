@@ -9,6 +9,7 @@ import { fetchFeeRewards } from "@/lib/rewards-server";
 import type { FeeRewardsPayload } from "@/lib/rewards";
 import { Campaign2Panel } from "./Campaign2Panel";
 import { CampaignSwitcher, selectedCampaign } from "./CampaignSwitcher";
+import { RewardsGrowthPulse } from "./RewardsGrowthPulse";
 import { RewardsWorkspace, type RewardsWorkspaceName } from "./RewardsWorkspace";
 import styles from "./rewards.module.css";
 
@@ -47,7 +48,6 @@ export default async function RewardsPage({ searchParams }: RewardsPageProps): P
   } catch {
     // The client renders an explicit unavailable state. Zeroed campaign data
     // would be an unverified economic claim, so no fallback figures are made.
-    initial = null;
   }
 
   return (
@@ -67,7 +67,10 @@ export default async function RewardsPage({ searchParams }: RewardsPageProps): P
       {selected === "1" ? (
         <RewardsWorkspace initial={initial} initialWorkspace={workspaceFrom(workspace)} />
       ) : (
-        <Campaign2Panel />
+        <>
+          <RewardsGrowthPulse initial={null} />
+          <Campaign2Panel />
+        </>
       )}
     </main>
   );

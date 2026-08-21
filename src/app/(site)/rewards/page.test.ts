@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 
 import { FEE_REWARDS_MANIFEST, campaignPhaseNote, type FeeRewardsPayload } from "@/lib/rewards";
 import { selectedCampaign } from "./CampaignSwitcher";
+import { nextVolumeMilestone } from "./RewardsGrowthPulse";
 import {
   rewardsBalanceLabel,
   rewardsClaimLifecycle,
@@ -40,6 +41,27 @@ describe("0xZAPS fee rewards public surface", () => {
     expect(page).toContain('candidate === "stakers"');
     expect(shell).toContain('{ href: "/rewards", label: "Fee rewards"');
     expect(seo).toContain('path: "/rewards"');
+  });
+
+  it("adds a live, source-labelled volume prompt without inventing referral rewards", () => {
+    const growth = read("src/app/(site)/rewards/RewardsGrowthPulse.tsx");
+    const market = read("src/lib/market-server.ts");
+    const route = read("src/app/api/protocol/market/route.ts");
+    expect(page).not.toContain("fetchTokenMarketPulse()");
+    expect(page).toContain("<RewardsGrowthPulse initial={null} />");
+    expect(growth).toContain("0xZAPS daily volume");
+    expect(growth).toContain("Use the pool. Bring the next trader.");
+    expect(growth).toContain("Invite a trader");
+    expect(growth).toContain("not a referral reward or yield projection");
+    expect(market).toContain("TOKEN_LAUNCH.primaryPair");
+    expect(market).toContain('candidate?.chainId === "robinhood"');
+    expect(route).toContain("unavailable right now");
+    expect(nextVolumeMilestone(44_718.81)).toBe(50_000);
+    expect(nextVolumeMilestone(1_000_000)).toBe(2_000_000);
+    expect(nextVolumeMilestone(1_000_001)).toBe(2_000_000);
+    expect(growth).toContain("MAX_MARKET_AGE_MS = 5 * 60_000");
+    expect(growth).toContain('data-status={marketStatus}');
+    expect(growth).toContain('data-analytics-cta="invite_trader"');
   });
 
   it("keeps the staker register complete-or-absent, never partial", () => {
@@ -138,13 +160,22 @@ describe("0xZAPS fee rewards public surface", () => {
   it("fails the landing campaign strip closed and keeps it honest", () => {
     // The landing page is static: the strip renders nothing until a verified
     // snapshot confirms a clock-bound phase, and never invents live claims.
-    expect(campaignStrip).toContain("if (!data || !countdown) return null;");
+    expect(campaignStrip).toContain("if (!data || !campaign || !phase || !countdown) return null;");
     expect(campaignStrip).toContain('response.status === 200');
-    expect(campaignStrip).toContain('href="/rewards');
+    expect(campaignStrip).toContain('fetch("/api/protocol/rewards2/staking"');
+    expect(campaignStrip).toContain("campaign2PulseIsFresh(payload)");
+    expect(campaignStrip).toContain("STRIP_REFRESH_MS");
+    expect(campaignStrip).toContain('document.visibilityState === "visible"');
+    expect(campaignStrip).toContain("current && campaign2PulseIsFresh(current) ? current : null");
+    expect(campaignStrip).toContain("CAMPAIGN_2_PULSE_MAX_AGE_MS");
+    expect(campaignStrip).toContain("expiresAt - Date.now() + 1");
+    expect(campaignStrip).toContain('href="/rewards?campaign=2');
     expect(campaignStrip).toContain("confirming onchain");
+    expect(campaignStrip).toContain("% of supply staked");
+    expect(campaignStrip).toContain("totalStaked > totalSupply");
     // The rewards app closes new stakes in claim-only, so the CTA must not
     // advertise staking there.
-    expect(campaignStrip).toContain('data.phase === "claim-only" ? "Claim & inspect →" : "Stake & inspect →"');
+    expect(campaignStrip).toContain('phase === "claim-only" ? "Claim & inspect →" : "Stake & inspect →"');
     expect(landingPage).toContain("<CampaignStrip />");
   });
 
@@ -488,11 +519,15 @@ describe("0xZAPS fee rewards public surface", () => {
     const operator = read("src/app/(site)/rewards/Campaign2Operator.tsx");
     const server = read("src/lib/rewards2-server.ts");
     const route = read("src/app/api/protocol/rewards2/route.ts");
+    const stakingRoute = read("src/app/api/protocol/rewards2/staking/route.ts");
     // The console mounts inside the panel and reads only the block-pinned
     // preflight; a failed snapshot is named, never zeroed.
     const panel = read("src/app/(site)/rewards/Campaign2Panel.tsx");
     expect(panel).toContain("<Campaign2Operator />");
     expect(operator).toContain('fetch("/api/protocol/rewards2"');
+    expect(server).toContain("fetchCampaign2StakingPulse");
+    expect(server).toContain("campaign-2 staking block changed during the snapshot");
+    expect(stakingRoute).toContain("campaign-2 staking snapshot is unavailable");
     expect(operator).toContain("The preflight snapshot is unavailable.");
     expect(route).toContain("unavailable right now");
     expect(route).toContain('"cache-control": "no-store, max-age=0"');

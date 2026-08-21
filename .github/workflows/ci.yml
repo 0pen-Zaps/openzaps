@@ -62,6 +62,8 @@ jobs:
       - run: npm ci
       - name: Executor + MCP tests
         run: node --test executor/*.test.mjs mcp/*.test.mjs packages/sdk/*.test.mjs packages/mcp/*.test.mjs
+      - name: Campaign 2 source-to-bundle byte check
+        run: npm run campaign2:bundle:verify
       - name: SDK import smoke
         run: node --input-type=module -e "const sdk = await import('./packages/sdk/index.js'); if (typeof sdk.buildOpenZapPolicy !== 'function') process.exit(1)"
       - name: MCP tool manifest smoke

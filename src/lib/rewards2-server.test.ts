@@ -10,6 +10,7 @@ const SQRT_PRICE = 149_925_983_770_813_717_870_352_760_454_399n;
 
 const { clientMock } = vi.hoisted(() => ({
   clientMock: {
+    getChainId: vi.fn(),
     getBlock: vi.fn(),
     getBytecode: vi.fn(),
     readContract: vi.fn(),
@@ -25,7 +26,13 @@ vi.mock("viem", async (importOriginal) => {
   };
 });
 
-import { fetchCampaign2Preflight } from "@/lib/rewards2-server";
+import {
+  campaign2StakingPulseIsFresh,
+  createCampaign2StakingPulseCoalescer,
+  fetchCampaign2Preflight,
+  fetchCampaign2StakingPulseUncached,
+  type Campaign2StakingPulse,
+} from "@/lib/rewards2-server";
 
 const address = (value: unknown): string => String(value).toLowerCase();
 
@@ -56,6 +63,7 @@ function happyReadContract(call: ReadCall): unknown {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  clientMock.getChainId.mockResolvedValue(FEE_REWARDS_2_MANIFEST.chainId);
   clientMock.getBlock.mockResolvedValue({
     number: BLOCK_NUMBER,
     hash: BLOCK_HASH,
@@ -67,6 +75,85 @@ beforeEach(() => {
 });
 
 describe("campaign-2 preflight snapshot", () => {
+  it("refuses cached homepage staking reads after two minutes or future clock drift", () => {
+    const now = Date.parse("2026-08-21T01:00:00.000Z");
+    const pulse = {
+      readAt: new Date(now - 120_000).toISOString(),
+      blockTimestamp: String((now - 120_000) / 1_000),
+    } as Campaign2StakingPulse;
+    expect(campaign2StakingPulseIsFresh(pulse, now)).toBe(true);
+    expect(campaign2StakingPulseIsFresh({ ...pulse, readAt: new Date(now - 120_001).toISOString() }, now)).toBe(false);
+    expect(campaign2StakingPulseIsFresh({ ...pulse, blockTimestamp: String((now - 121_000) / 1_000) }, now)).toBe(false);
+    expect(campaign2StakingPulseIsFresh({ ...pulse, readAt: new Date(now + 5_001).toISOString() }, now)).toBe(false);
+    expect(campaign2StakingPulseIsFresh({ ...pulse, blockTimestamp: String((now + 6_000) / 1_000) }, now)).toBe(false);
+    expect(campaign2StakingPulseIsFresh({ ...pulse, readAt: "not-a-date" }, now)).toBe(false);
+    expect(campaign2StakingPulseIsFresh({ ...pulse, blockTimestamp: "not-a-block-time" }, now)).toBe(false);
+  });
+
+  it("coalesces concurrent RPC work per runtime and resets after rejection", async () => {
+    const snapshot = {
+      readAt: "2026-08-21T01:00:00.000Z",
+      blockTimestamp: "1787274000",
+    } as Campaign2StakingPulse;
+    let release: ((value: Campaign2StakingPulse) => void) | undefined;
+    const read = vi.fn(() => new Promise<Campaign2StakingPulse>((resolve) => {
+      release = resolve;
+    }));
+    const coalesced = createCampaign2StakingPulseCoalescer(read);
+
+    const first = coalesced();
+    const second = coalesced();
+    expect(second).toBe(first);
+    expect(read).toHaveBeenCalledTimes(1);
+    release?.(snapshot);
+    await expect(first).resolves.toBe(snapshot);
+
+    const failure = new Error("RPC unavailable");
+    read.mockRejectedValueOnce(failure);
+    await expect(coalesced()).rejects.toBe(failure);
+    expect(read).toHaveBeenCalledTimes(2);
+
+    read.mockResolvedValueOnce(snapshot);
+    await expect(coalesced()).resolves.toBe(snapshot);
+    expect(read).toHaveBeenCalledTimes(3);
+  });
+
+  it("reads the homepage staking pulse without touching unrelated campaign-2 legs", async () => {
+    const { keccak256 } = await import("viem");
+    const campaignCode = "0xc0de03" as const;
+    const released = {
+      ...FEE_REWARDS_2_MANIFEST,
+      deployment: {
+        ...FEE_REWARDS_2_MANIFEST.deployment,
+        campaign: {
+          ...FEE_REWARDS_2_MANIFEST.deployment.campaign,
+          runtimeCodeHash: keccak256(campaignCode),
+        },
+      },
+    } as unknown as typeof FEE_REWARDS_2_MANIFEST;
+    clientMock.getBytecode.mockResolvedValue(campaignCode);
+    clientMock.readContract.mockImplementation((call: ReadCall) => {
+      switch (call.functionName) {
+        case "STAKING_TOKEN": return Promise.resolve(released.token);
+        case "feeSharesFunded": return Promise.resolve(true);
+        case "finalized": return Promise.resolve(false);
+        case "totalStaked": return Promise.resolve(9_500_000_000n * 10n ** 18n);
+        case "startAt": return Promise.resolve(released.deployment.campaign.startAt);
+        case "endAt": return Promise.resolve(released.deployment.campaign.endAt);
+        case "claimDeadline": return Promise.resolve(released.deployment.campaign.claimDeadline);
+        default: throw new Error(`Unexpected minimal staking read ${call.functionName}`);
+      }
+    });
+
+    const payload = await fetchCampaign2StakingPulseUncached(released);
+    expect(payload.blockHash).toBe(BLOCK_HASH);
+    expect(payload.campaign.totalStaked).toBe((9_500_000_000n * 10n ** 18n).toString());
+    expect(clientMock.readContract).toHaveBeenCalledTimes(7);
+    for (const call of clientMock.readContract.mock.calls) {
+      expect((call[0] as ReadCall).blockNumber).toBe(BLOCK_NUMBER);
+    }
+  });
+
   it("pins every read to one block and passes the runbook preconditions", async () => {
     const payload = await fetchCampaign2Preflight({ ...FEE_REWARDS_2_MANIFEST, deployment: null });
 

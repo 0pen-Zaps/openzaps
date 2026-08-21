@@ -67,15 +67,15 @@ describe("SEO primitives", () => {
     });
   });
 
-  it("keeps the first fee campaign metadata dated and inspection-oriented", () => {
+  it("keeps fee campaign metadata multi-campaign and inspection-oriented", () => {
     expect(STATIC_PAGE_SEO.rewards).toMatchObject({
-      title: "First 0xZAPS Fee Rewards Campaign",
+      title: "0xZAPS Fee Rewards Campaigns",
       path: "/rewards",
       changeFrequency: "daily",
     });
-    expect(STATIC_PAGE_SEO.rewards.description).toContain("seven-day Aug 3–10, 2026 staking");
-    expect(STATIC_PAGE_SEO.rewards.description).toContain("50 of 100 tokenized Clanker fee shares");
-    expect(STATIC_PAGE_SEO.rewards.description).toContain("current phase");
+    expect(STATIC_PAGE_SEO.rewards.description).toContain("both 0xZAPS fee campaigns");
+    expect(STATIC_PAGE_SEO.rewards.description).toContain("WETH rewards");
+    expect(STATIC_PAGE_SEO.rewards.description).toContain("HOOKR market buys and burns");
     expect(STATIC_PAGE_SEO.rewards.description).not.toMatch(/stake 0xZAPS|stake and claim/iu);
   });
 

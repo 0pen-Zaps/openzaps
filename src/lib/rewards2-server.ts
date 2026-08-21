@@ -4,10 +4,16 @@ import {
   parseAbi,
   type Hex,
 } from "viem";
+import { unstable_cache } from "next/cache";
 
 import { FEE_REWARDS_MANIFEST, feeRewardsCampaignAbi, feeRewardsVaultAbi } from "@/lib/rewards";
 import { rewardsClient } from "@/lib/rewards-server";
-import { FEE_REWARDS_2_MANIFEST, feeRewards2Deployment, hookBlocksAbi } from "@/lib/rewards2";
+import {
+  campaign2PulseIsFresh,
+  FEE_REWARDS_2_MANIFEST,
+  feeRewards2Deployment,
+  hookBlocksAbi,
+} from "@/lib/rewards2";
 
 /** v4-core `StateLibrary.POOLS_SLOT`: slot0 lives at keccak(poolId, 6). */
 const POOLS_SLOT = 6n;
@@ -67,6 +73,22 @@ export type Campaign2Preflight = {
   };
 };
 
+export type Campaign2StakingPulse = {
+  blockNumber: string;
+  blockHash: Hex;
+  blockTimestamp: string;
+  readAt: string;
+  campaign: {
+    address: string;
+    feeSharesFunded: boolean;
+    finalized: boolean;
+    totalStaked: string;
+    startAt: string;
+    endAt: string;
+    claimDeadline: string;
+  };
+};
+
 function formatWholeAndMilli(value: bigint): string {
   // hookrPerEth to three decimals without floating point: milli-units.
   return ((value * 1_000n) / E18).toString();
@@ -82,6 +104,122 @@ type Campaign2Deployment = {
   };
   hookBlocks: { address: `0x${string}`; runtimeCodeHash: Hex };
 };
+
+/**
+ * Minimal homepage read: only the released staking campaign and its phase
+ * inputs. It deliberately does not depend on HookBlocks, the fee vault, the
+ * HOOKR pool, campaign 1, or historical activity.
+ */
+export async function fetchCampaign2StakingPulseUncached(
+  manifestOverride: typeof FEE_REWARDS_2_MANIFEST = FEE_REWARDS_2_MANIFEST,
+): Promise<Campaign2StakingPulse> {
+  const released = manifestOverride.deployment.campaign;
+  const client = rewardsClient();
+  const chainId = await client.getChainId();
+  if (chainId !== manifestOverride.chainId) throw new Error("campaign-2 staking RPC is on the wrong chain");
+  const block = await client.getBlock({ blockTag: "latest" });
+  if (block.number === null || !block.hash) throw new Error("campaign-2 staking block is unavailable");
+  const blockNumber = block.number;
+  const [
+    code,
+    stakingToken,
+    feeSharesFunded,
+    finalized,
+    totalStaked,
+    startAt,
+    endAt,
+    claimDeadline,
+  ] = await Promise.all([
+    client.getBytecode({ address: released.address, blockNumber }),
+    client.readContract({ address: released.address, abi: feeRewardsCampaignAbi, functionName: "STAKING_TOKEN", blockNumber }),
+    client.readContract({ address: released.address, abi: feeRewardsCampaignAbi, functionName: "feeSharesFunded", blockNumber }),
+    client.readContract({ address: released.address, abi: feeRewardsCampaignAbi, functionName: "finalized", blockNumber }),
+    client.readContract({ address: released.address, abi: feeRewardsCampaignAbi, functionName: "totalStaked", blockNumber }),
+    client.readContract({ address: released.address, abi: feeRewardsCampaignAbi, functionName: "startAt", blockNumber }),
+    client.readContract({ address: released.address, abi: feeRewardsCampaignAbi, functionName: "endAt", blockNumber }),
+    client.readContract({ address: released.address, abi: feeRewardsCampaignAbi, functionName: "claimDeadline", blockNumber }),
+  ]);
+  if (
+    !code
+    || keccak256(code).toLowerCase() !== released.runtimeCodeHash.toLowerCase()
+    || stakingToken.toLowerCase() !== manifestOverride.token.toLowerCase()
+    || startAt !== released.startAt
+    || endAt !== released.endAt
+    || claimDeadline !== released.claimDeadline
+  ) {
+    throw new Error("campaign-2 staking identity or immutable schedule does not match the release");
+  }
+  const canonical = await client.getBlock({ blockNumber });
+  if (canonical.hash?.toLowerCase() !== block.hash.toLowerCase()) {
+    throw new Error("campaign-2 staking block changed during the snapshot");
+  }
+  return {
+    blockNumber: blockNumber.toString(),
+    blockHash: block.hash,
+    blockTimestamp: block.timestamp.toString(),
+    readAt: new Date().toISOString(),
+    campaign: {
+      address: released.address,
+      feeSharesFunded,
+      finalized,
+      totalStaked: totalStaked.toString(),
+      startAt: startAt.toString(),
+      endAt: endAt.toString(),
+      claimDeadline: claimDeadline.toString(),
+    },
+  };
+}
+
+/** Build a per-runtime in-flight gate around the actual RPC operation. */
+export function createCampaign2StakingPulseCoalescer(
+  read: () => Promise<Campaign2StakingPulse>,
+): () => Promise<Campaign2StakingPulse> {
+  let inflight: Promise<Campaign2StakingPulse> | null = null;
+  return () => {
+    if (inflight === null) {
+      inflight = read().finally(() => {
+        inflight = null;
+      });
+    }
+    return inflight;
+  };
+}
+
+const fetchCampaign2StakingPulseCoalescedUncached =
+  createCampaign2StakingPulseCoalescer(() => fetchCampaign2StakingPulseUncached());
+
+const cachedCampaign2StakingPulse = unstable_cache(
+  () => fetchCampaign2StakingPulseCoalescedUncached(),
+  [
+    "0xzaps-campaign2-staking-pulse-v1",
+    process.env.VERCEL_GIT_COMMIT_SHA?.trim() || "local",
+    JSON.stringify(FEE_REWARDS_2_MANIFEST, (_key, value: unknown) =>
+      typeof value === "bigint" ? value.toString() : value
+    ),
+  ],
+  { revalidate: 30, tags: ["0xzaps-campaign2-staking-pulse"] },
+);
+
+export function campaign2StakingPulseIsFresh(
+  snapshot: Campaign2StakingPulse,
+  now = Date.now(),
+): boolean {
+  return campaign2PulseIsFresh(snapshot, now);
+}
+
+/**
+ * Shared, short-lived homepage snapshot. Actual RPC fills and revalidations
+ * coalesce within each warm runtime; Next's shared Data Cache coordinates the
+ * cached value across the deployment. This is load shaping, not a fleet-wide
+ * lock. Every caller independently rejects both old reads and old chain heads.
+ */
+export async function fetchCampaign2StakingPulse(): Promise<Campaign2StakingPulse> {
+  const snapshot = await cachedCampaign2StakingPulse();
+  if (!campaign2StakingPulseIsFresh(snapshot)) {
+    throw new Error("campaign-2 staking snapshot is too old to publish");
+  }
+  return snapshot;
+}
 
 /**
  * One block-pinned, all-or-nothing preflight snapshot for the campaign-2

@@ -1,6 +1,30 @@
 import { encodeAbiParameters, getAddress, keccak256, parseAbi, type Address, type Hex } from "viem";
 
 const E18 = 10n ** 18n;
+export const CAMPAIGN_2_PULSE_MAX_AGE_MS = 2 * 60_000;
+const CAMPAIGN_2_PULSE_MAX_FUTURE_SKEW_MS = 5_000;
+
+/**
+ * A live campaign claim is valid only while both the observation and the
+ * canonical block it describes are recent. Checking both prevents a freshly
+ * stamped response from a lagging RPC being presented as current state.
+ */
+export function campaign2PulseIsFresh(
+  snapshot: { readAt: string; blockTimestamp: string },
+  now = Date.now(),
+): boolean {
+  if (!/^(?:0|[1-9][0-9]*)$/.test(snapshot.blockTimestamp)) return false;
+  const readAt = Date.parse(snapshot.readAt);
+  const blockTimestampSeconds = Number(snapshot.blockTimestamp);
+  const blockAt = blockTimestampSeconds * 1_000;
+  return [readAt, blockAt].every((timestamp) => {
+    const age = now - timestamp;
+    return Number.isFinite(timestamp)
+      && Number.isSafeInteger(timestamp)
+      && age <= CAMPAIGN_2_PULSE_MAX_AGE_MS
+      && age >= -CAMPAIGN_2_PULSE_MAX_FUTURE_SKEW_MS;
+  });
+}
 
 /**
  * Immutable public manifest for the SECOND 0xZAPS fee campaign: a 14-day
