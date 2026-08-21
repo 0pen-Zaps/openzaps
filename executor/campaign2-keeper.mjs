@@ -77,6 +77,7 @@ const POOLS_SLOT = 6n;
 const Q96 = 1n << 96n;
 const UINT160_MASK = (1n << 160n) - 1n;
 const BPS = 10_000n;
+const CAMPAIGN2_SNAPSHOT_READ_SPACING_MS = 250;
 const BLOCK_HASH = /^0x[0-9a-fA-F]{64}$/;
 const CAMPAIGN2_POOL_SLOT0 = keccak256(encodeAbiParameters(
   [{ type: "bytes32" }, { type: "uint256" }],
@@ -219,6 +220,32 @@ function requiredCodeHash(code, expected, label) {
 }
 
 /**
+ * Robinhood's public RPC rejects the 25-call snapshot burst with HTTP 429.
+ * Keep every decision input pinned to one block, but issue the reads at a
+ * conservative four requests per second. A failed read stops the sequence and
+ * therefore still fails closed before planning or signing anything.
+ */
+export async function sequenceCampaign2SnapshotReads(
+  reads,
+  pause = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds)),
+) {
+  if (!Array.isArray(reads) || reads.some((read) => typeof read !== "function")) {
+    throw new Error("campaign-2 snapshot reads must be functions");
+  }
+  if (typeof pause !== "function") {
+    throw new Error("campaign-2 snapshot pause must be a function");
+  }
+  const values = [];
+  for (let index = 0; index < reads.length; index += 1) {
+    values.push(await reads[index]());
+    if (index + 1 < reads.length) {
+      await pause(CAMPAIGN2_SNAPSHOT_READ_SPACING_MS);
+    }
+  }
+  return values;
+}
+
+/**
  * Read every decision input at one explicit block and refuse any deployed-identity drift.
  * This is intentionally campaign-specific; callers cannot override addresses or selectors.
  */
@@ -273,38 +300,38 @@ export async function fetchCampaign2KeeperSnapshot(
     totalHookrBought,
     totalHookrBurned,
     hookBlockCount,
-  ] = await Promise.all([
-    publicClient.getBytecode({ address: manifest.campaign.address, blockNumber }),
-    publicClient.getBytecode({ address: manifest.hookBlocks.address, blockNumber }),
-    publicClient.getBytecode({ address: manifest.poolManager.address, blockNumber }),
-    publicClient.readContract({ address: manifest.campaign.address, abi: campaign2CampaignAbi, functionName: "feeSharesFunded", blockNumber }),
-    publicClient.readContract({ address: manifest.campaign.address, abi: campaign2CampaignAbi, functionName: "finalized", blockNumber }),
-    publicClient.readContract({ address: manifest.campaign.address, abi: campaign2CampaignAbi, functionName: "startAt", blockNumber }),
-    publicClient.readContract({ address: manifest.campaign.address, abi: campaign2CampaignAbi, functionName: "endAt", blockNumber }),
-    publicClient.readContract({ address: manifest.campaign.address, abi: campaign2CampaignAbi, functionName: "claimDeadline", blockNumber }),
-    publicClient.readContract({ address: manifest.hookBlocks.address, abi: campaign2HookBlocksAbi, functionName: "feeSharesFunded", blockNumber }),
-    publicClient.readContract({ address: manifest.hookBlocks.address, abi: campaign2HookBlocksAbi, functionName: "finalized", blockNumber }),
-    publicClient.readContract({ address: manifest.hookBlocks.address, abi: campaign2HookBlocksAbi, functionName: "buybackPaused", blockNumber }),
-    publicClient.readContract({ address: manifest.hookBlocks.address, abi: campaign2HookBlocksAbi, functionName: "START_AT", blockNumber }),
-    publicClient.readContract({ address: manifest.hookBlocks.address, abi: campaign2HookBlocksAbi, functionName: "END_AT", blockNumber }),
-    publicClient.readContract({ address: manifest.hookBlocks.address, abi: campaign2HookBlocksAbi, functionName: "SWEEP_AFTER", blockNumber }),
-    publicClient.readContract({ address: manifest.hookBlocks.address, abi: campaign2HookBlocksAbi, functionName: "MIN_BUY_WEI", blockNumber }),
-    publicClient.readContract({ address: manifest.hookBlocks.address, abi: campaign2HookBlocksAbi, functionName: "MAX_BUY_WEI", blockNumber }),
-    publicClient.readContract({ address: manifest.hookBlocks.address, abi: campaign2HookBlocksAbi, functionName: "MIN_OUT_BPS", blockNumber }),
-    publicClient.readContract({ address: manifest.hookBlocks.address, abi: campaign2HookBlocksAbi, functionName: "POOL_MANAGER", blockNumber }),
-    publicClient.readContract({ address: manifest.hookBlocks.address, abi: campaign2HookBlocksAbi, functionName: "POOL_ID", blockNumber }),
-    publicClient.readContract({
+  ] = await sequenceCampaign2SnapshotReads([
+    () => publicClient.getBytecode({ address: manifest.campaign.address, blockNumber }),
+    () => publicClient.getBytecode({ address: manifest.hookBlocks.address, blockNumber }),
+    () => publicClient.getBytecode({ address: manifest.poolManager.address, blockNumber }),
+    () => publicClient.readContract({ address: manifest.campaign.address, abi: campaign2CampaignAbi, functionName: "feeSharesFunded", blockNumber }),
+    () => publicClient.readContract({ address: manifest.campaign.address, abi: campaign2CampaignAbi, functionName: "finalized", blockNumber }),
+    () => publicClient.readContract({ address: manifest.campaign.address, abi: campaign2CampaignAbi, functionName: "startAt", blockNumber }),
+    () => publicClient.readContract({ address: manifest.campaign.address, abi: campaign2CampaignAbi, functionName: "endAt", blockNumber }),
+    () => publicClient.readContract({ address: manifest.campaign.address, abi: campaign2CampaignAbi, functionName: "claimDeadline", blockNumber }),
+    () => publicClient.readContract({ address: manifest.hookBlocks.address, abi: campaign2HookBlocksAbi, functionName: "feeSharesFunded", blockNumber }),
+    () => publicClient.readContract({ address: manifest.hookBlocks.address, abi: campaign2HookBlocksAbi, functionName: "finalized", blockNumber }),
+    () => publicClient.readContract({ address: manifest.hookBlocks.address, abi: campaign2HookBlocksAbi, functionName: "buybackPaused", blockNumber }),
+    () => publicClient.readContract({ address: manifest.hookBlocks.address, abi: campaign2HookBlocksAbi, functionName: "START_AT", blockNumber }),
+    () => publicClient.readContract({ address: manifest.hookBlocks.address, abi: campaign2HookBlocksAbi, functionName: "END_AT", blockNumber }),
+    () => publicClient.readContract({ address: manifest.hookBlocks.address, abi: campaign2HookBlocksAbi, functionName: "SWEEP_AFTER", blockNumber }),
+    () => publicClient.readContract({ address: manifest.hookBlocks.address, abi: campaign2HookBlocksAbi, functionName: "MIN_BUY_WEI", blockNumber }),
+    () => publicClient.readContract({ address: manifest.hookBlocks.address, abi: campaign2HookBlocksAbi, functionName: "MAX_BUY_WEI", blockNumber }),
+    () => publicClient.readContract({ address: manifest.hookBlocks.address, abi: campaign2HookBlocksAbi, functionName: "MIN_OUT_BPS", blockNumber }),
+    () => publicClient.readContract({ address: manifest.hookBlocks.address, abi: campaign2HookBlocksAbi, functionName: "POOL_MANAGER", blockNumber }),
+    () => publicClient.readContract({ address: manifest.hookBlocks.address, abi: campaign2HookBlocksAbi, functionName: "POOL_ID", blockNumber }),
+    () => publicClient.readContract({
       address: manifest.poolManager.address,
       abi: campaign2PoolManagerAbi,
       functionName: "extsload",
       args: [CAMPAIGN2_POOL_SLOT0],
       blockNumber,
     }),
-    publicClient.readContract({ address: manifest.hookBlocks.address, abi: campaign2HookBlocksAbi, functionName: "pendingWeth", blockNumber }),
-    publicClient.readContract({ address: manifest.hookBlocks.address, abi: campaign2HookBlocksAbi, functionName: "totalEthSpent", blockNumber }),
-    publicClient.readContract({ address: manifest.hookBlocks.address, abi: campaign2HookBlocksAbi, functionName: "totalHookrBought", blockNumber }),
-    publicClient.readContract({ address: manifest.hookBlocks.address, abi: campaign2HookBlocksAbi, functionName: "totalHookrBurned", blockNumber }),
-    publicClient.readContract({ address: manifest.hookBlocks.address, abi: campaign2HookBlocksAbi, functionName: "blockCount", blockNumber }),
+    () => publicClient.readContract({ address: manifest.hookBlocks.address, abi: campaign2HookBlocksAbi, functionName: "pendingWeth", blockNumber }),
+    () => publicClient.readContract({ address: manifest.hookBlocks.address, abi: campaign2HookBlocksAbi, functionName: "totalEthSpent", blockNumber }),
+    () => publicClient.readContract({ address: manifest.hookBlocks.address, abi: campaign2HookBlocksAbi, functionName: "totalHookrBought", blockNumber }),
+    () => publicClient.readContract({ address: manifest.hookBlocks.address, abi: campaign2HookBlocksAbi, functionName: "totalHookrBurned", blockNumber }),
+    () => publicClient.readContract({ address: manifest.hookBlocks.address, abi: campaign2HookBlocksAbi, functionName: "blockCount", blockNumber }),
   ]);
 
   const campaignCodeHash = requiredCodeHash(

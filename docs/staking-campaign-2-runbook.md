@@ -239,6 +239,11 @@ The live-window policy is:
    canonical block and required event, then bind the receipt, transaction,
    block, and readback to the same block hash before advancing local state.
 
+The public snapshot still uses one explicit block for every decision input,
+but its 25 code/getter reads are serialized at four requests per second so the
+Robinhood public endpoint is not hit with a simultaneous request burst. Any
+rate-limit or read failure aborts that pass before planning or signing.
+
 A signed burn may be published only for 10 minutes of canonical chain time
 after its signing block. Both public and archive providers must report timely
 heads, agree on their shared canonical block, and remain within two minutes of

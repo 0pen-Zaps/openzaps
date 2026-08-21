@@ -11,9 +11,42 @@ import {
   campaign2HarvestWindow,
   deriveCampaign2MedianFloor,
   planCampaign2Maintenance,
+  sequenceCampaign2SnapshotReads,
   verifyCampaign2Receipt,
   verifyCampaign2Transaction,
 } from "./campaign2-keeper.mjs";
+
+test("campaign-2 snapshot reads are serialized and provider-spaced", async () => {
+  let active = 0;
+  let maximumActive = 0;
+  const order = [];
+  const pauses = [];
+  const reads = [1, 2, 3].map((value) => async () => {
+    active += 1;
+    maximumActive = Math.max(maximumActive, active);
+    order.push(`start-${value}`);
+    await Promise.resolve();
+    order.push(`finish-${value}`);
+    active -= 1;
+    return value;
+  });
+
+  const values = await sequenceCampaign2SnapshotReads(reads, async (milliseconds) => {
+    pauses.push(milliseconds);
+  });
+
+  assert.deepEqual(values, [1, 2, 3]);
+  assert.equal(maximumActive, 1);
+  assert.deepEqual(order, [
+    "start-1",
+    "finish-1",
+    "start-2",
+    "finish-2",
+    "start-3",
+    "finish-3",
+  ]);
+  assert.deepEqual(pauses, [250, 250]);
+});
 
 test("executor release pins stay identical to the app's released campaign-2 manifest", () => {
   const appManifest = readFileSync(new URL("../src/lib/rewards2.ts", import.meta.url), "utf8");
