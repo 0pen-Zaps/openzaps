@@ -26,6 +26,8 @@ import { rewardsClient } from "@/lib/rewards-server";
  * refresh loop and masquerade as a current read.
  */
 const MAX_STAKERS_SNAPSHOT_AGE_MS = 120_000;
+/** Rounding slack allowed between Σ earned() and held WETH, per staker (1e-15 ETH). */
+const EARNED_ROUNDING_DUST_WEI_PER_STAKER = 1_000n;
 const MAX_FUTURE_CLOCK_SKEW_MS = 5_000;
 
 export class StaleStakersSnapshotError extends Error {
@@ -224,10 +226,17 @@ export async function fetchFeeRewardsStakersUncached(
   if (!rewardsSwept && campaignHeldWeth < accountedRewardBalance) {
     throw new Error("Campaign reward accounting is not backed by its WETH balance.");
   }
-  if (built.totalEarnedWeth > campaignHeldWeth) {
+  // Per-account reward math rounds independently, so the sum of every
+  // staker's `earned()` can exceed the campaign's WETH by a few wei per
+  // account (observed live: 305 wei across 45 stakers after finalization).
+  // That is rounding, not a shortfall; a real hole is orders of magnitude
+  // larger and still fails closed here.
+  const roundingDustWei = BigInt(accounts.length) * EARNED_ROUNDING_DUST_WEI_PER_STAKER;
+  if (built.totalEarnedWeth > campaignHeldWeth + roundingDustWei) {
     throw new Error("Campaign WETH cannot cover every staker's current earned balance.");
   }
-  const stillAccruingWeth = campaignHeldWeth - built.totalEarnedWeth;
+  const stillAccruingWeth =
+    campaignHeldWeth > built.totalEarnedWeth ? campaignHeldWeth - built.totalEarnedWeth : 0n;
   const totalAllocatedWeth = campaignHeldWeth + awaitingHarvestWeth;
 
   const canonicalBlock = await client.getBlock({ blockNumber });
