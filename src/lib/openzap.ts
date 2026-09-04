@@ -1,3 +1,4 @@
+import { hookrLpPoolIdOf } from "@/lib/hookr-pools";
 import {
   encodeAbiParameters,
   getAddress,
@@ -101,6 +102,7 @@ export function assetsForDirection(direction: ZapDirection): {
  * - "empty": `0x`. Original swap (reverts on any data) and both vault adapters.
  * - "hooked-lp-deposit": `abi.encode(address vault, uint256 minSharesOut)`.
  * - "hooked-lp-withdraw": `abi.encode(address assetOut, uint256 minAssetsOut)`.
+ * - "hookr-market": `abi.encode(bytes32 poolId, uint256 minAmountOut)`.
  * - "min-amount-out": `abi.encode(uint256 minOut)` for the USDG pool adapter.
  *   `minOut` defaults to 0 (no adapter-level floor); the binding slippage
  *   protection is the owner-signed `intent.minOut` computed fresh at execute
@@ -114,6 +116,10 @@ export function encodeStepData(route: Route, minOut: bigint): Hex {
   }
   if (route.data === "hooked-lp-withdraw") {
     return encodeAbiParameters([{ type: "address" }, { type: "uint256" }], [route.tokenOut.address, minOut]);
+  }
+  if (route.data === "hookr-market") {
+    if (route.quote.source !== "v4") throw new Error("A Hookr market route must quote its pool key.");
+    return encodeAbiParameters([{ type: "bytes32" }, { type: "uint256" }], [hookrLpPoolIdOf(route.quote.poolKey), minOut]);
   }
   return encodeAbiParameters([{ type: "uint256" }], [minOut]);
 }

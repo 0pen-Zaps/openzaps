@@ -8,7 +8,7 @@ import {
   type Hex,
 } from "viem";
 
-import { hookrLpShareTokens } from "@/lib/hookr-pools";
+import { hookrLpShareTokens, hookrMarketSubjectTokens } from "@/lib/hookr-pools";
 
 export const ROBINHOOD_CHAIN_ID = 4663;
 export const ROBINHOOD_RPC_URL =
@@ -101,6 +101,8 @@ export const ROBINHOOD_TOKENS: Record<string, TokenInfo> = {
   // HookedRangeVault address is known. Same rule as ozRANGE: unknown vault, unknown
   // symbol, and every route naming it resolves to null.
   ...hookrLpShareTokens(),
+  // Modular-market subjects (V2/V3 launches), so a swap block can name them.
+  ...hookrMarketSubjectTokens(),
 };
 
 /** The token identity for a catalog symbol, or `null` when the symbol is unknown. */

@@ -1,5 +1,5 @@
-import { HOOKR_TOKEN, hookrLpPoolForRoute } from "@/lib/hookr-pools";
-import { getAddress, isAddressEqual, type Address, type Hex, type PublicClient } from "viem";
+import { hookrLpPoolForRoute, hookrLpPoolIdOf, hookrMarketForRoute } from "@/lib/hookr-pools";
+import { getAddress, isAddressEqual, zeroAddress, type Address, type Hex, type PublicClient } from "viem";
 
 import {
   BOUNDED_SWAP_IDS,
@@ -87,7 +87,12 @@ export type RouteDataKind =
    * `Step.data = abi.encode(address assetOut, uint256 minAssetsOut)` for the
    * universal `HookedRangeWithdrawAdapter`; the route pins the settlement asset.
    */
-  | "hooked-lp-withdraw";
+  | "hooked-lp-withdraw"
+  /**
+   * `Step.data = abi.encode(bytes32 poolId, uint256 minAmountOut)` for the
+   * universal `HookrMarketSwapAdapter`; the route pins the market's pool id.
+   */
+  | "hookr-market";
 
 export type Route = {
   readonly id: string;
@@ -161,6 +166,38 @@ export function resolveRoute(spec: AdapterSpec): Route | null {
   const tokenIn = tokenBySymbol(spec.tokenIn);
   const tokenOut = tokenBySymbol(spec.tokenOut);
   if (!tokenIn || !tokenOut) return null;
+
+  const hookrMarket = hookrMarketForRoute(spec.id);
+  if (hookrMarket) {
+    // A Hookr modular market route: the pool key is the market's own (hooked,
+    // dynamic-fee, per-market hook for V3), the quote face is aeWETH for a
+    // native-quoted market, and the adapter takes the pool id as bounded step
+    // data verified against the coordinator's record.
+    const { pool, side } = hookrMarket;
+    if (spec.kind !== "swap") return null;
+    const quoteFace = pool.quoteFaceAddress;
+    const expectedIn = side === "buy" ? quoteFace : pool.token;
+    const expectedOut = side === "buy" ? pool.token : quoteFace;
+    if (!isAddressEqual(tokenIn.address, expectedIn) || !isAddressEqual(tokenOut.address, expectedOut)) return null;
+    const inCurrency = side === "buy"
+      ? (pool.quote === "ETH" ? zeroAddress : quoteFace)
+      : pool.token;
+    const zeroForOne = isAddressEqual(inCurrency, pool.poolKey.currency0);
+    const erc20Currency0 = pool.poolKey.currency0 === zeroAddress ? quoteFace : pool.poolKey.currency0;
+    return {
+      id: spec.id,
+      kind: "swap",
+      adapter,
+      spender: adapter,
+      tokenIn,
+      tokenOut,
+      trackedAssets: [erc20Currency0, pool.poolKey.currency1],
+      data: "hookr-market",
+      quote: { source: "v4", poolKey: pool.poolKey, zeroForOne },
+      requiresSeededVault: false,
+      direction: null,
+    };
+  }
 
   if (spec.kind === "swap") {
     const pool = SWAP_POOLS[spec.id];
@@ -241,8 +278,9 @@ export function resolveRoute(spec: AdapterSpec): Route | null {
     const { pool, side } = hookrLp;
     if (!pool.vaultAddress || spec.kind !== (side === "deposit" ? "lp-deposit" : "lp-withdraw")) return null;
     const vault = pool.vaultAddress;
+    const quoteCurrency: Address = pool.quote === "ETH" ? zeroAddress : pool.quoteFaceAddress;
     if (side === "deposit") {
-      if (!isAddressEqual(tokenOut.address, vault) || !isAddressEqual(tokenIn.address, HOOKR_TOKEN)) return null;
+      if (!isAddressEqual(tokenOut.address, vault) || !isAddressEqual(tokenIn.address, pool.quoteFaceAddress)) return null;
       return {
         id: spec.id,
         kind: "lp-deposit",
@@ -256,7 +294,9 @@ export function resolveRoute(spec: AdapterSpec): Route | null {
           source: "range-deposit",
           vault,
           poolKey: pool.poolKey,
-          zeroForOne: isAddressEqual(tokenIn.address, pool.poolKey.currency0),
+          // The half-swap spends the quote: native (currency0) on an ETH-quoted
+          // market, HOOKR on a HOOKR-quoted one — aeWETH is only the face.
+          zeroForOne: isAddressEqual(quoteCurrency, pool.poolKey.currency0),
         },
         // No seeding gate: the vault prices shares with a virtual offset, the
         // factory refuses a dead pool, and gating on totalSupply would mean no
@@ -265,7 +305,7 @@ export function resolveRoute(spec: AdapterSpec): Route | null {
         direction: null,
       };
     }
-    if (!isAddressEqual(tokenIn.address, vault) || !isAddressEqual(tokenOut.address, HOOKR_TOKEN)) return null;
+    if (!isAddressEqual(tokenIn.address, vault) || !isAddressEqual(tokenOut.address, pool.quoteFaceAddress)) return null;
     return {
       id: spec.id,
       kind: "lp-withdraw",
@@ -279,7 +319,7 @@ export function resolveRoute(spec: AdapterSpec): Route | null {
         source: "range-withdraw",
         vault,
         poolKey: pool.poolKey,
-        assetOutIsCurrency0: isAddressEqual(tokenOut.address, pool.poolKey.currency0),
+        assetOutIsCurrency0: isAddressEqual(quoteCurrency, pool.poolKey.currency0),
       },
       requiresSeededVault: false,
       direction: null,
@@ -486,6 +526,11 @@ export function resolveRouteFromStep(
 export function stepDataFitsRoute(route: Route, data: Hex): boolean {
   const normalized = data.toLowerCase();
   if (route.data === "empty") return normalized === "0x";
+  if (route.data === "hookr-market") {
+    // Exactly two words, the first being the market's pool id.
+    if (!/^0x[0-9a-f]{128}$/.test(normalized) || route.quote.source !== "v4") return false;
+    return normalized.slice(2, 66) === hookrLpPoolIdOf(route.quote.poolKey).toLowerCase().slice(2);
+  }
   if (route.data === "hooked-lp-deposit" || route.data === "hooked-lp-withdraw") {
     // Exactly two words, and the first must be the address the route pins: the
     // vault for a deposit, the settlement asset for a withdraw. A step naming

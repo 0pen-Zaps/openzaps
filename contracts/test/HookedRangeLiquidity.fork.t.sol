@@ -29,6 +29,7 @@ interface IPoolManagerRead {
 ///      after ANY change to these contracts or the script.
 contract HookedRangeLiquidityForkTest is Test {
     address internal constant POOL_MANAGER = 0x8366a39CC670B4001A1121B8F6A443A643e40951;
+    address internal constant AEWETH = 0x0Bd7D308f8E1639FAb988df18A8011f41EAcAD73;
     address internal constant HOOKR = 0x18E674231A58c239Dc7DaeDcffE15Ec3A24cff5c;
     /// @dev The Hookr launchpad's shared hook (documented at hookr.fun/docs, verified source on
     ///      Blockscout under the launchpad). Permission bits: BEFORE_INITIALIZE,
@@ -74,11 +75,13 @@ contract HookedRangeLiquidityForkTest is Test {
     }
 
     function _deployStack() internal {
-        factory = new HookedRangeVaultFactory(POOL_MANAGER, HOOKR_HOOK, HOOKR);
-        depositAdapter = new HookedRangeDepositAdapter(POOL_MANAGER, address(factory));
-        withdrawAdapter = new HookedRangeWithdrawAdapter(POOL_MANAGER, address(factory));
-        vaultKrn = HookedRangeVault(factory.createVault(HOOKR, KRN, DYNAMIC_FEE, TICK_SPACING));
-        vaultTcl = HookedRangeVault(factory.createVault(HOOKR, TCL, DYNAMIC_FEE, TICK_SPACING));
+        address[] memory hooks = new address[](1);
+        hooks[0] = HOOKR_HOOK;
+        factory = new HookedRangeVaultFactory(POOL_MANAGER, AEWETH, HOOKR, hooks, new address[](0));
+        depositAdapter = new HookedRangeDepositAdapter(POOL_MANAGER, AEWETH, address(factory));
+        withdrawAdapter = new HookedRangeWithdrawAdapter(POOL_MANAGER, AEWETH, address(factory));
+        vaultKrn = HookedRangeVault(payable(factory.createVault(HOOKR, KRN, DYNAMIC_FEE, TICK_SPACING, HOOKR_HOOK)));
+        vaultTcl = HookedRangeVault(payable(factory.createVault(HOOKR, TCL, DYNAMIC_FEE, TICK_SPACING, HOOKR_HOOK)));
         alice = makeAddr("alice");
     }
 
@@ -95,7 +98,7 @@ contract HookedRangeLiquidityForkTest is Test {
 
         assertEq(vaultKrn.poolId(), KRN_POOL_ID, "KRN pool id");
         assertEq(vaultTcl.poolId(), TCL_POOL_ID, "TCL pool id");
-        assertEq(address(vaultKrn), factory.vaultFor(HOOKR, KRN, DYNAMIC_FEE, TICK_SPACING), "predicted KRN");
+        assertEq(address(vaultKrn), factory.vaultFor(HOOKR, KRN, DYNAMIC_FEE, TICK_SPACING, HOOKR_HOOK), "predicted KRN");
         assertEq(factory.vaultOf(KRN_POOL_ID), address(vaultKrn));
         assertTrue(factory.isVault(address(vaultKrn)));
         assertTrue(factory.isVault(address(vaultTcl)));
@@ -108,14 +111,17 @@ contract HookedRangeLiquidityForkTest is Test {
         assertEq(keccak256(bytes(vaultKrn.symbol())), keccak256("ozHR-HOOKR-KRN"));
 
         vm.expectRevert(abi.encodeWithSelector(HookedRangeVaultFactory.VaultExists.selector, KRN_POOL_ID, address(vaultKrn)));
-        factory.createVault(HOOKR, KRN, DYNAMIC_FEE, TICK_SPACING);
+        factory.createVault(HOOKR, KRN, DYNAMIC_FEE, TICK_SPACING, HOOKR_HOOK);
     }
 
     function test_factoryRefusesPoolsWithoutTheQuoteToken() public {
         if (!_forkOrSkip()) return;
         _deployStack();
-        vm.expectRevert(abi.encodeWithSelector(HookedRangeVaultFactory.QuoteNotInPool.selector, KRN, TCL));
-        factory.createVault(KRN, TCL, DYNAMIC_FEE, TICK_SPACING);
+        vm.expectRevert(abi.encodeWithSelector(HookedRangeVaultFactory.QuoteNotInPool.selector, TCL, KRN));
+        factory.createVault(TCL, KRN, DYNAMIC_FEE, TICK_SPACING, HOOKR_HOOK);
+        // An unpinned hook is refused before anything else, whatever the pair.
+        vm.expectRevert(abi.encodeWithSelector(HookedRangeVaultFactory.HookNotAllowed.selector, address(this)));
+        factory.createVault(HOOKR, KRN, DYNAMIC_FEE, TICK_SPACING, address(this));
     }
 
     function test_vaultRefusesHooksThatCanVetoOrSkimRemoval() public {
@@ -126,14 +132,14 @@ contract HookedRangeLiquidityForkTest is Test {
         vm.expectRevert(
             abi.encodeWithSelector(HookedRangeVault.HookPermissionsRefused.selector, vetoHook, uint160(1 << 9))
         );
-        new HookedRangeVault(POOL_MANAGER, HOOKR, KRN, DYNAMIC_FEE, TICK_SPACING, vetoHook, "x", "x");
+        new HookedRangeVault(POOL_MANAGER, AEWETH, HOOKR, KRN, DYNAMIC_FEE, TICK_SPACING, vetoHook, "x", "x");
 
         // The real hook's bits pass, but a pool that was never initialized is still refused.
         vm.expectRevert(HookedRangeVault.PoolNotInitialized.selector);
-        new HookedRangeVault(POOL_MANAGER, HOOKR, KRN, 3000, TICK_SPACING, HOOKR_HOOK, "x", "x");
+        new HookedRangeVault(POOL_MANAGER, AEWETH, HOOKR, KRN, 3000, TICK_SPACING, HOOKR_HOOK, "x", "x");
 
         vm.expectRevert(HookedRangeVault.HookRequired.selector);
-        new HookedRangeVault(POOL_MANAGER, HOOKR, KRN, DYNAMIC_FEE, TICK_SPACING, address(0), "x", "x");
+        new HookedRangeVault(POOL_MANAGER, AEWETH, HOOKR, KRN, DYNAMIC_FEE, TICK_SPACING, address(0), "x", "x");
     }
 
     // --- vault against the live hooked pool ------------------------------------------------------

@@ -9,13 +9,17 @@ from its own shipped manifest, and the user signs one policy in their wallet.
 
 | Action | Route id | Input | Output |
 |---|---|---|---|
-| Buy HOOKR | `robinhood-v4-weth-hookr` | aeWETH | HOOKR |
-| Zap in to a Hookr pool | `hookr-lp-deposit-<pool>` | HOOKR | `ozHR-<SYMBOL>` LP shares |
-| Zap out of a Hookr pool | `hookr-lp-withdraw-<pool>` | `ozHR-<SYMBOL>` shares | HOOKR |
-| aeWETH → pool | buy + deposit, two steps | aeWETH | LP shares |
-| Migrate pool A → pool B | withdraw A + deposit B, two steps | shares of A | shares of B |
+| Buy HOOKR (native pool) | `robinhood-v4-weth-hookr` | aeWETH | HOOKR |
+| Buy a Hookr modular-market token (V2/V3) | `hookr-market-buy-<pool>` | quote (aeWETH or HOOKR) | subject |
+| Sell it back | `hookr-market-sell-<pool>` | subject | quote |
+| Zap in to any Hookr pool | `hookr-lp-deposit-<pool>` | the pool's quote (HOOKR, or aeWETH for ETH-quoted markets) | `ozHR-<SYMBOL>` LP shares |
+| Zap out of any Hookr pool | `hookr-lp-withdraw-<pool>` | `ozHR-<SYMBOL>` shares | the pool's quote |
+| Migrate pool A → pool B, same quote | withdraw A + deposit B, two steps | shares of A | shares of B |
+| Migrate a V5 HOOKR pool → an ETH-quoted market | withdraw A + sell HOOKR + deposit B, three steps | shares of A | shares of B |
 
-`<pool>` keys and the live set come from the manifest endpoint, never from a hardcoded list.
+`<pool>` keys, each pool's generation and quote, and the live set come from the manifest endpoint,
+never from a hardcoded list. Hookr Modular V3 markets each carry their own hook instance; OpenZaps
+admits them from the coordinator's own market record, so a new V3 market needs no OpenZaps deploy.
 
 ## Manifest endpoint
 
@@ -55,8 +59,12 @@ baked yet; nothing should be rendered from a non-live pool.
 
 ## Adding a new launch
 
-1. Anyone calls `HookedRangeVaultFactory.createVault(currency0, currency1, 0x800000, 60)` for
-   the HOOKR-quoted pool (currencies sorted; the hook is pinned in the factory).
-2. OpenZaps governance allowlists the vault's share token (`TokenAllowlist.setToken`).
+1. Anyone calls `HookedRangeVaultFactory.createVault(currency0, currency1, 0x800000, 60, hooks)`
+   (currencies sorted, `currency0 = 0x0` for an ETH-quoted market; `hooks` is the V5 hook, the
+   V2 kernel, or the V3 market's own instance as recorded by the coordinator). Trading through
+   `hookr-market-*` needs no vault at all: the coordinator record is enough.
+2. OpenZaps governance allowlists the vault's share token (`TokenAllowlist.setToken`) and, for a
+   new subject token, the token itself.
 3. The pool is added to `src/lib/hookr-pools.ts` (or, faster, to
-   `NEXT_PUBLIC_OPENZAP_HOOKR_LP_VAULTS`), and the manifest starts listing it.
+   `NEXT_PUBLIC_OPENZAP_HOOKR_LP_VAULTS` / `NEXT_PUBLIC_OPENZAP_HOOKR_MARKETS`), and the manifest
+   starts listing it.
