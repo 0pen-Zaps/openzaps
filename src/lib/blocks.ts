@@ -1,3 +1,4 @@
+import { hookrLpPoolLabels, hookrLpShareSymbols } from "@/lib/hookr-pools";
 import { policyHash, type SimulationCheck } from "@/lib/policy";
 import {
   MAX_EXECUTION_FEE_GWEI,
@@ -136,7 +137,7 @@ export const BLOCKS: readonly LegoBlock[] = [
     params: [
       // "WETH" is the stored value on purpose: drafts, shared links, and tests
       // already serialise it, and the detail copy carries the aeWETH truth.
-      { key: "asset", label: "Asset", type: "select", value: "WETH", options: ["USDC", "USDG", "WETH", "cbBTC", "DAI", "0xZAPS"] },
+      { key: "asset", label: "Asset", type: "select", value: "WETH", options: ["USDC", "USDG", "WETH", "cbBTC", "DAI", "0xZAPS", "HOOKR"] },
       { key: "amount", label: "Amount", type: "amount", value: "0.05", placeholder: "0.05" },
     ],
   },
@@ -154,7 +155,7 @@ export const BLOCKS: readonly LegoBlock[] = [
     gas: 46_000,
     maturity: "preview",
     params: [
-      { key: "asset", label: "Position", type: "select", value: "ozRANGE", options: ["ozRANGE"] },
+      { key: "asset", label: "Position", type: "select", value: "ozRANGE", options: ["ozRANGE", ...hookrLpShareSymbols()] },
       { key: "amount", label: "Shares", type: "amount", value: "1", placeholder: "1" },
     ],
   },
@@ -190,7 +191,7 @@ export const BLOCKS: readonly LegoBlock[] = [
     gas: 52_000,
     maturity: "live",
     params: [
-      { key: "asset", label: "Asset", type: "select", value: "WETH", options: ["WETH", "0xZAPS"] },
+      { key: "asset", label: "Asset", type: "select", value: "WETH", options: ["WETH", "0xZAPS", "HOOKR"] },
       { key: "amount", label: "Per run", type: "amount", value: "0.001", placeholder: "0.001" },
       { key: "cadence", label: "Cadence", type: "select", value: "weekly", options: ["daily", "weekly", "monthly"] },
       { key: "runs", label: "Total runs", type: "number", value: 10, min: 1, max: 100, step: 1 },
@@ -229,7 +230,7 @@ export const BLOCKS: readonly LegoBlock[] = [
     gas: 132_000,
     maturity: "live",
     params: [
-      { key: "into", label: "Buy", type: "select", value: "WETH", options: ["USDC", "USDG", "WETH", "cbBTC", "DAI", "0xZAPS"] },
+      { key: "into", label: "Buy", type: "select", value: "WETH", options: ["USDC", "USDG", "WETH", "cbBTC", "DAI", "0xZAPS", "HOOKR"] },
       { key: "venue", label: "Venue", type: "select", value: "Uniswap v4", options: ["Uniswap v4", "Uniswap v3", "Aerodrome"] },
       // Blank on purpose. A first action spends whatever the source drew, so it
       // needs no amount of its own. A LATER step does: `Step.amountIn` is frozen
@@ -364,7 +365,7 @@ export const BLOCKS: readonly LegoBlock[] = [
     gas: 620_000,
     maturity: "preview",
     params: [
-      { key: "pool", label: "Pool", type: "select", value: "WETH/USDG", options: ["WETH/USDG", "WETH/USDC", "cbBTC/USDC", "0xZAPS/WETH"] },
+      { key: "pool", label: "Pool", type: "select", value: "WETH/USDG", options: ["WETH/USDG", "WETH/USDC", "cbBTC/USDC", "0xZAPS/WETH", ...hookrLpPoolLabels()] },
       { key: "range", label: "Range", type: "select", value: "Full range", options: ["Full range"] },
       // Same rule as `swap`: blank means "first action only".
       { key: "amount", label: "Amount (later steps)", type: "amount", value: "", placeholder: "leave blank if first" },
@@ -384,7 +385,7 @@ export const BLOCKS: readonly LegoBlock[] = [
     gas: 560_000,
     maturity: "preview",
     params: [
-      { key: "settle", label: "Settle in", type: "select", value: "USDG", options: ["USDG", "WETH"] },
+      { key: "settle", label: "Settle in", type: "select", value: "USDG", options: ["USDG", "WETH", "HOOKR"] },
       { key: "portion", label: "Withdraw", type: "number", value: 100, min: 5, max: 100, step: 5, suffix: "%" },
       { key: "amount", label: "Shares (later steps)", type: "amount", value: "", placeholder: "leave blank if first" },
     ],
@@ -508,8 +509,9 @@ export const BLOCKS: readonly LegoBlock[] = [
     name: "Price trigger",
     kind: "guard",
     category: "guard",
-    blurb: "Fire once when 0xZAPS crosses one signed threshold.",
-    detail: "The Automate handoff maps this exact one-sided condition to the live v3 allowlisted pool-price source. Zap now does not enforce it and labels that distinction before handoff.",
+    blurb: "Fire once when the route's market crosses one signed threshold.",
+    detail:
+      "The condition names the route's own pool: the Automate handoff maps this exact one-sided move to that pool's allowlisted v3 price source. Zap now does not enforce it and labels that distinction before handoff.",
     accepts: null,
     emits: null,
     glyph: "spark",
@@ -518,7 +520,7 @@ export const BLOCKS: readonly LegoBlock[] = [
     params: [
       {
         key: "condition",
-        label: "0xZAPS move",
+        label: "Market move",
         type: "select",
         value: "up10",
         options: ["up5", "up10", "up25", "down5", "down10", "down25"],
@@ -1583,6 +1585,122 @@ export const RECIPES: readonly ZapRecipe[] = [
       ["guard-executor", { access: "Anyone" }],
       ["swap", { into: "0xZAPS", venue: "Uniswap v4" }],
       ["send"],
+    ],
+  },
+  {
+    // The HOOKR set: buy, DCA, and price-trigger against the token's ONLY real
+    // market — the native-ETH/HOOKR v4 pool (0x590dcb6a…5fdf). All three sit
+    // AFTER the deployable prefix on purpose: they reduce to the
+    // `robinhood-v4-weth-hookr` route, whose adapter ships in this repo
+    // (`RobinhoodV4NativePoolAdapter` + `DeployRobinhoodHookr.s.sol`) but is
+    // not broadcast yet, so the builder reports them honestly as designs until
+    // the deployed address is configured — at which point the buy joins the
+    // deployable set in the same change that bakes the address.
+    id: "hookr-buy",
+    name: "Zap in to HOOKR",
+    tagline: "Buy HOOKR with aeWETH through its native-ETH pool, one signed step.",
+    accent: "token",
+    blocks: [
+      ["wallet-balance", { asset: "WETH", amount: "0.001" }],
+      ["guard-slippage", { bps: 100 }],
+      ["swap", { into: "HOOKR", venue: "Uniswap v4" }],
+      ["send", { recipient: "owner wallet" }],
+    ],
+  },
+  {
+    id: "hookr-dca",
+    name: "Recurring HOOKR Zap in",
+    tagline: "Zap the same aeWETH size into HOOKR every week under one bounded standing intent.",
+    accent: "token",
+    blocks: [
+      ["recurring-stream", { asset: "WETH", amount: "0.001", cadence: "weekly", runs: 10 }],
+      ["guard-spend", { cap: 1 }],
+      ["guard-slippage", { bps: 200 }],
+      ["guard-window", { expiry: "90 days" }],
+      ["guard-gas-limit"],
+      ["guard-gas-price"],
+      ["guard-executor", { access: "Anyone" }],
+      ["swap", { into: "HOOKR", venue: "Uniswap v4" }],
+      ["send"],
+    ],
+  },
+  {
+    // Buys the dip by default: the trigger arms when HOOKR falls 10%, the
+    // shape a "buy my own token cheaper" standing intent actually wants.
+    id: "hookr-trigger",
+    name: "Triggered HOOKR Zap in",
+    tagline: "Zap in once when HOOKR dips 10%, with a signed 30-day expiry.",
+    accent: "token",
+    blocks: [
+      ["wallet-balance", { asset: "WETH", amount: "0.001" }],
+      ["guard-slippage", { bps: 200 }],
+      ["price-trigger", { condition: "down10" }],
+      ["guard-window", { expiry: "30 days" }],
+      ["guard-gas-limit"],
+      ["guard-gas-price"],
+      ["guard-executor", { access: "Anyone" }],
+      ["swap", { into: "HOOKR", venue: "Uniswap v4" }],
+      ["send"],
+    ],
+  },
+  {
+    // Hookr-pool liquidity, deployable the moment the HookedRange contracts are
+    // configured (see src/lib/hookr-pools.ts): one HOOKR-only step into the
+    // pool's full-range vault, shares to the owner wallet.
+    id: "hookr-lp-in",
+    name: "Zap in to a Hookr pool",
+    tagline: "Provide HOOKR/KRN liquidity from HOOKR alone; the LP share lands as an ERC-20.",
+    accent: "lp",
+    blocks: [
+      ["wallet-balance", { asset: "HOOKR", amount: "10000" }],
+      ["guard-slippage", { bps: 150 }],
+      ["add-liquidity", { pool: "HOOKR/KRN", range: "Full range" }],
+      ["hold-lp"],
+    ],
+  },
+  {
+    // aeWETH in, Hookr-pool LP out: buy HOOKR through its native pool, then
+    // LP it. Step 2 names its own HOOKR amount (frozen at signing) and step 1
+    // binds that exact figure as its minimum.
+    id: "hookr-lp-from-eth",
+    name: "aeWETH to a Hookr pool",
+    tagline: "Buy HOOKR, then zap it into HOOKR/KRN liquidity, in one signed policy.",
+    accent: "lp",
+    blocks: [
+      ["wallet-balance", { asset: "WETH", amount: "0.01" }],
+      ["guard-slippage", { bps: 150 }],
+      ["swap", { into: "HOOKR", venue: "Uniswap v4" }],
+      ["add-liquidity", { pool: "HOOKR/KRN", range: "Full range", amount: "1000000" }],
+      ["hold-lp"],
+    ],
+  },
+  {
+    id: "hookr-lp-out",
+    name: "Zap out of a Hookr pool",
+    tagline: "Burn HOOKR/KRN shares back into HOOKR, fees included.",
+    accent: "lp",
+    blocks: [
+      ["lp-position", { asset: "ozHR-KRN", amount: "1" }],
+      ["guard-slippage", { bps: 150 }],
+      ["remove-liquidity", { settle: "HOOKR", portion: 100 }],
+      ["send", { recipient: "owner wallet" }],
+    ],
+  },
+  {
+    // Migrate between two Hookr pools in one policy: zap out of pool A settling
+    // in HOOKR, zap that HOOKR into pool B. The step-2 HOOKR amount is frozen
+    // at signing and pinned as step 1's minimum, so the run can never carry
+    // less than the policy states.
+    id: "hookr-lp-migrate",
+    name: "Move liquidity between Hookr pools",
+    tagline: "Leave HOOKR/KRN, enter HOOKR/TCL — two steps, one signature, HOOKR carried.",
+    accent: "lp",
+    blocks: [
+      ["lp-position", { asset: "ozHR-KRN", amount: "1" }],
+      ["guard-slippage", { bps: 150 }],
+      ["remove-liquidity", { settle: "HOOKR", portion: 100 }],
+      ["add-liquidity", { pool: "HOOKR/TCL", range: "Full range", amount: "10000" }],
+      ["hold-lp"],
     ],
   },
   {

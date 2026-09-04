@@ -1,3 +1,4 @@
+import { HOOKR_TOKEN, hookrLpPoolForRoute } from "@/lib/hookr-pools";
 import { getAddress, isAddressEqual, type Address, type Hex, type PublicClient } from "viem";
 
 import {
@@ -8,7 +9,9 @@ import {
   type AdapterSpec,
 } from "@/lib/chains";
 import {
+  ROBINHOOD_ASSETS,
   ROBINHOOD_CHAIN_ID,
+  hookrPoolKey,
   robinhoodPoolKey,
   tokenBySymbol,
   usdgPoolKey,
@@ -71,7 +74,20 @@ export type RouteQuote =
  * - "min-amount-out": `Step.data = abi.encode(uint256 minAmountOut)`, the only
  *   shape the `RobinhoodV4PoolAdapter` (USDG pool) reads beyond empty.
  */
-export type RouteDataKind = "empty" | "min-amount-out";
+export type RouteDataKind =
+  | "empty"
+  | "min-amount-out"
+  /**
+   * `Step.data = abi.encode(address vault, uint256 minSharesOut)` for the
+   * universal `HookedRangeDepositAdapter`: the vault is factory-verified by
+   * the adapter, and the route pins which one.
+   */
+  | "hooked-lp-deposit"
+  /**
+   * `Step.data = abi.encode(address assetOut, uint256 minAssetsOut)` for the
+   * universal `HookedRangeWithdrawAdapter`; the route pins the settlement asset.
+   */
+  | "hooked-lp-withdraw";
 
 export type Route = {
   readonly id: string;
@@ -96,11 +112,27 @@ export type Route = {
  * Route (fail closed): offering a swap whose pool key we do not know would quote
  * and sign against the wrong pool.
  */
-const SWAP_POOLS: Record<string, { poolKey: V4PoolKey; data: RouteDataKind }> = {
+const SWAP_POOLS: Record<
+  string,
+  {
+    poolKey: V4PoolKey;
+    data: RouteDataKind;
+    /**
+     * True for a pool whose `currency0` is NATIVE ETH (`address(0)`). The
+     * capsule settles ERC-20s only, so on such a route aeWETH stands in for
+     * currency0: the route's direction and tracked pair are derived against
+     * aeWETH while the QUOTE still uses the real native pool key verbatim.
+     * The adapter owns the wrap boundary (see RobinhoodV4NativePoolAdapter).
+     */
+    nativeCurrency0?: boolean;
+  }
+> = {
   "robinhood-v4-weth-zaps": { poolKey: robinhoodPoolKey, data: "empty" },
   "robinhood-v4-zaps-weth": { poolKey: robinhoodPoolKey, data: "empty" },
   "robinhood-v4-weth-usdg": { poolKey: usdgPoolKey, data: "min-amount-out" },
   "robinhood-v4-usdg-weth": { poolKey: usdgPoolKey, data: "min-amount-out" },
+  "robinhood-v4-weth-hookr": { poolKey: hookrPoolKey, data: "min-amount-out", nativeCurrency0: true },
+  "robinhood-v4-hookr-weth": { poolKey: hookrPoolKey, data: "min-amount-out", nativeCurrency0: true },
 };
 
 /**
@@ -133,14 +165,27 @@ export function resolveRoute(spec: AdapterSpec): Route | null {
   if (spec.kind === "swap") {
     const pool = SWAP_POOLS[spec.id];
     if (!pool) return null;
+    // On a native-currency0 pool, aeWETH is the ERC-20 the capsule actually
+    // holds on that side, so it is the address direction and tracking derive
+    // against. Fail closed on a spec whose tokenIn is neither side of the pair:
+    // guessing a direction would sign against the wrong side of the pool.
+    const erc20Currency0 = pool.nativeCurrency0 ? ROBINHOOD_ASSETS.weth : pool.poolKey.currency0;
+    if (
+      !isAddressEqual(tokenIn.address, erc20Currency0)
+      && !isAddressEqual(tokenIn.address, pool.poolKey.currency1)
+    ) {
+      return null;
+    }
     // `zeroForOne` is read from the route's OWN pool key, never assumed: the
-    // USDG pool orders (aeWETH, USDG), the 0xZAPS pool (aeWETH, 0xZAPS).
-    const zeroForOne = isAddressEqual(tokenIn.address, pool.poolKey.currency0);
+    // USDG pool orders (aeWETH, USDG), the 0xZAPS pool (aeWETH, 0xZAPS), and
+    // the HOOKR pool (native ETH — aeWETH's stand-in — then HOOKR).
+    const zeroForOne = isAddressEqual(tokenIn.address, erc20Currency0);
     // trackedAssets is the pool's [currency0, currency1] in a FIXED order for
     // both sides — NOT [tokenIn, tokenOut]. This is load-bearing for the bounded
     // route's byte-identity: the original policy commits [aeWETH, 0xZAPS] for
-    // both buy and sell, which is exactly [currency0, currency1].
-    const trackedAssets: readonly [Address, Address] = [pool.poolKey.currency0, pool.poolKey.currency1];
+    // both buy and sell, which is exactly [currency0, currency1]. On a native
+    // pool the tracked pair is the ERC-20 pair the capsule can measure.
+    const trackedAssets: readonly [Address, Address] = [erc20Currency0, pool.poolKey.currency1];
     return {
       id: spec.id,
       kind: "swap",
@@ -182,6 +227,60 @@ export function resolveRoute(spec: AdapterSpec): Route | null {
       trackedAssets: [tokenIn.address, tokenOut.address],
       data: "min-amount-out",
       quote: { source: "v4-route", hops: quoteHops },
+      requiresSeededVault: false,
+      direction: null,
+    };
+  }
+
+  const hookrLp = hookrLpPoolForRoute(spec.id);
+  if (hookrLp) {
+    // A Hookr pool route: the share token IS the pool's HookedRangeVault (known
+    // only once baked or configured — tokenBySymbol already failed closed above
+    // otherwise), the half-swap pool is the vault's own hooked pool, and the
+    // adapter takes the vault / settlement asset as bounded step data.
+    const { pool, side } = hookrLp;
+    if (!pool.vaultAddress || spec.kind !== (side === "deposit" ? "lp-deposit" : "lp-withdraw")) return null;
+    const vault = pool.vaultAddress;
+    if (side === "deposit") {
+      if (!isAddressEqual(tokenOut.address, vault) || !isAddressEqual(tokenIn.address, HOOKR_TOKEN)) return null;
+      return {
+        id: spec.id,
+        kind: "lp-deposit",
+        adapter,
+        spender: adapter,
+        tokenIn,
+        tokenOut,
+        trackedAssets: [tokenIn.address, vault],
+        data: "hooked-lp-deposit",
+        quote: {
+          source: "range-deposit",
+          vault,
+          poolKey: pool.poolKey,
+          zeroForOne: isAddressEqual(tokenIn.address, pool.poolKey.currency0),
+        },
+        // No seeding gate: the vault prices shares with a virtual offset, the
+        // factory refuses a dead pool, and gating on totalSupply would mean no
+        // one could ever be the first depositor.
+        requiresSeededVault: false,
+        direction: null,
+      };
+    }
+    if (!isAddressEqual(tokenIn.address, vault) || !isAddressEqual(tokenOut.address, HOOKR_TOKEN)) return null;
+    return {
+      id: spec.id,
+      kind: "lp-withdraw",
+      adapter,
+      spender: adapter,
+      tokenIn,
+      tokenOut,
+      trackedAssets: [vault, tokenOut.address],
+      data: "hooked-lp-withdraw",
+      quote: {
+        source: "range-withdraw",
+        vault,
+        poolKey: pool.poolKey,
+        assetOutIsCurrency0: isAddressEqual(tokenOut.address, pool.poolKey.currency0),
+      },
       requiresSeededVault: false,
       direction: null,
     };
@@ -360,20 +459,22 @@ export function resolveRouteFromStep(
   data: Hex,
   routes: Route[] = deployedRoutes(),
 ): Route | null {
-  const route = routes.find(
-    (candidate) =>
-      isAddressEqual(candidate.adapter, adapter) && isAddressEqual(candidate.tokenIn.address, tokenIn),
-  );
-  if (!route) return null;
-  if (
-    trackedAssets.length !== 2 ||
-    !isAddressEqual(trackedAssets[0], route.trackedAssets[0]) ||
-    !isAddressEqual(trackedAssets[1], route.trackedAssets[1])
-  ) {
-    return null;
+  if (trackedAssets.length !== 2) return null;
+  // One adapter address can serve MANY routes with the same tokenIn (the
+  // universal Hookr LP adapters serve every pool), so every candidate is tried
+  // and the tracked pair plus the pinned step data pick the one this step is.
+  for (const route of routes) {
+    if (!isAddressEqual(route.adapter, adapter) || !isAddressEqual(route.tokenIn.address, tokenIn)) continue;
+    if (
+      !isAddressEqual(trackedAssets[0], route.trackedAssets[0]) ||
+      !isAddressEqual(trackedAssets[1], route.trackedAssets[1])
+    ) {
+      continue;
+    }
+    if (!stepDataFitsRoute(route, data)) continue;
+    return route;
   }
-  if (!stepDataFitsRoute(route, data)) return null;
-  return route;
+  return null;
 }
 
 /**
@@ -385,6 +486,17 @@ export function resolveRouteFromStep(
 export function stepDataFitsRoute(route: Route, data: Hex): boolean {
   const normalized = data.toLowerCase();
   if (route.data === "empty") return normalized === "0x";
+  if (route.data === "hooked-lp-deposit" || route.data === "hooked-lp-withdraw") {
+    // Exactly two words, and the first must be the address the route pins: the
+    // vault for a deposit, the settlement asset for a withdraw. A step naming
+    // any other target is not this route, whatever adapter it calls.
+    if (!/^0x[0-9a-f]{128}$/.test(normalized)) return false;
+    const pinned =
+      route.data === "hooked-lp-deposit" && route.quote.source === "range-deposit"
+        ? route.quote.vault
+        : route.tokenOut.address;
+    return normalized.slice(2, 66) === pinned.toLowerCase().slice(2).padStart(64, "0");
+  }
   // "min-amount-out": empty or exactly one 32-byte word.
   return normalized === "0x" || /^0x[0-9a-f]{64}$/.test(normalized);
 }

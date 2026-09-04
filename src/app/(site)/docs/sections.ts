@@ -15,6 +15,7 @@ export const DOC_SECTIONS = [
   { id: "token", label: "0xZAPS utility" },
   { id: "policy", label: "Policy schema" },
   { id: "api", label: "Simulation API" },
+  { id: "hookr", label: "Hookr pools" },
   { id: "templates", label: "Templates" },
   { id: "automation", label: "Automation (v3 / v3.1)" },
   { id: "agents", label: "Connecting an agent" },

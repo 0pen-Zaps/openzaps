@@ -118,6 +118,9 @@ export function decodeLivePolicyPlan(token: string): LivePolicyPlan | null {
  * - the settlement asset cannot also be spent by an earlier step, because
  *   OpenZap measures its delta around the whole loop.
  */
+/** Data kinds whose adapter enforces a caller-set minimum output — the only ones that can feed a next step. */
+const ROUTE_DATA_BINDS_MINIMUM = new Set(["min-amount-out", "hooked-lp-deposit", "hooked-lp-withdraw"]);
+
 export function resolveLivePolicyPlan(plan: LivePolicyPlan): ResolvedLivePolicy {
   if (plan.version !== 1 || plan.steps.length === 0 || plan.steps.length > MAX_POLICY_STEPS) {
     throw new Error(`A live policy must contain 1–${MAX_POLICY_STEPS} steps.`);
@@ -141,7 +144,7 @@ export function resolveLivePolicyPlan(plan: LivePolicyPlan): ResolvedLivePolicy 
         `Step ${index + 1} outputs ${current.route.tokenOut.symbol}, but step ${index + 2} spends ${next.route.tokenIn.symbol}.`,
       );
     }
-    if (current.route.data !== "min-amount-out") {
+    if (!ROUTE_DATA_BINDS_MINIMUM.has(current.route.data)) {
       throw new Error(
         `Step ${index + 1} cannot safely feed another v1.1 step: its adapter cannot bind the next step's exact required amount.`,
       );

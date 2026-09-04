@@ -391,6 +391,40 @@ Automate handoff:
           </div>
         </section>
 
+        <section className={styles.section} id="hookr">
+          <h2 className={styles.h2}>Hookr pools: buy, zap in, zap out, migrate</h2>
+          <p className={styles.prose}>
+            Every token the Hookr launchpad graduates trades in a Uniswap v4 pool that carries Hookr&rsquo;s shared
+            hook, a dynamic fee and tick spacing 60. OpenZaps reaches the HOOKR-quoted ones through one
+            <code>HookedRangeVault</code> per pool (a full-range position wrapped as an ERC-20 share, deployed
+            permissionlessly by <code>HookedRangeVaultFactory</code>) and two universal adapters that take the vault, or
+            the settlement asset, as factory-verified step data. Buying HOOKR itself routes through its native-ETH pool.
+            A third-party UI needs no contract integration: it links into the signer with a route id and an amount, the
+            signer resolves every address from its own manifest, and the user signs one policy.
+          </p>
+          <div className={styles.code}>
+            <pre>{`GET /api/hookr/routes            // every pool, its route ids, and ready-made links
+
+// Zap in from HOOKR (one step)
+/zap?view=sign&src=build&route=hookr-lp-deposit-krn&amount=10000&bps=150
+
+// Zap out to HOOKR (one step; amount = vault shares)
+/zap?view=sign&src=build&route=hookr-lp-withdraw-krn&amount=1&bps=150
+
+// aeWETH -> HOOKR -> pool, or pool A -> HOOKR -> pool B (two steps, one signature):
+// the API's "policy" token pins the ordered steps; step 2's amount is frozen at
+// signing and becomes step 1's minimum output.
+/zap?view=sign&src=build&route=hookr-lp-withdraw-krn&amount=1&policy=<token>`}</pre>
+          </div>
+          <p className={styles.prose}>
+            Honest limits: a deposit swaps exactly half the input inside the pool (paying the hook&rsquo;s dynamic fee),
+            refunds whatever the ratio cannot absorb to the capsule, and reverts while a pool&rsquo;s anti-snipe guard
+            is still active. Redemption can never be blocked: the vault refuses hooks with removal permissions at
+            construction. The vault and adapters custody real funds and are unaudited; a new launch becomes reachable
+            after one permissionless <code>createVault</code> and one governance allowlisting of its share token.
+          </p>
+        </section>
+
         <section className={styles.section} id="templates">
           <h2 className={styles.h2}>Policy templates</h2>
           <p className={styles.prose}>
