@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
+  BaseError,
+  ContractFunctionRevertedError,
   createPublicClient,
   createWalletClient,
   custom,
@@ -71,7 +73,24 @@ type ReleasedCampaign = {
   };
 };
 
+// Custom errors the campaign can throw at a staker, in words. Anything the
+// ABI cannot decode is still surfaced by name or selector rather than as a
+// generic failure, so a refusal is never mistaken for a wallet problem.
+const CONTRACT_ERROR_COPY: Record<string, string> = {
+  InsufficientStake: "That amount is more than this wallet has staked. Withdraw at most the staked balance.",
+};
+
 function readableError(cause: unknown): string {
+  if (cause instanceof BaseError) {
+    const revert = cause.walk((error) => error instanceof ContractFunctionRevertedError);
+    if (revert instanceof ContractFunctionRevertedError) {
+      const name = revert.data?.errorName ?? revert.signature;
+      if (name && CONTRACT_ERROR_COPY[name]) return CONTRACT_ERROR_COPY[name];
+      if (name) return `The contract rejected this call (${name}).`;
+    }
+    const short = cause.shortMessage.trim();
+    if (short && short.length <= 220) return short;
+  }
   if (cause instanceof Error) {
     const short = cause.message.split("\n")[0]?.trim();
     return short && short.length <= 220 ? short : "The action failed before completing.";
@@ -261,6 +280,10 @@ export function Campaign2Stake(): React.JSX.Element | null {
 
   const needsApproval =
     viewer !== null && parsedAmount !== null && viewer.allowance < parsedAmount;
+  // Refuse before simulation what the contract would refuse anyway
+  // (InsufficientStake); an unknown viewer balance leaves the check to simulate.
+  const exceedsStake =
+    viewer !== null && parsedAmount !== null && parsedAmount > viewer.staked;
 
   const stake = async (): Promise<void> => {
     if (parsedAmount === null) return;
@@ -298,6 +321,20 @@ export function Campaign2Stake(): React.JSX.Element | null {
         abi: feeRewardsCampaignAbi as unknown as Abi,
         functionName: "withdraw",
         args: [parsedAmount],
+      },
+      term.runtimeCodeHash,
+    );
+  };
+
+  // exit() returns the whole staked balance in one call; no amount to type,
+  // so a staker can always leave without first reading their own figure.
+  const withdrawAll = async (): Promise<void> => {
+    await runContract(
+      "withdraw all staked 0xZAPS",
+      {
+        address: campaignAddress,
+        abi: feeRewardsCampaignAbi as unknown as Abi,
+        functionName: "exit",
       },
       term.runtimeCodeHash,
     );
@@ -362,6 +399,16 @@ export function Campaign2Stake(): React.JSX.Element | null {
               onChange={(event) => setAmount(event.target.value.trim())}
               aria-label="Amount of 0xZAPS"
             />
+            {viewer !== null && viewer.staked > 0n && (
+              <button
+                type="button"
+                className={styles.stakeMax}
+                disabled={busy !== null}
+                onClick={() => setAmount(formatUnits(viewer.staked, 18))}
+              >
+                Max staked
+              </button>
+            )}
             <button
               type="button"
               disabled={busy !== null || !stakingOpen || parsedAmount === null}
@@ -371,16 +418,27 @@ export function Campaign2Stake(): React.JSX.Element | null {
             </button>
             <button
               type="button"
-              disabled={busy !== null || parsedAmount === null}
+              disabled={busy !== null || parsedAmount === null || exceedsStake}
               onClick={() => void withdraw()}
             >
               Withdraw
+            </button>
+            <button
+              type="button"
+              disabled={busy !== null || viewer?.staked === 0n}
+              onClick={() => void withdrawAll()}
+            >
+              Withdraw all
             </button>
             <button type="button" disabled={busy !== null || !claimsOpen} onClick={() => void claim()}>
               Claim WETH
             </button>
           </div>
         </>
+      )}
+
+      {exceedsStake && (
+        <p className={styles.stakeNote}>{CONTRACT_ERROR_COPY.InsufficientStake}</p>
       )}
 
       {write.stage !== "idle" && (

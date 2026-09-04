@@ -558,6 +558,19 @@
   opacity: 0.7;
 }
 
+/* Fills the amount box with the wallet's staked balance; sits on the input,
+   not in the action row, so it never reads as a transaction button. */
+.stakeControls .stakeMax {
+  flex: 0 0 auto;
+  padding: 7px 10px;
+  border-radius: var(--r-card-sm);
+  color: var(--ink-2);
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
 .stakeStatus {
   margin: 0 0 10px;
   padding: 8px 10px;

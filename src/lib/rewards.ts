@@ -116,6 +116,9 @@ export const feeRewardsCampaignAbi = parseAbi([
   "function checkpoint()",
   "function finalize()",
   "function sweepExpiredRewards()",
+  // Selector 0xf1bc94d2, verified against the live campaign: thrown by
+  // withdraw(amount) when amount exceeds the caller's staked balance.
+  "error InsufficientStake()",
   "event FeeSharesFunded(address indexed sponsor, uint256 amount)",
   "event Staked(address indexed account, uint256 requestedAmount, uint256 creditedAmount)",
   "event Withdrawn(address indexed account, uint256 amount)",

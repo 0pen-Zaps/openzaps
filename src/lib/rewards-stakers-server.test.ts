@@ -190,6 +190,35 @@ describe("fetchFeeRewardsStakersUncached", () => {
     await expect(fetchFeeRewardsStakersUncached()).rejects.toThrow("does not reconcile");
   });
 
+  it("tolerates per-account rounding dust between Σ earned and held WETH", async () => {
+    // Two stakers whose earned() sums to 11 against 10 WETH held: one wei of
+    // rounding over, which live finalization produces. The list stays
+    // complete and "still accruing" clamps to zero rather than going negative.
+    clientMock.readContract.mockImplementation((call: { functionName: string; args?: readonly unknown[] }) => {
+      if (call.functionName === "earned") {
+        const account = String(call.args?.[0]).toLowerCase();
+        return Promise.resolve(account === STAKER_A.toLowerCase() ? 8n : 3n);
+      }
+      return Promise.resolve(mockReadContract(call as never));
+    });
+    const payload = await fetchFeeRewardsStakersUncached();
+    expect(payload.totalEarnedWeth).toBe("11");
+    expect(payload.rewardPool.stillAccruingWeth).toBe("0");
+    expect(payload.rewardPool.campaignHeldWeth).toBe("10");
+    expect(payload.stakers).toHaveLength(2);
+  });
+
+  it("still fails closed when earned exceeds held WETH by more than rounding dust", async () => {
+    clientMock.readContract.mockImplementation((call: { functionName: string; args?: readonly unknown[] }) => {
+      if (call.functionName === "earned") {
+        const account = String(call.args?.[0]).toLowerCase();
+        return Promise.resolve(account === STAKER_A.toLowerCase() ? 3_000n : 2n);
+      }
+      return Promise.resolve(mockReadContract(call as never));
+    });
+    await expect(fetchFeeRewardsStakersUncached()).rejects.toThrow("cannot cover");
+  });
+
   it("rejects a paid claim from outside the enumerated staker set", async () => {
     clientMock.getLogs.mockImplementation((request: { event: { name: string } }) => {
       if (request.event.name === "Staked") {
