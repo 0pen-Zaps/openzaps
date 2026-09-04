@@ -8,7 +8,9 @@ import {
   type AdapterSpec,
 } from "@/lib/chains";
 import {
+  ROBINHOOD_ASSETS,
   ROBINHOOD_CHAIN_ID,
+  hookrPoolKey,
   robinhoodPoolKey,
   tokenBySymbol,
   usdgPoolKey,
@@ -96,11 +98,27 @@ export type Route = {
  * Route (fail closed): offering a swap whose pool key we do not know would quote
  * and sign against the wrong pool.
  */
-const SWAP_POOLS: Record<string, { poolKey: V4PoolKey; data: RouteDataKind }> = {
+const SWAP_POOLS: Record<
+  string,
+  {
+    poolKey: V4PoolKey;
+    data: RouteDataKind;
+    /**
+     * True for a pool whose `currency0` is NATIVE ETH (`address(0)`). The
+     * capsule settles ERC-20s only, so on such a route aeWETH stands in for
+     * currency0: the route's direction and tracked pair are derived against
+     * aeWETH while the QUOTE still uses the real native pool key verbatim.
+     * The adapter owns the wrap boundary (see RobinhoodV4NativePoolAdapter).
+     */
+    nativeCurrency0?: boolean;
+  }
+> = {
   "robinhood-v4-weth-zaps": { poolKey: robinhoodPoolKey, data: "empty" },
   "robinhood-v4-zaps-weth": { poolKey: robinhoodPoolKey, data: "empty" },
   "robinhood-v4-weth-usdg": { poolKey: usdgPoolKey, data: "min-amount-out" },
   "robinhood-v4-usdg-weth": { poolKey: usdgPoolKey, data: "min-amount-out" },
+  "robinhood-v4-weth-hookr": { poolKey: hookrPoolKey, data: "min-amount-out", nativeCurrency0: true },
+  "robinhood-v4-hookr-weth": { poolKey: hookrPoolKey, data: "min-amount-out", nativeCurrency0: true },
 };
 
 /**
@@ -133,14 +151,27 @@ export function resolveRoute(spec: AdapterSpec): Route | null {
   if (spec.kind === "swap") {
     const pool = SWAP_POOLS[spec.id];
     if (!pool) return null;
+    // On a native-currency0 pool, aeWETH is the ERC-20 the capsule actually
+    // holds on that side, so it is the address direction and tracking derive
+    // against. Fail closed on a spec whose tokenIn is neither side of the pair:
+    // guessing a direction would sign against the wrong side of the pool.
+    const erc20Currency0 = pool.nativeCurrency0 ? ROBINHOOD_ASSETS.weth : pool.poolKey.currency0;
+    if (
+      !isAddressEqual(tokenIn.address, erc20Currency0)
+      && !isAddressEqual(tokenIn.address, pool.poolKey.currency1)
+    ) {
+      return null;
+    }
     // `zeroForOne` is read from the route's OWN pool key, never assumed: the
-    // USDG pool orders (aeWETH, USDG), the 0xZAPS pool (aeWETH, 0xZAPS).
-    const zeroForOne = isAddressEqual(tokenIn.address, pool.poolKey.currency0);
+    // USDG pool orders (aeWETH, USDG), the 0xZAPS pool (aeWETH, 0xZAPS), and
+    // the HOOKR pool (native ETH — aeWETH's stand-in — then HOOKR).
+    const zeroForOne = isAddressEqual(tokenIn.address, erc20Currency0);
     // trackedAssets is the pool's [currency0, currency1] in a FIXED order for
     // both sides — NOT [tokenIn, tokenOut]. This is load-bearing for the bounded
     // route's byte-identity: the original policy commits [aeWETH, 0xZAPS] for
-    // both buy and sell, which is exactly [currency0, currency1].
-    const trackedAssets: readonly [Address, Address] = [pool.poolKey.currency0, pool.poolKey.currency1];
+    // both buy and sell, which is exactly [currency0, currency1]. On a native
+    // pool the tracked pair is the ERC-20 pair the capsule can measure.
+    const trackedAssets: readonly [Address, Address] = [erc20Currency0, pool.poolKey.currency1];
     return {
       id: spec.id,
       kind: "swap",

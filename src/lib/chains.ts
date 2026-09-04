@@ -59,6 +59,7 @@ export type AdapterKind =
 export type AdapterEnvVar =
   | "NEXT_PUBLIC_OPENZAP_ROBINHOOD_V4_ADAPTER"
   | "NEXT_PUBLIC_OPENZAP_ROBINHOOD_V4_USDG_ADAPTER"
+  | "NEXT_PUBLIC_OPENZAP_ROBINHOOD_V4_HOOKR_ADAPTER"
   | "NEXT_PUBLIC_OPENZAP_ZAP_VAULT_DEPOSIT_ADAPTER"
   | "NEXT_PUBLIC_OPENZAP_ZAP_VAULT_REDEEM_ADAPTER"
   | "NEXT_PUBLIC_OPENZAP_ROUTE_USDG_ZAPS_ADAPTER"
@@ -209,6 +210,48 @@ export const ROBINHOOD_ADAPTERS: readonly AdapterSpec[] = [
     deployedAddress: "0x714E48930d1d9a53149AA7B92cD88C9E172d1942",
     refuses:
       "Refuses any pool but the one welded into its constructor, any calldata beyond a bounded minimum-out, and any chain but 4663.",
+  },
+
+  // The native-ETH/HOOKR pool `RobinhoodV4NativePoolAdapter` executes (fee 2500,
+  // tickSpacing 25, hookless, currency0 = NATIVE ETH) — HOOKR's only real
+  // market. The pool's currency0 cannot be settled by a capsule, so the adapter
+  // owns the wrap boundary: the capsule funds aeWETH, the adapter unwraps,
+  // swaps the PoolManager directly, and settles the ERC-20 pair. One contract,
+  // both directions — two entries because the mapper matches on tokenIn.
+  //
+  // NOT DEPLOYED YET. `contracts/script/DeployRobinhoodHookr.s.sol` is the
+  // rollout (adapter + both HOOKR price sources + governance allowlisting,
+  // including `TokenAllowlist.setToken(HOOKR)`, without which every HOOKR
+  // policy is refused at createZap). Per the registry rule at the top of this
+  // file, the env var is set — or an address baked — ONLY after a verified
+  // broadcast; until then both entries fail closed to "not deployed".
+  {
+    id: "robinhood-v4-weth-hookr",
+    chainId: ROBINHOOD_CHAIN_ID,
+    kind: "swap",
+    label: "Uniswap v4 aeWETH → HOOKR",
+    blockId: "swap",
+    weldedParams: { venue: "Uniswap v4" },
+    tokenIn: "WETH",
+    tokenOut: "HOOKR",
+    direction: null,
+    envVar: "NEXT_PUBLIC_OPENZAP_ROBINHOOD_V4_HOOKR_ADAPTER",
+    refuses:
+      "Refuses any pool but the native-ETH/HOOKR pool welded into its constructor, any calldata beyond a bounded minimum-out, any partial fill, and any chain but 4663.",
+  },
+  {
+    id: "robinhood-v4-hookr-weth",
+    chainId: ROBINHOOD_CHAIN_ID,
+    kind: "swap",
+    label: "Uniswap v4 HOOKR → aeWETH",
+    blockId: "swap",
+    weldedParams: { venue: "Uniswap v4" },
+    tokenIn: "HOOKR",
+    tokenOut: "WETH",
+    direction: null,
+    envVar: "NEXT_PUBLIC_OPENZAP_ROBINHOOD_V4_HOOKR_ADAPTER",
+    refuses:
+      "Refuses any pool but the native-ETH/HOOKR pool welded into its constructor, any calldata beyond a bounded minimum-out, any partial fill, and any chain but 4663.",
   },
 
   // ---- DEPLOYED, BUT FAIL-CLOSED ON SEEDING --------------------------------
@@ -429,6 +472,7 @@ function envAddresses(): Record<AdapterEnvVar, string | undefined> {
   return {
     NEXT_PUBLIC_OPENZAP_ROBINHOOD_V4_ADAPTER: process.env.NEXT_PUBLIC_OPENZAP_ROBINHOOD_V4_ADAPTER,
     NEXT_PUBLIC_OPENZAP_ROBINHOOD_V4_USDG_ADAPTER: process.env.NEXT_PUBLIC_OPENZAP_ROBINHOOD_V4_USDG_ADAPTER,
+    NEXT_PUBLIC_OPENZAP_ROBINHOOD_V4_HOOKR_ADAPTER: process.env.NEXT_PUBLIC_OPENZAP_ROBINHOOD_V4_HOOKR_ADAPTER,
     NEXT_PUBLIC_OPENZAP_ZAP_VAULT_DEPOSIT_ADAPTER: process.env.NEXT_PUBLIC_OPENZAP_ZAP_VAULT_DEPOSIT_ADAPTER,
     NEXT_PUBLIC_OPENZAP_ZAP_VAULT_REDEEM_ADAPTER: process.env.NEXT_PUBLIC_OPENZAP_ZAP_VAULT_REDEEM_ADAPTER,
     NEXT_PUBLIC_OPENZAP_ROUTE_USDG_ZAPS_ADAPTER: process.env.NEXT_PUBLIC_OPENZAP_ROUTE_USDG_ZAPS_ADAPTER,
