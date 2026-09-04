@@ -557,6 +557,68 @@ executable. Until then every HOOKR **zap** surface (the blueprints, routes, and 
 reports the honest not-deployed state; the `/rewards` Campaign 2 panel is a separate HOOKR
 surface with its own live manifest.
 
+### The Hookr liquidity expansion — built, NOT deployed
+
+UNAUDITED CANDIDATE. Makes "zap in", "zap out" and "migrate" one signed step each for the
+HOOKR-quoted Uniswap v4 pools the Hookr launchpad (`hookr.fun`, launchpad
+`0xa043caBE645636899dDe91Cce4693C00a015e660`) graduates. Every such pool carries Hookr's shared hook
+[`0xe7c3461A4c762fF9dB4F91BeE3Cf8deAaFc2E8CC`](https://robinhoodchain.blockscout.com/address/0xe7c3461A4c762fF9dB4F91BeE3Cf8deAaFc2E8CC)
+(permission bits: BEFORE_INITIALIZE, BEFORE_ADD_LIQUIDITY, BEFORE_SWAP, AFTER_SWAP, both swap
+RETURNS_DELTA flags — NO removal or liquidity-delta permissions), the dynamic-fee flag, and tick
+spacing 60. Hookr's hook fences outside LPs out only for a finite anti-snipe window after launch;
+afterwards liquidity is permissionless, which is what this expansion relies on. The existing
+`ZapRangeVault` refuses hooked and dynamic-fee pools by construction, so the expansion ships:
+
+1. [`HookedRangeVault`](../contracts/src/primitives/HookedRangeVault.sol) — `ZapRangeVault` for a
+   hooked pool. Pins the hook into the pool id and REFUSES any hook whose address bits grant
+   BEFORE/AFTER_REMOVE_LIQUIDITY or either liquidity RETURNS_DELTA, so a redeem can never be vetoed
+   or skimmed. Same no-admin, no-fee, no-native, storage-tracked-reserves posture as the hookless vault.
+2. [`HookedRangeVaultFactory`](../contracts/src/primitives/HookedRangeVaultFactory.sol) — permissionless
+   CREATE2 (`salt = poolId`) deployment of one vault per pool on the pinned PoolManager, pinned hook,
+   with HOOKR on one side. `isVault` is the bound the adapters honour.
+3. [`HookedRangeDepositAdapter`](../contracts/src/adapters/HookedRangeDepositAdapter.sol) — ONE
+   deployment for every vault: `data = abi.encode(address vault, uint256 minSharesOut)`, vault
+   verified against the factory; swaps half in-pool through the PoolManager's own unlock (no router),
+   deposits both legs, mints shares to the calling zap, refunds residue.
+4. [`HookedRangeWithdrawAdapter`](../contracts/src/adapters/HookedRangeWithdrawAdapter.sol) — ONE
+   deployment for every vault: `tokenIn` is the share token (factory-verified),
+   `data = abi.encode(address assetOut, uint256 minAssetsOut)`; redeems, swaps the off-target leg
+   in-pool, pays the measured total.
+
+A migration is the two adapters as two steps of one v1.1 policy with HOOKR carried; the app pins
+step 1's minimum to step 2's frozen amount (`src/lib/live-policy.ts`).
+
+The guarded deployment path is
+[`DeployRobinhoodHookrLiquidity.s.sol`](../contracts/script/DeployRobinhoodHookrLiquidity.s.sol):
+preflights chain, v1.1 factory→registry wiring, and live liquidity per pool; deploys the factory
+and both adapters; creates vaults for `HOOKR_LP_TOKENS` (default: the five HOOKR-quoted launches
+with live liquidity on 2026-09-04 — CANV5H, KRN, TCL, HRFART, HOOKING); performs the governance
+writes only when the broadcaster IS the live owner (`AdapterRegistry.setAdapter` ×2,
+`TokenAllowlist.setToken(HOOKR)` if still absent, `setToken(vault)` per vault) and prints exact
+calldata for whatever remains. A future launch costs one permissionless `createVault` plus one
+`setToken(vault)`.
+
+Evidence so far (no broadcast has happened):
+
+- The fork dress rehearsal
+  ([`HookedRangeLiquidity.fork.t.sol`](../contracts/test/HookedRangeLiquidity.fork.t.sol), 8 tests)
+  passed against live 4663 state on 2026-09-04: factory addresses predicted and matched, live pool
+  ids matched (`0xe9901bce…` HOOKR/KRN, `0x9a3b77a6…` HOOKR/TCL), hook-permission refusal, vault
+  deposit/redeem on the live hooked pool with pool `L` restored exactly, both adapters directly,
+  and end to end through the LIVE v1.1 factory: zap in, a two-step migration KRN→HOOKR→TCL, zap out,
+  with the governance writes pranked exactly as the script broadcasts them. Rerun with
+  `RUN_ROBINHOOD_FORK=true` before any broadcast after ANY change (the public RPC keeps no archive
+  state, so leave `ROBINHOOD_FORK_BLOCK` unset).
+
+After a verified broadcast, in this order: record addresses + transactions here with independent
+explorer/RPC readback; set `NEXT_PUBLIC_OPENZAP_HOOKR_RANGE_FACTORY`,
+`NEXT_PUBLIC_OPENZAP_HOOKR_RANGE_DEPOSIT_ADAPTER`, `NEXT_PUBLIC_OPENZAP_HOOKR_RANGE_WITHDRAW_ADAPTER`
+(all-or-nothing) and `NEXT_PUBLIC_OPENZAP_HOOKR_LP_VAULTS='{"krn":"0x…",…}'`; bake the addresses
+into `src/lib/hookr-pools.ts` (the `vault` field of each pool row) in a reviewed PR; and add both
+adapters to the executor operators' adapter manifest if standing Hookr LP intents are ever offered.
+Until then every Hookr LP surface (`hookr-lp-*` blueprints, `hookr-lp-*` routes, `/api/hookr/routes`)
+reports the honest not-deployed state.
+
 ### ZapDraw (`ZapOverdraw`) — **CONTRACT LIVE ON 4663; WEB SURFACE RETIRED**
 
 | | |

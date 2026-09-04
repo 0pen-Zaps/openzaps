@@ -8,6 +8,8 @@ import {
   type Hex,
 } from "viem";
 
+import { hookrLpShareTokens } from "@/lib/hookr-pools";
+
 export const ROBINHOOD_CHAIN_ID = 4663;
 export const ROBINHOOD_RPC_URL =
   process.env.NEXT_PUBLIC_ROBINHOOD_RPC_URL ?? "https://rpc.mainnet.chain.robinhood.com";
@@ -95,6 +97,10 @@ export const ROBINHOOD_TOKENS: Record<string, TokenInfo> = {
   ...(RANGE_VAULT_ADDRESS !== zeroAddress
     ? { ozRANGE: { symbol: "ozRANGE", address: RANGE_VAULT_ADDRESS, decimals: 18 } }
     : {}),
+  // Hookr-pool share tokens (`ozHR-<SYMBOL>`), one per HOOKR-quoted launch whose
+  // HookedRangeVault address is known. Same rule as ozRANGE: unknown vault, unknown
+  // symbol, and every route naming it resolves to null.
+  ...hookrLpShareTokens(),
 };
 
 /** The token identity for a catalog symbol, or `null` when the symbol is unknown. */

@@ -1,3 +1,4 @@
+import { hookrLpPoolLabels, hookrLpShareSymbols } from "@/lib/hookr-pools";
 import { policyHash, type SimulationCheck } from "@/lib/policy";
 import {
   MAX_EXECUTION_FEE_GWEI,
@@ -154,7 +155,7 @@ export const BLOCKS: readonly LegoBlock[] = [
     gas: 46_000,
     maturity: "preview",
     params: [
-      { key: "asset", label: "Position", type: "select", value: "ozRANGE", options: ["ozRANGE"] },
+      { key: "asset", label: "Position", type: "select", value: "ozRANGE", options: ["ozRANGE", ...hookrLpShareSymbols()] },
       { key: "amount", label: "Shares", type: "amount", value: "1", placeholder: "1" },
     ],
   },
@@ -364,7 +365,7 @@ export const BLOCKS: readonly LegoBlock[] = [
     gas: 620_000,
     maturity: "preview",
     params: [
-      { key: "pool", label: "Pool", type: "select", value: "WETH/USDG", options: ["WETH/USDG", "WETH/USDC", "cbBTC/USDC", "0xZAPS/WETH"] },
+      { key: "pool", label: "Pool", type: "select", value: "WETH/USDG", options: ["WETH/USDG", "WETH/USDC", "cbBTC/USDC", "0xZAPS/WETH", ...hookrLpPoolLabels()] },
       { key: "range", label: "Range", type: "select", value: "Full range", options: ["Full range"] },
       // Same rule as `swap`: blank means "first action only".
       { key: "amount", label: "Amount (later steps)", type: "amount", value: "", placeholder: "leave blank if first" },
@@ -384,7 +385,7 @@ export const BLOCKS: readonly LegoBlock[] = [
     gas: 560_000,
     maturity: "preview",
     params: [
-      { key: "settle", label: "Settle in", type: "select", value: "USDG", options: ["USDG", "WETH"] },
+      { key: "settle", label: "Settle in", type: "select", value: "USDG", options: ["USDG", "WETH", "HOOKR"] },
       { key: "portion", label: "Withdraw", type: "number", value: 100, min: 5, max: 100, step: 5, suffix: "%" },
       { key: "amount", label: "Shares (later steps)", type: "amount", value: "", placeholder: "leave blank if first" },
     ],
@@ -1640,6 +1641,66 @@ export const RECIPES: readonly ZapRecipe[] = [
       ["guard-executor", { access: "Anyone" }],
       ["swap", { into: "HOOKR", venue: "Uniswap v4" }],
       ["send"],
+    ],
+  },
+  {
+    // Hookr-pool liquidity, deployable the moment the HookedRange contracts are
+    // configured (see src/lib/hookr-pools.ts): one HOOKR-only step into the
+    // pool's full-range vault, shares to the owner wallet.
+    id: "hookr-lp-in",
+    name: "Zap in to a Hookr pool",
+    tagline: "Provide HOOKR/KRN liquidity from HOOKR alone; the LP share lands as an ERC-20.",
+    accent: "lp",
+    blocks: [
+      ["wallet-balance", { asset: "HOOKR", amount: "10000" }],
+      ["guard-slippage", { bps: 150 }],
+      ["add-liquidity", { pool: "HOOKR/KRN", range: "Full range" }],
+      ["hold-lp"],
+    ],
+  },
+  {
+    // aeWETH in, Hookr-pool LP out: buy HOOKR through its native pool, then
+    // LP it. Step 2 names its own HOOKR amount (frozen at signing) and step 1
+    // binds that exact figure as its minimum.
+    id: "hookr-lp-from-eth",
+    name: "aeWETH to a Hookr pool",
+    tagline: "Buy HOOKR, then zap it into HOOKR/KRN liquidity, in one signed policy.",
+    accent: "lp",
+    blocks: [
+      ["wallet-balance", { asset: "WETH", amount: "0.01" }],
+      ["guard-slippage", { bps: 150 }],
+      ["swap", { into: "HOOKR", venue: "Uniswap v4" }],
+      ["add-liquidity", { pool: "HOOKR/KRN", range: "Full range", amount: "1000000" }],
+      ["hold-lp"],
+    ],
+  },
+  {
+    id: "hookr-lp-out",
+    name: "Zap out of a Hookr pool",
+    tagline: "Burn HOOKR/KRN shares back into HOOKR, fees included.",
+    accent: "lp",
+    blocks: [
+      ["lp-position", { asset: "ozHR-KRN", amount: "1" }],
+      ["guard-slippage", { bps: 150 }],
+      ["remove-liquidity", { settle: "HOOKR", portion: 100 }],
+      ["send", { recipient: "owner wallet" }],
+    ],
+  },
+  {
+    // Migrate between two Hookr pools in one policy: zap out of pool A settling
+    // in HOOKR, zap that HOOKR into pool B. The step-2 HOOKR amount is frozen
+    // at signing and pinned as step 1's minimum, so the run can never carry
+    // less than the policy states.
+    id: "hookr-lp-migrate",
+    name: "Move liquidity between Hookr pools",
+    tagline: "Leave HOOKR/KRN, enter HOOKR/TCL — two steps, one signature, HOOKR carried.",
+    accent: "lp",
+    blocks: [
+      ["lp-position", { asset: "ozHR-KRN", amount: "1" }],
+      ["guard-slippage", { bps: 150 }],
+      ["remove-liquidity", { settle: "HOOKR", portion: 100 }],
+      ["add-liquidity", { pool: "HOOKR/TCL", range: "Full range", amount: "10000" }],
+      ["hold-lp"],
     ],
   },
   {

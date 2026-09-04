@@ -99,6 +99,8 @@ export function assetsForDirection(direction: ZapDirection): {
 /**
  * The exact bytes a route's adapter expects in `Step.data`.
  * - "empty": `0x`. Original swap (reverts on any data) and both vault adapters.
+ * - "hooked-lp-deposit": `abi.encode(address vault, uint256 minSharesOut)`.
+ * - "hooked-lp-withdraw": `abi.encode(address assetOut, uint256 minAssetsOut)`.
  * - "min-amount-out": `abi.encode(uint256 minOut)` for the USDG pool adapter.
  *   `minOut` defaults to 0 (no adapter-level floor); the binding slippage
  *   protection is the owner-signed `intent.minOut` computed fresh at execute
@@ -106,6 +108,13 @@ export function assetsForDirection(direction: ZapDirection): {
  */
 export function encodeStepData(route: Route, minOut: bigint): Hex {
   if (route.data === "empty") return "0x";
+  if (route.data === "hooked-lp-deposit") {
+    if (route.quote.source !== "range-deposit") throw new Error("A hooked LP deposit route must quote its vault.");
+    return encodeAbiParameters([{ type: "address" }, { type: "uint256" }], [route.quote.vault, minOut]);
+  }
+  if (route.data === "hooked-lp-withdraw") {
+    return encodeAbiParameters([{ type: "address" }, { type: "uint256" }], [route.tokenOut.address, minOut]);
+  }
   return encodeAbiParameters([{ type: "uint256" }], [minOut]);
 }
 

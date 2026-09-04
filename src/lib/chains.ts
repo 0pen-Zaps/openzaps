@@ -1,3 +1,4 @@
+import { hookrLpPools } from "@/lib/hookr-pools";
 import { OPENZAP_CONTRACTS, ROBINHOOD_CHAIN_ID } from "@/lib/robinhood";
 import type { ZapDirection } from "@/lib/openzap";
 
@@ -66,7 +67,9 @@ export type AdapterEnvVar =
   | "NEXT_PUBLIC_OPENZAP_ROUTE_ZAPS_USDG_ADAPTER"
   | "NEXT_PUBLIC_OPENZAP_RANGE_DEPOSIT_ADAPTER"
   | "NEXT_PUBLIC_OPENZAP_RANGE_WITHDRAW_USDG_ADAPTER"
-  | "NEXT_PUBLIC_OPENZAP_RANGE_WITHDRAW_WETH_ADAPTER";
+  | "NEXT_PUBLIC_OPENZAP_RANGE_WITHDRAW_WETH_ADAPTER"
+  | "NEXT_PUBLIC_OPENZAP_HOOKR_RANGE_DEPOSIT_ADAPTER"
+  | "NEXT_PUBLIC_OPENZAP_HOOKR_RANGE_WITHDRAW_ADAPTER";
 
 export type AdapterSpec = {
   /** Stable id, used in policy readouts and rejection copy. */
@@ -453,7 +456,55 @@ export const ROBINHOOD_ADAPTERS: readonly AdapterSpec[] = [
     refuses:
       "Refuses any vault but the one welded into its constructor, any settlement asset but aeWETH, and refuses to burn more shares than the step names.",
   },
+
+  // Hookr pools: ONE deposit adapter and ONE withdraw adapter serve every
+  // HOOKR-quoted launch the Hookr launchpad graduates, through one
+  // HookedRangeVault per pool. The vault is bounded step data (factory-verified
+  // onchain), so the registry carries one entry per pool and side while the
+  // address is shared. See `src/lib/hookr-pools.ts` and the contracts under
+  // `contracts/src/primitives/HookedRange*`.
+  ...hookrLpAdapterSpecs(),
 ];
+
+/**
+ * The Hookr LP entries, generated from the pool table so a new launch is one
+ * row there, never a hand-copied block here. Both sides read the SAME env var
+ * per side across every pool: the adapter is one contract.
+ */
+function hookrLpAdapterSpecs(): AdapterSpec[] {
+  const specs: AdapterSpec[] = [];
+  for (const pool of hookrLpPools()) {
+    specs.push({
+      id: pool.depositRouteId,
+      chainId: ROBINHOOD_CHAIN_ID,
+      kind: "lp-deposit",
+      label: `Provide HOOKR/${pool.symbol} liquidity (from HOOKR)`,
+      blockId: "add-liquidity",
+      weldedParams: { pool: pool.poolLabel },
+      tokenIn: "HOOKR",
+      tokenOut: pool.shareSymbol,
+      direction: null,
+      envVar: "NEXT_PUBLIC_OPENZAP_HOOKR_RANGE_DEPOSIT_ADAPTER",
+      refuses:
+        "Refuses any vault the pinned HookedRangeVaultFactory did not deploy, any pool but the vault's own Hookr pool, refuses to hold shares or tokens between calls, and refuses to mint shares to anyone but its caller.",
+    });
+    specs.push({
+      id: pool.withdrawRouteId,
+      chainId: ROBINHOOD_CHAIN_ID,
+      kind: "lp-withdraw",
+      label: `Withdraw HOOKR/${pool.symbol} liquidity to HOOKR`,
+      blockId: "remove-liquidity",
+      weldedParams: { settle: "HOOKR" },
+      tokenIn: pool.shareSymbol,
+      tokenOut: "HOOKR",
+      direction: null,
+      envVar: "NEXT_PUBLIC_OPENZAP_HOOKR_RANGE_WITHDRAW_ADAPTER",
+      refuses:
+        "Refuses any share token the pinned HookedRangeVaultFactory did not deploy, any settlement asset outside the vault's pair, and refuses to burn more shares than the step names.",
+    });
+  }
+  return specs;
+}
 
 /** The entries that make up the one route the app signs today. */
 export const BOUNDED_SWAP_IDS: readonly string[] = ["robinhood-v4-weth-zaps", "robinhood-v4-zaps-weth"];
@@ -480,6 +531,8 @@ function envAddresses(): Record<AdapterEnvVar, string | undefined> {
     NEXT_PUBLIC_OPENZAP_RANGE_DEPOSIT_ADAPTER: process.env.NEXT_PUBLIC_OPENZAP_RANGE_DEPOSIT_ADAPTER,
     NEXT_PUBLIC_OPENZAP_RANGE_WITHDRAW_USDG_ADAPTER: process.env.NEXT_PUBLIC_OPENZAP_RANGE_WITHDRAW_USDG_ADAPTER,
     NEXT_PUBLIC_OPENZAP_RANGE_WITHDRAW_WETH_ADAPTER: process.env.NEXT_PUBLIC_OPENZAP_RANGE_WITHDRAW_WETH_ADAPTER,
+    NEXT_PUBLIC_OPENZAP_HOOKR_RANGE_DEPOSIT_ADAPTER: process.env.NEXT_PUBLIC_OPENZAP_HOOKR_RANGE_DEPOSIT_ADAPTER,
+    NEXT_PUBLIC_OPENZAP_HOOKR_RANGE_WITHDRAW_ADAPTER: process.env.NEXT_PUBLIC_OPENZAP_HOOKR_RANGE_WITHDRAW_ADAPTER,
   };
 }
 
