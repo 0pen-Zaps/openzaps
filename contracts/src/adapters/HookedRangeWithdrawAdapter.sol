@@ -10,7 +10,7 @@ import {HookedPoolSwapBase} from "./HookedPoolSwapBase.sol";
 
 /// @title HookedRangeWithdrawAdapter
 /// @notice "Zap out of a Hookr pool" as ONE OpenZap step: `HookedRangeVault` shares in, ONE pool
-///         currency out. The shares are burned straight out of the calling zap, both legs land
+///         currency out (aeWETH for the native side of a native-quoted market). The shares are burned straight out of the calling zap, both legs land
 ///         here, the off-target leg is swapped into the target inside the same pool, and the
 ///         measured total is paid to the zap.
 /// @dev ONE deployment serves every vault of the pinned `HookedRangeVaultFactory`. The vault IS
@@ -57,13 +57,15 @@ contract HookedRangeWithdrawAdapter is IAdapter, HookedPoolSwapBase {
         _entered = 0;
     }
 
-    constructor(address poolManager_, address factory_) HookedPoolSwapBase(poolManager_) {
+    constructor(address poolManager_, address weth_, address factory_) HookedPoolSwapBase(poolManager_, weth_) {
         if (block.chainid != ROBINHOOD_CHAIN_ID) revert WrongChain(block.chainid);
-        if (poolManager_ == address(0) || factory_ == address(0)) revert ZeroAddress();
+        if (poolManager_ == address(0) || weth_ == address(0) || factory_ == address(0)) revert ZeroAddress();
         _requireCode(poolManager_);
+        _requireCode(weth_);
         _requireCode(factory_);
-        if (HookedRangeVaultFactory(factory_).poolManager() != poolManager_) revert UnknownVault(factory_);
-        factory = HookedRangeVaultFactory(factory_);
+        HookedRangeVaultFactory f = HookedRangeVaultFactory(factory_);
+        if (f.poolManager() != poolManager_ || f.weth() != weth_) revert UnknownVault(factory_);
+        factory = f;
     }
 
     /// @inheritdoc IAdapter
@@ -77,12 +79,13 @@ contract HookedRangeWithdrawAdapter is IAdapter, HookedPoolSwapBase {
     {
         if (block.chainid != ROBINHOOD_CHAIN_ID) revert WrongChain(block.chainid);
         if (!factory.isVault(tokenIn)) revert UnknownVault(tokenIn);
-        HookedRangeVault vault = HookedRangeVault(tokenIn);
+        HookedRangeVault vault = HookedRangeVault(payable(tokenIn));
         (address assetOut, uint256 minAssetsOut) = _decode(vault, data);
         if (amountIn == 0) revert ZeroAmount();
         if (amountIn > type(uint128).max) revert AmountTooLarge();
 
-        address currency0 = vault.currency0();
+        // ERC-20 face: aeWETH stands in for a native currency0 (see the deposit adapter).
+        address currency0 = vault.token0();
         address assetOther = assetOut == currency0 ? vault.currency1() : currency0;
 
         uint256 targetBefore = IERC20(assetOut).balanceOf(address(this));
@@ -117,7 +120,7 @@ contract HookedRangeWithdrawAdapter is IAdapter, HookedPoolSwapBase {
         returns (address assetOut, uint256 minAssetsOut)
     {
         if (!factory.isVault(vault)) revert UnknownVault(vault);
-        return _decode(HookedRangeVault(vault), data);
+        return _decode(HookedRangeVault(payable(vault)), data);
     }
 
     function _decode(HookedRangeVault vault, bytes calldata data)
@@ -127,7 +130,7 @@ contract HookedRangeWithdrawAdapter is IAdapter, HookedPoolSwapBase {
     {
         if (data.length != 64) revert InvalidData();
         (assetOut, minAssetsOut) = abi.decode(data, (address, uint256));
-        if (assetOut != vault.currency0() && assetOut != vault.currency1()) revert AssetNotInPool(assetOut);
+        if (assetOut != vault.token0() && assetOut != vault.currency1()) revert AssetNotInPool(assetOut);
         if (minAssetsOut > type(uint128).max) revert AmountTooLarge();
     }
 

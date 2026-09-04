@@ -394,16 +394,22 @@ Automate handoff:
         <section className={styles.section} id="hookr">
           <h2 className={styles.h2}>Hookr pools: buy, zap in, zap out, migrate</h2>
           <p className={styles.prose}>
-            Every token the Hookr launchpad graduates trades in a Uniswap v4 pool that carries Hookr&rsquo;s shared
-            hook, a dynamic fee and tick spacing 60. OpenZaps reaches the HOOKR-quoted ones through one
-            <code>HookedRangeVault</code> per pool (a full-range position wrapped as an ERC-20 share, deployed
-            permissionlessly by <code>HookedRangeVaultFactory</code>) and two universal adapters that take the vault, or
-            the settlement asset, as factory-verified step data. Buying HOOKR itself routes through its native-ETH pool.
-            A third-party UI needs no contract integration: it links into the signer with a route id and an amount, the
-            signer resolves every address from its own manifest, and the user signs one policy.
+            Every token Hookr graduates trades in a hooked, dynamic-fee Uniswap v4 pool: the V5 launchpad&rsquo;s
+            HOOKR-quoted pools share one hook, Modular V2&rsquo;s ETH-quoted markets share one kernel, and Modular
+            V3 gives every market its own hook instance recorded by Hookr&rsquo;s coordinator. OpenZaps reaches all of
+            them through one <code>HookedRangeVault</code> per pool (a full-range position wrapped as an ERC-20 share,
+            deployed permissionlessly by <code>HookedRangeVaultFactory</code>, which admits a V3 instance from the
+            coordinator&rsquo;s own live record), two universal LP adapters that take the vault or the settlement asset as
+            factory-verified step data, and one market swap adapter that buys or sells any coordinator-recorded market
+            by pool id. ETH-quoted markets are presented to the capsule with aeWETH as the quote. A third-party UI needs
+            no contract integration: it links into the signer with a route id and an amount, the signer resolves every
+            address from its own manifest, and the user signs one policy.
           </p>
           <div className={styles.code}>
             <pre>{`GET /api/hookr/routes            // every pool, its route ids, and ready-made links
+
+// Buy a V3 market's token with aeWETH (one step; pool id is the route's bound)
+/zap?view=sign&src=build&route=hookr-market-buy-<pool>&amount=0.01&bps=150
 
 // Zap in from HOOKR (one step)
 /zap?view=sign&src=build&route=hookr-lp-deposit-krn&amount=10000&bps=150

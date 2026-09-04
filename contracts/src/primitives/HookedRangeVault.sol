@@ -40,16 +40,22 @@ interface IHookedV4PoolManager {
     function extsload(bytes32 slot) external view returns (bytes32);
 }
 
+interface IWethWrapVault {
+    function deposit() external payable;
+    function withdraw(uint256 amount) external;
+}
+
 /// @title HookedRangeVault
 /// @notice `ZapRangeVault` for a HOOKED Uniswap v4 pool: a full-range position on ONE fixed pool
 ///         whose key carries a hook, wrapped as an ERC-20 share token. Built for the pools the
-///         Hookr launchpad graduates (dynamic-fee, tick spacing 60, one shared hook), where the
-///         token side is a fresh launch and the quote side is HOOKR.
+///         Hookr launchpad graduates — the V5 launchpad's HOOKR-quoted pools and the Modular V2
+///         coordinator's native-ETH- or HOOKR-quoted markets — where the token side is a fresh
+///         launch. One vault serves one pool; the hook is part of the pool id.
 ///
 /// @dev THIS CONTRACT IS UNAUDITED AND CUSTODIES REAL USER FUNDS. Same verdict, same posture as
-///      `ZapRangeVault`: no admin, no fees to anyone, no range management, no native ETH, no
-///      donation accounting, no chain guard. Read that contract's header for the full
-///      specification; only the differences are stated here.
+///      `ZapRangeVault`: no admin, no fees to anyone, no range management, no donation
+///      accounting, no chain guard. Read that contract's header for the full specification; only
+///      the differences are stated here.
 ///
 ///      WHAT A HOOK CAN AND CANNOT DO TO THIS VAULT — enforced structurally, not by trust:
 ///
@@ -62,40 +68,40 @@ interface IHookedV4PoolManager {
 ///            observe-and-front-run redemptions. Refused, so a redeem can never be vetoed.
 ///          - AFTER_ADD_LIQUIDITY_RETURNS_DELTA / AFTER_REMOVE_LIQUIDITY_RETURNS_DELTA: a hook with
 ///            either could skim principal on the way in or out. Refused, so the pool's own
-///            `modifyLiquidity` delta is the only settlement authority, exactly as in the
-///            hookless vault.
-///        BEFORE_ADD_LIQUIDITY is allowed: the Hookr hook uses it to fence outside LPs out for a
-///        finite anti-snipe window after launch. During that window a deposit REVERTS (fail
-///        closed); after it, deposits are permissionless. AFTER_ADD_LIQUIDITY (no delta) is
-///        allowed for the same reason: it can observe, not take.
-///      * Swap-side hook behaviour (dynamic fee, surge fee, swap deltas) does not touch this
-///        contract: it never swaps. The fee it EARNS is whatever the hook sets per swap; the
-///        `feesAccrued` delta from `modifyLiquidity` is the pool's own accounting of it.
-///      * The dynamic-fee flag (`0x800000`) is accepted because every Hookr pool carries it. A
-///        static fee is also accepted for a hooked pool that uses one.
+///            `modifyLiquidity` delta is the only settlement authority.
+///        BEFORE_ADD_LIQUIDITY is allowed: both Hookr generations use it to run an add-liquidity
+///        policy (V5: a finite anti-snipe window; V2: the pool's frozen module stack). A refused
+///        add REVERTS here (fail closed). AFTER_ADD_LIQUIDITY (no delta) is allowed: it can
+///        observe, not take.
+///      * Swap-side hook behaviour never touches this contract: it never swaps.
+///      * The dynamic-fee flag (`0x800000`) is accepted because every Hookr pool carries it.
 ///
-///      This vault still passes EMPTY hookData on every liquidity change. A hook that requires
-///      hookData to admit liquidity is incompatible by design: hookData is exactly the arbitrary
-///      routing bytes the OpenZap model refuses.
+///      NATIVE QUOTE. A pool whose `currency0` is native ETH (`address(0)`) is supported: the
+///      vault's ERC-20 FACE for that side is the wrapped native token (`weth`, aeWETH on Robinhood
+///      Chain), so a depositor and a redeemer only ever move ERC-20s, while the pool is settled in
+///      native. `token0()` is the face; `currency0()` is the pool truth. Native is held only for
+///      the native side's tracked reserves and mid-call; `receive` accepts it only from `weth`
+///      (unwrap) and the PoolManager (`take`).
+///
+///      This vault passes EMPTY hookData on every liquidity change. A hook that requires hookData
+///      to admit liquidity is incompatible by design: hookData is exactly the arbitrary routing
+///      bytes the OpenZap model refuses. Both Hookr generations admit empty hookData.
 contract HookedRangeVault {
     using SafeApprove for address;
 
-    // --------------------------------------------------------------------- //
-    // Immutable configuration                                                //
-    // --------------------------------------------------------------------- //
-
     address public immutable poolManager;
+    /// @notice Wrapped native ERC-20 standing in for a native `currency0`. Unused for an ERC-20 pair.
+    address public immutable weth;
+    /// @notice Pool truth: `address(0)` for a native-quoted pool.
     address public immutable currency0;
     address public immutable currency1;
     uint24 public immutable fee;
     int24 public immutable tickSpacing;
-    /// @notice The pinned hook. Nonzero by construction; its permission bits were vetted.
     address public immutable hooks;
     int24 public immutable tickLower;
     int24 public immutable tickUpper;
     uint160 public immutable sqrtPriceLowerX96;
     uint160 public immutable sqrtPriceUpperX96;
-    /// @notice The v4 pool id this vault LPs into, `keccak256(abi.encode(poolKey))`.
     bytes32 public immutable poolId;
 
     uint8 public constant decimals = 18;
@@ -104,7 +110,6 @@ contract HookedRangeVault {
     uint24 private constant DYNAMIC_FEE_FLAG = 0x800000;
     uint24 private constant MAX_STATIC_FEE = 1_000_000;
 
-    /// @dev v4-core `Hooks` flag bits, read off the low 14 bits of the hook address.
     uint160 private constant BEFORE_REMOVE_LIQUIDITY_FLAG = 1 << 9;
     uint160 private constant AFTER_REMOVE_LIQUIDITY_FLAG = 1 << 8;
     uint160 private constant AFTER_ADD_LIQUIDITY_RETURNS_DELTA_FLAG = 1 << 1;
@@ -115,29 +120,17 @@ contract HookedRangeVault {
     uint256 private constant VIRTUAL_SHARES = 1_000;
     uint256 private constant VIRTUAL_LIQUIDITY = 1;
 
-    // --------------------------------------------------------------------- //
-    // Share token (ERC-20)                                                   //
-    // --------------------------------------------------------------------- //
-
     string public name;
     string public symbol;
     uint256 public totalSupply;
     mapping(address => uint256) public balanceOf;
     mapping(address => mapping(address => uint256)) public allowance;
 
-    // --------------------------------------------------------------------- //
-    // Position accounting                                                    //
-    // --------------------------------------------------------------------- //
-
     uint128 public positionLiquidity;
     uint256 public reserve0;
     uint256 public reserve1;
 
     uint256 private _entered;
-
-    // --------------------------------------------------------------------- //
-    // Events                                                                 //
-    // --------------------------------------------------------------------- //
 
     event Transfer(address indexed from, address indexed to, uint256 value);
     event Approval(address indexed owner, address indexed spender, uint256 value);
@@ -160,13 +153,8 @@ contract HookedRangeVault {
     );
     event Compounded(uint128 liquidityAdded, uint256 fees0, uint256 fees1);
 
-    // --------------------------------------------------------------------- //
-    // Errors                                                                 //
-    // --------------------------------------------------------------------- //
-
     error ZeroAddress();
     error NoCode(address target);
-    error NativeCurrencyUnsupported();
     error InvalidCurrencyOrder();
     error HookRequired();
     error HookPermissionsRefused(address hooks, uint160 refusedFlags);
@@ -187,6 +175,7 @@ contract HookedRangeVault {
     error UnexpectedCallback();
     error UnexpectedFeeDelta();
     error UnexpectedPrincipalDelta();
+    error NativeNotAccepted();
     error Reentrancy();
 
     modifier nonReentrant() {
@@ -197,15 +186,15 @@ contract HookedRangeVault {
     }
 
     /// @param poolManager_ The v4 PoolManager the pool lives in.
-    /// @param currency0_ Lower-sorted pool currency. Must be a real ERC-20.
-    /// @param currency1_ Higher-sorted pool currency.
+    /// @param weth_ Wrapped native ERC-20; required when `currency0_` is native, else may be zero.
+    /// @param currency0_ Lower-sorted pool currency, or `address(0)` for native ETH.
+    /// @param currency1_ Higher-sorted pool currency. Must be an ERC-20.
     /// @param fee_ The pool key's fee: the dynamic-fee flag or a static fee.
     /// @param tickSpacing_ Pool tick spacing; also fixes the full-range bounds.
     /// @param hooks_ The pool's hook. Required; its permission bits are vetted.
-    /// @param name_ Share-token name.
-    /// @param symbol_ Share-token symbol.
     constructor(
         address poolManager_,
+        address weth_,
         address currency0_,
         address currency1_,
         uint24 fee_,
@@ -214,9 +203,7 @@ contract HookedRangeVault {
         string memory name_,
         string memory symbol_
     ) {
-        if (poolManager_ == address(0)) revert ZeroAddress();
-        if (currency0_ == address(0)) revert NativeCurrencyUnsupported();
-        if (currency1_ == address(0)) revert ZeroAddress();
+        if (poolManager_ == address(0) || currency1_ == address(0)) revert ZeroAddress();
         if (currency0_ >= currency1_) revert InvalidCurrencyOrder();
         if (hooks_ == address(0)) revert HookRequired();
         uint160 refused = uint160(hooks_) & REFUSED_HOOK_FLAGS;
@@ -224,11 +211,17 @@ contract HookedRangeVault {
         if (fee_ != DYNAMIC_FEE_FLAG && fee_ > MAX_STATIC_FEE) revert InvalidFee(fee_);
         if (tickSpacing_ < 1 || tickSpacing_ > 32767) revert InvalidTickSpacing(tickSpacing_);
         _requireCode(poolManager_);
-        _requireCode(currency0_);
+        if (currency0_ == address(0)) {
+            if (weth_ == address(0)) revert ZeroAddress();
+            _requireCode(weth_);
+        } else {
+            _requireCode(currency0_);
+        }
         _requireCode(currency1_);
         _requireCode(hooks_);
 
         poolManager = poolManager_;
+        weth = weth_;
         currency0 = currency0_;
         currency1 = currency1_;
         fee = fee_;
@@ -244,13 +237,17 @@ contract HookedRangeVault {
         _currentSqrtPrice();
     }
 
+    /// @notice Native ETH is accepted only from the wrapped-native unwrap and the PoolManager's `take`.
+    receive() external payable {
+        if (msg.sender != weth && msg.sender != poolManager) revert NativeNotAccepted();
+    }
+
     // --------------------------------------------------------------------- //
-    // Deposit / redeem                                                       //
+    // Deposit / redeem — amounts are in the ERC-20 FACE (weth for native)     //
     // --------------------------------------------------------------------- //
 
-    /// @notice Deposit up to `amount0`/`amount1`, receive shares priced in position liquidity.
-    ///         Whatever the current pool ratio cannot absorb is refunded in the same call.
-    ///         Reverts while the hook's anti-snipe guard fences outside liquidity out.
+    /// @notice Deposit up to `amount0`/`amount1` of `token0()`/`token1()`, receive shares priced in
+    ///         position liquidity. Whatever the pool ratio cannot absorb is refunded in the call.
     function deposit(uint256 amount0, uint256 amount1, uint256 minShares, address receiver)
         external
         nonReentrant
@@ -259,7 +256,7 @@ contract HookedRangeVault {
         _requireReceiver(receiver);
         _compound();
 
-        if (amount0 != 0) _pullExact(currency0, amount0);
+        if (amount0 != 0) _pull0(amount0);
         if (amount1 != 0) _pullExact(currency1, amount1);
 
         uint128 liquidityAdded = V4PoolMath.getLiquidityForAmounts(
@@ -276,16 +273,16 @@ contract HookedRangeVault {
         reserve0 += fees0;
         reserve1 += fees1;
 
-        used0 = _settleDepositLeg(currency0, amount0, owed0);
-        used1 = _settleDepositLeg(currency1, amount1, owed1);
+        used0 = _settleDepositLeg(true, amount0, owed0);
+        used1 = _settleDepositLeg(false, amount1, owed1);
 
         _mint(receiver, shares);
         emit Deposit(msg.sender, receiver, used0, used1, liquidityAdded, shares);
     }
 
     /// @notice Burn `shares` from `owner`, removing the pro-rata position liquidity and paying out
-    ///         both currencies plus a pro-rata slice of tracked reserves. Cannot be vetoed by the
-    ///         hook: hooks with removal permissions are refused at construction.
+    ///         both currencies (as `token0()`/`token1()`) plus a pro-rata slice of tracked reserves.
+    ///         Cannot be vetoed by the hook: hooks with removal permissions are refused at construction.
     function redeem(uint256 shares, uint256 min0, uint256 min1, address receiver, address owner)
         external
         nonReentrant
@@ -323,7 +320,7 @@ contract HookedRangeVault {
         if (amount0 == 0 && amount1 == 0 && shares != 0) revert ZeroAssets(shares);
         if (amount0 < min0 || amount1 < min1) revert InsufficientOutput(min0, min1, amount0, amount1);
 
-        if (amount0 != 0) _pushExact(currency0, receiver, amount0);
+        if (amount0 != 0) _push0(receiver, amount0);
         if (amount1 != 0) _pushExact(currency1, receiver, amount1);
         emit Withdraw(msg.sender, receiver, owner, amount0, amount1, liquidityRemoved, shares);
     }
@@ -331,6 +328,19 @@ contract HookedRangeVault {
     // --------------------------------------------------------------------- //
     // Views                                                                  //
     // --------------------------------------------------------------------- //
+
+    /// @notice The ERC-20 a depositor supplies / a redeemer receives for the pool's currency0.
+    function token0() public view returns (address) {
+        return currency0 == address(0) ? weth : currency0;
+    }
+
+    function token1() external view returns (address) {
+        return currency1;
+    }
+
+    function nativeCurrency0() external view returns (bool) {
+        return currency0 == address(0);
+    }
 
     function poolKey() external view returns (IHookedV4PoolManager.PoolKey memory) {
         return _poolKey();
@@ -434,7 +444,7 @@ contract HookedRangeVault {
         (uint256 owed0, uint256 owed1, uint256 fees0, uint256 fees1) = _modifyPosition(int256(uint256(liquidityAdded)));
         positionLiquidity += liquidityAdded;
 
-        if (owed0 > r0 + fees0) revert InsufficientReserve(currency0, r0 + fees0, owed0);
+        if (owed0 > r0 + fees0) revert InsufficientReserve(token0(), r0 + fees0, owed0);
         if (owed1 > r1 + fees1) revert InsufficientReserve(currency1, r1 + fees1, owed1);
         reserve0 = r0 + fees0 - owed0;
         reserve1 = r1 + fees1 - owed1;
@@ -470,41 +480,22 @@ contract HookedRangeVault {
             principal1 = uint256(p1);
         }
     }
-    // forge-lint: disable-end(unsafe-typecast)
 
-    // casting is safe throughout: `delta` is a signed int128 lane whose sign is checked before the
-    // magnitude is taken, and the fee/principal decomposition mirrors `ZapRangeVault` exactly.
-    // forge-lint: disable-start(unsafe-typecast)
+    /// @dev Inside the callback: pay what the pool is owed or collect what it owes us, per
+    ///      currency, on the NET delta. Native settles by value; ERC-20 by sync → transfer → settle.
     function _settleOrTake(address currency, int128 delta) private {
         if (delta < 0) {
-            IHookedV4PoolManager(poolManager).sync(currency);
-            currency.safeTransfer(poolManager, uint256(uint128(-delta)));
-            IHookedV4PoolManager(poolManager).settle();
+            uint256 amount = uint256(uint128(-delta));
+            if (currency == address(0)) {
+                IHookedV4PoolManager(poolManager).settle{value: amount}();
+            } else {
+                IHookedV4PoolManager(poolManager).sync(currency);
+                currency.safeTransfer(poolManager, amount);
+                IHookedV4PoolManager(poolManager).settle();
+            }
         } else if (delta > 0) {
             IHookedV4PoolManager(poolManager).take(currency, address(this), uint256(uint128(delta)));
         }
-    }
-
-    function _settleDepositLeg(address currency, uint256 amount, uint256 owed) private returns (uint256 used) {
-        if (owed > amount) {
-            uint256 dip = owed - amount;
-            uint256 reserve = currency == currency0 ? reserve0 : reserve1;
-            if (reserve < dip) revert InsufficientReserve(currency, reserve, dip);
-            if (currency == currency0) reserve0 = reserve - dip;
-            else reserve1 = reserve - dip;
-            return amount;
-        }
-        used = owed;
-        uint256 refund = amount - owed;
-        if (refund != 0) _pushExact(currency, msg.sender, refund);
-    }
-
-    function _currentSqrtPrice() private view returns (uint160 sqrtPriceX96) {
-        bytes32 word = IHookedV4PoolManager(poolManager).extsload(keccak256(abi.encode(poolId, POOLS_SLOT)));
-        // casting to 'uint160' is safe: slot0 packs sqrtPriceX96 in the low 160 bits.
-        // forge-lint: disable-next-line(unsafe-typecast)
-        sqrtPriceX96 = uint160(uint256(word));
-        if (sqrtPriceX96 == 0) revert PoolNotInitialized();
     }
 
     function _amount0(int256 delta) private pure returns (int128 amount) {
@@ -519,6 +510,58 @@ contract HookedRangeVault {
         }
     }
     // forge-lint: disable-end(unsafe-typecast)
+
+    function _settleDepositLeg(bool side0, uint256 amount, uint256 owed) private returns (uint256 used) {
+        if (owed > amount) {
+            uint256 dip = owed - amount;
+            uint256 reserve = side0 ? reserve0 : reserve1;
+            if (reserve < dip) revert InsufficientReserve(side0 ? token0() : currency1, reserve, dip);
+            if (side0) reserve0 = reserve - dip;
+            else reserve1 = reserve - dip;
+            return amount;
+        }
+        used = owed;
+        uint256 refund = amount - owed;
+        if (refund != 0) {
+            if (side0) _push0(msg.sender, refund);
+            else _pushExact(currency1, msg.sender, refund);
+        }
+    }
+
+    function _currentSqrtPrice() private view returns (uint160 sqrtPriceX96) {
+        bytes32 word = IHookedV4PoolManager(poolManager).extsload(keccak256(abi.encode(poolId, POOLS_SLOT)));
+        // casting to 'uint160' is safe: slot0 packs sqrtPriceX96 in the low 160 bits.
+        // forge-lint: disable-next-line(unsafe-typecast)
+        sqrtPriceX96 = uint160(uint256(word));
+        if (sqrtPriceX96 == 0) revert PoolNotInitialized();
+    }
+
+    // --------------------------------------------------------------------- //
+    // Internals — the currency0 face (weth when native)                      //
+    // --------------------------------------------------------------------- //
+
+    /// @dev Pull `amount` of the currency0 FACE from the caller; for a native pool unwrap it so the
+    ///      pool can be settled by value.
+    function _pull0(uint256 amount) private {
+        if (currency0 == address(0)) {
+            _pullExact(weth, amount);
+            uint256 nativeBefore = address(this).balance;
+            IWethWrapVault(weth).withdraw(amount);
+            if (address(this).balance - nativeBefore != amount) revert InexactTokenTransfer(weth, amount, 0);
+        } else {
+            _pullExact(currency0, amount);
+        }
+    }
+
+    /// @dev Push `amount` of the currency0 FACE to `receiver`; for a native pool wrap first.
+    function _push0(address receiver, uint256 amount) private {
+        if (currency0 == address(0)) {
+            IWethWrapVault(weth).deposit{value: amount}();
+            _pushExact(weth, receiver, amount);
+        } else {
+            _pushExact(currency0, receiver, amount);
+        }
+    }
 
     // --------------------------------------------------------------------- //
     // Internals — shares & tokens                                            //

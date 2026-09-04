@@ -119,7 +119,7 @@ export function decodeLivePolicyPlan(token: string): LivePolicyPlan | null {
  *   OpenZap measures its delta around the whole loop.
  */
 /** Data kinds whose adapter enforces a caller-set minimum output — the only ones that can feed a next step. */
-const ROUTE_DATA_BINDS_MINIMUM = new Set(["min-amount-out", "hooked-lp-deposit", "hooked-lp-withdraw"]);
+const ROUTE_DATA_BINDS_MINIMUM = new Set(["min-amount-out", "hooked-lp-deposit", "hooked-lp-withdraw", "hookr-market"]);
 
 export function resolveLivePolicyPlan(plan: LivePolicyPlan): ResolvedLivePolicy {
   if (plan.version !== 1 || plan.steps.length === 0 || plan.steps.length > MAX_POLICY_STEPS) {

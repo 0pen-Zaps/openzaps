@@ -1,4 +1,4 @@
-import { hookrLpPools } from "@/lib/hookr-pools";
+import { HOOKR_MARKET_VENUE, hookrLpPools } from "@/lib/hookr-pools";
 import { OPENZAP_CONTRACTS, ROBINHOOD_CHAIN_ID } from "@/lib/robinhood";
 import type { ZapDirection } from "@/lib/openzap";
 
@@ -69,7 +69,8 @@ export type AdapterEnvVar =
   | "NEXT_PUBLIC_OPENZAP_RANGE_WITHDRAW_USDG_ADAPTER"
   | "NEXT_PUBLIC_OPENZAP_RANGE_WITHDRAW_WETH_ADAPTER"
   | "NEXT_PUBLIC_OPENZAP_HOOKR_RANGE_DEPOSIT_ADAPTER"
-  | "NEXT_PUBLIC_OPENZAP_HOOKR_RANGE_WITHDRAW_ADAPTER";
+  | "NEXT_PUBLIC_OPENZAP_HOOKR_RANGE_WITHDRAW_ADAPTER"
+  | "NEXT_PUBLIC_OPENZAP_HOOKR_MARKET_SWAP_ADAPTER";
 
 export type AdapterSpec = {
   /** Stable id, used in policy readouts and rejection copy. */
@@ -457,12 +458,13 @@ export const ROBINHOOD_ADAPTERS: readonly AdapterSpec[] = [
       "Refuses any vault but the one welded into its constructor, any settlement asset but aeWETH, and refuses to burn more shares than the step names.",
   },
 
-  // Hookr pools: ONE deposit adapter and ONE withdraw adapter serve every
-  // HOOKR-quoted launch the Hookr launchpad graduates, through one
-  // HookedRangeVault per pool. The vault is bounded step data (factory-verified
+  // Hookr pools, every generation: ONE deposit adapter and ONE withdraw adapter
+  // serve every Hookr-graduated pool through one HookedRangeVault per pool, and
+  // ONE market swap adapter trades any coordinator-recorded modular market. The
+  // vault / market is bounded step data (factory- or coordinator-verified
   // onchain), so the registry carries one entry per pool and side while the
   // address is shared. See `src/lib/hookr-pools.ts` and the contracts under
-  // `contracts/src/primitives/HookedRange*`.
+  // `contracts/src/primitives/HookedRange*` and `HookrMarketSwapAdapter`.
   ...hookrLpAdapterSpecs(),
 ];
 
@@ -474,14 +476,15 @@ export const ROBINHOOD_ADAPTERS: readonly AdapterSpec[] = [
 function hookrLpAdapterSpecs(): AdapterSpec[] {
   const specs: AdapterSpec[] = [];
   for (const pool of hookrLpPools()) {
+    const quoteName = pool.quoteFaceSymbol === "WETH" ? "aeWETH" : pool.quoteFaceSymbol;
     specs.push({
       id: pool.depositRouteId,
       chainId: ROBINHOOD_CHAIN_ID,
       kind: "lp-deposit",
-      label: `Provide HOOKR/${pool.symbol} liquidity (from HOOKR)`,
+      label: `Provide ${pool.poolLabel} liquidity (from ${quoteName})`,
       blockId: "add-liquidity",
       weldedParams: { pool: pool.poolLabel },
-      tokenIn: "HOOKR",
+      tokenIn: pool.quoteFaceSymbol,
       tokenOut: pool.shareSymbol,
       direction: null,
       envVar: "NEXT_PUBLIC_OPENZAP_HOOKR_RANGE_DEPOSIT_ADAPTER",
@@ -492,16 +495,46 @@ function hookrLpAdapterSpecs(): AdapterSpec[] {
       id: pool.withdrawRouteId,
       chainId: ROBINHOOD_CHAIN_ID,
       kind: "lp-withdraw",
-      label: `Withdraw HOOKR/${pool.symbol} liquidity to HOOKR`,
+      label: `Withdraw ${pool.poolLabel} liquidity to ${quoteName}`,
       blockId: "remove-liquidity",
-      weldedParams: { settle: "HOOKR" },
+      weldedParams: { settle: pool.quoteFaceSymbol },
       tokenIn: pool.shareSymbol,
-      tokenOut: "HOOKR",
+      tokenOut: pool.quoteFaceSymbol,
       direction: null,
       envVar: "NEXT_PUBLIC_OPENZAP_HOOKR_RANGE_WITHDRAW_ADAPTER",
       refuses:
         "Refuses any share token the pinned HookedRangeVaultFactory did not deploy, any settlement asset outside the vault's pair, and refuses to burn more shares than the step names.",
     });
+    if (pool.modular && pool.marketBuyRouteId && pool.marketSellRouteId) {
+      const marketRefusal =
+        "Refuses any pool id no pinned Hookr coordinator records as a live market, any hook but the recorded one, any calldata beyond the pool id and a bounded minimum-out, any partial fill, and any chain but 4663.";
+      specs.push({
+        id: pool.marketBuyRouteId,
+        chainId: ROBINHOOD_CHAIN_ID,
+        kind: "swap",
+        label: `Hookr market ${quoteName} → ${pool.symbol}`,
+        blockId: "swap",
+        weldedParams: { venue: HOOKR_MARKET_VENUE },
+        tokenIn: pool.quoteFaceSymbol,
+        tokenOut: pool.symbol,
+        direction: null,
+        envVar: "NEXT_PUBLIC_OPENZAP_HOOKR_MARKET_SWAP_ADAPTER",
+        refuses: marketRefusal,
+      });
+      specs.push({
+        id: pool.marketSellRouteId,
+        chainId: ROBINHOOD_CHAIN_ID,
+        kind: "swap",
+        label: `Hookr market ${pool.symbol} → ${quoteName}`,
+        blockId: "swap",
+        weldedParams: { venue: HOOKR_MARKET_VENUE },
+        tokenIn: pool.symbol,
+        tokenOut: pool.quoteFaceSymbol,
+        direction: null,
+        envVar: "NEXT_PUBLIC_OPENZAP_HOOKR_MARKET_SWAP_ADAPTER",
+        refuses: marketRefusal,
+      });
+    }
   }
   return specs;
 }
@@ -533,6 +566,7 @@ function envAddresses(): Record<AdapterEnvVar, string | undefined> {
     NEXT_PUBLIC_OPENZAP_RANGE_WITHDRAW_WETH_ADAPTER: process.env.NEXT_PUBLIC_OPENZAP_RANGE_WITHDRAW_WETH_ADAPTER,
     NEXT_PUBLIC_OPENZAP_HOOKR_RANGE_DEPOSIT_ADAPTER: process.env.NEXT_PUBLIC_OPENZAP_HOOKR_RANGE_DEPOSIT_ADAPTER,
     NEXT_PUBLIC_OPENZAP_HOOKR_RANGE_WITHDRAW_ADAPTER: process.env.NEXT_PUBLIC_OPENZAP_HOOKR_RANGE_WITHDRAW_ADAPTER,
+    NEXT_PUBLIC_OPENZAP_HOOKR_MARKET_SWAP_ADAPTER: process.env.NEXT_PUBLIC_OPENZAP_HOOKR_MARKET_SWAP_ADAPTER,
   };
 }
 

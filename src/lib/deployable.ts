@@ -505,7 +505,15 @@ function blockLevelRejection(entry: Placed, boundedOnly: boolean, adapters: Adap
   // than about a token pair it never got as far as.
   if (block.id === "swap") {
     const venue = String(node.params.venue ?? "");
-    if (venue !== "Uniswap v4") {
+    // Uniswap v4 is the venue of every pool-welded swap adapter; any other venue
+    // exists only if a registry entry welds it by name (the Hookr market adapter
+    // welds "Hookr"). Unknown venues are refused by name, as before.
+    const weldedVenues = new Set(
+      adapterSpecsForBlock(block.id, undefined, adapters)
+        .map((spec) => spec.weldedParams.venue)
+        .filter((candidate): candidate is string => typeof candidate === "string" && candidate.length > 0),
+    );
+    if (venue !== "Uniswap v4" && !weldedVenues.has(venue)) {
       return `The live adapter routes through Uniswap v4; this swap names ${venue ? `${venue}, which has no adapter here` : "no venue"}.`;
     }
   }

@@ -2,7 +2,9 @@ import { NextResponse } from "next/server";
 
 import { DEFAULT_EXECUTION_POLICY } from "@/lib/execution-policy";
 import {
+  HOOKR_COORDINATORS,
   HOOKR_HOOK,
+  HOOKR_KERNEL_V2,
   HOOKR_TOKEN,
   hookrLpContracts,
   hookrLpContractsState,
@@ -72,11 +74,18 @@ export async function GET(request: Request): Promise<NextResponse> {
   const pools = hookrLpPools().map((pool) => {
     const zapIn = configured ? resolveRouteById(pool.depositRouteId) : null;
     const zapOut = configured ? resolveRouteById(pool.withdrawRouteId) : null;
+    const marketBuy = configured && pool.marketBuyRouteId ? resolveRouteById(pool.marketBuyRouteId) : null;
+    const marketSell = configured && pool.marketSellRouteId ? resolveRouteById(pool.marketSellRouteId) : null;
     const live = zapIn !== null && zapOut !== null;
+    const tradable = marketBuy !== null && marketSell !== null;
+    const quoteAmount = pool.quote === "ETH" ? "0.01" : "10000";
     return {
       key: pool.key,
       symbol: pool.symbol,
       name: pool.name,
+      generation: pool.generation,
+      quote: pool.quote,
+      quoteToken: pool.quoteFaceAddress,
       pool: pool.poolLabel,
       token: pool.token,
       poolId: pool.poolId,
@@ -84,35 +93,69 @@ export async function GET(request: Request): Promise<NextResponse> {
       vault: pool.vaultAddress,
       shareSymbol: pool.shareSymbol,
       live,
-      routes: live ? { zapIn: pool.depositRouteId, zapOut: pool.withdrawRouteId } : null,
-      links: live
-        ? {
-            zapInFromHookr: signLink(origin, [{ routeId: pool.depositRouteId, amountIn: "10000" }]),
-            zapInFromWeth: buyRoute
-              ? signLink(origin, [
-                  { routeId: HOOKR_BUY_ROUTE, amountIn: "0.01" },
-                  { routeId: pool.depositRouteId, amountIn: "1000000" },
-                ])
-              : null,
-            zapOutToHookr: signLink(origin, [{ routeId: pool.withdrawRouteId, amountIn: "1" }]),
-          }
-        : null,
+      tradable,
+      routes: {
+        ...(live ? { zapIn: pool.depositRouteId, zapOut: pool.withdrawRouteId } : {}),
+        ...(tradable ? { buy: pool.marketBuyRouteId, sell: pool.marketSellRouteId } : {}),
+      },
+      links: {
+        ...(live
+          ? {
+              zapInFromQuote: signLink(origin, [{ routeId: pool.depositRouteId, amountIn: quoteAmount }]),
+              zapOutToQuote: signLink(origin, [{ routeId: pool.withdrawRouteId, amountIn: "1" }]),
+            }
+          : {}),
+        ...(live && pool.quote === "HOOKR" && buyRoute
+          ? {
+              zapInFromWeth: signLink(origin, [
+                { routeId: HOOKR_BUY_ROUTE, amountIn: "0.01" },
+                { routeId: pool.depositRouteId, amountIn: "1000000" },
+              ]),
+            }
+          : {}),
+        ...(tradable && pool.marketBuyRouteId && pool.marketSellRouteId
+          ? {
+              buy: signLink(origin, [{ routeId: pool.marketBuyRouteId, amountIn: quoteAmount }]),
+              sell: signLink(origin, [{ routeId: pool.marketSellRouteId, amountIn: "1000" }]),
+            }
+          : {}),
+      },
     };
   });
 
+  // Migrations: same-quote pairs carry the quote directly (two steps); a V5 HOOKR-quoted
+  // position moving into a native-quoted market sells the HOOKR on its native pool in between
+  // (three steps). Every intermediate amount is a placeholder the signer lets the user size.
   const livePools = pools.filter((pool) => pool.live);
+  const sellHookrRoute = resolveRouteById("robinhood-v4-hookr-weth");
   const migrations = livePools.flatMap((from) =>
     livePools
       .filter((to) => to.key !== from.key)
-      .map((to) => ({
-        from: from.key,
-        to: to.key,
-        routes: [from.routes?.zapOut ?? "", to.routes?.zapIn ?? ""],
-        link: signLink(origin, [
-          { routeId: from.routes?.zapOut ?? "", amountIn: "1" },
-          { routeId: to.routes?.zapIn ?? "", amountIn: "10000" },
-        ]),
-      })),
+      .flatMap((to) => {
+        const out = from.routes.zapOut ?? "";
+        const inn = to.routes.zapIn ?? "";
+        if (from.quote === to.quote) {
+          return [{
+            from: from.key,
+            to: to.key,
+            routes: [out, inn],
+            link: signLink(origin, [{ routeId: out, amountIn: "1" }, { routeId: inn, amountIn: to.quote === "ETH" ? "0.01" : "10000" }]),
+          }];
+        }
+        if (from.quote === "HOOKR" && to.quote === "ETH" && sellHookrRoute) {
+          return [{
+            from: from.key,
+            to: to.key,
+            routes: [out, "robinhood-v4-hookr-weth", inn],
+            link: signLink(origin, [
+              { routeId: out, amountIn: "1" },
+              { routeId: "robinhood-v4-hookr-weth", amountIn: "10000" },
+              { routeId: inn, amountIn: "0.01" },
+            ]),
+          }];
+        }
+        return [];
+      }),
   );
 
   return NextResponse.json(
@@ -121,7 +164,11 @@ export async function GET(request: Request): Promise<NextResponse> {
       configured,
       contractsState: state,
       hookr: HOOKR_TOKEN,
-      hook: HOOKR_HOOK,
+      generations: {
+        v5: { hook: HOOKR_HOOK, quote: "HOOKR" },
+        v2: { kernel: HOOKR_KERNEL_V2, coordinators: [HOOKR_COORDINATORS[1], HOOKR_COORDINATORS[2]] },
+        v3: { coordinator: HOOKR_COORDINATORS[0], note: "one hook instance per market; admitted by the coordinator's live record" },
+      },
       contracts: configured ? contracts : null,
       buy: buyRoute
         ? { route: HOOKR_BUY_ROUTE, link: signLink(origin, [{ routeId: HOOKR_BUY_ROUTE, amountIn: "0.01" }]) }

@@ -281,3 +281,172 @@ describe("Hookr LP once the deploy script's addresses and vaults are configured"
     expect(resolveRouteById(DEPOSIT_KRN)).toBeNull();
   });
 });
+
+// ---------------------------------------------------------------------------------------------
+// Hookr modular generations (V2/V3): native-quoted markets, per-market hook instances, and the
+// coordinator-bound market swap route.
+// ---------------------------------------------------------------------------------------------
+
+const AEWETH = getAddress("0x0Bd7D308f8E1639FAb988df18A8011f41EAcAD73");
+const MARKET_SWAP = getAddress("0x8888888888888888888888888888888888888888");
+const V3_TOKEN = getAddress("0x22F749EDB75fCA5438cD978aC0Af9b5d9f1F72d1"); // TESTINPROD (V3 canary)
+const V3_INSTANCE = getAddress("0xD2Ad501Fb4B46dA9Ea7E5153CB7fa87829C468CC");
+// The live V3 existing-token canary market's pool id, read off the coordinator on 2026-09-04.
+const V3_POOL_ID = "0x07bd1a49322beea87ca9df64602201487595f4b776ba33910b375025e83646d3";
+const VAULT_V3 = getAddress("0x9999999999999999999999999999999999999991");
+const V3_TOKEN_B = getAddress("0xa6D53173e890AA5914924b9173E8eB2b364BeB72");
+const V3_INSTANCE_B = getAddress("0x20A433A26a6Fc58902C0f74543f9faC6fEBBe8cC");
+const VAULT_V3_B = getAddress("0x9999999999999999999999999999999999999992");
+
+function stubModularMarkets(): void {
+  stubContracts();
+  vi.stubEnv("NEXT_PUBLIC_OPENZAP_HOOKR_MARKET_SWAP_ADAPTER", MARKET_SWAP);
+  stubVaults();
+  vi.stubEnv(
+    "NEXT_PUBLIC_OPENZAP_HOOKR_MARKETS",
+    JSON.stringify([
+      { key: "tip", symbol: "TIP", name: "Testinprod", token: V3_TOKEN, hooks: V3_INSTANCE, generation: "v3", quote: "ETH", vault: VAULT_V3 },
+      { key: "tipb", symbol: "TIPB", name: "Testinprod B", token: V3_TOKEN_B, hooks: V3_INSTANCE_B, generation: "v3", quote: "ETH", vault: VAULT_V3_B },
+    ]),
+  );
+  vi.resetModules();
+}
+
+describe("Hookr modular markets (V2/V3) once contracts and market rows are configured", () => {
+  it("is absent from every surface while no modular row exists, and needs the market adapter too", async () => {
+    stubContracts();
+    stubVaults();
+    vi.resetModules();
+    const { hookrLpContractsState, hookrLpPools, hookrMarketSubjectSymbols } = await import("@/lib/hookr-pools");
+    const { RECIPES } = await import("@/lib/blocks");
+    // Three of four contracts: partial, so everything stays closed.
+    expect(hookrLpContractsState()).toBe("partial");
+    expect(hookrLpPools().some((pool) => pool.modular)).toBe(false);
+    expect(hookrMarketSubjectSymbols()).toEqual([]);
+    expect(RECIPES.some((recipe) => recipe.id.startsWith("hookr-market"))).toBe(false);
+  });
+
+  it("derives the V3 canary market's pool id from its native quote and per-market instance", async () => {
+    stubModularMarkets();
+    const { hookrLpPools, hookrLpConfigured } = await import("@/lib/hookr-pools");
+    expect(hookrLpConfigured()).toBe(true);
+    const tip = hookrLpPools().find((pool) => pool.key === "tip");
+    expect(tip?.modular).toBe(true);
+    expect(tip?.poolId).toBe(V3_POOL_ID);
+    expect(tip?.poolKey).toEqual({ currency0: zeroAddress, currency1: V3_TOKEN, fee: 0x800000, tickSpacing: 60, hooks: V3_INSTANCE });
+    expect(tip?.poolLabel).toBe("ETH/TIP");
+    expect(tip?.quoteFaceSymbol).toBe("WETH");
+    expect(tip?.quoteFaceAddress).toBe(AEWETH);
+    expect(tip?.marketBuyRouteId).toBe("hookr-market-buy-tip");
+    expect(tip?.vaultAddress).toBe(VAULT_V3);
+  });
+
+  it("drops the whole market list on one malformed row", async () => {
+    stubContracts();
+    vi.stubEnv("NEXT_PUBLIC_OPENZAP_HOOKR_MARKET_SWAP_ADAPTER", MARKET_SWAP);
+    vi.stubEnv(
+      "NEXT_PUBLIC_OPENZAP_HOOKR_MARKETS",
+      JSON.stringify([
+        { key: "tip", symbol: "TIP", token: V3_TOKEN, hooks: V3_INSTANCE, generation: "v3", quote: "ETH" },
+        { key: "bad", symbol: "BAD", token: V3_TOKEN_B, hooks: "nope", generation: "v3", quote: "ETH" },
+      ]),
+    );
+    vi.resetModules();
+    const { hookrLpPools } = await import("@/lib/hookr-pools");
+    expect(hookrLpPools().some((pool) => pool.modular)).toBe(false);
+  });
+
+  it("resolves market buy/sell routes against the market's own hooked key with pool-id step data", async () => {
+    stubModularMarkets();
+    const { resolveRouteById, routeCatalogReady, stepDataFitsRoute, resolveRouteFromStep } = await import("@/lib/routes");
+    const { encodeStepData } = await import("@/lib/openzap");
+
+    const buy = resolveRouteById("hookr-market-buy-tip");
+    expect(buy).not.toBeNull();
+    if (!buy) return;
+    expect(buy.kind).toBe("swap");
+    expect(buy.adapter).toBe(MARKET_SWAP);
+    expect(buy.tokenIn.address).toBe(AEWETH);
+    expect(buy.tokenOut.address).toBe(V3_TOKEN);
+    expect(buy.tokenOut.symbol).toBe("TIP");
+    expect(buy.data).toBe("hookr-market");
+    expect(buy.trackedAssets).toEqual([AEWETH, V3_TOKEN]);
+    if (buy.quote.source !== "v4") throw new Error("expected a v4 quote");
+    expect(buy.quote.poolKey.hooks).toBe(V3_INSTANCE);
+    expect(buy.quote.poolKey.currency0).toBe(zeroAddress);
+    expect(buy.quote.zeroForOne).toBe(true);
+    expect(routeCatalogReady("hookr-market-buy-tip")).toBe(true);
+
+    const sell = resolveRouteById("hookr-market-sell-tip");
+    if (!sell || sell.quote.source !== "v4") throw new Error("sell route must resolve");
+    expect(sell.tokenIn.address).toBe(V3_TOKEN);
+    expect(sell.tokenOut.address).toBe(AEWETH);
+    expect(sell.quote.zeroForOne).toBe(false);
+    expect(sell.trackedAssets).toEqual([AEWETH, V3_TOKEN]);
+
+    const data = encodeStepData(buy, 9n);
+    expect(data).toBe(encodeAbiParameters([{ type: "bytes32" }, { type: "uint256" }], [V3_POOL_ID, 9n]));
+    expect(stepDataFitsRoute(buy, data)).toBe(true);
+    expect(stepDataFitsRoute(buy, encodeAbiParameters([{ type: "uint256" }], [9n]))).toBe(false);
+    const sellB = resolveRouteById("hookr-market-sell-tipb");
+    if (!sellB) throw new Error("sell B must resolve");
+    // Another market's pool id in the data is NOT this route, same adapter or not.
+    expect(stepDataFitsRoute(buy, encodeStepData(resolveRouteById("hookr-market-buy-tipb")!, 9n))).toBe(false);
+    // An existing capsule's buy step resolves to the market its pool id names.
+    expect(resolveRouteFromStep(MARKET_SWAP, AEWETH, [AEWETH, V3_TOKEN_B], encodeStepData(resolveRouteById("hookr-market-buy-tipb")!, 0n))?.id)
+      .toBe("hookr-market-buy-tipb");
+    expect(resolveRouteFromStep(MARKET_SWAP, V3_TOKEN_B, [AEWETH, V3_TOKEN_B], encodeStepData(sellB, 0n))?.id).toBe("hookr-market-sell-tipb");
+  });
+
+  it("resolves native-quoted LP routes with aeWETH as the quote face", async () => {
+    stubModularMarkets();
+    const { resolveRouteById } = await import("@/lib/routes");
+    const deposit = resolveRouteById("hookr-lp-deposit-tip");
+    expect(deposit).not.toBeNull();
+    if (!deposit || deposit.quote.source !== "range-deposit") throw new Error("deposit must resolve");
+    expect(deposit.tokenIn.address).toBe(AEWETH);
+    expect(deposit.tokenOut.address).toBe(VAULT_V3);
+    expect(deposit.quote.poolKey.currency0).toBe(zeroAddress);
+    expect(deposit.quote.poolKey.hooks).toBe(V3_INSTANCE);
+    expect(deposit.quote.zeroForOne).toBe(true);
+    const withdraw = resolveRouteById("hookr-lp-withdraw-tip");
+    if (!withdraw || withdraw.quote.source !== "range-withdraw") throw new Error("withdraw must resolve");
+    expect(withdraw.tokenOut.address).toBe(AEWETH);
+    expect(withdraw.quote.assetOutIsCurrency0).toBe(true);
+  });
+
+  it("ships the modular blueprints after the prefix and reduces them, including the three-step V5 → V3 move", async () => {
+    stubModularMarkets();
+    vi.stubEnv("NEXT_PUBLIC_OPENZAP_ROBINHOOD_V4_HOOKR_ADAPTER", HOOKR_SWAP_ADAPTER);
+    vi.resetModules();
+    const { RECIPES } = await import("@/lib/blocks");
+    const { DEPLOYABLE_RECIPE_COUNT } = await import("@/lib/agent-catalog");
+    const { reduceChainToLiveRoute } = await import("@/lib/deployable");
+    const ids = RECIPES.map((recipe) => recipe.id);
+    for (const id of ["hookr-market-buy", "hookr-market-lp-in", "hookr-market-lp-out", "hookr-v5-to-market", "hookr-market-migrate"]) {
+      expect(ids.indexOf(id), id).toBeGreaterThanOrEqual(DEPLOYABLE_RECIPE_COUNT);
+    }
+
+    const buy = reduceChainToLiveRoute(await recipeChain("hookr-market-buy"));
+    expect(buy.deployable).toBe(true);
+    if (buy.deployable) expect(buy.steps.map((step) => step.routeId)).toEqual(["hookr-market-buy-tip"]);
+
+    const lpIn = reduceChainToLiveRoute(await recipeChain("hookr-market-lp-in"));
+    expect(lpIn.deployable).toBe(true);
+    if (lpIn.deployable) expect(lpIn.steps.map((step) => step.routeId)).toEqual(["hookr-lp-deposit-tip"]);
+
+    const migrate = reduceChainToLiveRoute(await recipeChain("hookr-market-migrate"));
+    expect(migrate.deployable).toBe(true);
+    if (migrate.deployable) expect(migrate.steps.map((step) => step.routeId)).toEqual(["hookr-lp-withdraw-tip", "hookr-lp-deposit-tipb"]);
+
+    const v5ToV3 = reduceChainToLiveRoute(await recipeChain("hookr-v5-to-market"));
+    expect(v5ToV3.deployable).toBe(true);
+    if (v5ToV3.deployable) {
+      expect(v5ToV3.steps.map((step) => step.routeId)).toEqual([
+        "hookr-lp-withdraw-krn",
+        "robinhood-v4-hookr-weth",
+        "hookr-lp-deposit-tip",
+      ]);
+    }
+  });
+});

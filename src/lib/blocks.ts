@@ -1,4 +1,10 @@
-import { hookrLpPoolLabels, hookrLpShareSymbols } from "@/lib/hookr-pools";
+import {
+  HOOKR_MARKET_VENUE,
+  hookrLpPoolLabels,
+  hookrLpPools,
+  hookrLpShareSymbols,
+  hookrMarketSubjectSymbols,
+} from "@/lib/hookr-pools";
 import { policyHash, type SimulationCheck } from "@/lib/policy";
 import {
   MAX_EXECUTION_FEE_GWEI,
@@ -230,8 +236,8 @@ export const BLOCKS: readonly LegoBlock[] = [
     gas: 132_000,
     maturity: "live",
     params: [
-      { key: "into", label: "Buy", type: "select", value: "WETH", options: ["USDC", "USDG", "WETH", "cbBTC", "DAI", "0xZAPS", "HOOKR"] },
-      { key: "venue", label: "Venue", type: "select", value: "Uniswap v4", options: ["Uniswap v4", "Uniswap v3", "Aerodrome"] },
+      { key: "into", label: "Buy", type: "select", value: "WETH", options: ["USDC", "USDG", "WETH", "cbBTC", "DAI", "0xZAPS", "HOOKR", ...hookrMarketSubjectSymbols()] },
+      { key: "venue", label: "Venue", type: "select", value: "Uniswap v4", options: ["Uniswap v4", "Uniswap v3", "Aerodrome", HOOKR_MARKET_VENUE] },
       // Blank on purpose. A first action spends whatever the source drew, so it
       // needs no amount of its own. A LATER step does: `Step.amountIn` is frozen
       // into the policy at signing, so it cannot inherit what the step above
@@ -1373,6 +1379,88 @@ export type ZapRecipe = {
   blocks: Array<[string, Record<string, ParamValue>?]>;
 };
 
+/**
+ * Blueprints for Hookr's modular generations (V2/V3 native-quoted markets), generated from the
+ * pool table so they exist exactly when a modular market row does. All sit after the deployable
+ * prefix; the builder badges them from the reducers like every other Hookr blueprint.
+ */
+function hookrModularRecipes(): ZapRecipe[] {
+  const modular = hookrLpPools().filter((pool) => pool.modular);
+  if (modular.length === 0) return [];
+  const [first, second] = modular;
+  const recipes: ZapRecipe[] = [
+    {
+      id: "hookr-market-buy",
+      name: `Zap in to ${first.symbol} on Hookr`,
+      tagline: `Buy ${first.symbol} on its Hookr market with aeWETH, one signed step.`,
+      accent: "token",
+      blocks: [
+        ["wallet-balance", { asset: "WETH", amount: "0.01" }],
+        ["guard-slippage", { bps: 150 }],
+        ["swap", { into: first.symbol, venue: HOOKR_MARKET_VENUE }],
+        ["send", { recipient: "owner wallet" }],
+      ],
+    },
+    {
+      id: "hookr-market-lp-in",
+      name: `Zap in to ${first.poolLabel} liquidity`,
+      tagline: `Provide ${first.poolLabel} liquidity on Hookr from aeWETH alone; the LP share lands as an ERC-20.`,
+      accent: "lp",
+      blocks: [
+        ["wallet-balance", { asset: "WETH", amount: "0.05" }],
+        ["guard-slippage", { bps: 150 }],
+        ["add-liquidity", { pool: first.poolLabel, range: "Full range" }],
+        ["hold-lp"],
+      ],
+    },
+    {
+      id: "hookr-market-lp-out",
+      name: `Zap out of ${first.poolLabel} liquidity`,
+      tagline: `Burn ${first.shareSymbol} shares back into aeWETH, fees included.`,
+      accent: "lp",
+      blocks: [
+        ["lp-position", { asset: first.shareSymbol, amount: "1" }],
+        ["guard-slippage", { bps: 150 }],
+        ["remove-liquidity", { settle: "WETH", portion: 100 }],
+        ["send", { recipient: "owner wallet" }],
+      ],
+    },
+    {
+      // V5 -> modular in THREE steps: zap out to HOOKR, sell HOOKR for aeWETH on its native
+      // pool, zap the aeWETH into the modular market. Steps 2 and 3 name their own amounts,
+      // each pinned as the prior step's floor.
+      id: "hookr-v5-to-market",
+      name: `Move HOOKR/KRN liquidity to ${first.poolLabel}`,
+      tagline: `Leave a V5 HOOKR pool, sell the HOOKR, and enter ${first.poolLabel} — three steps, one signature.`,
+      accent: "lp",
+      blocks: [
+        ["lp-position", { asset: "ozHR-KRN", amount: "1" }],
+        ["guard-slippage", { bps: 150 }],
+        ["remove-liquidity", { settle: "HOOKR", portion: 100 }],
+        ["swap", { into: "WETH", venue: "Uniswap v4", amount: "10000" }],
+        ["add-liquidity", { pool: first.poolLabel, range: "Full range", amount: "0.01" }],
+        ["hold-lp"],
+      ],
+    },
+  ];
+  if (second) {
+    recipes.push({
+      id: "hookr-market-migrate",
+      name: "Move liquidity between Hookr markets",
+      tagline: `Leave ${first.poolLabel}, enter ${second.poolLabel} — two steps, one signature, aeWETH carried.`,
+      accent: "lp",
+      blocks: [
+        ["lp-position", { asset: first.shareSymbol, amount: "1" }],
+        ["guard-slippage", { bps: 150 }],
+        ["remove-liquidity", { settle: "WETH", portion: 100 }],
+        ["add-liquidity", { pool: second.poolLabel, range: "Full range", amount: "0.01" }],
+        ["hold-lp"],
+      ],
+    });
+  }
+  return recipes;
+}
+
 export const RECIPES: readonly ZapRecipe[] = [
   {
     // First, and the chain the builder opens on. The first TWELVE blueprints are
@@ -1703,6 +1791,7 @@ export const RECIPES: readonly ZapRecipe[] = [
       ["hold-lp"],
     ],
   },
+  ...hookrModularRecipes(),
   {
     id: "lp-autocompound",
     name: "LP autocompound",
