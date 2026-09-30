@@ -1,6 +1,5 @@
-/* The campaigns index: two cards, one per campaign, above the selected
-   campaign's detail. Container query so the pair stacks on a narrow column
-   rather than the viewport. */
+/* Compact index: one card per campaign, with two or three columns as the
+   rewards content column allows. */
 .switcher {
   container-type: inline-size;
   display: grid;
@@ -10,7 +9,13 @@
 
 @container (min-width: 640px) {
   .switcher {
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@container (min-width: 900px) {
+  .switcher {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 }
 
@@ -66,4 +71,87 @@
 
 .cardMeta i[data-live] {
   background: var(--ok);
+}
+
+.overview {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 16px;
+  padding: 18px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-card);
+  background: var(--panel);
+  box-shadow: var(--sh-2);
+}
+
+@container (min-width: 720px) {
+  .overview {
+    grid-template-columns: minmax(0, 1.25fr) minmax(240px, 0.75fr);
+    align-items: start;
+  }
+}
+
+.overviewMain {
+  min-width: 0;
+}
+
+.overviewMeta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 7px 12px;
+  margin-bottom: 12px;
+  color: var(--ink-3);
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.overviewCampaign {
+  color: var(--ink);
+  font-weight: 700;
+}
+
+.overviewStatus {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--ink-2);
+}
+
+.overviewStatus i {
+  width: 7px;
+  height: 7px;
+  flex: none;
+  border-radius: var(--r-pill);
+  background: var(--warn);
+}
+
+.overviewStatus[data-live] i {
+  background: var(--ok);
+}
+
+.overviewWindow {
+  color: var(--ink-3);
+}
+
+.overviewTitle {
+  margin: 0;
+  color: var(--ink);
+  font-size: clamp(1.5rem, 3.2cqi, 2.65rem);
+  line-height: 1.08;
+  letter-spacing: -0.035em;
+}
+
+.overviewLede {
+  max-width: 68ch;
+  margin: 12px 0 0;
+  color: var(--ink-2);
+  font-size: 14px;
+  line-height: 1.65;
+}
+
+.overviewAside {
+  min-width: 0;
 }

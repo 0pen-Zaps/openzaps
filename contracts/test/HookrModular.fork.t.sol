@@ -68,7 +68,8 @@ contract HookrModularForkTest is Test {
     bytes32 internal constant V3_NEW_MARKET_ID = 0x65e55937c21820f9ce53b55106b9b154b5054fb2bd6554864b8a29b2aa59c6f2;
     address internal constant V3_NEW_INSTANCE = 0x20A433A26a6Fc58902C0f74543f9faC6fEBBe8cC;
     /// @dev Existing-token market opened for the two-LP canary (zero liquidity today).
-    bytes32 internal constant V3_EXISTING_MARKET_ID = 0x07bd1a49322beea87ca9df64602201487595f4b776ba33910b375025e83646d3;
+    bytes32 internal constant V3_EXISTING_MARKET_ID =
+        0x07bd1a49322beea87ca9df64602201487595f4b776ba33910b375025e83646d3;
     address internal constant V3_EXISTING_INSTANCE = 0xD2Ad501Fb4B46dA9Ea7E5153CB7fa87829C468CC;
 
     address internal constant LIVE_ADAPTER_REGISTRY = 0x9E56e444f490C00A6277326A47Cb462E12dF1f17;
@@ -113,7 +114,8 @@ contract HookrModularForkTest is Test {
         depositAdapter = new HookedRangeDepositAdapter(POOL_MANAGER, AEWETH, address(factory));
         withdrawAdapter = new HookedRangeWithdrawAdapter(POOL_MANAGER, AEWETH, address(factory));
         marketAdapter = new HookrMarketSwapAdapter(POOL_MANAGER, AEWETH, coordinators);
-        hookrNativeAdapter = new RobinhoodV4NativePoolAdapter(AEWETH, POOL_MANAGER, HOOKR, 2500, 25, V5_HOOKR_ETH_POOL_ID);
+        hookrNativeAdapter =
+            new RobinhoodV4NativePoolAdapter(AEWETH, POOL_MANAGER, HOOKR, 2500, 25, V5_HOOKR_ETH_POOL_ID);
     }
 
     function _poolLiquidity(bytes32 poolId) internal view returns (uint128) {
@@ -146,8 +148,10 @@ contract HookrModularForkTest is Test {
         vaultV3 = HookedRangeVault(
             payable(factory.createVault(address(0), V3_TOKEN, DYNAMIC_FEE, TICK_SPACING, V3_EXISTING_INSTANCE))
         );
-        vaultV2 = HookedRangeVault(payable(factory.createVault(address(0), V2_TOKEN, DYNAMIC_FEE, TICK_SPACING, KERNEL_V2)));
-        vaultV5Krn = HookedRangeVault(payable(factory.createVault(HOOKR, KRN, DYNAMIC_FEE, TICK_SPACING, HOOKR_HOOK_V5)));
+        vaultV2 =
+            HookedRangeVault(payable(factory.createVault(address(0), V2_TOKEN, DYNAMIC_FEE, TICK_SPACING, KERNEL_V2)));
+        vaultV5Krn =
+            HookedRangeVault(payable(factory.createVault(HOOKR, KRN, DYNAMIC_FEE, TICK_SPACING, HOOKR_HOOK_V5)));
         _seedVault(vaultV3, V3_TOKEN, 1 ether, 1 ether);
         _seedVault(vaultV2, V2_TOKEN, 1 ether, 1 ether);
     }
@@ -167,7 +171,9 @@ contract HookrModularForkTest is Test {
         if (!_forkOrSkip()) return;
         _deployOpenZaps();
         assertFalse(factory.isAllowedHook(V3_EXISTING_INSTANCE), "no static entry for a V3 instance");
-        assertTrue(factory.coordinatorAttests(V3_EXISTING_MARKET_ID, V3_EXISTING_INSTANCE), "V3 record attests its instance");
+        assertTrue(
+            factory.coordinatorAttests(V3_EXISTING_MARKET_ID, V3_EXISTING_INSTANCE), "V3 record attests its instance"
+        );
         assertTrue(factory.coordinatorAttests(V2_MARKET_ID, KERNEL_V2), "V2 canary record attests the kernel");
         // The V3 instance is bound to ITS market: the same instance on any other key is refused.
         assertFalse(factory.coordinatorAttests(V3_NEW_MARKET_ID, V3_EXISTING_INSTANCE));
@@ -192,7 +198,8 @@ contract HookrModularForkTest is Test {
     function test_marketSwapAdapterBuysAndSellsOnTheV3Market() public {
         if (!_forkOrSkip()) return;
         _setUpAll();
-        (IHookedV4PoolManager.PoolKey memory key, address subject, address quoteFace) = marketAdapter.marketFor(V3_EXISTING_MARKET_ID);
+        (IHookedV4PoolManager.PoolKey memory key, address subject, address quoteFace) =
+            marketAdapter.marketFor(V3_EXISTING_MARKET_ID);
         assertEq(key.hooks, V3_EXISTING_INSTANCE, "market key carries the per-market instance");
         assertEq(key.currency0, address(0));
         assertEq(subject, V3_TOKEN);
@@ -319,7 +326,11 @@ contract HookrModularForkTest is Test {
         zap.execute(intent, abi.encodePacked(r, s, v));
     }
 
-    function _step(address adapter, address tokenIn, uint256 amountIn, bytes memory data) internal pure returns (Step memory) {
+    function _step(address adapter, address tokenIn, uint256 amountIn, bytes memory data)
+        internal
+        pure
+        returns (Step memory)
+    {
         return Step({adapter: adapter, tokenIn: tokenIn, spender: adapter, amountIn: amountIn, data: data});
     }
 
@@ -375,7 +386,9 @@ contract HookrModularForkTest is Test {
         migrateTracked[2] = AEWETH;
         migrateTracked[3] = address(vaultV3);
         uint128 v3Before = _poolLiquidity(V3_EXISTING_MARKET_ID);
-        _createAndRun(ownerPk, migrate, migrateTracked, address(vaultV5Krn), v5Shares, address(vaultV3), keccak256("v5-to-v3"));
+        _createAndRun(
+            ownerPk, migrate, migrateTracked, address(vaultV5Krn), v5Shares, address(vaultV3), keccak256("v5-to-v3")
+        );
         assertEq(vaultV5Krn.balanceOf(owner), 0, "left the V5 pool");
         uint256 v3Shares = vaultV3.balanceOf(owner);
         assertGt(v3Shares, 0, "entered the V3 market");
@@ -398,7 +411,9 @@ contract HookrModularForkTest is Test {
         hopTracked[1] = AEWETH;
         hopTracked[2] = address(vaultV2);
         uint128 v2Before = _poolLiquidity(V2_MARKET_ID);
-        address hopZap = _createAndRun(ownerPk, hop, hopTracked, address(vaultV3), v3Shares, address(vaultV2), keccak256("v3-to-v2"));
+        address hopZap = _createAndRun(
+            ownerPk, hop, hopTracked, address(vaultV3), v3Shares, address(vaultV2), keccak256("v3-to-v2")
+        );
         assertEq(vaultV3.balanceOf(owner), 0, "left V3");
         assertGt(vaultV2.balanceOf(owner), 0, "entered the V2 market");
         assertGt(_poolLiquidity(V2_MARKET_ID), v2Before, "V2 market liquidity grew");

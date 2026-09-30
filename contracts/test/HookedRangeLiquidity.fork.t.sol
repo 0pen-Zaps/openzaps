@@ -98,7 +98,9 @@ contract HookedRangeLiquidityForkTest is Test {
 
         assertEq(vaultKrn.poolId(), KRN_POOL_ID, "KRN pool id");
         assertEq(vaultTcl.poolId(), TCL_POOL_ID, "TCL pool id");
-        assertEq(address(vaultKrn), factory.vaultFor(HOOKR, KRN, DYNAMIC_FEE, TICK_SPACING, HOOKR_HOOK), "predicted KRN");
+        assertEq(
+            address(vaultKrn), factory.vaultFor(HOOKR, KRN, DYNAMIC_FEE, TICK_SPACING, HOOKR_HOOK), "predicted KRN"
+        );
         assertEq(factory.vaultOf(KRN_POOL_ID), address(vaultKrn));
         assertTrue(factory.isVault(address(vaultKrn)));
         assertTrue(factory.isVault(address(vaultTcl)));
@@ -110,7 +112,9 @@ contract HookedRangeLiquidityForkTest is Test {
         assertGt(_poolLiquidity(KRN_POOL_ID), 0, "live pool has liquidity");
         assertEq(keccak256(bytes(vaultKrn.symbol())), keccak256("ozHR-HOOKR-KRN"));
 
-        vm.expectRevert(abi.encodeWithSelector(HookedRangeVaultFactory.VaultExists.selector, KRN_POOL_ID, address(vaultKrn)));
+        vm.expectRevert(
+            abi.encodeWithSelector(HookedRangeVaultFactory.VaultExists.selector, KRN_POOL_ID, address(vaultKrn))
+        );
         factory.createVault(HOOKR, KRN, DYNAMIC_FEE, TICK_SPACING, HOOKR_HOOK);
     }
 
@@ -228,7 +232,8 @@ contract HookedRangeLiquidityForkTest is Test {
         uint256 hookrBefore = IERC20(HOOKR).balanceOf(zap);
 
         vaultKrn.approve(address(withdrawAdapter), shares);
-        (address tokenOut, uint256 out) = withdrawAdapter.execute(address(vaultKrn), shares, abi.encode(HOOKR, uint256(1)));
+        (address tokenOut, uint256 out) =
+            withdrawAdapter.execute(address(vaultKrn), shares, abi.encode(HOOKR, uint256(1)));
         vm.stopPrank();
 
         assertEq(tokenOut, HOOKR);
@@ -356,7 +361,13 @@ contract HookedRangeLiquidityForkTest is Test {
         migrateTracked[2] = address(vaultTcl);
         uint128 tclBefore = _poolLiquidity(TCL_POOL_ID);
         address migrateZap = _createAndRun(
-            ownerPk, migrate, migrateTracked, address(vaultKrn), shares, address(vaultTcl), keccak256("hookr-lp-migrate")
+            ownerPk,
+            migrate,
+            migrateTracked,
+            address(vaultKrn),
+            shares,
+            address(vaultTcl),
+            keccak256("hookr-lp-migrate")
         );
 
         assertEq(vaultKrn.balanceOf(owner), 0, "left pool A");

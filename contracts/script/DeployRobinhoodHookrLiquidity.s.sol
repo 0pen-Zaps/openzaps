@@ -164,8 +164,7 @@ contract DeployRobinhoodHookrLiquidity is Script {
                 || address(d.withdrawAdapter.factory()) != address(d.factory)
                 || d.marketSwapAdapter.coordinators().length != 3 || d.factory.coordinators().length != 3
                 || d.marketSwapAdapter.coordinators()[0] != HOOKR_COORDINATOR_V3
-                || d.factory.coordinators()[0] != HOOKR_COORDINATOR_V3
-                || d.factory.vaultCount() != d.vaults.length
+                || d.factory.coordinators()[0] != HOOKR_COORDINATOR_V3 || d.factory.vaultCount() != d.vaults.length
         ) revert DeploymentAssertionFailed();
         for (uint256 i = 0; i < d.vaults.length; i++) {
             HookedRangeVault vault = HookedRangeVault(payable(d.vaults[i]));
@@ -289,7 +288,9 @@ contract DeployRobinhoodHookrLiquidity is Script {
             }
         }
         if (!pending) {
-            console2.log("All governance wiring complete: both adapters, HOOKR, and every vault share token are allowlisted.");
+            console2.log(
+                "All governance wiring complete: both adapters, HOOKR, and every vault share token are allowlisted."
+            );
         }
     }
 }

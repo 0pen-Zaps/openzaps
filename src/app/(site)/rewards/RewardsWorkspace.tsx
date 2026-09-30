@@ -25,6 +25,7 @@ import { RollingDigits } from "@/components/RollingDigits";
 import { useCampaignCountdown } from "@/components/useCampaignCountdown";
 import { useReducedMotionPreference } from "@/components/useReducedMotionPreference";
 import { useWalletSession } from "@/components/WalletProvider";
+import { CampaignHeader } from "./CampaignHeader";
 import {
   FEE_REWARDS_MANIFEST,
   feeRewardsCampaignAbi,
@@ -754,21 +755,26 @@ export function RewardsWorkspace({
 
   return (
     <>
-      <div className={styles.heroGrid}>
-        <div className={styles.heroCopy}>
-          <span className={styles.eyebrow}>TOKENIZED FEES · ROBINHOOD CHAIN</span>
-          <h1 className={styles.title}>Stake 0xZAPS. Claim WETH from the pool&apos;s trading fees.</h1>
-          <p className={styles.lede}>
-            Every swap in the 0xZAPS ↔ aeWETH pool pays a {HOOK_FEE_LABEL} hook fee. This campaign was funded with
-            50 of the 100 tokenized shares in that fee position and, across one seven-day window, splits the WETH
-            it harvests among stakers by time-weighted stake. Holding 0xZAPS alone grants no fee rights — only a
-            stake in this contract accrues a claim. Every figure on this page is read from chain 4663 at one
-            verified block.
-          </p>
-        </div>
-
+      <CampaignHeader
+        campaign="Campaign 1"
+        status={
+          state.status === "ready" && state.staleSince !== null
+            ? "Snapshot stale"
+            : data
+              ? formatCampaignPhase(data.phase)
+              : state.status === "loading"
+                ? "Verifying…"
+                : "Unavailable"
+        }
+        live={writesEnabled && (data?.phase === "active" || data?.phase === "claim-only")}
+        window="Aug 3–10, 2026 · 7 days"
+        titleId="campaign1-title"
+        titleLevel={1}
+        title="Stake 0xZAPS. Claim WETH from the pool&apos;s trading fees."
+        description={`Every swap in the 0xZAPS ↔ aeWETH pool pays a ${HOOK_FEE_LABEL} hook fee. This campaign was funded with 50 of the 100 tokenized shares in that fee position and, across one seven-day window, splits the WETH it harvests among stakers by time-weighted stake. Holding 0xZAPS alone grants no fee rights — only a stake in this contract accrues a claim. Every figure on this page is read from chain 4663 at one verified block.`}
+      >
         <CampaignTerms data={data} onResync={refreshAtBoundary} />
-      </div>
+      </CampaignHeader>
 
       <FeeMechanic data={data} onStart={startStaking} />
 
