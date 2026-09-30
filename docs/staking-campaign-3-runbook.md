@@ -15,7 +15,7 @@ Dates are UTC. The requested October 1–31 schedule is encoded as a 31-day wind
 
 Campaign 2's window was **14 days**. This draft interprets “same terms” as the same per-leg economics and operating controls, while the explicit Oct 1–31 dates set Campaign 3's window to 31 days. If the 14-day duration itself was intended to carry over, the schedule must be changed before deployment; neither the script nor this runbook silently shortens October.
 
-The existing Campaign 2 procedure requires at least 24 hours between preflight/deployment and funding/start. At workstation time `2026-09-30 19:12:57Z`, the requested start was `4h 47m 03s` away. The latest no-broadcast Forge rehearsal read Robinhood chain time `2026-09-30 19:12:48Z`; start was then `4h 47m 12s` away, a `19h 12m 48s` shortfall against the 24-hour lead. **The 24-hour runway is not met.** The Campaign 3 HookBlocks script enforces that lead time and fails closed. The deployment request is acknowledged, but no broadcast may proceed on this schedule; revise the start/window and confirm the changed terms before deployment.
+The existing Campaign 2 procedure requires at least 24 hours between preflight/deployment and funding/start. At workstation time `2026-09-30 21:57:25Z`, the requested start was `2h 02m 35s` away. The latest no-broadcast Forge rehearsal read Robinhood chain time `2026-09-30 21:56:46Z`; start was then `2h 03m 14s` away, a `21h 56m 46s` shortfall against the 24-hour lead. **The 24-hour runway is not met.** The Campaign 3 HookBlocks script enforces that lead time and fails closed. The deployment request is acknowledged, but no broadcast may proceed on this schedule; revise the start/window and confirm the changed terms before deployment.
 
 ## Fixed identities and terms
 
@@ -85,7 +85,7 @@ forge script script/DeployHookBlocksRobinhoodCampaign3.s.sol:DeployHookBlocksRob
   --rpc-url https://rpc.mainnet.chain.robinhood.com --sender <deployer-address>
 ```
 
-This command was run once without `--broadcast`. It reverted as designed with `StartTooSoon(1790812800, 1790791531)` (the timestamp is the Robinhood fork head); no live transaction was sent. Do not bypass or weaken this guard to force the schedule. No `--broadcast` invocation is included or performed.
+This command was rehearsed without `--broadcast` at Robinhood head timestamp `1790805406` (`2026-09-30 21:56:46Z`). It reverted as designed with `StartTooSoon(1790812800, 1790805406)`; no live transaction was sent. Do not bypass or weaken this guard to force the schedule. No `--broadcast` invocation is included or performed.
 
 ## Funding and live release boundary
 

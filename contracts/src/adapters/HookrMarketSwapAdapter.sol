@@ -144,9 +144,7 @@ contract HookrMarketSwapAdapter is IAdapter, HookedPoolSwapBase {
         if (received != amountIn) revert InexactInputTransfer(amountIn, received);
 
         // The pool side of `tokenIn`: the quote face maps onto the native or ERC-20 quote side.
-        address quoteCurrency = key.currency0 == address(0) && quoteFace == weth
-            ? address(0)
-            : quoteFace;
+        address quoteCurrency = key.currency0 == address(0) && quoteFace == weth ? address(0) : quoteFace;
         address inCurrency = isBuy ? quoteCurrency : subject;
         bool zeroForOne = inCurrency == key.currency0;
         (uint256 consumed,) = _swapExactIn(key, zeroForOne, amountIn);
@@ -176,7 +174,9 @@ contract HookrMarketSwapAdapter is IAdapter, HookedPoolSwapBase {
         view
         returns (IHookedV4PoolManager.PoolKey memory key, address subject, address quoteFace, uint256 minAmountOut)
     {
-        if (data.length != 64) revert InvalidData();
+        if (data.length != 64) {
+            revert InvalidData();
+        }
         bytes32 poolId;
         (poolId, minAmountOut) = abi.decode(data, (bytes32, uint256));
         if (minAmountOut > type(uint128).max) revert AmountTooLarge();
@@ -198,7 +198,8 @@ contract HookrMarketSwapAdapter is IAdapter, HookedPoolSwapBase {
             tickSpacing: market.tickSpacing,
             hooks: market.kernel
         });
-        bytes32 computed = keccak256(abi.encode(currency0, currency1, DYNAMIC_FEE_FLAG, market.tickSpacing, market.kernel));
+        bytes32 computed =
+            keccak256(abi.encode(currency0, currency1, DYNAMIC_FEE_FLAG, market.tickSpacing, market.kernel));
         if (computed != poolId || market.poolId != poolId) revert PoolIdMismatch(poolId, computed);
         quoteFace = quote == address(0) ? weth : quote;
     }

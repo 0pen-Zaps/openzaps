@@ -68,10 +68,45 @@ describe("Campaign 3 prepared release manifest", () => {
     expect(FEE_REWARDS_3_MANIFEST.terms.durationSeconds).toBe(31n * 86_400n);
   });
 
-  it("keeps all Campaign 3 reads and writes fail-closed until both contracts are released", () => {
+  it("keeps reads and writes fail-closed until both complete deployments match the reviewed schedule", () => {
+    const { schedule } = FEE_REWARDS_3_MANIFEST;
+    const campaign = {
+      address: "0x1111111111111111111111111111111111111111",
+      runtimeCodeHash: `0x${"a".repeat(64)}`,
+      deploymentBlock: 1n,
+      startAt: schedule.startAt,
+      endAt: schedule.endAt,
+      claimDeadline: schedule.claimDeadline,
+    };
+    const hookBlocks = {
+      address: "0x2222222222222222222222222222222222222222",
+      runtimeCodeHash: `0x${"b".repeat(64)}`,
+      deploymentBlock: 2n,
+      startAt: schedule.startAt,
+      endAt: schedule.endAt,
+      sweepAfter: schedule.sweepAfter,
+    };
+
     expect(feeRewards3Deployment()).toBe("absent");
     expect(feeRewards3Deployment({ deployment: null })).toBe("absent");
     expect(feeRewards3Deployment({ deployment: { campaign: {}, hookBlocks: null } })).toBe("partial");
-    expect(feeRewards3Deployment({ deployment: { campaign: {}, hookBlocks: {} } })).toBe("configured");
+    expect(feeRewards3Deployment({ deployment: { campaign: {}, hookBlocks: {} } })).toBe("partial");
+    expect(feeRewards3Deployment({ deployment: { campaign, hookBlocks } })).toBe("configured");
+    expect(
+      feeRewards3Deployment({
+        deployment: {
+          campaign,
+          hookBlocks: { ...hookBlocks, startAt: schedule.startAt + 1n },
+        },
+      }),
+    ).toBe("partial");
+    expect(
+      feeRewards3Deployment({
+        deployment: {
+          campaign,
+          hookBlocks: { ...hookBlocks, address: campaign.address },
+        },
+      }),
+    ).toBe("partial");
   });
 });

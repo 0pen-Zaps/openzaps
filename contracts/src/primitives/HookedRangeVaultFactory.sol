@@ -114,7 +114,9 @@ contract HookedRangeVaultFactory {
         address[] memory hooks_,
         address[] memory coordinators_
     ) {
-        if (poolManager_ == address(0) || weth_ == address(0) || quote_ == address(0)) revert ZeroAddress();
+        if (poolManager_ == address(0) || weth_ == address(0) || quote_ == address(0)) {
+            revert ZeroAddress();
+        }
         if (hooks_.length == 0 && coordinators_.length == 0) revert NoHooks();
         for (uint256 i = 0; i < coordinators_.length; i++) {
             address coordinator = coordinators_[i];

@@ -69,17 +69,69 @@ export const FEE_REWARDS_3_MANIFEST = {
   deployment: null as Campaign3Deployment | null,
 } as const;
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isNonZeroAddress(value: unknown): value is Address {
+  return (
+    typeof value === "string" &&
+    /^0x[0-9a-fA-F]{40}$/.test(value) &&
+    !/^0x0{40}$/i.test(value)
+  );
+}
+
+function isNonZeroCodeHash(value: unknown): value is Hex {
+  return (
+    typeof value === "string" &&
+    /^0x[0-9a-fA-F]{64}$/.test(value) &&
+    !/^0x0{64}$/i.test(value)
+  );
+}
+
+function isPositiveBlock(value: unknown): value is bigint {
+  return typeof value === "bigint" && value > 0n;
+}
+
+function isCampaignDeployment(value: unknown): value is Campaign3Deployment["campaign"] {
+  if (!isRecord(value)) return false;
+  return (
+    isNonZeroAddress(value.address) &&
+    isNonZeroCodeHash(value.runtimeCodeHash) &&
+    isPositiveBlock(value.deploymentBlock) &&
+    value.startAt === FEE_REWARDS_3_MANIFEST.schedule.startAt &&
+    value.endAt === FEE_REWARDS_3_MANIFEST.schedule.endAt &&
+    value.claimDeadline === FEE_REWARDS_3_MANIFEST.schedule.claimDeadline
+  );
+}
+
+function isHookBlocksDeployment(value: unknown): value is Campaign3Deployment["hookBlocks"] {
+  if (!isRecord(value)) return false;
+  return (
+    isNonZeroAddress(value.address) &&
+    isNonZeroCodeHash(value.runtimeCodeHash) &&
+    isPositiveBlock(value.deploymentBlock) &&
+    value.startAt === FEE_REWARDS_3_MANIFEST.schedule.startAt &&
+    value.endAt === FEE_REWARDS_3_MANIFEST.schedule.endAt &&
+    value.sweepAfter === FEE_REWARDS_3_MANIFEST.schedule.sweepAfter
+  );
+}
+
+/** Only report configured when both deployed legs have verified identities and the exact pinned schedule. */
 export function feeRewards3Deployment(
   manifest: { deployment: unknown } = FEE_REWARDS_3_MANIFEST,
 ): "absent" | "partial" | "configured" {
-  const deployment = manifest.deployment as {
-    campaign?: unknown;
-    hookBlocks?: unknown;
-  } | null;
-  if (deployment === null) return "absent";
-  const campaign = Boolean(deployment.campaign);
-  const hookBlocks = Boolean(deployment.hookBlocks);
-  if (campaign && hookBlocks) return "configured";
-  if (!campaign && !hookBlocks) return "absent";
+  if (manifest.deployment === null) return "absent";
+  if (!isRecord(manifest.deployment)) return "partial";
+
+  const { campaign, hookBlocks } = manifest.deployment;
+  if (campaign == null && hookBlocks == null) return "absent";
+  if (
+    isCampaignDeployment(campaign) &&
+    isHookBlocksDeployment(hookBlocks) &&
+    campaign.address.toLowerCase() !== hookBlocks.address.toLowerCase()
+  ) {
+    return "configured";
+  }
   return "partial";
 }
