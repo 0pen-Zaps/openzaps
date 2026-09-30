@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 
 import { FEE_REWARDS_MANIFEST, campaignPhaseNote, type FeeRewardsPayload } from "@/lib/rewards";
 import { selectedCampaign } from "./CampaignSwitcher";
+import { feeRewards3Deployment } from "@/lib/rewards3";
 import { formatApproxUsd, wethUsdValue } from "./Campaign2Live";
 import { nextVolumeMilestone } from "./RewardsGrowthPulse";
 import {
@@ -80,7 +81,7 @@ describe("0xZAPS fee rewards public surface", () => {
     expect(growth).toContain('data-status={marketStatus}');
     expect(growth).toContain('data-analytics-cta="invite_trader"');
     expect(route).toContain('"retry-after": "10"');
-    expect(switcher.match(/prefetch=\{false\}/gu)).toHaveLength(2);
+    expect(switcher.match(/prefetch=\{false\}/gu)).toHaveLength(1);
     expect(shell.match(/<Link\b/gu)?.length).toBe(shell.match(/prefetch=\{false\}/gu)?.length);
     expect(footer.match(/<Link\b/gu)?.length).toBe(footer.match(/prefetch=\{false\}/gu)?.length);
   });
@@ -414,29 +415,37 @@ describe("0xZAPS fee rewards public surface", () => {
     expect(workspace).toContain("volume leaderboard");
   });
 
-  it("separates the two campaigns behind a switcher, one detail at a time", () => {
+  it("separates three campaigns behind one compact switcher and shared overview", () => {
     const switcher = read("src/app/(site)/rewards/CampaignSwitcher.tsx");
     const panel = read("src/app/(site)/rewards/Campaign2Panel.tsx");
-    // The index names both campaigns and the page renders exactly one detail.
+    const campaign3 = read("src/app/(site)/rewards/Campaign3Panel.tsx");
+    const campaign1 = read("src/app/(site)/rewards/RewardsWorkspace.tsx");
+    // All three campaigns have the same index-card and identity structure.
     expect(page).toContain("<CampaignSwitcher selected={selected} initial={initial} />");
-    expect(page).toContain('{selected === "1" ? (');
-    expect(switcher).toContain("Campaign 1 · Aug 3 – 10, 2026");
+    expect(switcher).toContain("Campaign 1 · Aug 3–10, 2026");
     expect(switcher).toContain("Campaign 2 · 14 days");
-    // Selection rules are a pure function: explicit param wins, workspace
-    // deep links stay on campaign 1, and the default is manifest-driven
-    // (campaign 1 until the campaign-2 release is configured).
+    expect(switcher).toContain("Campaign 3 · Oct 1–31, 2026 UTC");
+    expect(campaign1).toContain("<CampaignHeader");
+    expect(campaign1).toContain('state.staleSince !== null');
+    expect(campaign1).toContain("live={writesEnabled &&");
+    expect(panel).toContain("<CampaignHeader");
+    expect(campaign3).toContain("<CampaignHeader");
+    // Selection rules are manifest-driven: explicit route wins; workspace
+    // links still land on Campaign 1; unconfigured Campaign 3 is not default.
+    expect(selectedCampaign("3", undefined)).toBe("3");
     expect(selectedCampaign("2", undefined)).toBe("2");
     expect(selectedCampaign("1", undefined)).toBe("1");
     expect(selectedCampaign(undefined, "stakers")).toBe("1");
-    // With the campaign-2 release configured, the manifest-driven default
-    // now lands on campaign 2 — the flip is the release, not a clock.
     expect(selectedCampaign(undefined, undefined)).toBe("2");
-    // The switcher never invents a campaign-1 phase when the snapshot is
-    // missing, and the campaign-2 chip is manifest state, not a clock.
-    expect(switcher).toContain('"Unavailable"');
-    expect(switcher).toContain('feeRewards2Deployment() === "configured"');
-    // Declutter must never hide the boundaries: both boundary sentences
-    // render before the first disclosure in the panel source.
+    expect(feeRewards3Deployment()).toBe("absent");
+    expect(page).toContain('{selected === "2" ? <Campaign2Panel /> : <Campaign3Panel />}');
+    // The Campaign 3 panel is deliberately read-only until a complete release;
+    // no accidental empty live controls or wallet writes are exposed.
+    expect(campaign3).toContain("Campaign 3 is prepared but not deployed");
+    expect(campaign3).toContain("staking, withdrawal, claims, and operator actions stay hidden");
+    expect(campaign3).not.toContain("writeContract");
+    expect(campaign3).not.toContain("Campaign3Stake");
+    // Declutter must never hide Campaign 2's boundaries behind disclosures.
     const firstDisclosure = panel.indexOf("<details");
     expect(firstDisclosure).toBeGreaterThan(0);
     expect(panel.indexOf("{NO_YIELD}")).toBeLessThan(firstDisclosure);

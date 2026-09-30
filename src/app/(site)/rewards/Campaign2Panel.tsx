@@ -6,6 +6,7 @@ import {
 import { Campaign2Operator } from "./Campaign2Operator";
 import { Campaign2Live } from "./Campaign2Live";
 import { Campaign2Stake } from "./Campaign2Stake";
+import { CampaignHeader } from "./CampaignHeader";
 import styles from "./campaign2.module.css";
 
 const MANIFEST = FEE_REWARDS_2_MANIFEST;
@@ -39,35 +40,28 @@ const REFERENCES = [
   { label: "Pool manager", value: "ETH/HOOKR pool host", address: MANIFEST.hookrPool.poolManager },
 ] as const;
 
-/**
- * The campaign-2 announcement panel on /rewards. Fail-closed off the
- * manifest, never RPC: while `deployment` is null it renders the reviewed
- * mechanics and an honest not-live notice, and the moment the release fills
- * the manifest this panel is superseded by a live campaign-2 workspace in
- * that same reviewed change.
- */
+/** Campaign 2 details inside the shared campaigns 1–3 layout. */
 export function Campaign2Panel(): React.JSX.Element {
   const deployment = feeRewards2Deployment();
+  const status =
+    deployment === "configured"
+      ? "Contracts released"
+      : deployment === "partial"
+        ? "Release error"
+        : "Announced — not live yet";
 
   return (
     <section className={styles.panel} aria-labelledby="campaign2-title">
-      <header className={styles.head}>
-        <span className={styles.eyebrow}>
-          <i aria-hidden data-live={deployment === "configured" ? "" : undefined} />
-          {deployment === "configured" ? "Campaign 2 · live" : "Campaign 2 · announced"}
-        </span>
-        <span className={styles.window}>14 days · 100% of fees</span>
-      </header>
-
-      <h2 id="campaign2-title" className={styles.title}>
-        Every trade pays stakers and burns $HOOKR.
-      </h2>
-      <p className={styles.lede}>
-        The second staking campaign commits the whole tokenized fee stream for a fixed
-        14-day window: all 100 vault shares work, 50 to each leg, so 50% of the WETH
-        trading fees stream to 0xZAPS stakers while the other 50% market-buys $HOOKR and
-        burns it on the spot.
-      </p>
+      <CampaignHeader
+        campaign="Campaign 2"
+        status={status}
+        live={false}
+        window="14 days · 100% of fees"
+        titleId="campaign2-title"
+        titleLevel={1}
+        title="Split fee shares between stakers and HookBlocks."
+        description="The second staking campaign commits the whole tokenized fee stream for a fixed 14-day window: all 100 vault shares work, 50 to each leg, so 50% of the WETH trading fees stream to 0xZAPS stakers while the other 50% market-buys $HOOKR and burns it on the spot."
+      />
 
       {deployment === "partial" ? (
         <p className={styles.notice} role="alert">
@@ -117,13 +111,9 @@ export function Campaign2Panel(): React.JSX.Element {
       {/* Live stats render only once the release manifest is configured. */}
       <Campaign2Live />
 
-      {/* User staking renders only once the release manifest is configured;
-          before that the component returns null and the panel stays a
-          read-only announcement. */}
+      {/* User stake/withdraw/claim remains release-gated and receipt-verified. */}
       <Campaign2Stake />
 
-      {/* The two boundary sentences stay permanently visible; only the
-          verification detail (addresses) and the sponsor console fold away. */}
       <p className={styles.boundary}>{NO_YIELD}</p>
       <p className={styles.boundary}>{AUDIT_STATUS}</p>
 

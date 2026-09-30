@@ -8,6 +8,7 @@ import {
 import { fetchFeeRewards } from "@/lib/rewards-server";
 import type { FeeRewardsPayload } from "@/lib/rewards";
 import { Campaign2Panel } from "./Campaign2Panel";
+import { Campaign3Panel } from "./Campaign3Panel";
 import { CampaignSwitcher, selectedCampaign } from "./CampaignSwitcher";
 import { RewardsGrowthPulse } from "./RewardsGrowthPulse";
 import { RewardsWorkspace, type RewardsWorkspaceName } from "./RewardsWorkspace";
@@ -71,7 +72,7 @@ export default async function RewardsPage({ searchParams }: RewardsPageProps): P
       ) : (
         <>
           <RewardsGrowthPulse initial={null} />
-          <Campaign2Panel />
+          {selected === "2" ? <Campaign2Panel /> : <Campaign3Panel />}
         </>
       )}
     </main>
