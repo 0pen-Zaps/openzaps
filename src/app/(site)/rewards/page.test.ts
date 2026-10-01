@@ -424,7 +424,7 @@ describe("0xZAPS fee rewards public surface", () => {
     expect(page).toContain("<CampaignSwitcher selected={selected} initial={initial} />");
     expect(switcher).toContain("Campaign 1 · Aug 3–10, 2026");
     expect(switcher).toContain("Campaign 2 · 14 days");
-    expect(switcher).toContain("Campaign 3 · Oct 1–31, 2026 UTC");
+    expect(switcher).toContain("Campaign 3 · Oct 3–31, 2026 UTC");
     expect(campaign1).toContain("<CampaignHeader");
     expect(campaign1).toContain('state.staleSince !== null');
     expect(campaign1).toContain("live={writesEnabled &&");

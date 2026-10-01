@@ -17,17 +17,17 @@ function solidityIntegerConstant(name: string): bigint {
 }
 
 describe("Campaign 3 prepared release manifest", () => {
-  it("pins the requested October 1–31 UTC window and 30-day tails", () => {
+  it("pins the requested October 3–31 UTC window and 30-day tails", () => {
     const { schedule, terms } = FEE_REWARDS_3_MANIFEST;
 
-    expect(schedule.startAt).toBe(1_790_812_800n);
+    expect(schedule.startAt).toBe(1_790_985_600n);
     expect(schedule.endAt).toBe(1_793_491_200n);
     expect(schedule.claimDeadline).toBe(1_796_083_200n);
     expect(schedule.sweepAfter).toBe(1_796_083_200n);
-    expect(schedule.endAt - schedule.startAt).toBe(31n * 86_400n);
+    expect(schedule.endAt - schedule.startAt).toBe(29n * 86_400n);
     expect(schedule.claimDeadline - schedule.endAt).toBe(30n * 86_400n);
     expect(schedule.sweepAfter - schedule.endAt).toBe(30n * 86_400n);
-    expect(terms.durationSeconds).toBe(31n * 86_400n);
+    expect(terms.durationSeconds).toBe(29n * 86_400n);
     expect(terms.sweepTailSeconds).toBe(30n * 86_400n);
   });
 
@@ -39,7 +39,7 @@ describe("Campaign 3 prepared release manifest", () => {
     expect(solidityIntegerConstant("CLAIM_DEADLINE")).toBe(schedule.claimDeadline);
     expect(solidityIntegerConstant("SWEEP_AFTER")).toBe(schedule.sweepAfter);
     expect(solidityIntegerConstant("MIN_OUT_BPS")).toBe(BigInt(terms.minOutBps));
-    expect(solidityTerms).toContain("DURATION_SECONDS = 31 days;");
+    expect(solidityTerms).toContain("DURATION_SECONDS = 29 days;");
     expect(solidityTerms).toContain("SWEEP_TAIL = 30 days;");
     expect(solidityTerms).toContain("STAKER_FEE_SHARES = 50e18;");
     expect(solidityTerms).toContain("HOOK_BLOCKS_FEE_SHARES = 50e18;");
@@ -65,7 +65,7 @@ describe("Campaign 3 prepared release manifest", () => {
       FEE_REWARDS_2_MANIFEST.terms.minBuyWei,
     );
     expect(FEE_REWARDS_2_MANIFEST.terms.durationSeconds).toBe(14n * 86_400n);
-    expect(FEE_REWARDS_3_MANIFEST.terms.durationSeconds).toBe(31n * 86_400n);
+    expect(FEE_REWARDS_3_MANIFEST.terms.durationSeconds).toBe(29n * 86_400n);
   });
 
   it("keeps reads and writes fail-closed until both complete deployments match the reviewed schedule", () => {

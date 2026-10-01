@@ -4,18 +4,18 @@
 
 ## Schedule interpretation and release hold
 
-Dates are UTC. The requested October 1–31 schedule is encoded as a 31-day window:
+Dates are UTC. The revised October 3–31 schedule is encoded as a 29-day window:
 
 | Boundary | UTC | Unix seconds |
 |---|---|---:|
-| Start | 2026-10-01 00:00:00 | `1790812800` |
+| Start | 2026-10-03 00:00:00 | `1790985600` |
 | End (exclusive; includes all of Oct 31) | 2026-11-01 00:00:00 | `1793491200` |
 | Staker claim deadline | 2026-12-01 00:00:00 | `1796083200` |
 | HookBlocks permissionless sweep opens | 2026-12-01 00:00:00 | `1796083200` |
 
-Campaign 2's window was **14 days**. This draft interprets “same terms” as the same per-leg economics and operating controls, while the explicit Oct 1–31 dates set Campaign 3's window to 31 days. If the 14-day duration itself was intended to carry over, the schedule must be changed before deployment; neither the script nor this runbook silently shortens October.
+Campaign 2's window was **14 days**. This draft interprets “same terms” as the same per-leg economics and operating controls, while the explicit Oct 3–31 dates set Campaign 3's window to 29 days. The duration therefore still differs from Campaign 2 and must be treated as an explicit schedule exception, not identical terms.
 
-The existing Campaign 2 procedure requires at least 24 hours between preflight/deployment and funding/start. At workstation time `2026-09-30 21:57:25Z`, the requested start was `2h 02m 35s` away. The latest no-broadcast Forge rehearsal read Robinhood chain time `2026-09-30 21:56:46Z`; start was then `2h 03m 14s` away, a `21h 56m 46s` shortfall against the 24-hour lead. **The 24-hour runway is not met.** The Campaign 3 HookBlocks script enforces that lead time and fails closed. The deployment request is acknowledged, but no broadcast may proceed on this schedule; revise the start/window and confirm the changed terms before deployment.
+The HookBlocks script enforces at least 24 hours between the current Robinhood block time and `startAt`. The last recorded read-only check was block `0x495e08f` at `2026-10-01 00:04:18Z`; the Oct 3 start was `47h 55m 42s` away at that snapshot. This is stale evidence, not a current preflight. No contract deployment, funding, signer signature, or broadcast is authorized or performed.
 
 ## Fixed identities and terms
 
@@ -65,9 +65,9 @@ OPENZAPS_FEE_CONFIG=deployments/openzaps-robinhood-fee-tokenizer.campaign3-oct-2
   yarn hardhat run scripts/deploy-openzaps-fee-tokenizer-robinhood.ts --network robinhood
 ```
 
-The October config was run once with `phase: "preflight"`; it passed and printed **“Preflight passed. No transaction was sent.”** It also printed the environment's default signer address. That address was not signed with or verified as safe for Robinhood Chain, and must not be reused as a deployer without an independent chain-4663 wallet/code-safety check.
+An earlier `phase: "preflight"` run passed before the start date was revised and printed **“Preflight passed. No transaction was sent.”** It also printed the environment's default signer address, which was not signed with or verified as safe for Robinhood Chain. No fresh preflight was run after the schedule change; the latest independent read-only block check is already past the 24-hour guard threshold for the revised start. Do not reuse that signer or treat the earlier preflight as approval.
 
-Only after the schedule has the required runway and a chain-4663-qualified deployer is selected should an operator make a separately reviewed deployment config with `phase: "deploy-campaign"`, deploy the campaign, and record its address, runtime code hash, and deployment block. Funding requires the sponsor signer and is a separate step. The user has explicitly requested deployment, but these live prerequisites are not met; do not bypass them.
+The checked-in config remains `phase: "preflight"` and does not authorize deployment. Any later deployment requires a separately reviewed config, a schedule that passes the 24-hour guard, a chain-4663-qualified deployer, and explicit authorization. Funding is a separate sponsor-signed step. The user's no-broadcast instruction remains binding; do not sign, fund, deploy, or broadcast.
 
 ## Leg B — HookBlocks deployment artifact
 
@@ -85,7 +85,7 @@ forge script script/DeployHookBlocksRobinhoodCampaign3.s.sol:DeployHookBlocksRob
   --rpc-url https://rpc.mainnet.chain.robinhood.com --sender <deployer-address>
 ```
 
-This command was rehearsed without `--broadcast` at Robinhood head timestamp `1790805406` (`2026-09-30 21:56:46Z`). It reverted as designed with `StartTooSoon(1790812800, 1790805406)`; no live transaction was sent. Do not bypass or weaken this guard to force the schedule. No `--broadcast` invocation is included or performed.
+The earlier no-broadcast rehearsal at Robinhood timestamp `1790805406` (`2026-09-30 21:56:46Z`) was against the superseded Oct 1 start and reverted with `StartTooSoon(1790812800, 1790805406)`. It does not validate the Oct 3 schedule. No post-change live-RPC rehearsal was run. Do not bypass or weaken the guard; no `--broadcast` invocation is included or performed.
 
 ## Funding and live release boundary
 
@@ -93,4 +93,4 @@ After both deployment records are verified and the schedule is authorized, the s
 
 The application manifest in `src/lib/rewards3.ts` deliberately has `deployment: null`. Campaign 3 therefore renders a read-only announcement: no chain reads, wallet connection, stake, withdraw, claim, or operator controls. Fill the manifest only in a reviewed release after both addresses, runtime hashes, blocks, and immutable schedule getters are verified; live Campaign 3 API/operator/staker wiring remains a separate release requirement. Campaigns 1 and 2 keep their existing verified transaction flows unchanged.
 
-**Current release boundary:** the frontend release is authorized only with Campaign 3 clearly read-only and marked prepared/not live. Onchain deployment and funding remain blocked by the 24-hour schedule guard and unqualified signer. No contract transaction, funding, production environment update, or onchain broadcast has occurred.
+**Current release boundary:** the frontend may be published only with Campaign 3 clearly read-only and marked prepared/not live. Onchain deployment and funding remain blocked by the missed 24-hour runway, the unqualified signer, and the user's no-broadcast instruction. No contract transaction, funding, production environment update, or onchain broadcast has occurred.

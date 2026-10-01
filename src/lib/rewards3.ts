@@ -23,8 +23,8 @@ export type Campaign3Deployment = {
 
 /**
  * Prepared, not-yet-deployed manifest for the October 2026 third fee
- * campaign. The date window is UTC and follows the explicit Oct 1–31 schedule
- * (31 days); the 50/50 allocation and per-leg buy controls match Campaign 2.
+ * campaign. The date window is UTC and follows the explicit Oct 3–31 schedule
+ * (29 days); the 50/50 allocation and per-leg buy controls match Campaign 2.
  * No RPC reads or wallet writes are enabled until both deployed addresses and
  * their runtime hashes are reviewed into `deployment`.
  */
@@ -52,13 +52,13 @@ export const FEE_REWARDS_3_MANIFEST = {
     hooks: "0x0000000000000000000000000000000000000000" as Address,
   },
   schedule: {
-    startAt: 1_790_812_800n,
+    startAt: 1_790_985_600n,
     endAt: 1_793_491_200n,
     claimDeadline: 1_796_083_200n,
     sweepAfter: 1_796_083_200n,
   },
   terms: {
-    durationSeconds: 31n * 86_400n,
+    durationSeconds: 29n * 86_400n,
     sweepTailSeconds: 30n * 86_400n,
     stakerFeeShares: 50n * E18,
     hookBlocksFeeShares: 50n * E18,
