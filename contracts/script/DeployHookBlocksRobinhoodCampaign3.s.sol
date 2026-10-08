@@ -23,8 +23,8 @@ interface IPoolManagerPreflight {
 ///         This is a new immutable deployment; it does not modify Campaigns 1
 ///         or 2, the fee-share vault, or any locker wiring.
 ///
-///         The explicitly requested October 1–31 UTC schedule is a 31-day
-///         window. The 50/50 share allocation, 97% spot floor, per-buy bounds,
+///         The three-month schedule, Oct 15, 2026 to Jan 15, 2027 UTC, is a
+///         92-day window. The 50/50 share allocation, 97% spot floor, per-buy bounds,
 ///         and 30-day recovery tail match Campaign 2. Do not broadcast this
 ///         release without explicit authorization; the checked-in schedule
 ///         also requires at least 24 hours of funding runway.

@@ -2,15 +2,16 @@
 pragma solidity 0.8.34;
 
 /// @notice Immutable schedule and economic constants for the October 2026
-///         Campaign 3 release. Dates are UTC; the explicit Oct 1–31 window is
-///         31 days, while every per-leg economic term matches Campaign 2.
+///         Campaign 3 release. Dates are UTC; the three-month window from Oct 15,
+///         2026 to Jan 15, 2027 is 92 days, while every per-leg economic term
+///         matches Campaign 2.
 library Campaign3Terms {
-    uint64 internal constant START_AT = 1_790_812_800; // 2026-10-01 00:00:00 UTC
-    uint64 internal constant END_AT = 1_793_491_200; // 2026-11-01 00:00:00 UTC (exclusive)
-    uint64 internal constant CLAIM_DEADLINE = 1_796_083_200; // 2026-12-01 00:00:00 UTC
-    uint64 internal constant SWEEP_AFTER = 1_796_083_200; // 2026-12-01 00:00:00 UTC
+    uint64 internal constant START_AT = 1_792_022_400; // 2026-10-15 00:00:00 UTC
+    uint64 internal constant END_AT = 1_799_971_200; // 2027-01-15 00:00:00 UTC (exclusive)
+    uint64 internal constant CLAIM_DEADLINE = 1_802_563_200; // 2027-02-14 00:00:00 UTC
+    uint64 internal constant SWEEP_AFTER = 1_802_563_200; // 2027-02-14 00:00:00 UTC
 
-    uint64 internal constant DURATION_SECONDS = 31 days;
+    uint64 internal constant DURATION_SECONDS = 92 days;
     uint64 internal constant SWEEP_TAIL = 30 days;
     uint64 internal constant MIN_FUNDING_LEAD = 24 hours;
 

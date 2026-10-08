@@ -7,7 +7,7 @@ const NOT_LIVE =
 const DEPLOYMENT_NOT_ENABLED =
   "Deployment data is present, but Campaign 3 live reads and wallet actions are not enabled in this release. Do not stake or fund until those surfaces are independently verified.";
 const WINDOW_NOTE =
-  "Campaign 2 ran for 14 days. Campaign 3 uses the explicitly requested October 1–31 UTC window (31 days); all per-leg share allocations and HookBlocks buy controls remain unchanged.";
+  "Campaign 2 ran for 14 days. Campaign 3 runs for three months, Oct 15, 2026 to Jan 15, 2027 UTC (92 days); all per-leg share allocations and HookBlocks buy controls remain unchanged.";
 const NO_YIELD =
   "No yield or APR. Rewards are whatever the pool's real trading fees produce during the window, which may be zero; the staking leg splits them by time-weighted stake.";
 const AUDIT_STATUS =
@@ -58,11 +58,11 @@ export function Campaign3Panel(): React.JSX.Element {
         campaign="Campaign 3"
         status={status}
         live={false}
-        window="Oct 1–31, 2026 UTC · 31 days"
+        window="Oct 15, 2026 – Jan 15, 2027 UTC · 3 months"
         titleId="campaign3-title"
         titleLevel={1}
         title="Split fee shares between 0xZAPS stakers and HookBlocks."
-        description="Campaign 3 assigns 50 of the vault's 100 fee shares to 0xZAPS stakers and 50 to the HookBlocks buy-and-burn leg. It is scheduled for the full October calendar month in UTC."
+        description="Campaign 3 assigns 50 of the vault's 100 fee shares to 0xZAPS stakers and 50 to the HookBlocks buy-and-burn leg. It is scheduled for three months, from Oct 15, 2026 to Jan 15, 2027 UTC."
       />
 
       <p className={styles.notice} role={deployment === "partial" ? "alert" : undefined}>
@@ -90,7 +90,7 @@ export function Campaign3Panel(): React.JSX.Element {
       <dl className={styles.terms}>
         <div>
           <dt>Window</dt>
-          <dd>Oct 1, 00:00 UTC → Nov 1, 00:00 UTC · 31 days</dd>
+          <dd>Oct 15, 2026, 00:00 UTC → Jan 15, 2027, 00:00 UTC · 92 days</dd>
         </div>
         <div>
           <dt>Share split</dt>
