@@ -4,16 +4,16 @@
 
 ## Schedule interpretation and release hold
 
-Dates are UTC. The requested October 1–31 schedule is encoded as a 31-day window:
+Dates are UTC. On 2026-10-08 the owner moved Campaign 3 to a three-month window starting Oct 15, 2026, encoded as 92 days:
 
 | Boundary | UTC | Unix seconds |
 |---|---|---:|
-| Start | 2026-10-01 00:00:00 | `1790812800` |
-| End (exclusive; includes all of Oct 31) | 2026-11-01 00:00:00 | `1793491200` |
-| Staker claim deadline | 2026-12-01 00:00:00 | `1796083200` |
-| HookBlocks permissionless sweep opens | 2026-12-01 00:00:00 | `1796083200` |
+| Start | 2026-10-15 00:00:00 | `1792022400` |
+| End (exclusive; includes all of Jan 14) | 2027-01-15 00:00:00 | `1799971200` |
+| Staker claim deadline | 2027-02-14 00:00:00 | `1802563200` |
+| HookBlocks permissionless sweep opens | 2027-02-14 00:00:00 | `1802563200` |
 
-Campaign 2's window was **14 days**. This draft interprets “same terms” as the same per-leg economics and operating controls, while the explicit Oct 1–31 dates set Campaign 3's window to 31 days. If the 14-day duration itself was intended to carry over, the schedule must be changed before deployment; neither the script nor this runbook silently shortens October.
+Campaign 2's window was **14 days**. Campaign 3 keeps Campaign 2's per-leg economics and operating controls; only the window changed (first Oct 1–31, now Oct 15, 2026 to Jan 15, 2027). The deploy script still needs at least 24 hours of funding runway before the start, so it must be deployed and funded before 2026-10-14 00:00 UTC.
 
 The existing Campaign 2 procedure requires at least 24 hours between preflight/deployment and funding/start. At workstation time `2026-09-30 21:57:25Z`, the requested start was `2h 02m 35s` away. The latest no-broadcast Forge rehearsal read Robinhood chain time `2026-09-30 21:56:46Z`; start was then `2h 03m 14s` away, a `21h 56m 46s` shortfall against the 24-hour lead. **The 24-hour runway is not met.** The Campaign 3 HookBlocks script enforces that lead time and fails closed. The deployment request is acknowledged, but no broadcast may proceed on this schedule; revise the start/window and confirm the changed terms before deployment.
 

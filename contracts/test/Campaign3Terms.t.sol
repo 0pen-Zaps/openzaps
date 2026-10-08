@@ -7,12 +7,12 @@ import {Campaign3Terms} from "../script/Campaign3Terms.sol";
 
 contract Campaign3TermsTest is Test {
     function testOctoberScheduleIsPinnedInUtc() public pure {
-        assertEq(uint256(Campaign3Terms.START_AT), 1_790_812_800);
-        assertEq(uint256(Campaign3Terms.END_AT), 1_793_491_200);
-        assertEq(uint256(Campaign3Terms.CLAIM_DEADLINE), 1_796_083_200);
-        assertEq(uint256(Campaign3Terms.SWEEP_AFTER), 1_796_083_200);
-        assertEq(uint256(Campaign3Terms.END_AT - Campaign3Terms.START_AT), 31 days);
-        assertEq(uint256(Campaign3Terms.DURATION_SECONDS), 31 days);
+        assertEq(uint256(Campaign3Terms.START_AT), 1_792_022_400);
+        assertEq(uint256(Campaign3Terms.END_AT), 1_799_971_200);
+        assertEq(uint256(Campaign3Terms.CLAIM_DEADLINE), 1_802_563_200);
+        assertEq(uint256(Campaign3Terms.SWEEP_AFTER), 1_802_563_200);
+        assertEq(uint256(Campaign3Terms.END_AT - Campaign3Terms.START_AT), 92 days);
+        assertEq(uint256(Campaign3Terms.DURATION_SECONDS), 92 days);
         assertEq(uint256(Campaign3Terms.CLAIM_DEADLINE - Campaign3Terms.END_AT), 30 days);
         assertEq(uint256(Campaign3Terms.SWEEP_AFTER - Campaign3Terms.END_AT), 30 days);
     }

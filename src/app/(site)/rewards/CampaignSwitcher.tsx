@@ -61,9 +61,9 @@ export function CampaignSwitcher({
     },
     {
       id: "3",
-      eyebrow: "Campaign 3 · Oct 1–31, 2026 UTC",
+      eyebrow: "Campaign 3 · Oct 15, 2026 – Jan 15, 2027 UTC",
       title: "Stakers + HOOKR buy-and-burn",
-      meta: `${release3 === "configured" ? "Deployment recorded — controls disabled" : release3 === "partial" ? "Release error — controls disabled" : "Prepared — not live yet"} · 31 days · 50/50 fee-share split`,
+      meta: `${release3 === "configured" ? "Deployment recorded — controls disabled" : release3 === "partial" ? "Release error — controls disabled" : "Prepared — not live yet"} · 3 months · 50/50 fee-share split`,
       live: false,
     },
   ];
